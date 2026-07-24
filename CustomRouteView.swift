@@ -544,6 +544,7 @@ struct CustomRouteDetailView: View {
     @State private var routeWeather:      RouteWeather?
     @State private var elevationProfile:  ElevationProfile?
     @State private var isLoadingElevation = false
+    @State private var showMapsAlert      = false
 
     var body: some View {
         ZStack {
@@ -611,12 +612,24 @@ struct CustomRouteDetailView: View {
                                      label: "est. time")
                         }
 
-                        Button { openInMaps() } label: {
+                        Button {
+                            if route.waypoints.count > 2 {
+                                showMapsAlert = true
+                            } else {
+                                openInMaps()
+                            }
+                        } label: {
                             Label("Navigate with Apple Maps",
                                   systemImage: "arrow.triangle.turn.up.right.circle.fill")
                                 .frame(maxWidth: .infinity).padding()
                                 .background(Color.blue).foregroundColor(.white)
                                 .cornerRadius(14)
+                        }
+                        .alert("Apple Maps Limitation", isPresented: $showMapsAlert) {
+                            Button("Navigate to Start") { openInMapsStartOnly() }
+                            Button("Cancel", role: .cancel) { }
+                        } message: {
+                            Text("Apple Maps doesn't support multi-stop walking routes. Wockett will navigate you to the start of your route — follow the in-app map for the full path.")
                         }
                     }
                     .padding(20)
@@ -686,25 +699,25 @@ struct CustomRouteDetailView: View {
         }
     }
 
+    // 2-waypoint routes: navigate start → end directly (Apple Maps handles this fine)
     private func openInMaps() {
         let coords = route.waypoints.map { $0.clCoordinate }
-        guard !coords.isEmpty else { return }
-
-        var items = coords.enumerated().map { i, coord -> MKMapItem in
-            let item = MKMapItem(placemark: MKPlacemark(coordinate: coord))
-            item.name = i == 0 ? "\(route.name) — Start" : "Waypoint \(i + 1)"
-            return item
-        }
-
-        if route.isLoop {
-            let returnItem = MKMapItem(placemark: MKPlacemark(coordinate: coords[0]))
-            returnItem.name = "\(route.name) — Return"
-            items.append(returnItem)
-        }
-
+        guard coords.count >= 2 else { return }
+        let start = MKMapItem(placemark: MKPlacemark(coordinate: coords[0]))
+        start.name = "\(route.name) — Start"
+        let end = MKMapItem(placemark: MKPlacemark(coordinate: coords[coords.count - 1]))
+        end.name = "\(route.name) — End"
         MKMapItem.openMaps(
-            with: items,
+            with: [start, end],
             launchOptions: [MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeWalking]
         )
+    }
+
+    // Multi-waypoint routes: navigate to the start point only; user follows Wockett for the rest
+    private func openInMapsStartOnly() {
+        guard let first = route.waypoints.first else { return }
+        let item = MKMapItem(placemark: MKPlacemark(coordinate: first.clCoordinate))
+        item.name = "\(route.name) — Start"
+        item.openInMaps(launchOptions: [MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeWalking])
     }
 }
