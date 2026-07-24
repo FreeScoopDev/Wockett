@@ -1,0 +1,295 @@
+import SwiftUI
+import CoreLocation
+import Charts
+import WeatherKit
+
+// MARK: - Route Weather
+
+struct RouteWeather: Sendable {
+    let symbolName: String
+    let conditionDescription: String
+    let temperatureText: String
+    let precipitationChance: Double
+
+    var statusText: String {
+        switch precipitationChance {
+        case 0.7...: return "High chance of rain"
+        case 0.4...: return "Some rain possible"
+        default:     return "Good conditions"
+        }
+    }
+
+    var statusColor: Color {
+        switch precipitationChance {
+        case 0.7...: return .orange
+        case 0.4...: return .yellow
+        default:     return .green
+        }
+    }
+
+    var statusSymbol: String {
+        precipitationChance >= 0.4 ? "drop.fill" : "checkmark.circle.fill"
+    }
+}
+
+// MARK: - Route Difficulty
+
+enum RouteDifficulty: String {
+    case easy     = "Easy"
+    case moderate = "Moderate"
+    case hard     = "Hard"
+    case expert   = "Expert"
+
+    var color: Color {
+        switch self {
+        case .easy:     return .green
+        case .moderate: return .yellow
+        case .hard:     return .orange
+        case .expert:   return .red
+        }
+    }
+
+    var sfSymbol: String {
+        switch self {
+        case .easy:     return "figure.walk"
+        case .moderate: return "figure.hiking"
+        case .hard:     return "mountain.2"
+        case .expert:   return "mountain.2.fill"
+        }
+    }
+
+    /// Distance-only estimate used when elevation data is unavailable.
+    static func fromDistance(_ meters: Double) -> RouteDifficulty {
+        switch meters {
+        case 15_000...: return .expert
+        case 8_000...:  return .hard
+        case 3_000...:  return .moderate
+        default:        return .easy
+        }
+    }
+}
+
+// MARK: - Elevation Models
+
+struct ElevationPoint: Identifiable {
+    let id = UUID()
+    let distanceKm: Double
+    let elevationMeters: Double
+}
+
+struct ElevationProfile {
+    let points: [ElevationPoint]
+    let totalGainMeters: Double
+    let totalLossMeters: Double
+    let maxElevationMeters: Double
+    let minElevationMeters: Double
+    let difficulty: RouteDifficulty
+}
+
+// MARK: - Weather Service (WeatherKit)
+
+actor RouteWeatherService {
+    static let shared = RouteWeatherService()
+    private init() {}
+
+    func fetchWeather(for coordinate: CLLocationCoordinate2D) async -> RouteWeather? {
+        let location = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
+        guard let weather = try? await WeatherService.shared.weather(for: location) else { return nil }
+        let current = weather.currentWeather
+        let tempText = current.temperature.formatted(.measurement(width: .abbreviated, usage: .weather))
+        let precipChance = weather.hourlyForecast.first?.precipitationChance ?? 0
+        return RouteWeather(
+            symbolName:           current.symbolName,
+            conditionDescription: current.condition.description,
+            temperatureText:      tempText,
+            precipitationChance:  precipChance
+        )
+    }
+}
+
+// MARK: - Elevation Service (OpenTopoData — free, no API key, SRTM 90m)
+
+actor ElevationService {
+    static let shared = ElevationService()
+    private init() {}
+
+    func fetchProfile(for coordinates: [CLLocationCoordinate2D]) async throws -> ElevationProfile {
+        guard !coordinates.isEmpty else { throw URLError(.badURL) }
+
+        let sampled   = downsample(coordinates, to: min(coordinates.count, 100))
+        let locations = sampled.map { "\($0.latitude),\($0.longitude)" }.joined(separator: "|")
+        let encoded   = locations.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? locations
+        guard let url = URL(string: "https://api.opentopodata.org/v1/srtm90m?locations=\(encoded)") else {
+            throw URLError(.badURL)
+        }
+
+        let (data, response) = try await URLSession.shared.data(from: url)
+        guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw URLError(.badServerResponse) }
+
+        let decoded = try JSONDecoder().decode(OTDResponse.self, from: data)
+        guard decoded.status == "OK" else { throw URLError(.badServerResponse) }
+
+        return buildProfile(elevations: decoded.results.map { $0.elevation ?? 0 }, coordinates: sampled)
+    }
+
+    private func downsample(_ coords: [CLLocationCoordinate2D], to count: Int) -> [CLLocationCoordinate2D] {
+        guard coords.count > count else { return coords }
+        let step = Double(coords.count - 1) / Double(count - 1)
+        return (0..<count).map { i in coords[Int(round(Double(i) * step))] }
+    }
+
+    private func buildProfile(elevations: [Double], coordinates: [CLLocationCoordinate2D]) -> ElevationProfile {
+        var points: [ElevationPoint] = []
+        var gain = 0.0, loss = 0.0, maxGrad = 0.0, cumKm = 0.0
+
+        for i in 0..<elevations.count {
+            if i > 0 {
+                let a    = CLLocation(latitude: coordinates[i-1].latitude, longitude: coordinates[i-1].longitude)
+                let b    = CLLocation(latitude: coordinates[i].latitude,   longitude: coordinates[i].longitude)
+                let segM = a.distance(from: b)
+                cumKm   += segM / 1_000
+                let d    = elevations[i] - elevations[i-1]
+                if d > 0 { gain += d } else { loss -= d }
+                if segM > 0 { maxGrad = max(maxGrad, abs(d) / segM * 100) }
+            }
+            points.append(ElevationPoint(distanceKm: cumKm, elevationMeters: elevations[i]))
+        }
+
+        let totalM = cumKm * 1_000
+        let diff: RouteDifficulty
+        if      gain >= 500 || maxGrad > 25                      { diff = .expert }
+        else if totalM >= 15_000 || gain >= 300 || maxGrad > 15  { diff = .hard }
+        else if totalM >= 5_000  || gain >= 100                  { diff = .moderate }
+        else                                                      { diff = .easy }
+
+        return ElevationProfile(
+            points:             points,
+            totalGainMeters:    gain,
+            totalLossMeters:    loss,
+            maxElevationMeters: elevations.max() ?? 0,
+            minElevationMeters: elevations.min() ?? 0,
+            difficulty:         diff
+        )
+    }
+}
+
+private struct OTDResponse: Decodable {
+    let results: [OTDResult]
+    let status:  String
+}
+private struct OTDResult: Decodable {
+    let elevation: Double?
+}
+
+// MARK: - Weather Widget
+
+struct WeatherWidget: View {
+    let weather: RouteWeather
+
+    var body: some View {
+        HStack(spacing: 14) {
+            Image(systemName: weather.symbolName)
+                .font(.title2)
+                .symbolRenderingMode(.multicolor)
+                .frame(width: 32)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(weather.conditionDescription)
+                    .font(.subheadline.bold())
+                    .foregroundColor(.white)
+                Label(weather.statusText, systemImage: weather.statusSymbol)
+                    .font(.caption)
+                    .foregroundColor(weather.statusColor)
+            }
+
+            Spacer()
+
+            Text(weather.temperatureText)
+                .font(.title3.bold())
+                .foregroundColor(.white)
+        }
+        .padding(14)
+        .background(Color.white.opacity(0.08))
+        .cornerRadius(12)
+    }
+}
+
+// MARK: - Difficulty Badge
+
+struct DifficultyBadge: View {
+    let difficulty: RouteDifficulty
+    var compact: Bool = false
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Image(systemName: difficulty.sfSymbol)
+                .font(compact ? .caption2 : .caption)
+            if !compact {
+                Text(difficulty.rawValue)
+                    .font(.caption.bold())
+            }
+        }
+        .foregroundColor(difficulty.color)
+        .padding(.horizontal, compact ? 6 : 8)
+        .padding(.vertical, compact ? 3 : 5)
+        .background(difficulty.color.opacity(0.15))
+        .cornerRadius(20)
+    }
+}
+
+// MARK: - Elevation Profile Chart
+
+struct ElevationProfileChart: View {
+    let profile: ElevationProfile
+
+    private var yDomain: ClosedRange<Double> {
+        let pad = max((profile.maxElevationMeters - profile.minElevationMeters) * 0.3, 15)
+        return (profile.minElevationMeters - pad)...(profile.maxElevationMeters + pad)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 16) {
+                elevStat("+\(Int(profile.totalGainMeters))m", label: "gain",  color: .green)
+                elevStat("-\(Int(profile.totalLossMeters))m", label: "loss",  color: .orange)
+                Spacer()
+                DifficultyBadge(difficulty: profile.difficulty)
+            }
+
+            Chart(profile.points) { pt in
+                AreaMark(
+                    x: .value("Dist", pt.distanceKm),
+                    y: .value("Elev", pt.elevationMeters)
+                )
+                .foregroundStyle(
+                    LinearGradient(
+                        colors: [.green.opacity(0.4), .green.opacity(0.03)],
+                        startPoint: .top, endPoint: .bottom
+                    )
+                )
+                LineMark(
+                    x: .value("Dist", pt.distanceKm),
+                    y: .value("Elev", pt.elevationMeters)
+                )
+                .foregroundStyle(.green)
+                .lineStyle(StrokeStyle(lineWidth: 2))
+                .interpolationMethod(.catmullRom)
+            }
+            .chartYScale(domain: yDomain)
+            .chartXAxisLabel("km", alignment: .trailing)
+            .chartYAxisLabel("m", alignment: .top)
+            .environment(\.colorScheme, .dark)
+            .frame(height: 110)
+        }
+        .padding(14)
+        .background(Color.white.opacity(0.06))
+        .cornerRadius(12)
+    }
+
+    private func elevStat(_ value: String, label: String, color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(value).font(.subheadline.bold()).foregroundColor(color)
+            Text(label).font(.caption2).foregroundColor(.white.opacity(0.45))
+        }
+    }
+}

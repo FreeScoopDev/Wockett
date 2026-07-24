@@ -6,13 +6,33 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		60DBB4E43012582C00CB62E2 /* CustomRouteView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60DBB4E33012582B00CB62E2 /* CustomRouteView.swift */; };
+		60DBB4E630127E3000CB62E2 /* RouteIntelligenceService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60DBB4E530127E3000CB62E2 /* RouteIntelligenceService.swift */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		6093BCDE3011AB1C00AD5E15 /* PoCSquat.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PoCSquat.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		60DBB4E33012582B00CB62E2 /* CustomRouteView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustomRouteView.swift; sourceTree = "<group>"; };
+		60DBB4E530127E3000CB62E2 /* RouteIntelligenceService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouteIntelligenceService.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		6093BD043011D61A00AD5E15 /* Exceptions for "PoCSquat" folder in "PoCSquat" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 6093BCDD3011AB1C00AD5E15 /* PoCSquat */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		6093BCE03011AB1C00AD5E15 /* PoCSquat */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				6093BD043011D61A00AD5E15 /* Exceptions for "PoCSquat" folder in "PoCSquat" target */,
+			);
 			path = PoCSquat;
 			sourceTree = "<group>";
 		};
@@ -34,6 +54,8 @@
 			children = (
 				6093BCE03011AB1C00AD5E15 /* PoCSquat */,
 				6093BCDF3011AB1C00AD5E15 /* Products */,
+				60DBB4E33012582B00CB62E2 /* CustomRouteView.swift */,
+				60DBB4E530127E3000CB62E2 /* RouteIntelligenceService.swift */,
 			);
 			sourceTree = "<group>";
 		};
@@ -82,6 +104,7 @@
 				TargetAttributes = {
 					6093BCDD3011AB1C00AD5E15 = {
 						CreatedOnToolsVersion = 26.6;
+						LastSwiftMigration = 2660;
 					};
 				};
 			};
@@ -119,6 +142,8 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				60DBB4E43012582C00CB62E2 /* CustomRouteView.swift in Sources */,
+				60DBB4E630127E3000CB62E2 /* RouteIntelligenceService.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -251,11 +276,19 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_ENTITLEMENTS = PoCSquat/PoCSquat.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 7U83DJ2F97;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = PoCSquat/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = WalkR;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.healthcare-fitness";
+				INFOPLIST_KEY_NSCameraUsageDescription = "\"This app uses the camera to detect your squat form and count reps.\"";
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "RepTrack reads your step count to track daily progress.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "RepTrack uses your location to suggest nearby walking routes.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -272,6 +305,8 @@
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "PoCSquat/PoCSquat-Bridging-Header.h";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -283,11 +318,19 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_ENTITLEMENTS = PoCSquat/PoCSquat.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 7U83DJ2F97;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = PoCSquat/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = WalkR;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.healthcare-fitness";
+				INFOPLIST_KEY_NSCameraUsageDescription = "\"This app uses the camera to detect your squat form and count reps.\"";
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "RepTrack reads your step count to track daily progress.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "RepTrack uses your location to suggest nearby walking routes.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -304,6 +347,7 @@
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "PoCSquat/PoCSquat-Bridging-Header.h";
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";

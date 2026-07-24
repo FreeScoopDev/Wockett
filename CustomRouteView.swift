@@ -1,0 +1,710 @@
+import SwiftUI
+import Combine
+import MapKit
+import CoreLocation
+
+// MARK: - Models
+
+struct WaypointCoord: Codable, Hashable {
+    let latitude: Double
+    let longitude: Double
+
+    init(_ coord: CLLocationCoordinate2D) {
+        latitude  = coord.latitude
+        longitude = coord.longitude
+    }
+
+    var clCoordinate: CLLocationCoordinate2D {
+        CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
+    }
+}
+
+struct CustomRoute: Identifiable, Codable {
+    let id:            UUID
+    var name:          String
+    let waypoints:     [WaypointCoord]
+    var totalDistance: Double        // metres
+    var isLoop:        Bool
+    let createdAt:     Date
+
+    var estimatedSteps: Int { Int(totalDistance / 0.762) }
+
+    var distanceText: String {
+        let f = MKDistanceFormatter(); f.unitStyle = .abbreviated
+        return f.string(fromDistance: totalDistance)
+    }
+
+    var timeText: String {
+        let mins = Int(totalDistance / 1.4 / 60)
+        return mins < 60 ? "\(mins) min" : "\(mins / 60)h \(mins % 60)m"
+    }
+
+    var centroid: CLLocationCoordinate2D {
+        let n   = Double(waypoints.count)
+        let lat = waypoints.reduce(0.0) { $0 + $1.latitude }  / n
+        let lon = waypoints.reduce(0.0) { $0 + $1.longitude } / n
+        return CLLocationCoordinate2D(latitude: lat, longitude: lon)
+    }
+}
+
+// MARK: - Store
+
+@MainActor
+final class CustomRouteStore: ObservableObject {
+    @Published var routes: [CustomRoute] = []
+    private let udKey = "customRoutes_v1"
+
+    init() { load() }
+
+    func save(_ route: CustomRoute) {
+        routes.insert(route, at: 0)
+        persist()
+    }
+
+    func delete(at offsets: IndexSet) {
+        routes.remove(atOffsets: offsets)
+        persist()
+    }
+
+    private func persist() {
+        if let data = try? JSONEncoder().encode(routes) {
+            UserDefaults.standard.set(data, forKey: udKey)
+        }
+    }
+
+    private func load() {
+        guard let data    = UserDefaults.standard.data(forKey: udKey),
+              let decoded = try? JSONDecoder().decode([CustomRoute].self, from: data) else { return }
+        routes = decoded
+    }
+}
+
+// MARK: - Builder State
+
+@MainActor
+final class CustomRouteBuilder: ObservableObject {
+    @Published var waypoints:    [CLLocationCoordinate2D] = []
+    @Published var routeLegs:    [MKRoute] = []
+    @Published var loopLeg:      MKRoute?
+    @Published var isComputing   = false
+    @Published var isLoopClosed  = false
+
+    var totalDistance: Double {
+        let base = routeLegs.reduce(0) { $0 + $1.distance }
+        return isLoopClosed ? base + (loopLeg?.distance ?? 0) : base
+    }
+
+    var allLegs: [MKRoute] {
+        isLoopClosed ? routeLegs + [loopLeg].compactMap { $0 } : routeLegs
+    }
+
+    var canSave: Bool { waypoints.count >= 2 && routeLegs.count == waypoints.count - 1 && !isComputing }
+
+    func addWaypoint(_ coord: CLLocationCoordinate2D) {
+        waypoints.append(coord)
+        Task { await computeLastLeg() }
+    }
+
+    func undoLast() {
+        if isLoopClosed { isLoopClosed = false; loopLeg = nil; return }
+        guard !waypoints.isEmpty else { return }
+        waypoints.removeLast()
+        if !routeLegs.isEmpty { routeLegs.removeLast() }
+    }
+
+    func toggleLoop() {
+        if isLoopClosed {
+            isLoopClosed = false; loopLeg = nil
+        } else {
+            Task { await computeLoopLeg() }
+        }
+    }
+
+    func build(name: String) -> CustomRoute {
+        CustomRoute(
+            id:            UUID(),
+            name:          name.trimmingCharacters(in: .whitespaces).isEmpty ? "My Route" : name,
+            waypoints:     waypoints.map { WaypointCoord($0) },
+            totalDistance: totalDistance,
+            isLoop:        isLoopClosed,
+            createdAt:     Date()
+        )
+    }
+
+    private func computeLastLeg() async {
+        let n = waypoints.count
+        guard n >= 2 else { return }
+        isComputing = true
+        defer { isComputing = false }
+
+        guard let leg = await walkingRoute(from: waypoints[n - 2], to: waypoints[n - 1]) else {
+            if waypoints.count == n { waypoints.removeLast() }
+            return
+        }
+        routeLegs.append(leg)
+    }
+
+    private func computeLoopLeg() async {
+        guard let first = waypoints.first, let last = waypoints.last, waypoints.count >= 2 else { return }
+        isComputing = true
+        defer { isComputing = false }
+
+        if let leg = await walkingRoute(from: last, to: first) {
+            loopLeg       = leg
+            isLoopClosed  = true
+        }
+    }
+
+    private func walkingRoute(from: CLLocationCoordinate2D, to: CLLocationCoordinate2D) async -> MKRoute? {
+        let req           = MKDirections.Request()
+        req.source        = MKMapItem(placemark: MKPlacemark(coordinate: from))
+        req.destination   = MKMapItem(placemark: MKPlacemark(coordinate: to))
+        req.transportType = .walking
+        return try? await MKDirections(request: req).calculate().routes.first
+    }
+}
+
+// MARK: - Shared Map UIViewRepresentable
+
+/// Used for both route building (onTap provided) and display (onTap nil).
+struct CustomRouteMapView: UIViewRepresentable {
+    let waypoints:  [CLLocationCoordinate2D]
+    let routeLegs:  [MKRoute]
+    var onTap:      ((CLLocationCoordinate2D) -> Void)? = nil
+
+    func makeUIView(context: Context) -> MKMapView {
+        let map = MKMapView()
+        map.delegate           = context.coordinator
+        map.showsUserLocation  = true
+        map.overrideUserInterfaceStyle = .dark
+
+        if onTap != nil {
+            let tap = UITapGestureRecognizer(target: context.coordinator,
+                                             action: #selector(Coordinator.handleTap(_:)))
+            tap.delegate = context.coordinator
+            map.addGestureRecognizer(tap)
+        }
+        return map
+    }
+
+    func updateUIView(_ map: MKMapView, context: Context) {
+        context.coordinator.onTap = onTap
+
+        // Refresh annotations
+        map.removeAnnotations(map.annotations.filter { !($0 is MKUserLocation) })
+        for (i, wp) in waypoints.enumerated() {
+            let ann       = MKPointAnnotation()
+            ann.coordinate = wp
+            ann.title      = "\(i + 1)"
+            map.addAnnotation(ann)
+        }
+
+        // Refresh overlays
+        map.removeOverlays(map.overlays)
+        for leg in routeLegs { map.addOverlay(leg.polyline) }
+
+        let coord = context.coordinator
+
+        // Builder mode: zoom to neighbourhood when first waypoint placed
+        if onTap != nil && waypoints.count == 1 && coord.lastWaypointCount == 0 {
+            let region = MKCoordinateRegion(center: waypoints[0],
+                                            latitudinalMeters: 1_500, longitudinalMeters: 1_500)
+            map.setRegion(region, animated: true)
+        }
+
+        // Display mode: zoom to fit all content once legs load
+        if onTap == nil && routeLegs.count > coord.lastLegCount && !waypoints.isEmpty {
+            let rect = waypoints.reduce(MKMapRect.null) { r, c in
+                let p = MKMapPoint(c)
+                return r.union(MKMapRect(x: p.x, y: p.y, width: 0, height: 0))
+            }
+            if !rect.isNull {
+                map.setVisibleMapRect(rect,
+                                      edgePadding: UIEdgeInsets(top: 60, left: 40, bottom: 60, right: 40),
+                                      animated: true)
+            }
+        }
+
+        coord.lastWaypointCount = waypoints.count
+        coord.lastLegCount      = routeLegs.count
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(onTap: onTap) }
+
+    class Coordinator: NSObject, MKMapViewDelegate, UIGestureRecognizerDelegate {
+        var onTap:             ((CLLocationCoordinate2D) -> Void)?
+        var lastWaypointCount  = 0
+        var lastLegCount       = 0
+        private var hasZoomedToUser = false
+
+        init(onTap: ((CLLocationCoordinate2D) -> Void)?) { self.onTap = onTap }
+
+        @objc func handleTap(_ gesture: UITapGestureRecognizer) {
+            guard gesture.state == .ended, let map = gesture.view as? MKMapView else { return }
+            let pt = gesture.location(in: map)
+            onTap?(map.convert(pt, toCoordinateFrom: map))
+        }
+
+        // Ignore taps on existing annotation pins
+        func gestureRecognizer(_ gr: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+            !(touch.view is MKAnnotationView)
+        }
+
+        // Auto-center on user location the first time it's available in builder mode
+        func mapView(_ map: MKMapView, didUpdate userLocation: MKUserLocation) {
+            guard !hasZoomedToUser, onTap != nil, let loc = userLocation.location else { return }
+            hasZoomedToUser = true
+            let region = MKCoordinateRegion(center: loc.coordinate,
+                                            latitudinalMeters: 2_000, longitudinalMeters: 2_000)
+            map.setRegion(region, animated: false)
+        }
+
+        func mapView(_ map: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
+            guard let pl = overlay as? MKPolyline else { return MKOverlayRenderer(overlay: overlay) }
+            let r         = MKPolylineRenderer(polyline: pl)
+            r.strokeColor = .systemGreen
+            r.lineWidth   = 4
+            r.alpha       = 0.9
+            return r
+        }
+
+        func mapView(_ map: MKMapView, viewFor annotation: MKAnnotation) -> MKAnnotationView? {
+            guard let ann = annotation as? MKPointAnnotation else { return nil }
+            let view = MKMarkerAnnotationView(annotation: ann, reuseIdentifier: "waypoint")
+            view.glyphText      = ann.title ?? ""
+            view.markerTintColor = .systemGreen
+            view.canShowCallout  = false
+            return view
+        }
+    }
+}
+
+// MARK: - Route Builder View
+
+struct CustomRouteBuilderView: View {
+    @StateObject private var builder = CustomRouteBuilder()
+    @State private var showSaveSheet = false
+    @State private var routeName     = ""
+    @Environment(\.dismiss) private var dismiss
+    let onSave: (CustomRoute) -> Void
+
+    var body: some View {
+        ZStack(alignment: .bottom) {
+            CustomRouteMapView(
+                waypoints: builder.waypoints,
+                routeLegs: builder.allLegs,
+                onTap:     { builder.addWaypoint($0) }
+            )
+            .ignoresSafeArea()
+
+            // Empty-state hint
+            if builder.waypoints.isEmpty {
+                VStack(spacing: 10) {
+                    Image(systemName: "hand.tap")
+                        .font(.system(size: 34)).foregroundColor(.green)
+                    Text("Tap the map to add waypoints")
+                        .font(.headline).foregroundColor(.white)
+                    Text("MapKit finds walking routes between each point")
+                        .font(.caption).foregroundColor(.white.opacity(0.6))
+                        .multilineTextAlignment(.center)
+                }
+                .padding(20)
+                .background(.ultraThinMaterial)
+                .cornerRadius(16)
+                .padding(.bottom, 160)
+            }
+
+            // Bottom control panel
+            VStack(spacing: 12) {
+                if !builder.waypoints.isEmpty {
+                    HStack(spacing: 0) {
+                        statChip(value: "\(builder.waypoints.count)", label: "points")
+                        Divider()
+                            .frame(height: 30)
+                            .background(Color.white.opacity(0.15))
+                            .padding(.horizontal, 12)
+                        statChip(value: distanceText(builder.totalDistance), label: "distance")
+                        if builder.isComputing {
+                            Divider()
+                                .frame(height: 30)
+                                .background(Color.white.opacity(0.15))
+                                .padding(.horizontal, 12)
+                            ProgressView().tint(.green).scaleEffect(0.85)
+                        }
+                        Spacer()
+                        if builder.waypoints.count >= 2 && !builder.isComputing {
+                            Toggle(isOn: Binding(get: { builder.isLoopClosed },
+                                                 set: { _ in builder.toggleLoop() })) {
+                                Text("Loop").font(.caption.bold()).foregroundColor(.white)
+                            }
+                            .tint(.green).fixedSize()
+                        }
+                    }
+                    .padding(.horizontal)
+                }
+
+                HStack(spacing: 10) {
+                    if !builder.waypoints.isEmpty {
+                        Button { builder.undoLast() } label: {
+                            Label("Undo", systemImage: "arrow.uturn.backward")
+                                .font(.subheadline)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 14)
+                                .background(Color.white.opacity(0.12))
+                                .foregroundColor(.white)
+                                .cornerRadius(12)
+                        }
+                    }
+                    if builder.canSave {
+                        Button { showSaveSheet = true } label: {
+                            Text("Save Route")
+                                .font(.subheadline.bold())
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 14)
+                                .background(Color.green)
+                                .foregroundColor(.black)
+                                .cornerRadius(12)
+                        }
+                    }
+                }
+                .padding(.horizontal)
+                .padding(.bottom, 8)
+            }
+            .padding(.vertical, 14)
+            .background(.ultraThinMaterial)
+        }
+        .navigationTitle("Build Route")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarColorScheme(.dark, for: .navigationBar)
+        .sheet(isPresented: $showSaveSheet) {
+            SaveRouteSheet(routeName: $routeName) {
+                let route = builder.build(name: routeName)
+                onSave(route)
+                dismiss()
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func statChip(value: String, label: String) -> some View {
+        VStack(spacing: 2) {
+            Text(value).font(.headline).foregroundColor(.white)
+            Text(label).font(.caption2).foregroundColor(.white.opacity(0.5))
+        }
+    }
+
+    private func distanceText(_ m: Double) -> String {
+        let f = MKDistanceFormatter(); f.unitStyle = .abbreviated
+        return f.string(fromDistance: m)
+    }
+}
+
+// MARK: - Save Sheet
+
+struct SaveRouteSheet: View {
+    @Binding var routeName: String
+    @Environment(\.dismiss) private var dismiss
+    let onSave: () -> Void
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Color.black.ignoresSafeArea()
+                VStack(spacing: 24) {
+                    Image(systemName: "map.fill")
+                        .font(.system(size: 52)).foregroundColor(.green)
+                    Text("Name your route")
+                        .font(.subheadline).foregroundColor(.white.opacity(0.55))
+                    TextField("e.g. Morning Loop", text: $routeName)
+                        .font(.title2.bold())
+                        .multilineTextAlignment(.center)
+                        .foregroundColor(.white)
+                        .padding()
+                        .background(Color.white.opacity(0.08))
+                        .cornerRadius(12)
+                    Spacer()
+                }
+                .padding(32)
+            }
+            .navigationTitle("Save Route")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") { onSave() }.foregroundColor(.green)
+                }
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }.foregroundColor(.white.opacity(0.6))
+                }
+            }
+        }
+        .presentationDetents([.medium])
+    }
+}
+
+// MARK: - My Routes List
+
+struct CustomRoutesListView: View {
+    @ObservedObject var store:     CustomRouteStore
+    @State private var isBuilding = false
+
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+            Group {
+                if store.routes.isEmpty { emptyState } else { routeList }
+            }
+        }
+        .navigationTitle("My Routes")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarColorScheme(.dark, for: .navigationBar)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button { isBuilding = true } label: {
+                    Image(systemName: "plus").foregroundColor(.green)
+                }
+            }
+        }
+        .navigationDestination(isPresented: $isBuilding) {
+            CustomRouteBuilderView { route in store.save(route) }
+        }
+    }
+
+    private var emptyState: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "map")
+                .font(.system(size: 64)).foregroundColor(.white.opacity(0.12))
+            Text("No Saved Routes")
+                .font(.headline).foregroundColor(.white.opacity(0.45))
+            Text("Tap + to trace your first custom route")
+                .font(.subheadline).foregroundColor(.white.opacity(0.3))
+                .multilineTextAlignment(.center)
+            Button { isBuilding = true } label: {
+                Label("Create Route", systemImage: "plus")
+                    .padding(.horizontal, 24).padding(.vertical, 12)
+                    .background(Color.green).foregroundColor(.black).bold()
+                    .cornerRadius(12)
+            }
+            .padding(.top, 8)
+        }
+        .padding()
+    }
+
+    private var routeList: some View {
+        List {
+            ForEach(store.routes) { route in
+                NavigationLink(destination: CustomRouteDetailView(route: route)) {
+                    CustomRouteRow(route: route)
+                }
+                .listRowBackground(Color.white.opacity(0.06))
+                .listRowSeparatorTint(.white.opacity(0.08))
+            }
+            .onDelete { store.delete(at: $0) }
+        }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+    }
+}
+
+// MARK: - Route Row
+
+struct CustomRouteRow: View {
+    let route: CustomRoute
+
+    var body: some View {
+        HStack(spacing: 14) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(Color.green.opacity(0.15))
+                    .frame(width: 46, height: 46)
+                Image(systemName: route.isLoop ? "arrow.triangle.2.circlepath" : "arrow.right")
+                    .foregroundColor(.green)
+                    .font(.system(size: 18, weight: .medium))
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                Text(route.name).font(.headline).foregroundColor(.white)
+                HStack(spacing: 10) {
+                    Label(route.distanceText, systemImage: "ruler")
+                    Label("~\(route.estimatedSteps.formatted()) steps", systemImage: "figure.walk")
+                }
+                .font(.caption).foregroundColor(.white.opacity(0.5))
+            }
+            Spacer()
+        }
+        .padding(.vertical, 6)
+    }
+}
+
+// MARK: - Route Detail
+
+struct CustomRouteDetailView: View {
+    let route:  CustomRoute
+    @State private var routeLegs:         [MKRoute] = []
+    @State private var isLoading          = false
+    @State private var routeWeather:      RouteWeather?
+    @State private var elevationProfile:  ElevationProfile?
+    @State private var isLoadingElevation = false
+
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+            VStack(spacing: 0) {
+                ZStack {
+                    CustomRouteMapView(
+                        waypoints: route.waypoints.map { $0.clCoordinate },
+                        routeLegs: routeLegs
+                    )
+                    if isLoading {
+                        ProgressView().tint(.green)
+                            .padding(16)
+                            .background(.black.opacity(0.6))
+                            .cornerRadius(10)
+                    }
+                }
+                .frame(height: 320)
+
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 20) {
+                        HStack(alignment: .top) {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(route.name)
+                                    .font(.title2.bold()).foregroundColor(.white)
+                                Label(
+                                    route.isLoop ? "Loop route" : "One-way route",
+                                    systemImage: route.isLoop ? "arrow.triangle.2.circlepath" : "arrow.right"
+                                )
+                                .font(.caption).foregroundColor(.green)
+                            }
+                            Spacer()
+                            VStack(alignment: .trailing, spacing: 4) {
+                                Text(route.distanceText).font(.title3.bold()).foregroundColor(.white)
+                                Text("~\(route.estimatedSteps.formatted()) steps")
+                                    .font(.caption).foregroundColor(.white.opacity(0.5))
+                            }
+                        }
+
+                        if let weather = routeWeather {
+                            WeatherWidget(weather: weather)
+                        }
+
+                        if let profile = elevationProfile {
+                            ElevationProfileChart(profile: profile)
+                        } else if isLoadingElevation {
+                            RoundedRectangle(cornerRadius: 12)
+                                .fill(Color.white.opacity(0.06))
+                                .frame(height: 80)
+                                .overlay {
+                                    HStack(spacing: 8) {
+                                        ProgressView().tint(.green)
+                                        Text("Calculating elevation...")
+                                            .font(.caption).foregroundColor(.white.opacity(0.45))
+                                    }
+                                }
+                        }
+
+                        HStack(spacing: 12) {
+                            infoTile(icon: "mappin.circle",
+                                     value: "\(route.waypoints.count)",
+                                     label: "waypoints")
+                            infoTile(icon: "clock",
+                                     value: route.timeText,
+                                     label: "est. time")
+                        }
+
+                        Button { openInMaps() } label: {
+                            Label("Navigate with Apple Maps",
+                                  systemImage: "arrow.triangle.turn.up.right.circle.fill")
+                                .frame(maxWidth: .infinity).padding()
+                                .background(Color.blue).foregroundColor(.white)
+                                .cornerRadius(14)
+                        }
+                    }
+                    .padding(20)
+                }
+            }
+        }
+        .navigationTitle(route.name)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarColorScheme(.dark, for: .navigationBar)
+        .task { await loadLegs() }
+    }
+
+    @ViewBuilder
+    private func infoTile(icon: String, value: String, label: String) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: icon).foregroundColor(.green)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(value).font(.subheadline.bold()).foregroundColor(.white)
+                Text(label).font(.caption2).foregroundColor(.white.opacity(0.45))
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.white.opacity(0.06))
+        .cornerRadius(10)
+    }
+
+    private func loadLegs() async {
+        isLoading = true
+
+        let coords = route.waypoints.map { $0.clCoordinate }
+        var legs: [MKRoute] = []
+
+        // Fetch weather in parallel while route legs are loading
+        async let weatherFetch = RouteWeatherService.shared.fetchWeather(for: route.centroid)
+
+        for i in 0..<(coords.count - 1) {
+            let req           = MKDirections.Request()
+            req.source        = MKMapItem(placemark: MKPlacemark(coordinate: coords[i]))
+            req.destination   = MKMapItem(placemark: MKPlacemark(coordinate: coords[i + 1]))
+            req.transportType = .walking
+            if let r = try? await MKDirections(request: req).calculate().routes.first { legs.append(r) }
+        }
+
+        if route.isLoop, let first = coords.first, let last = coords.last {
+            let req           = MKDirections.Request()
+            req.source        = MKMapItem(placemark: MKPlacemark(coordinate: last))
+            req.destination   = MKMapItem(placemark: MKPlacemark(coordinate: first))
+            req.transportType = .walking
+            if let r = try? await MKDirections(request: req).calculate().routes.first { legs.append(r) }
+        }
+
+        routeLegs = legs
+        isLoading = false
+
+        routeWeather = await weatherFetch
+
+        // Extract all polyline coordinates for elevation — uses route's actual walking path
+        let polylineCoords = legs.flatMap { leg -> [CLLocationCoordinate2D] in
+            let pts = leg.polyline.points()
+            return (0..<leg.polyline.pointCount).map { pts[$0].coordinate }
+        }
+        if !polylineCoords.isEmpty {
+            isLoadingElevation = true
+            elevationProfile = try? await ElevationService.shared.fetchProfile(for: polylineCoords)
+            isLoadingElevation = false
+        }
+    }
+
+    private func openInMaps() {
+        let coords = route.waypoints.map { $0.clCoordinate }
+        guard !coords.isEmpty else { return }
+
+        var items = coords.enumerated().map { i, coord -> MKMapItem in
+            let item = MKMapItem(placemark: MKPlacemark(coordinate: coord))
+            item.name = i == 0 ? "\(route.name) — Start" : "Waypoint \(i + 1)"
+            return item
+        }
+
+        if route.isLoop {
+            let returnItem = MKMapItem(placemark: MKPlacemark(coordinate: coords[0]))
+            returnItem.name = "\(route.name) — Return"
+            items.append(returnItem)
+        }
+
+        MKMapItem.openMaps(
+            with: items,
+            launchOptions: [MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeWalking]
+        )
+    }
+}
