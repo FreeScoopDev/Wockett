@@ -1,5 +1,16 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
-<dict/>
+<dict>
+	<key>NSCameraUsageDescription</key>
+	<string>Wockett uses the camera to detect your body position and count squat and push-up reps.</string>
+	<key>NSHealthShareUsageDescription</key>
+	<string>Wockett reads your step count from Apple Health to track your daily walking goal.</string>
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>Wockett may write walking workout data to Apple Health when you complete a route.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Wockett uses your location to suggest nearby walking routes and calculate distances.</string>
+	<key>NSMotionUsageDescription</key>
+	<string>Wockett uses motion data to count your steps when Apple Health is unavailable.</string>
+</dict>
 </plist>

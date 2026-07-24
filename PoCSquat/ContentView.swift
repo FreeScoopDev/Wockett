@@ -11,10 +11,10 @@ struct ContentView: View {
                 VStack(spacing: 32) {
                     // Header
                     VStack(spacing: 6) {
-                        Text("RepTrack")
+                        Text("Wockett")
                             .font(.system(size: 36, weight: .black, design: .rounded))
                             .foregroundColor(.white)
-                        Text("AR-powered workout counter")
+                        Text("Walk more. Move better.")
                             .font(.subheadline)
                             .foregroundColor(.white.opacity(0.5))
                     }
