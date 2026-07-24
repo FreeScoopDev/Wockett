@@ -9,7 +9,7 @@
 	<key>NSHealthUpdateUsageDescription</key>
 	<string>Wockett may write walking workout data to Apple Health when you complete a route.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Wockett uses your location to suggest nearby walking routes and calculate distances.</string>
+	<string>Wockett uses your location to suggest nearby walking routes, track your position during in-app navigation, and calculate distances.</string>
 	<key>NSMotionUsageDescription</key>
 	<string>Wockett uses motion data to count your steps when Apple Health is unavailable.</string>
 </dict>

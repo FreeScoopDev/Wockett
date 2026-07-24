@@ -38,8 +38,18 @@
     </tr>
     <tr>
         <td>Location (while using the app)</td>
-        <td>Generate nearby walking route suggestions</td>
-        <td>Not stored. GPS coordinates are sent to <a href="https://www.opentopodata.org" target="_blank">OpenTopoData</a> for elevation data only — no personal information is included.</td>
+        <td>Generate nearby walking route suggestions; track your position during in-app navigation sessions; calculate distance walked</td>
+        <td>Not stored between sessions. During navigation, your live position is used on-device only. GPS coordinates are sent to <a href="https://www.opentopodata.org" target="_blank">OpenTopoData</a> for elevation data only — no personal information is included.</td>
+    </tr>
+    <tr>
+        <td>Walk history</td>
+        <td>Remember completed walks so you can view your history and repeat favourite routes</td>
+        <td>Stored on-device only (route name, date, distance, duration). Never transmitted or shared.</td>
+    </tr>
+    <tr>
+        <td>Notification access</td>
+        <td>Send you a reminder at the date and time you choose when scheduling a future walk</td>
+        <td>Reminders are local notifications only — no server is involved. Wockett never sends push notifications or uses your device token.</td>
     </tr>
     <tr>
         <td>HealthKit step count</td>

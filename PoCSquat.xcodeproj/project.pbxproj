@@ -56,6 +56,7 @@
 				6093BCDF3011AB1C00AD5E15 /* Products */,
 				60DBB4E33012582B00CB62E2 /* CustomRouteView.swift */,
 				60DBB4E530127E3000CB62E2 /* RouteIntelligenceService.swift */,
+				60D6DE2C3013CAC20032FC50 /* Frameworks */,
 			);
 			sourceTree = "<group>";
 		};
@@ -65,6 +66,13 @@
 				6093BCDE3011AB1C00AD5E15 /* PoCSquat.app */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		60D6DE2C3013CAC20032FC50 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -280,18 +288,22 @@
 				CODE_SIGN_ENTITLEMENTS = PoCSquat/PoCSquat.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_ASSET_PATHS = PoCSquat/Assets.xcassets;
 				DEVELOPMENT_TEAM = 7U83DJ2F97;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = PoCSquat/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = WalkR;
+				INFOPLIST_KEY_CFBundleDisplayName = Wockett;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.healthcare-fitness";
-				INFOPLIST_KEY_NSCameraUsageDescription = "\"This app uses the camera to detect your squat form and count reps.\"";
-				INFOPLIST_KEY_NSHealthShareUsageDescription = "RepTrack reads your step count to track daily progress.";
-				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "RepTrack uses your location to suggest nearby walking routes.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Wockett uses the camera to detect your body position and count squat and push-up reps.";
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "Wockett reads your step count from Apple Health to track your daily walking goal.";
+				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "Wockett may write walking workout data to Apple Health when you complete a route.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Wockett uses your location to suggest nearby walking routes and calculate distances.";
+				INFOPLIST_KEY_NSMotionUsageDescription = "Wockett uses motion data to count your steps when Apple Health is unavailable.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UILaunchStoryboardName = "";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -322,18 +334,22 @@
 				CODE_SIGN_ENTITLEMENTS = PoCSquat/PoCSquat.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_ASSET_PATHS = PoCSquat/Assets.xcassets;
 				DEVELOPMENT_TEAM = 7U83DJ2F97;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = PoCSquat/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = WalkR;
+				INFOPLIST_KEY_CFBundleDisplayName = Wockett;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.healthcare-fitness";
-				INFOPLIST_KEY_NSCameraUsageDescription = "\"This app uses the camera to detect your squat form and count reps.\"";
-				INFOPLIST_KEY_NSHealthShareUsageDescription = "RepTrack reads your step count to track daily progress.";
-				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "RepTrack uses your location to suggest nearby walking routes.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Wockett uses the camera to detect your body position and count squat and push-up reps.";
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "Wockett reads your step count from Apple Health to track your daily walking goal.";
+				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "Wockett may write walking workout data to Apple Health when you complete a route.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Wockett uses your location to suggest nearby walking routes and calculate distances.";
+				INFOPLIST_KEY_NSMotionUsageDescription = "Wockett uses motion data to count your steps when Apple Health is unavailable.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UILaunchStoryboardName = "";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				LD_RUNPATH_SEARCH_PATHS = (

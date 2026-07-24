@@ -254,7 +254,8 @@ final class RouteManager: NSObject, ObservableObject, CLLocationManagerDelegate 
             totalDistance:  route.distance,
             totalTime:      route.expectedTravelTime,
             lapCount:       1,
-            label:          destination.name
+            label:          destination.name,
+            legWaypoints:   [location.coordinate, destination.placemark.coordinate]
         )]
     }
 
@@ -297,7 +298,8 @@ final class RouteManager: NSObject, ObservableObject, CLLocationManagerDelegate 
             totalDistance:  perLapDist * Double(laps),
             totalTime:      perLapTime * Double(laps),
             lapCount:       laps,
-            label:          nil
+            label:          nil,
+            legWaypoints:   [start.coordinate, coordA, coordB]
         )
     }
 
@@ -324,7 +326,8 @@ final class RouteManager: NSObject, ObservableObject, CLLocationManagerDelegate 
             totalDistance:  perLapDist * Double(laps),
             totalTime:      perLapTime * Double(laps),
             lapCount:       laps,
-            label:          "Neighbourhood Loop"
+            label:          "Neighbourhood Loop",
+            legWaypoints:   [start.coordinate, coordA, coordB]
         )
     }
 
@@ -394,6 +397,7 @@ struct SuggestedRoute: Identifiable {
     let totalTime:     TimeInterval
     let lapCount:      Int      // 1 for single-circuit routes; >1 means repeat N times
     let label:         String?  // custom name (fallback only); nil shows direction-based name
+    let legWaypoints:  [CLLocationCoordinate2D]
 
     var estimatedSteps: Int    { Int(totalDistance / 0.762) }
     var perLapDistance: Double { totalDistance / Double(lapCount) }
@@ -425,6 +429,16 @@ struct SuggestedRoute: Identifiable {
     func openInAppleMaps() {
         openInMapsItem.openInMaps(launchOptions: [MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeWalking])
     }
+
+    func toNavigableRoute() -> NavigableRoute {
+        NavigableRoute(
+            name:          label ?? "\(directionName) \(isLoop ? "Loop" : "Route")",
+            waypoints:     legWaypoints,
+            lapCount:      lapCount,
+            isLoop:        isLoop,
+            totalDistance: totalDistance
+        )
+    }
 }
 
 // MARK: - Step Counter View
@@ -433,6 +447,7 @@ struct StepCounterView: View {
     @StateObject private var stepManager  = StepManager()
     @StateObject private var routeManager = RouteManager()
     @StateObject private var routeStore   = CustomRouteStore()
+    @StateObject private var historyStore = WalkHistoryStore()
 
     @State private var selectedRadius: RadiusPreset = .moderate
     @State private var selectedRoute: SuggestedRoute?
@@ -440,6 +455,8 @@ struct StepCounterView: View {
     @State private var showScheduleSheet     = false
     @State private var showMyRoutes          = false
     @State private var showDestinationSearch = false
+    @State private var showWalkHistory       = false
+    @State private var navigatingRoute: NavigableRoute?
     @State private var routeWeather: RouteWeather?
 
     var body: some View {
@@ -467,7 +484,13 @@ struct StepCounterView: View {
         .task { await stepManager.initialize() }
         .onAppear { if !routeManager.isGenerating { clearRoutes() } }
         .navigationDestination(isPresented: $showMyRoutes) {
-            CustomRoutesListView(store: routeStore)
+            CustomRoutesListView(store: routeStore, historyStore: historyStore)
+        }
+        .navigationDestination(isPresented: $showWalkHistory) {
+            WalkHistoryView(store: historyStore)
+        }
+        .navigationDestination(item: $navigatingRoute) { route in
+            WalkNavigationView(route: route, historyStore: historyStore)
         }
         .onChange(of: stepManager.currentGoal) { _, _ in clearRoutes() }
         .onChange(of: selectedRadius) { _, _ in clearRoutes() }
@@ -583,6 +606,19 @@ struct StepCounterView: View {
                 }
                 .padding(.horizontal, 16).padding(.vertical, 14)
             }
+
+            Button { showWalkHistory = true } label: {
+                HStack {
+                    Label("Walk History", systemImage: "clock.arrow.circlepath").foregroundColor(.white)
+                    Spacer()
+                    if !historyStore.sessions.isEmpty {
+                        Text("\(historyStore.sessions.count)")
+                            .font(.caption).foregroundColor(.green).padding(.trailing, 4)
+                    }
+                    Image(systemName: "chevron.right").font(.caption).foregroundColor(.white.opacity(0.3))
+                }
+                .padding(.horizontal, 16).padding(.vertical, 14)
+            }
         }
         .background(Color.white.opacity(0.06))
         .cornerRadius(16)
@@ -680,14 +716,28 @@ struct StepCounterView: View {
                 }
 
                 if let selected = selectedRoute {
-                    Button { selected.openInAppleMaps() } label: {
-                        Label(
-                            selected.isLoop ? "Navigate to First Waypoint" : "Open in Apple Maps",
-                            systemImage: "arrow.triangle.turn.up.right.circle.fill"
-                        )
-                        .frame(maxWidth: .infinity).padding()
-                        .background(Color.blue).foregroundColor(.white)
-                        .cornerRadius(14).padding(.horizontal)
+                    Button {
+                        navigatingRoute = selected.toNavigableRoute()
+                    } label: {
+                        Label("Start Walk", systemImage: "figure.walk")
+                            .frame(maxWidth: .infinity).padding()
+                            .background(Color.green).foregroundColor(.black)
+                            .fontWeight(.semibold).cornerRadius(14).padding(.horizontal)
+                    }
+
+                    VStack(spacing: 4) {
+                        Button { selected.openInAppleMaps() } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "map")
+                                Text("Open in Apple Maps")
+                            }
+                            .font(.subheadline).foregroundColor(.white.opacity(0.4))
+                        }
+                        Text("Laps and multi-stop routes aren't supported in Apple Maps")
+                            .font(.system(size: 10))
+                            .foregroundColor(.white.opacity(0.25))
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 32)
                     }
                 }
             }

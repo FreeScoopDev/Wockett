@@ -445,7 +445,8 @@ struct SaveRouteSheet: View {
 // MARK: - My Routes List
 
 struct CustomRoutesListView: View {
-    @ObservedObject var store:     CustomRouteStore
+    @ObservedObject var store:        CustomRouteStore
+    @ObservedObject var historyStore: WalkHistoryStore
     @State private var isBuilding = false
 
     var body: some View {
@@ -493,7 +494,7 @@ struct CustomRoutesListView: View {
     private var routeList: some View {
         List {
             ForEach(store.routes) { route in
-                NavigationLink(destination: CustomRouteDetailView(route: route)) {
+                NavigationLink(destination: CustomRouteDetailView(route: route, historyStore: historyStore)) {
                     CustomRouteRow(route: route)
                 }
                 .listRowBackground(Color.white.opacity(0.06))
@@ -539,12 +540,14 @@ struct CustomRouteRow: View {
 
 struct CustomRouteDetailView: View {
     let route:  CustomRoute
+    @ObservedObject var historyStore: WalkHistoryStore
     @State private var routeLegs:         [MKRoute] = []
     @State private var isLoading          = false
     @State private var routeWeather:      RouteWeather?
     @State private var elevationProfile:  ElevationProfile?
     @State private var isLoadingElevation = false
     @State private var showMapsAlert      = false
+    @State private var navigatingRoute:   NavigableRoute?
 
     var body: some View {
         ZStack {
@@ -613,17 +616,38 @@ struct CustomRouteDetailView: View {
                         }
 
                         Button {
-                            if route.waypoints.count > 2 {
-                                showMapsAlert = true
-                            } else {
-                                openInMaps()
-                            }
+                            navigatingRoute = NavigableRoute(
+                                name:          route.name,
+                                waypoints:     route.waypoints.map { $0.clCoordinate },
+                                lapCount:      1,
+                                isLoop:        route.isLoop,
+                                totalDistance: route.totalDistance
+                            )
                         } label: {
-                            Label("Navigate with Apple Maps",
-                                  systemImage: "arrow.triangle.turn.up.right.circle.fill")
+                            Label("Start Walk", systemImage: "figure.walk")
                                 .frame(maxWidth: .infinity).padding()
-                                .background(Color.blue).foregroundColor(.white)
-                                .cornerRadius(14)
+                                .background(Color.green).foregroundColor(.black)
+                                .fontWeight(.semibold).cornerRadius(14)
+                        }
+
+                        VStack(spacing: 4) {
+                            Button {
+                                if route.waypoints.count > 2 {
+                                    showMapsAlert = true
+                                } else {
+                                    openInMaps()
+                                }
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "map")
+                                    Text("Open in Apple Maps")
+                                }
+                                .font(.subheadline).foregroundColor(.white.opacity(0.4))
+                            }
+                            Text("Laps and multi-stop routes aren't supported in Apple Maps")
+                                .font(.system(size: 10))
+                                .foregroundColor(.white.opacity(0.25))
+                                .multilineTextAlignment(.center)
                         }
                         .alert("Apple Maps Limitation", isPresented: $showMapsAlert) {
                             Button("Navigate to Start") { openInMapsStartOnly() }
@@ -639,6 +663,9 @@ struct CustomRouteDetailView: View {
         .navigationTitle(route.name)
         .navigationBarTitleDisplayMode(.inline)
         .toolbarColorScheme(.dark, for: .navigationBar)
+        .navigationDestination(item: $navigatingRoute) { r in
+            WalkNavigationView(route: r, historyStore: historyStore)
+        }
         .task { await loadLegs() }
     }
 
@@ -699,21 +726,30 @@ struct CustomRouteDetailView: View {
         }
     }
 
-    // 2-waypoint routes: navigate start → end directly (Apple Maps handles this fine)
+    // Attempt multi-stop route: current location → each waypoint in order.
+    // Apple Maps supports this for driving; walking support varies by iOS version.
     private func openInMaps() {
         let coords = route.waypoints.map { $0.clCoordinate }
-        guard coords.count >= 2 else { return }
-        let start = MKMapItem(placemark: MKPlacemark(coordinate: coords[0]))
-        start.name = "\(route.name) — Start"
-        let end = MKMapItem(placemark: MKPlacemark(coordinate: coords[coords.count - 1]))
-        end.name = "\(route.name) — End"
+        guard !coords.isEmpty else { return }
+
+        var items: [MKMapItem] = [.forCurrentLocation()]
+        for (i, coord) in coords.enumerated() {
+            let item = MKMapItem(placemark: MKPlacemark(coordinate: coord))
+            item.name = i == 0 ? "\(route.name) — Start" : "Stop \(i + 1)"
+            items.append(item)
+        }
+        if route.isLoop {
+            let ret = MKMapItem(placemark: MKPlacemark(coordinate: coords[0]))
+            ret.name = "\(route.name) — Return"
+            items.append(ret)
+        }
         MKMapItem.openMaps(
-            with: [start, end],
+            with: items,
             launchOptions: [MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeWalking]
         )
     }
 
-    // Multi-waypoint routes: navigate to the start point only; user follows Wockett for the rest
+    // Fallback for multi-waypoint routes: navigate to start point only
     private func openInMapsStartOnly() {
         guard let first = route.waypoints.first else { return }
         let item = MKMapItem(placemark: MKPlacemark(coordinate: first.clCoordinate))
