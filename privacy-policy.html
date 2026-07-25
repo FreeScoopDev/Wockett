@@ -21,7 +21,7 @@
 <body>
 
 <h1>Privacy Policy</h1>
-<p class="updated">Last updated: July 24, 2026</p>
+<p class="updated">Last updated: July 25, 2026</p>
 
 <p>This Privacy Policy describes how Wockett ("the App", "We", "Us") handles your information when you use our iOS application. We are committed to being transparent and collecting only what is necessary to make the app work.</p>
 
@@ -47,9 +47,14 @@
         <td>Stored on-device only (route name, date, distance, duration). Never transmitted or shared.</td>
     </tr>
     <tr>
-        <td>Notification access</td>
-        <td>Send you a reminder at the date and time you choose when scheduling a future walk</td>
-        <td>Reminders are local notifications only — no server is involved. Wockett never sends push notifications or uses your device token.</td>
+        <td>Local notifications</td>
+        <td>Water break reminders during a walk session</td>
+        <td>Local notifications only — no server is involved. Wockett never sends push notifications or uses your device token.</td>
+    </tr>
+    <tr>
+        <td>Reminders (EventKit)</td>
+        <td>Add a walk reminder to your Apple Reminders app when you schedule a future day's walk</td>
+        <td>Reminder entries (title and due date) are written to your on-device Reminders app via Apple's EventKit framework. If you have iCloud Reminders enabled in iOS Settings, Apple will sync this data to iCloud per their privacy policy. We do not access, transmit, or store any Reminders data ourselves.</td>
     </tr>
     <tr>
         <td>HealthKit step count</td>
