@@ -548,6 +548,17 @@ struct CustomRouteDetailView: View {
     @State private var isLoadingElevation = false
     @State private var showMapsAlert      = false
     @State private var navigatingRoute:   NavigableRoute?
+    @State private var shareState: ShareState = .idle
+
+    private enum ShareState { case idle, sharing, shared, failed }
+    private var shareButtonColor: Color {
+        switch shareState {
+        case .idle:    return Color(red: 0.28, green: 0.49, blue: 0.84)
+        case .sharing: return Color(red: 0.28, green: 0.49, blue: 0.84).opacity(0.6)
+        case .shared:  return .earthGreen
+        case .failed:  return .red.opacity(0.7)
+        }
+    }
 
     var body: some View {
         ZStack {
@@ -655,6 +666,56 @@ struct CustomRouteDetailView: View {
                             Button("Cancel", role: .cancel) { }
                         } message: {
                             Text("Apple Maps doesn't support multi-stop walking routes. Wockett will navigate you to the start of your route — follow the in-app map for the full path.")
+                        }
+
+                        // Community sharing
+                        VStack(spacing: 10) {
+                            Divider().background(Color.earthMuted.opacity(0.15))
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Share to Community")
+                                        .font(.subheadline.bold()).foregroundColor(.earthCream)
+                                    Text("Posting as \(CommunityRouteService.shared.username)")
+                                        .font(.caption2).foregroundColor(.earthMuted)
+                                }
+                                Spacer()
+                            }
+                            Button {
+                                guard shareState == .idle else { return }
+                                shareState = .sharing
+                                Task {
+                                    do {
+                                        try await CommunityRouteService.shared.publish(route: route)
+                                        shareState = .shared
+                                    } catch {
+                                        shareState = .failed
+                                    }
+                                }
+                            } label: {
+                                HStack(spacing: 8) {
+                                    switch shareState {
+                                    case .idle:
+                                        Image(systemName: "arrow.up.circle")
+                                        Text("Share Route")
+                                    case .sharing:
+                                        ProgressView().tint(.white).scaleEffect(0.85)
+                                        Text("Sharing…")
+                                    case .shared:
+                                        Image(systemName: "checkmark.circle.fill")
+                                        Text("Shared!")
+                                    case .failed:
+                                        Image(systemName: "exclamationmark.circle")
+                                        Text("Couldn't Share")
+                                    }
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 14)
+                                .background(shareButtonColor)
+                                .foregroundColor(.white)
+                                .fontWeight(.semibold)
+                                .cornerRadius(12)
+                            }
+                            .disabled(shareState != .idle)
                         }
                     }
                     .padding(20)

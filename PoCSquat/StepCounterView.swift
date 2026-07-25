@@ -729,6 +729,9 @@ struct StepCounterView: View {
     @State private var calendarWeekOffset: Int = 0
     @State private var showSettings = false
     @State private var showMonthCalendar = false
+    @State private var communityRoutes: [SharedRoute] = []
+    @State private var isLoadingCommunity = false
+    @State private var showCommunityRoutes = false
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -1222,8 +1225,71 @@ struct StepCounterView: View {
                             .padding(.horizontal, 32)
                     }
                 }
+
+                communityRoutesSection
             }
         }
+    }
+
+    // MARK: - Community Routes
+
+    @ViewBuilder
+    private var communityRoutesSection: some View {
+        VStack(spacing: 10) {
+            Button {
+                showCommunityRoutes.toggle()
+                if showCommunityRoutes && communityRoutes.isEmpty {
+                    Task { await loadCommunityRoutes() }
+                }
+            } label: {
+                HStack {
+                    Label("Community Routes", systemImage: "person.2.fill")
+                        .font(.subheadline.bold())
+                        .foregroundColor(.earthCream)
+                    Spacer()
+                    if isLoadingCommunity {
+                        ProgressView().tint(.earthGreen).scaleEffect(0.8)
+                    } else {
+                        Image(systemName: showCommunityRoutes ? "chevron.up" : "chevron.down")
+                            .font(.caption).foregroundColor(.earthMuted)
+                    }
+                }
+                .padding(.horizontal, 16).padding(.vertical, 14)
+                .background(Color.earthCard)
+                .cornerRadius(12)
+                .padding(.horizontal)
+            }
+
+            if showCommunityRoutes {
+                if communityRoutes.isEmpty && !isLoadingCommunity {
+                    Text("No routes shared yet — be the first!")
+                        .font(.caption).foregroundColor(.earthMuted)
+                        .padding(.vertical, 8)
+                } else {
+                    ForEach($communityRoutes) { $route in
+                        CommunityRouteCard(
+                            route: $route,
+                            hasVoted: CommunityRouteService.shared.hasVoted(for: route.id),
+                            onUpvote: {
+                                guard !CommunityRouteService.shared.hasVoted(for: route.id) else { return }
+                                route.upvotes += 1
+                                CommunityRouteService.shared.markVoted(for: route.id)
+                                Task { try? await CommunityRouteService.shared.upvote(id: route.id) }
+                            },
+                            onStart: { navigatingRoute = route.toNavigableRoute() }
+                        )
+                        .padding(.horizontal)
+                    }
+                }
+            }
+        }
+        .animation(.easeInOut(duration: 0.2), value: showCommunityRoutes)
+    }
+
+    private func loadCommunityRoutes() async {
+        isLoadingCommunity = true
+        communityRoutes = (try? await CommunityRouteService.shared.fetchRoutes()) ?? []
+        isLoadingCommunity = false
     }
 
     // MARK: Helper
@@ -3096,6 +3162,60 @@ private struct NearbyPlaceRow: View {
                 Label("Open in Apple Maps", systemImage: "map.fill")
             }
         }
+    }
+}
+
+// MARK: - Community Route Card
+
+struct CommunityRouteCard: View {
+    @Binding var route: SharedRoute
+    let hasVoted: Bool
+    let onUpvote: () -> Void
+    let onStart: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(route.name)
+                        .font(.headline).foregroundColor(.earthCream)
+                    Text("by \(route.authorName)")
+                        .font(.caption).foregroundColor(.earthMuted)
+                }
+                Spacer()
+                DifficultyBadge(difficulty: route.difficulty, compact: true)
+            }
+
+            HStack(spacing: 16) {
+                Label(route.distanceText, systemImage: "ruler")
+                Label(route.timeText, systemImage: "clock")
+                Label("\(route.estimatedSteps.formatted()) steps", systemImage: "figure.walk")
+            }
+            .font(.caption).foregroundColor(.earthMuted)
+
+            HStack {
+                Button(action: onUpvote) {
+                    Label("\(route.upvotes)", systemImage: hasVoted ? "hand.thumbsup.fill" : "hand.thumbsup")
+                        .font(.subheadline)
+                        .foregroundColor(hasVoted ? .earthGreen : .earthMuted)
+                        .animation(.spring(duration: 0.2), value: hasVoted)
+                }
+                .disabled(hasVoted)
+
+                Spacer()
+
+                Button(action: onStart) {
+                    Label("Start Walk", systemImage: "figure.walk")
+                        .font(.subheadline.bold())
+                        .padding(.horizontal, 16).padding(.vertical, 8)
+                        .background(Color.earthGreen).foregroundColor(.white)
+                        .cornerRadius(10)
+                }
+            }
+        }
+        .padding(16)
+        .background(Color.earthCard)
+        .cornerRadius(14)
     }
 }
 
