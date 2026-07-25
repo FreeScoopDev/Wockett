@@ -405,7 +405,9 @@ final class RouteManager: NSObject, ObservableObject, CLLocationManagerDelegate 
             routes.append(fallback)
         }
 
-        suggestedRoutes = routes
+        suggestedRoutes = routes.enumerated().map { i, r in
+            var r = r; r.colorIndex = i; return r
+        }
     }
 
     func generateDestinationRoute(to destination: MKMapItem) async {
@@ -672,11 +674,22 @@ struct SuggestedRoute: Identifiable {
     let legWaypoints:  [CLLocationCoordinate2D]
     var elevationGainMeters: Double = 0
     var elevationLossMeters: Double = 0
+    var colorIndex: Int = 0     // position in result list; drives unique hue per route
 
     var elevationSummary: String? {
         guard elevationGainMeters > 0 || elevationLossMeters > 0 else { return nil }
         let fmt = MKDistanceFormatter(); fmt.unitStyle = .abbreviated
         return "↑ \(fmt.string(fromDistance: elevationGainMeters)) · ↓ \(fmt.string(fromDistance: elevationLossMeters))"
+    }
+
+    static func paletteColor(index: Int, total: Int) -> Color {
+        let hue = total > 1 ? Double(index) / Double(total) : 0.55
+        return Color(hue: hue, saturation: 0.72, brightness: 0.78)
+    }
+
+    static func paletteUIColor(index: Int, total: Int) -> UIColor {
+        let hue = total > 1 ? CGFloat(index) / CGFloat(total) : 0.55
+        return UIColor(hue: hue, saturation: 0.72, brightness: 0.78, alpha: 1)
     }
 
     var estimatedSteps: Int    { Int(totalDistance / 0.762) }
@@ -1209,8 +1222,9 @@ struct StepCounterView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 16))
                     .padding(.horizontal)
 
+                let totalRoutes = routeManager.suggestedRoutes.count
                 ForEach(routeManager.suggestedRoutes) { route in
-                    RouteCard(route: route, isSelected: selectedRoute?.id == route.id)
+                    RouteCard(route: route, isSelected: selectedRoute?.id == route.id, totalRoutes: totalRoutes)
                         .padding(.horizontal)
                         .onTapGesture { selectedRoute = route }
                 }
@@ -1560,10 +1574,13 @@ struct RouteMapView: UIViewRepresentable {
         func mapView(_ map: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
             guard let pl = overlay as? MKPolyline else { return MKOverlayRenderer(overlay: overlay) }
             let r          = MKPolylineRenderer(polyline: pl)
-            let isSelected = parent.routes.first { $0.id.uuidString == pl.title }?.id == parent.selectedRoute?.id
-            r.strokeColor  = isSelected ? .brandOrange : .brandGreen
-            r.lineWidth    = isSelected ? 5 : 3
-            r.alpha        = isSelected ? 1.0 : 0.55
+            let total      = parent.routes.count
+            if let route   = parent.routes.first(where: { $0.id.uuidString == pl.title }) {
+                let isSelected = route.id == parent.selectedRoute?.id
+                r.strokeColor  = SuggestedRoute.paletteUIColor(index: route.colorIndex, total: total)
+                r.lineWidth    = isSelected ? 5 : 3
+                r.alpha        = isSelected ? 1.0 : 0.55
+            }
             return r
         }
     }
@@ -1574,16 +1591,10 @@ struct RouteMapView: UIViewRepresentable {
 struct RouteCard: View {
     let route: SuggestedRoute
     let isSelected: Bool
+    let totalRoutes: Int
 
-    private var difficulty: RouteDifficulty { .fromDistance(route.perLapDistance) }
-
-    private var difficultyColor: Color {
-        switch difficulty {
-        case .easy:   return Color(red: 0.22, green: 0.68, blue: 0.44)
-        case .moderate: return Color(red: 0.13, green: 0.57, blue: 0.64)
-        case .hard:   return Color(red: 0.18, green: 0.39, blue: 0.78)
-        case .expert: return Color(red: 0.35, green: 0.22, blue: 0.72)
-        }
+    private var routeColor: Color {
+        SuggestedRoute.paletteColor(index: route.colorIndex, total: totalRoutes)
     }
 
     private var cardIcon: String {
@@ -1604,10 +1615,10 @@ struct RouteCard: View {
         HStack(spacing: 16) {
             ZStack {
                 Circle()
-                    .fill(difficultyColor.opacity(isSelected ? 0.3 : 0.15))
+                    .fill(routeColor.opacity(isSelected ? 0.3 : 0.18))
                     .frame(width: 54, height: 54)
                 Image(systemName: cardIcon)
-                    .foregroundColor(difficultyColor)
+                    .foregroundColor(routeColor)
                     .font(.title3)
             }
 
@@ -1621,12 +1632,12 @@ struct RouteCard: View {
                 .font(.footnote).foregroundColor(.earthMuted)
                 if let elev = route.elevationSummary {
                     Text(elev)
-                        .font(.caption).foregroundColor(difficultyColor.opacity(0.85))
+                        .font(.caption).foregroundColor(routeColor.opacity(0.85))
                 }
                 HStack(spacing: 8) {
                     Text("~\(route.estimatedSteps.formatted()) steps")
                         .font(.footnote).foregroundColor(.earthGreen)
-                    DifficultyBadge(difficulty: difficulty, compact: true)
+                    DifficultyBadge(difficulty: .fromDistance(route.perLapDistance), compact: true)
                     if route.lapCount > 1 {
                         Text("×\(route.lapCount) laps")
                             .font(.caption.bold()).foregroundColor(.earthOrange)
@@ -1640,16 +1651,16 @@ struct RouteCard: View {
             Spacer()
 
             if isSelected {
-                Image(systemName: "checkmark.circle.fill").foregroundColor(difficultyColor)
+                Image(systemName: "checkmark.circle.fill").foregroundColor(routeColor)
             }
         }
         .padding()
         .background(
             RoundedRectangle(cornerRadius: 14)
-                .fill(isSelected ? difficultyColor.opacity(0.1) : Color.earthCard)
+                .fill(isSelected ? routeColor.opacity(0.1) : Color.earthCard)
                 .overlay(
                     RoundedRectangle(cornerRadius: 14)
-                        .stroke(isSelected ? difficultyColor.opacity(0.5) : Color.earthMuted.opacity(0.15), lineWidth: 1)
+                        .stroke(isSelected ? routeColor.opacity(0.5) : Color.earthMuted.opacity(0.15), lineWidth: 1)
                 )
         )
     }
