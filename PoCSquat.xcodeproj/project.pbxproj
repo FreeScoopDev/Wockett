@@ -291,7 +291,7 @@
 				DEVELOPMENT_ASSET_PATHS = PoCSquat/Assets.xcassets;
 				DEVELOPMENT_TEAM = 7U83DJ2F97;
 				ENABLE_PREVIEWS = YES;
-				GENERATE_INFOPLIST_FILE = YES;
+				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = PoCSquat/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Wockett;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.healthcare-fitness";
@@ -337,7 +337,7 @@
 				DEVELOPMENT_ASSET_PATHS = PoCSquat/Assets.xcassets;
 				DEVELOPMENT_TEAM = 7U83DJ2F97;
 				ENABLE_PREVIEWS = YES;
-				GENERATE_INFOPLIST_FILE = YES;
+				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = PoCSquat/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Wockett;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.healthcare-fitness";

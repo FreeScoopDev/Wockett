@@ -66,6 +66,8 @@ final class CustomRouteStore: ObservableObject {
         persist()
     }
 
+    func reload() { load() }
+
     private func persist() {
         if let data = try? JSONEncoder().encode(routes) {
             UserDefaults.standard.set(data, forKey: udKey)
@@ -176,7 +178,7 @@ struct CustomRouteMapView: UIViewRepresentable {
         let map = MKMapView()
         map.delegate           = context.coordinator
         map.showsUserLocation  = true
-        map.overrideUserInterfaceStyle = .dark
+        map.overrideUserInterfaceStyle = .unspecified
 
         if onTap != nil {
             let tap = UITapGestureRecognizer(target: context.coordinator,
@@ -262,7 +264,7 @@ struct CustomRouteMapView: UIViewRepresentable {
         func mapView(_ map: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
             guard let pl = overlay as? MKPolyline else { return MKOverlayRenderer(overlay: overlay) }
             let r         = MKPolylineRenderer(polyline: pl)
-            r.strokeColor = .systemGreen
+            r.strokeColor = .brandGreen
             r.lineWidth   = 4
             r.alpha       = 0.9
             return r
@@ -272,7 +274,7 @@ struct CustomRouteMapView: UIViewRepresentable {
             guard let ann = annotation as? MKPointAnnotation else { return nil }
             let view = MKMarkerAnnotationView(annotation: ann, reuseIdentifier: "waypoint")
             view.glyphText      = ann.title ?? ""
-            view.markerTintColor = .systemGreen
+            view.markerTintColor = .brandGreen
             view.canShowCallout  = false
             return view
         }
@@ -301,11 +303,11 @@ struct CustomRouteBuilderView: View {
             if builder.waypoints.isEmpty {
                 VStack(spacing: 10) {
                     Image(systemName: "hand.tap")
-                        .font(.system(size: 34)).foregroundColor(.green)
+                        .font(.system(size: 34)).foregroundColor(.earthGreen)
                     Text("Tap the map to add waypoints")
-                        .font(.headline).foregroundColor(.white)
+                        .font(.headline).foregroundColor(.earthCream)
                     Text("MapKit finds walking routes between each point")
-                        .font(.caption).foregroundColor(.white.opacity(0.6))
+                        .font(.subheadline).foregroundColor(.earthMuted)
                         .multilineTextAlignment(.center)
                 }
                 .padding(20)
@@ -321,23 +323,23 @@ struct CustomRouteBuilderView: View {
                         statChip(value: "\(builder.waypoints.count)", label: "points")
                         Divider()
                             .frame(height: 30)
-                            .background(Color.white.opacity(0.15))
+                            .background(Color.earthMuted.opacity(0.3))
                             .padding(.horizontal, 12)
                         statChip(value: distanceText(builder.totalDistance), label: "distance")
                         if builder.isComputing {
                             Divider()
                                 .frame(height: 30)
-                                .background(Color.white.opacity(0.15))
+                                .background(Color.earthMuted.opacity(0.3))
                                 .padding(.horizontal, 12)
-                            ProgressView().tint(.green).scaleEffect(0.85)
+                            ProgressView().tint(.earthGreen).scaleEffect(0.85)
                         }
                         Spacer()
                         if builder.waypoints.count >= 2 && !builder.isComputing {
                             Toggle(isOn: Binding(get: { builder.isLoopClosed },
                                                  set: { _ in builder.toggleLoop() })) {
-                                Text("Loop").font(.caption.bold()).foregroundColor(.white)
+                                Text("Loop").font(.subheadline.bold()).foregroundColor(.earthCream)
                             }
-                            .tint(.green).fixedSize()
+                            .tint(.earthGreen).fixedSize()
                         }
                     }
                     .padding(.horizontal)
@@ -349,9 +351,9 @@ struct CustomRouteBuilderView: View {
                             Label("Undo", systemImage: "arrow.uturn.backward")
                                 .font(.subheadline)
                                 .frame(maxWidth: .infinity)
-                                .padding(.vertical, 14)
-                                .background(Color.white.opacity(0.12))
-                                .foregroundColor(.white)
+                                .padding(.vertical, 18)
+                                .background(Color.earthCard)
+                                .foregroundColor(.earthCream)
                                 .cornerRadius(12)
                         }
                     }
@@ -360,9 +362,9 @@ struct CustomRouteBuilderView: View {
                             Text("Save Route")
                                 .font(.subheadline.bold())
                                 .frame(maxWidth: .infinity)
-                                .padding(.vertical, 14)
-                                .background(Color.green)
-                                .foregroundColor(.black)
+                                .padding(.vertical, 18)
+                                .background(Color.earthOrange)
+                                .foregroundColor(.white)
                                 .cornerRadius(12)
                         }
                     }
@@ -374,9 +376,7 @@ struct CustomRouteBuilderView: View {
             .background(.ultraThinMaterial)
         }
         .navigationTitle("Build Route")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbarColorScheme(.dark, for: .navigationBar)
-        .sheet(isPresented: $showSaveSheet) {
+        .navigationBarTitleDisplayMode(.inline)        .sheet(isPresented: $showSaveSheet) {
             SaveRouteSheet(routeName: $routeName) {
                 let route = builder.build(name: routeName)
                 onSave(route)
@@ -388,8 +388,8 @@ struct CustomRouteBuilderView: View {
     @ViewBuilder
     private func statChip(value: String, label: String) -> some View {
         VStack(spacing: 2) {
-            Text(value).font(.headline).foregroundColor(.white)
-            Text(label).font(.caption2).foregroundColor(.white.opacity(0.5))
+            Text(value).font(.headline).foregroundColor(.earthCream)
+            Text(label).font(.caption).foregroundColor(.earthMuted)
         }
     }
 
@@ -409,18 +409,18 @@ struct SaveRouteSheet: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                Color.black.ignoresSafeArea()
+                Color.earthBg.ignoresSafeArea()
                 VStack(spacing: 24) {
                     Image(systemName: "map.fill")
-                        .font(.system(size: 52)).foregroundColor(.green)
+                        .font(.system(size: 52)).foregroundColor(.earthGreen)
                     Text("Name your route")
-                        .font(.subheadline).foregroundColor(.white.opacity(0.55))
+                        .font(.subheadline).foregroundColor(.earthMuted)
                     TextField("e.g. Morning Loop", text: $routeName)
                         .font(.title2.bold())
                         .multilineTextAlignment(.center)
-                        .foregroundColor(.white)
+                        .foregroundColor(.earthCream)
                         .padding()
-                        .background(Color.white.opacity(0.08))
+                        .background(Color.earthCard)
                         .cornerRadius(12)
                     Spacer()
                 }
@@ -428,13 +428,13 @@ struct SaveRouteSheet: View {
             }
             .navigationTitle("Save Route")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbarColorScheme(.light, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") { onSave() }.foregroundColor(.green)
+                    Button("Save") { onSave() }.foregroundColor(.earthGreen)
                 }
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }.foregroundColor(.white.opacity(0.6))
+                    Button("Cancel") { dismiss() }.foregroundColor(.earthMuted)
                 }
             }
         }
@@ -451,18 +451,18 @@ struct CustomRoutesListView: View {
 
     var body: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
+            Color.earthBg.ignoresSafeArea()
             Group {
                 if store.routes.isEmpty { emptyState } else { routeList }
             }
         }
         .navigationTitle("My Routes")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbarColorScheme(.dark, for: .navigationBar)
+        .onAppear { store.reload() }
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button { isBuilding = true } label: {
-                    Image(systemName: "plus").foregroundColor(.green)
+                    Image(systemName: "plus").foregroundColor(.earthGreen)
                 }
             }
         }
@@ -474,16 +474,16 @@ struct CustomRoutesListView: View {
     private var emptyState: some View {
         VStack(spacing: 16) {
             Image(systemName: "map")
-                .font(.system(size: 64)).foregroundColor(.white.opacity(0.12))
+                .font(.system(size: 64)).foregroundColor(.earthMuted.opacity(0.4))
             Text("No Saved Routes")
-                .font(.headline).foregroundColor(.white.opacity(0.45))
+                .font(.headline).foregroundColor(.earthCream)
             Text("Tap + to trace your first custom route")
-                .font(.subheadline).foregroundColor(.white.opacity(0.3))
+                .font(.subheadline).foregroundColor(.earthMuted)
                 .multilineTextAlignment(.center)
             Button { isBuilding = true } label: {
                 Label("Create Route", systemImage: "plus")
-                    .padding(.horizontal, 24).padding(.vertical, 12)
-                    .background(Color.green).foregroundColor(.black).bold()
+                    .padding(.horizontal, 24).padding(.vertical, 16)
+                    .background(Color.earthOrange).foregroundColor(.white).bold()
                     .cornerRadius(12)
             }
             .padding(.top, 8)
@@ -497,8 +497,8 @@ struct CustomRoutesListView: View {
                 NavigationLink(destination: CustomRouteDetailView(route: route, historyStore: historyStore)) {
                     CustomRouteRow(route: route)
                 }
-                .listRowBackground(Color.white.opacity(0.06))
-                .listRowSeparatorTint(.white.opacity(0.08))
+                .listRowBackground(Color.earthCard)
+                .listRowSeparatorTint(Color.earthMuted.opacity(0.2))
             }
             .onDelete { store.delete(at: $0) }
         }
@@ -516,19 +516,19 @@ struct CustomRouteRow: View {
         HStack(spacing: 14) {
             ZStack {
                 RoundedRectangle(cornerRadius: 10)
-                    .fill(Color.green.opacity(0.15))
+                    .fill(Color.earthGreen.opacity(0.15))
                     .frame(width: 46, height: 46)
                 Image(systemName: route.isLoop ? "arrow.triangle.2.circlepath" : "arrow.right")
-                    .foregroundColor(.green)
+                    .foregroundColor(.earthGreen)
                     .font(.system(size: 18, weight: .medium))
             }
             VStack(alignment: .leading, spacing: 4) {
-                Text(route.name).font(.headline).foregroundColor(.white)
+                Text(route.name).font(.headline).foregroundColor(.earthCream)
                 HStack(spacing: 10) {
                     Label(route.distanceText, systemImage: "ruler")
                     Label("~\(route.estimatedSteps.formatted()) steps", systemImage: "figure.walk")
                 }
-                .font(.caption).foregroundColor(.white.opacity(0.5))
+                .font(.footnote).foregroundColor(.earthMuted)
             }
             Spacer()
         }
@@ -551,7 +551,7 @@ struct CustomRouteDetailView: View {
 
     var body: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
+            Color.earthBg.ignoresSafeArea()
             VStack(spacing: 0) {
                 ZStack {
                     CustomRouteMapView(
@@ -559,7 +559,7 @@ struct CustomRouteDetailView: View {
                         routeLegs: routeLegs
                     )
                     if isLoading {
-                        ProgressView().tint(.green)
+                        ProgressView().tint(.earthGreen)
                             .padding(16)
                             .background(.black.opacity(0.6))
                             .cornerRadius(10)
@@ -572,18 +572,18 @@ struct CustomRouteDetailView: View {
                         HStack(alignment: .top) {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(route.name)
-                                    .font(.title2.bold()).foregroundColor(.white)
+                                    .font(.title2.bold()).foregroundColor(.earthCream)
                                 Label(
                                     route.isLoop ? "Loop route" : "One-way route",
                                     systemImage: route.isLoop ? "arrow.triangle.2.circlepath" : "arrow.right"
                                 )
-                                .font(.caption).foregroundColor(.green)
+                                .font(.caption).foregroundColor(.earthGreen)
                             }
                             Spacer()
                             VStack(alignment: .trailing, spacing: 4) {
-                                Text(route.distanceText).font(.title3.bold()).foregroundColor(.white)
+                                Text(route.distanceText).font(.title3.bold()).foregroundColor(.earthCream)
                                 Text("~\(route.estimatedSteps.formatted()) steps")
-                                    .font(.caption).foregroundColor(.white.opacity(0.5))
+                                    .font(.subheadline).foregroundColor(.earthMuted)
                             }
                         }
 
@@ -595,13 +595,13 @@ struct CustomRouteDetailView: View {
                             ElevationProfileChart(profile: profile)
                         } else if isLoadingElevation {
                             RoundedRectangle(cornerRadius: 12)
-                                .fill(Color.white.opacity(0.06))
+                                .fill(Color.earthCard)
                                 .frame(height: 80)
                                 .overlay {
                                     HStack(spacing: 8) {
-                                        ProgressView().tint(.green)
+                                        ProgressView().tint(.earthGreen)
                                         Text("Calculating elevation...")
-                                            .font(.caption).foregroundColor(.white.opacity(0.45))
+                                            .font(.subheadline).foregroundColor(.earthMuted)
                                     }
                                 }
                         }
@@ -625,8 +625,9 @@ struct CustomRouteDetailView: View {
                             )
                         } label: {
                             Label("Start Walk", systemImage: "figure.walk")
-                                .frame(maxWidth: .infinity).padding()
-                                .background(Color.green).foregroundColor(.black)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 18).padding(.horizontal, 20)
+                                .background(Color.earthGreen).foregroundColor(.white)
                                 .fontWeight(.semibold).cornerRadius(14)
                         }
 
@@ -642,11 +643,11 @@ struct CustomRouteDetailView: View {
                                     Image(systemName: "map")
                                     Text("Open in Apple Maps")
                                 }
-                                .font(.subheadline).foregroundColor(.white.opacity(0.4))
+                                .font(.subheadline).foregroundColor(.earthMuted)
                             }
                             Text("Laps and multi-stop routes aren't supported in Apple Maps")
-                                .font(.system(size: 10))
-                                .foregroundColor(.white.opacity(0.25))
+                                .font(.caption)
+                                .foregroundColor(.earthMuted.opacity(0.6))
                                 .multilineTextAlignment(.center)
                         }
                         .alert("Apple Maps Limitation", isPresented: $showMapsAlert) {
@@ -661,9 +662,7 @@ struct CustomRouteDetailView: View {
             }
         }
         .navigationTitle(route.name)
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbarColorScheme(.dark, for: .navigationBar)
-        .navigationDestination(item: $navigatingRoute) { r in
+        .navigationBarTitleDisplayMode(.inline)        .navigationDestination(item: $navigatingRoute) { r in
             WalkNavigationView(route: r, historyStore: historyStore)
         }
         .task { await loadLegs() }
@@ -672,15 +671,15 @@ struct CustomRouteDetailView: View {
     @ViewBuilder
     private func infoTile(icon: String, value: String, label: String) -> some View {
         HStack(spacing: 10) {
-            Image(systemName: icon).foregroundColor(.green)
+            Image(systemName: icon).foregroundColor(.earthGreen)
             VStack(alignment: .leading, spacing: 2) {
-                Text(value).font(.subheadline.bold()).foregroundColor(.white)
-                Text(label).font(.caption2).foregroundColor(.white.opacity(0.45))
+                Text(value).font(.subheadline.bold()).foregroundColor(.earthCream)
+                Text(label).font(.caption).foregroundColor(.earthMuted)
             }
         }
-        .padding(12)
+        .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.white.opacity(0.06))
+        .background(Color.earthCard)
         .cornerRadius(10)
     }
 

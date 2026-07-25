@@ -16,6 +16,33 @@ struct WalkSession: Identifiable, Codable {
     let waypoints: [WaypointCoord]
     let lapCount: Int
     let isLoop: Bool
+    var activePetIds: [UUID]
+
+    init(id: UUID, routeName: String, date: Date, elapsedTime: TimeInterval,
+         totalDistance: Double, waypoints: [WaypointCoord], lapCount: Int,
+         isLoop: Bool, activePetIds: [UUID] = []) {
+        self.id = id; self.routeName = routeName; self.date = date
+        self.elapsedTime = elapsedTime; self.totalDistance = totalDistance
+        self.waypoints = waypoints; self.lapCount = lapCount
+        self.isLoop = isLoop; self.activePetIds = activePetIds
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id            = try c.decode(UUID.self,            forKey: .id)
+        routeName     = try c.decode(String.self,          forKey: .routeName)
+        date          = try c.decode(Date.self,            forKey: .date)
+        elapsedTime   = try c.decode(TimeInterval.self,    forKey: .elapsedTime)
+        totalDistance = try c.decode(Double.self,          forKey: .totalDistance)
+        waypoints     = try c.decode([WaypointCoord].self, forKey: .waypoints)
+        lapCount      = try c.decode(Int.self,             forKey: .lapCount)
+        isLoop        = try c.decode(Bool.self,            forKey: .isLoop)
+        activePetIds  = (try? c.decode([UUID].self,        forKey: .activePetIds)) ?? []
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, routeName, date, elapsedTime, totalDistance, waypoints, lapCount, isLoop, activePetIds
+    }
 
     var estimatedSteps: Int { Int(totalDistance / 0.762) }
 
@@ -218,19 +245,15 @@ final class NavigationSessionManager: NSObject, ObservableObject, CLLocationMana
 
 struct NavigationMapView: UIViewRepresentable {
     let route: NavigableRoute
+    let computedLegs: [MKRoute]
 
     func makeUIView(context: Context) -> MKMapView {
         let map = MKMapView()
         map.delegate = context.coordinator
         map.showsUserLocation = true
         map.userTrackingMode = .follow
-        map.overrideUserInterfaceStyle = .dark
+        map.overrideUserInterfaceStyle = .unspecified
 
-        var coords = route.waypoints
-        if route.isLoop && !coords.isEmpty { coords.append(coords[0]) }
-        if coords.count >= 2 {
-            map.addOverlay(MKPolyline(coordinates: coords, count: coords.count))
-        }
         for (i, wp) in route.waypoints.enumerated() {
             let ann = MKPointAnnotation()
             ann.coordinate = wp
@@ -240,17 +263,23 @@ struct NavigationMapView: UIViewRepresentable {
         return map
     }
 
-    func updateUIView(_ map: MKMapView, context: Context) {}
+    func updateUIView(_ map: MKMapView, context: Context) {
+        guard !computedLegs.isEmpty, !context.coordinator.hasAddedLegs else { return }
+        context.coordinator.hasAddedLegs = true
+        for leg in computedLegs { map.addOverlay(leg.polyline) }
+    }
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
     class Coordinator: NSObject, MKMapViewDelegate {
+        var hasAddedLegs = false
+
         func mapView(_ map: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
             guard let pl = overlay as? MKPolyline else { return MKOverlayRenderer(overlay: overlay) }
             let r = MKPolylineRenderer(polyline: pl)
-            r.strokeColor = .systemGreen
+            r.strokeColor = .brandGreen
             r.lineWidth = 5
-            r.alpha = 0.8
+            r.alpha = 0.85
             return r
         }
 
@@ -258,7 +287,7 @@ struct NavigationMapView: UIViewRepresentable {
             guard let ann = annotation as? MKPointAnnotation else { return nil }
             let view = MKMarkerAnnotationView(annotation: ann, reuseIdentifier: "nav")
             view.glyphText = ann.title ?? ""
-            view.markerTintColor = ann.title == "Start" ? .systemBlue : .systemGreen
+            view.markerTintColor = ann.title == "Start" ? .brandOrange : .brandGreen
             view.canShowCallout = false
             return view
         }
@@ -270,12 +299,20 @@ struct NavigationMapView: UIViewRepresentable {
 struct WalkNavigationView: View {
     let route: NavigableRoute
     @ObservedObject var historyStore: WalkHistoryStore
+    @EnvironmentObject var petStore: PetStore
     @Environment(\.dismiss) private var dismiss
 
     @StateObject private var session: NavigationSessionManager
-    @State private var showComplete = false
-    @State private var showStopAlert = false
+    @StateObject private var localRouteStore = CustomRouteStore()
+    @State private var showComplete            = false
+    @State private var showStopAlert           = false
+    @State private var waterBreakEnabled       = false
+    @State private var scheduledBreakCount     = 0
+    @State private var showHeatBanner          = false
+    @State private var walkWeather: RouteWeather? = nil
+    @State private var petCompletions: [PetCompletion] = []
     @State private var completedSession: WalkSession?
+    @State private var computedLegs: [MKRoute] = []
 
     init(route: NavigableRoute, historyStore: WalkHistoryStore) {
         self.route = route
@@ -285,43 +322,120 @@ struct WalkNavigationView: View {
 
     var body: some View {
         ZStack(alignment: .bottom) {
-            NavigationMapView(route: route)
+            NavigationMapView(route: route, computedLegs: computedLegs)
                 .ignoresSafeArea()
             hudPanel
         }
         .toolbar(.hidden, for: .navigationBar)
-        .onAppear { session.start() }
-        .onDisappear { session.stop() }
+        .task {
+            session.start()
+            computedLegs = await computeWalkingLegs()
+            if let firstWaypoint = route.waypoints.first {
+                walkWeather = await RouteWeatherService.shared.fetchWeather(for: firstWaypoint)
+            }
+            if let w = walkWeather, w.temperatureCelsius > 27, !petStore.activePets.isEmpty {
+                showHeatBanner = true
+            }
+        }
+        .onDisappear { session.stop(); cancelWaterBreakReminders() }
         .onChange(of: session.isCompleted) { _, completed in
             guard completed else { return }
-            let s = session.completedSession
-            completedSession = s
+            var s = session.completedSession
+            s.activePetIds = petStore.activePetIds
             historyStore.add(s)
+            completedSession = s
+            petCompletions = petStore.activePets.map { pet in
+                let todaySteps = petStore.todaySteps(for: pet, in: historyStore.sessions)
+                return PetCompletion(pet: pet, progress: min(1.0, Double(todaySteps) / Double(max(1, pet.goalSteps))))
+            }
             showComplete = true
         }
+        .onChange(of: petStore.activePets.count) { _, count in
+            if count == 0 {
+                showHeatBanner = false
+                if waterBreakEnabled { cancelWaterBreakReminders(); waterBreakEnabled = false }
+            } else if let w = walkWeather, w.temperatureCelsius > 27 {
+                showHeatBanner = true
+            }
+        }
+        .onChange(of: waterBreakEnabled) { _, enabled in
+            guard enabled else { return }
+            Task { await scheduleWaterBreakReminders() }
+        }
         .alert("End Walk?", isPresented: $showStopAlert) {
-            Button("End Walk", role: .destructive) { session.stop(); dismiss() }
-            Button("Continue", role: .cancel) {}
+            Button("Save Route & Exit") { saveCurrentRoute(); session.stop(); dismiss() }
+            Button("Exit", role: .destructive) { session.stop(); dismiss() }
+            Button("Keep Walking", role: .cancel) {}
         } message: {
-            Text("Your walk progress won't be saved to history.")
+            Text("Save this route to My Routes so you can walk it again later?")
         }
         .fullScreenCover(isPresented: $showComplete) {
             if let s = completedSession {
-                WalkCompleteView(session: s) { showComplete = false; dismiss() }
+                WalkCompleteView(
+                    session: s,
+                    activePetNames: s.activePetIds.compactMap { id in petStore.pets.first { $0.id == id }?.name },
+                    petCompletions: petCompletions
+                ) { showComplete = false; dismiss() }
             }
         }
     }
 
     private var hudPanel: some View {
         VStack(spacing: 0) {
+            if showHeatBanner {
+                HeatAdvisoryBanner(
+                    intervalMinutes: waterBreakIntervalMinutes,
+                    onEnableWaterBreaks: {
+                        waterBreakEnabled = true
+                        showHeatBanner = false
+                    },
+                    onDismiss: { showHeatBanner = false }
+                )
+                Rectangle()
+                    .frame(height: 0.5)
+                    .foregroundColor(Color.earthMuted.opacity(0.25))
+            }
             HStack {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(route.name)
-                        .font(.headline).foregroundColor(.white).lineLimit(1)
+                        .font(.headline).foregroundColor(.earthCream).lineLimit(1)
                     Text(session.progressText)
-                        .font(.caption).foregroundColor(.green)
+                        .font(.subheadline).foregroundColor(.earthGreen)
                 }
                 Spacer()
+                if !petStore.pets.isEmpty {
+                    HStack(spacing: 2) {
+                        ForEach(petStore.pets) { pet in
+                            Button {
+                                petStore.setActive(pet.id, active: !pet.isActiveOnWalk)
+                            } label: {
+                                Text(pet.displayEmoji)
+                                    .font(.title2)
+                                    .opacity(pet.isActiveOnWalk ? 1.0 : 0.3)
+                                    .scaleEffect(pet.isActiveOnWalk ? 1.0 : 0.85)
+                                    .animation(.spring(duration: 0.2), value: pet.isActiveOnWalk)
+                            }
+                        }
+                    }
+                    .padding(.trailing, 6)
+                }
+                Button {
+                    waterBreakEnabled.toggle()
+                    if !waterBreakEnabled { cancelWaterBreakReminders() }
+                } label: {
+                    VStack(spacing: 1) {
+                        Image(systemName: waterBreakEnabled ? "drop.fill" : "drop")
+                            .font(.title2)
+                            .foregroundColor(waterBreakEnabled ? Color(red: 0.28, green: 0.49, blue: 0.84) : .earthMuted)
+                        if waterBreakEnabled {
+                            Text("/ \(waterBreakIntervalMinutes)m")
+                                .font(.system(size: 8, weight: .bold))
+                                .foregroundColor(Color(red: 0.28, green: 0.49, blue: 0.84))
+                        }
+                    }
+                    .animation(.spring(duration: 0.2), value: waterBreakEnabled)
+                }
+                .padding(.trailing, 10)
                 Button { showStopAlert = true } label: {
                     Image(systemName: "stop.circle.fill")
                         .font(.title)
@@ -332,14 +446,14 @@ struct WalkNavigationView: View {
 
             Rectangle()
                 .frame(height: 0.5)
-                .foregroundColor(.white.opacity(0.12))
+                .foregroundColor(Color.earthMuted.opacity(0.25))
                 .padding(.top, 14)
 
             HStack(spacing: 0) {
                 hudStat(value: distText(session.distanceToNextWaypoint), label: "to next", icon: "location.fill")
-                Rectangle().frame(width: 0.5, height: 36).foregroundColor(.white.opacity(0.12))
+                Rectangle().frame(width: 0.5, height: 36).foregroundColor(Color.earthMuted.opacity(0.25))
                 hudStat(value: distText(session.remainingDistance), label: "remaining", icon: "flag.fill")
-                Rectangle().frame(width: 0.5, height: 36).foregroundColor(.white.opacity(0.12))
+                Rectangle().frame(width: 0.5, height: 36).foregroundColor(Color.earthMuted.opacity(0.25))
                 hudStat(value: timeText(session.elapsedTime), label: "elapsed", icon: "clock.fill")
             }
             .padding(.vertical, 18)
@@ -349,9 +463,9 @@ struct WalkNavigationView: View {
 
     private func hudStat(value: String, label: String, icon: String) -> some View {
         VStack(spacing: 5) {
-            Image(systemName: icon).font(.caption2).foregroundColor(.green)
-            Text(value).font(.subheadline.bold()).foregroundColor(.white)
-            Text(label).font(.system(size: 10)).foregroundColor(.white.opacity(0.45))
+            Image(systemName: icon).font(.caption).foregroundColor(.earthGreen)
+            Text(value).font(.subheadline.bold()).foregroundColor(.earthCream)
+            Text(label).font(.caption2).foregroundColor(.earthMuted)
         }
         .frame(maxWidth: .infinity)
     }
@@ -365,54 +479,174 @@ struct WalkNavigationView: View {
         let s = Int(t); let m = s / 60
         return m < 60 ? "\(m)m \(s % 60)s" : "\(m / 60)h \(m % 60)m"
     }
+
+    private func saveCurrentRoute() {
+        let customRoute = CustomRoute(
+            id: UUID(),
+            name: route.name,
+            waypoints: route.waypoints.map { WaypointCoord($0) },
+            totalDistance: route.totalDistance,
+            isLoop: route.isLoop,
+            createdAt: Date()
+        )
+        localRouteStore.save(customRoute)
+    }
+
+    private var waterBreakIntervalMinutes: Int {
+        let temp = walkWeather?.temperatureCelsius ?? 20
+        if temp > 32 { return 10 }
+        if temp > 27 { return 15 }
+        return 20
+    }
+
+    private func scheduleWaterBreakReminders() async {
+        let center = UNUserNotificationCenter.current()
+        let status = await center.notificationSettings().authorizationStatus
+        if status == .notDetermined {
+            guard (try? await center.requestAuthorization(options: [.alert, .sound])) == true else { return }
+        } else if status != .authorized { return }
+        let intervalSecs = Double(waterBreakIntervalMinutes) * 60
+        let estimatedDurationMins = route.totalDistance / 1.4 / 60
+        let count = min(12, max(1, Int(ceil(estimatedDurationMins / Double(waterBreakIntervalMinutes)))))
+        scheduledBreakCount = count
+        for i in 1...count {
+            let content = UNMutableNotificationContent()
+            content.title = "Water break! 💧"
+            content.body = petStore.activePets.isEmpty
+                ? "Time for a water break."
+                : "Time to hydrate — your \(petStore.activePets.count == 1 ? "pup" : "pups") need water too."
+            content.sound = .default
+            let trigger = UNTimeIntervalNotificationTrigger(timeInterval: Double(i) * intervalSecs, repeats: false)
+            try? await center.add(UNNotificationRequest(identifier: "waterBreak-\(i)", content: content, trigger: trigger))
+        }
+    }
+
+    private func cancelWaterBreakReminders() {
+        let count = max(scheduledBreakCount, 12)
+        UNUserNotificationCenter.current().removePendingNotificationRequests(
+            withIdentifiers: (1...count).map { "waterBreak-\($0)" }
+        )
+        scheduledBreakCount = 0
+    }
+
+    private func computeWalkingLegs() async -> [MKRoute] {
+        let wps = route.waypoints
+        guard wps.count >= 2 else { return [] }
+        var legs: [MKRoute] = []
+        let legCount = route.isLoop ? wps.count : wps.count - 1
+        for i in 0..<legCount {
+            let from = wps[i]
+            let to = wps[(i + 1) % wps.count]
+            let req = MKDirections.Request()
+            req.source        = MKMapItem(placemark: MKPlacemark(coordinate: from))
+            req.destination   = MKMapItem(placemark: MKPlacemark(coordinate: to))
+            req.transportType = .walking
+            if let r = try? await MKDirections(request: req).calculate().routes.first {
+                legs.append(r)
+            }
+        }
+        return legs
+    }
+}
+
+// MARK: - Heat Advisory Banner
+
+private struct HeatAdvisoryBanner: View {
+    let intervalMinutes: Int
+    let onEnableWaterBreaks: () -> Void
+    let onDismiss: () -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "thermometer.high")
+                .font(.title3).foregroundColor(.orange)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Heat Advisory")
+                    .font(.caption.bold()).foregroundColor(.earthCream)
+                Text("Hot pavement can burn paws. Keep pets hydrated.")
+                    .font(.caption2).foregroundColor(.earthMuted)
+            }
+            Spacer()
+            Button { onEnableWaterBreaks() } label: {
+                Label("Every \(intervalMinutes) min", systemImage: "drop.fill")
+                    .font(.caption.bold())
+                    .padding(.horizontal, 10).padding(.vertical, 6)
+                    .background(Color(red: 0.28, green: 0.49, blue: 0.84).opacity(0.85))
+                    .foregroundColor(.white).cornerRadius(8)
+            }
+            Button { onDismiss() } label: {
+                Image(systemName: "xmark")
+                    .font(.caption).foregroundColor(.earthMuted)
+            }
+        }
+        .padding(.horizontal, 16).padding(.vertical, 10)
+        .background(Color.orange.opacity(0.12))
+    }
 }
 
 // MARK: - Walk Complete View
 
 struct WalkCompleteView: View {
     let session: WalkSession
+    let activePetNames: [String]
+    let petCompletions: [PetCompletion]
     let onDismiss: () -> Void
     @State private var showSchedule = false
+    @State private var ringProgress: [UUID: Double] = [:]
+
+    private var completionMessage: String {
+        switch activePetNames.count {
+        case 0: return "Nice work on \(session.routeName). Keep the momentum going!"
+        case 1: return "Nice work! \(activePetNames[0]) had a great walk too. 🐾"
+        case 2: return "Nice work! \(activePetNames[0]) and \(activePetNames[1]) loved it. 🐾"
+        default: return "Nice work! The whole crew crushed it. 🐾"
+        }
+    }
 
     var body: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
+            Color.earthBg.ignoresSafeArea()
             VStack(spacing: 0) {
                 Spacer()
                 VStack(spacing: 20) {
                     Image(systemName: "figure.walk.circle.fill")
                         .font(.system(size: 80))
-                        .foregroundStyle(.green)
+                        .foregroundStyle(Color.earthGreen)
                         .padding(.bottom, 8)
                     Text("Walk Complete!")
                         .font(.system(size: 34, weight: .bold, design: .rounded))
-                        .foregroundColor(.white)
-                    Text("Nice work on \(session.routeName). Keep the momentum going!")
+                        .foregroundColor(.earthCream)
+                    Text(completionMessage)
                         .font(.subheadline)
-                        .foregroundColor(.white.opacity(0.55))
+                        .foregroundColor(.earthMuted)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 32)
                 }
                 Spacer()
                 HStack(spacing: 10) {
-                    statTile(value: session.distanceText, label: "Distance", icon: "ruler", color: .green)
-                    statTile(value: session.timeText, label: "Time", icon: "clock", color: .mint)
-                    statTile(value: session.estimatedSteps.formatted(), label: "Steps", icon: "figure.walk", color: .cyan)
+                    statTile(value: session.distanceText, label: "Distance", icon: "ruler", color: .earthGreen)
+                    statTile(value: session.timeText, label: "Time", icon: "clock", color: .earthOrange)
+                    statTile(value: session.estimatedSteps.formatted(), label: "Steps", icon: "figure.walk", color: .earthCream)
                 }
                 .padding(.horizontal)
+                if !petCompletions.isEmpty {
+                    petRingsSection
+                }
                 Spacer()
                 VStack(spacing: 12) {
                     Button { showSchedule = true } label: {
                         Label("Schedule This Walk Again", systemImage: "calendar.badge.plus")
-                            .frame(maxWidth: .infinity).padding()
-                            .background(Color.green).foregroundColor(.black)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 18).padding(.horizontal, 20)
+                            .background(Color.earthGreen).foregroundColor(.white)
                             .fontWeight(.semibold).cornerRadius(14)
                     }
                     Button { onDismiss() } label: {
                         Text("Done")
-                            .frame(maxWidth: .infinity).padding()
-                            .background(Color.white.opacity(0.08))
-                            .foregroundColor(.white).cornerRadius(14)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 18).padding(.horizontal, 20)
+                            .background(Color.earthCard)
+                            .foregroundColor(.earthCream).cornerRadius(14)
                     }
                 }
                 .padding(.horizontal)
@@ -427,11 +661,59 @@ struct WalkCompleteView: View {
     private func statTile(value: String, label: String, icon: String, color: Color) -> some View {
         VStack(spacing: 8) {
             Image(systemName: icon).foregroundColor(color).font(.title3)
-            Text(value).font(.headline.bold()).foregroundColor(.white)
-            Text(label).font(.caption2).foregroundColor(.white.opacity(0.5))
+            Text(value).font(.headline.bold()).foregroundColor(.earthCream)
+            Text(label).font(.caption).foregroundColor(.earthMuted)
         }
-        .frame(maxWidth: .infinity).padding(.vertical, 18)
-        .background(Color.white.opacity(0.06)).cornerRadius(14)
+        .frame(maxWidth: .infinity).padding(.vertical, 20)
+        .background(Color.earthCard).cornerRadius(14)
+    }
+
+    private var petRingsSection: some View {
+        VStack(spacing: 12) {
+            Text("Your crew's progress today")
+                .font(.caption.bold()).foregroundColor(.earthMuted)
+            HStack(spacing: 24) {
+                ForEach(petCompletions, id: \.pet.id) { completion in
+                    petRingView(completion: completion)
+                }
+            }
+        }
+        .padding(.vertical, 16)
+        .onAppear {
+            for (i, completion) in petCompletions.enumerated() {
+                withAnimation(.spring(duration: 0.9, bounce: 0.25).delay(Double(i) * 0.18)) {
+                    ringProgress[completion.pet.id] = completion.progress
+                }
+            }
+        }
+    }
+
+    private func petRingView(completion: PetCompletion) -> some View {
+        let progress = ringProgress[completion.pet.id] ?? 0
+        return VStack(spacing: 6) {
+            ZStack {
+                Circle()
+                    .stroke(completion.pet.accentColor.opacity(0.2), lineWidth: 7)
+                    .frame(width: 72, height: 72)
+                Circle()
+                    .trim(from: 0, to: progress)
+                    .stroke(completion.pet.accentColor, style: StrokeStyle(lineWidth: 7, lineCap: .round))
+                    .frame(width: 72, height: 72)
+                    .rotationEffect(.degrees(-90))
+                VStack(spacing: 1) {
+                    Text(completion.pet.displayEmoji)
+                        .font(.system(size: 26))
+                        .scaleEffect(progress > 0 ? 1.0 : 0.6)
+                        .animation(.spring(duration: 0.5, bounce: 0.4).delay(0.3), value: progress)
+                    Text("\(Int(completion.progress * 100))%")
+                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                        .foregroundColor(.earthMuted)
+                }
+            }
+            Text(completion.pet.name)
+                .font(.caption2.bold())
+                .foregroundColor(.earthMuted)
+        }
     }
 }
 
@@ -446,19 +728,19 @@ struct ScheduleWalkSheet: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                Color.black.ignoresSafeArea()
+                Color.earthBg.ignoresSafeArea()
                 VStack(spacing: 24) {
                     Image(systemName: "calendar.badge.plus")
-                        .font(.system(size: 52)).foregroundColor(.green)
+                        .font(.system(size: 52)).foregroundColor(.earthGreen)
                     Text("Schedule \"\(routeName)\"")
-                        .font(.headline).foregroundColor(.white).multilineTextAlignment(.center)
+                        .font(.headline).foregroundColor(.earthCream).multilineTextAlignment(.center)
                     DatePicker(
                         "Walk time",
                         selection: $scheduledDate,
                         in: Date()...,
                         displayedComponents: [.date, .hourAndMinute]
                     )
-                    .datePickerStyle(.graphical).tint(.green).colorScheme(.dark)
+                    .datePickerStyle(.graphical).tint(.earthGreen)
                     .padding(.horizontal)
                     if notifDenied {
                         Label("Enable notifications in iOS Settings to receive reminders", systemImage: "bell.slash")
@@ -471,13 +753,13 @@ struct ScheduleWalkSheet: View {
             }
             .navigationTitle("Schedule Walk")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbarColorScheme(.light, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Set Reminder") { Task { await schedule() } }.foregroundColor(.green)
+                    Button("Set Reminder") { Task { await schedule() } }.foregroundColor(.earthGreen)
                 }
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }.foregroundColor(.white.opacity(0.6))
+                    Button("Cancel") { dismiss() }.foregroundColor(.earthMuted)
                 }
             }
         }
@@ -508,19 +790,18 @@ struct ScheduleWalkSheet: View {
 
 struct WalkHistoryView: View {
     @ObservedObject var store: WalkHistoryStore
+    @EnvironmentObject var petStore: PetStore
     @State private var navigatingRoute: NavigableRoute?
 
     var body: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
+            Color.earthBg.ignoresSafeArea()
             Group {
                 if store.sessions.isEmpty { emptyState } else { historyList }
             }
         }
         .navigationTitle("Walk History")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbarColorScheme(.dark, for: .navigationBar)
-        .navigationDestination(item: $navigatingRoute) { route in
+        .navigationBarTitleDisplayMode(.inline)        .navigationDestination(item: $navigatingRoute) { route in
             WalkNavigationView(route: route, historyStore: store)
         }
     }
@@ -528,11 +809,11 @@ struct WalkHistoryView: View {
     private var emptyState: some View {
         VStack(spacing: 16) {
             Image(systemName: "clock.arrow.circlepath")
-                .font(.system(size: 64)).foregroundColor(.white.opacity(0.12))
+                .font(.system(size: 64)).foregroundColor(.earthMuted.opacity(0.4))
             Text("No Walks Yet")
-                .font(.headline).foregroundColor(.white.opacity(0.45))
+                .font(.headline).foregroundColor(.earthCream)
             Text("Complete a walk to build your history")
-                .font(.subheadline).foregroundColor(.white.opacity(0.3)).multilineTextAlignment(.center)
+                .font(.subheadline).foregroundColor(.earthMuted).multilineTextAlignment(.center)
         }.padding()
     }
 
@@ -542,8 +823,8 @@ struct WalkHistoryView: View {
                 WalkHistoryRow(session: session) {
                     navigatingRoute = session.toNavigableRoute()
                 }
-                .listRowBackground(Color.white.opacity(0.06))
-                .listRowSeparatorTint(.white.opacity(0.08))
+                .listRowBackground(Color.earthCard)
+                .listRowSeparatorTint(Color.earthMuted.opacity(0.2))
             }
             .onDelete { store.delete(at: $0) }
         }
@@ -559,27 +840,27 @@ struct WalkHistoryRow: View {
         HStack(spacing: 14) {
             ZStack {
                 RoundedRectangle(cornerRadius: 10)
-                    .fill(Color.green.opacity(0.15)).frame(width: 46, height: 46)
-                Image(systemName: "figure.walk").foregroundColor(.green)
+                    .fill(Color.earthGreen.opacity(0.15)).frame(width: 46, height: 46)
+                Image(systemName: "figure.walk").foregroundColor(.earthGreen)
             }
             VStack(alignment: .leading, spacing: 4) {
-                Text(session.routeName).font(.headline).foregroundColor(.white)
-                Text(session.formattedDate).font(.caption).foregroundColor(.white.opacity(0.4))
+                Text(session.routeName).font(.headline).foregroundColor(.earthCream)
+                Text(session.formattedDate).font(.subheadline).foregroundColor(.earthMuted)
                 HStack(spacing: 10) {
                     Label(session.distanceText, systemImage: "ruler")
                     Label(session.timeText, systemImage: "clock")
                 }
-                .font(.caption).foregroundColor(.white.opacity(0.5))
+                .font(.footnote).foregroundColor(.earthMuted)
             }
             Spacer()
             Button { onWalkAgain() } label: {
                 Label("Walk Again", systemImage: "arrow.clockwise")
-                    .font(.caption.bold())
-                    .padding(.horizontal, 10).padding(.vertical, 6)
-                    .background(Color.green.opacity(0.15)).foregroundColor(.green).cornerRadius(8)
+                    .font(.subheadline.bold())
+                    .padding(.horizontal, 12).padding(.vertical, 8)
+                    .background(Color.earthGreen.opacity(0.15)).foregroundColor(.earthGreen).cornerRadius(8)
             }
             .buttonStyle(.plain)
         }
-        .padding(.vertical, 6)
+        .padding(.vertical, 8)
     }
 }

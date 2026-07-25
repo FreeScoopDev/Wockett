@@ -10,6 +10,7 @@ struct RouteWeather: Sendable {
     let conditionDescription: String
     let temperatureText: String
     let precipitationChance: Double
+    let temperatureCelsius: Double
 
     var statusText: String {
         switch precipitationChance {
@@ -23,7 +24,7 @@ struct RouteWeather: Sendable {
         switch precipitationChance {
         case 0.7...: return .orange
         case 0.4...: return .yellow
-        default:     return .green
+        default:     return .earthGreen
         }
     }
 
@@ -42,9 +43,9 @@ enum RouteDifficulty: String {
 
     var color: Color {
         switch self {
-        case .easy:     return .green
+        case .easy:     return .earthGreen
         case .moderate: return .yellow
-        case .hard:     return .orange
+        case .hard:     return .earthOrange
         case .expert:   return .red
         }
     }
@@ -102,7 +103,8 @@ actor RouteWeatherService {
             symbolName:           current.symbolName,
             conditionDescription: current.condition.description,
             temperatureText:      tempText,
-            precipitationChance:  precipChance
+            precipitationChance:  precipChance,
+            temperatureCelsius:   current.temperature.converted(to: .celsius).value
         )
     }
 }
@@ -196,9 +198,9 @@ struct WeatherWidget: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text(weather.conditionDescription)
                     .font(.subheadline.bold())
-                    .foregroundColor(.white)
+                    .foregroundColor(.earthCream)
                 Label(weather.statusText, systemImage: weather.statusSymbol)
-                    .font(.caption)
+                    .font(.subheadline)
                     .foregroundColor(weather.statusColor)
             }
 
@@ -206,10 +208,10 @@ struct WeatherWidget: View {
 
             Text(weather.temperatureText)
                 .font(.title3.bold())
-                .foregroundColor(.white)
+                .foregroundColor(.earthCream)
         }
         .padding(14)
-        .background(Color.white.opacity(0.08))
+        .background(Color.earthCard)
         .cornerRadius(12)
     }
 }
@@ -250,8 +252,8 @@ struct ElevationProfileChart: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 16) {
-                elevStat("+\(Int(profile.totalGainMeters))m", label: "gain",  color: .green)
-                elevStat("-\(Int(profile.totalLossMeters))m", label: "loss",  color: .orange)
+                elevStat("+\(Int(profile.totalGainMeters))m", label: "gain",  color: .earthGreen)
+                elevStat("-\(Int(profile.totalLossMeters))m", label: "loss",  color: .earthOrange)
                 Spacer()
                 DifficultyBadge(difficulty: profile.difficulty)
             }
@@ -263,7 +265,7 @@ struct ElevationProfileChart: View {
                 )
                 .foregroundStyle(
                     LinearGradient(
-                        colors: [.green.opacity(0.4), .green.opacity(0.03)],
+                        colors: [Color.earthGreen.opacity(0.4), Color.earthGreen.opacity(0.03)],
                         startPoint: .top, endPoint: .bottom
                     )
                 )
@@ -271,25 +273,24 @@ struct ElevationProfileChart: View {
                     x: .value("Dist", pt.distanceKm),
                     y: .value("Elev", pt.elevationMeters)
                 )
-                .foregroundStyle(.green)
+                .foregroundStyle(Color.earthGreen)
                 .lineStyle(StrokeStyle(lineWidth: 2))
                 .interpolationMethod(.catmullRom)
             }
             .chartYScale(domain: yDomain)
             .chartXAxisLabel("km", alignment: .trailing)
             .chartYAxisLabel("m", alignment: .top)
-            .environment(\.colorScheme, .dark)
             .frame(height: 110)
         }
         .padding(14)
-        .background(Color.white.opacity(0.06))
+        .background(Color.earthCard)
         .cornerRadius(12)
     }
 
     private func elevStat(_ value: String, label: String, color: Color) -> some View {
         VStack(alignment: .leading, spacing: 1) {
             Text(value).font(.subheadline.bold()).foregroundColor(color)
-            Text(label).font(.caption2).foregroundColor(.white.opacity(0.45))
+            Text(label).font(.caption).foregroundColor(.earthMuted)
         }
     }
 }
