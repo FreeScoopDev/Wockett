@@ -926,6 +926,7 @@ struct WalkHistoryView: View {
     @ObservedObject var store: WalkHistoryStore
     @EnvironmentObject var petStore: PetStore
     @State private var navigatingRoute: NavigableRoute?
+    @State private var showManualEntry = false
 
     var body: some View {
         ZStack {
@@ -935,8 +936,23 @@ struct WalkHistoryView: View {
             }
         }
         .navigationTitle("Walk History")
-        .navigationBarTitleDisplayMode(.inline)        .navigationDestination(item: $navigatingRoute) { route in
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button {
+                    showManualEntry = true
+                } label: {
+                    Image(systemName: "plus").foregroundColor(.earthGreen)
+                }
+            }
+        }
+        .navigationDestination(item: $navigatingRoute) { route in
             WalkNavigationView(route: route, historyStore: store)
+        }
+        .sheet(isPresented: $showManualEntry) {
+            ManualWalkEntrySheet { session in
+                store.add(session)
+            }
         }
     }
 
@@ -948,6 +964,8 @@ struct WalkHistoryView: View {
                 .font(.headline).foregroundColor(.earthCream)
             Text("Complete a walk to build your history")
                 .font(.subheadline).foregroundColor(.earthMuted).multilineTextAlignment(.center)
+            Button("Log a Past Walk") { showManualEntry = true }
+                .foregroundColor(.earthGreen).fontWeight(.semibold)
         }.padding()
     }
 
@@ -963,6 +981,153 @@ struct WalkHistoryView: View {
             .onDelete { store.delete(at: $0) }
         }
         .listStyle(.plain).scrollContentBackground(.hidden)
+    }
+}
+
+// MARK: - Manual Walk Entry Sheet
+
+struct ManualWalkEntrySheet: View {
+    let onSave: (WalkSession) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var walkDate = Date()
+    @State private var durationHours = 0
+    @State private var durationMinutes = 30
+    @State private var distanceKm = ""
+    @State private var stepCount = ""
+    @State private var routeName = ""
+    @State private var useSteps = false
+
+    private var distanceMeters: Double? {
+        if useSteps, let steps = Double(stepCount), steps > 0 { return steps * 0.762 }
+        if !useSteps, let km = Double(distanceKm), km > 0 { return km * 1000 }
+        return nil
+    }
+
+    private var isValid: Bool {
+        let totalMins = durationHours * 60 + durationMinutes
+        return totalMins > 0 && distanceMeters != nil
+    }
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Color.earthBg.ignoresSafeArea()
+                ScrollView {
+                    VStack(spacing: 20) {
+                        sectionCard("When") {
+                            DatePicker("Date & Time", selection: $walkDate, in: ...Date(), displayedComponents: [.date, .hourAndMinute])
+                                .foregroundColor(.earthCream)
+                                .tint(.earthGreen)
+                        }
+
+                        sectionCard("Duration") {
+                            HStack(spacing: 24) {
+                                VStack(spacing: 4) {
+                                    Text("\(durationHours)").font(.title2.bold()).foregroundColor(.earthCream)
+                                    Text("hours").font(.caption).foregroundColor(.earthMuted)
+                                    Stepper("", value: $durationHours, in: 0...23).labelsHidden()
+                                }
+                                VStack(spacing: 4) {
+                                    Text("\(durationMinutes)").font(.title2.bold()).foregroundColor(.earthCream)
+                                    Text("minutes").font(.caption).foregroundColor(.earthMuted)
+                                    Stepper("", value: $durationMinutes, in: 0...59).labelsHidden()
+                                }
+                                Spacer()
+                            }
+                        }
+
+                        sectionCard("Distance") {
+                            VStack(spacing: 12) {
+                                Picker("", selection: $useSteps) {
+                                    Text("Kilometres").tag(false)
+                                    Text("Steps").tag(true)
+                                }
+                                .pickerStyle(.segmented)
+
+                                if useSteps {
+                                    TextField("Approximate steps", text: $stepCount)
+                                        .keyboardType(.numberPad)
+                                        .foregroundColor(.earthCream)
+                                        .padding(12).background(Color.earthBg).cornerRadius(10)
+                                } else {
+                                    TextField("Distance in km (e.g. 3.5)", text: $distanceKm)
+                                        .keyboardType(.decimalPad)
+                                        .foregroundColor(.earthCream)
+                                        .padding(12).background(Color.earthBg).cornerRadius(10)
+                                }
+
+                                if let meters = distanceMeters {
+                                    Text("≈ \(formattedDistance(meters)) · \(Int(meters / 0.762).formatted()) steps")
+                                        .font(.caption).foregroundColor(.earthGreen)
+                                }
+                            }
+                        }
+
+                        sectionCard("Notes (optional)") {
+                            TextField("Route name or notes…", text: $routeName)
+                                .foregroundColor(.earthCream)
+                                .padding(12).background(Color.earthBg).cornerRadius(10)
+                        }
+
+                        Button(action: save) {
+                            Text("Save Walk")
+                                .frame(maxWidth: .infinity).padding(.vertical, 16)
+                                .background(isValid ? Color.earthGreen : Color.earthMuted.opacity(0.3))
+                                .foregroundColor(.white).font(.headline).cornerRadius(14)
+                        }
+                        .disabled(!isValid)
+                        .padding(.horizontal)
+                    }
+                    .padding(.vertical, 20)
+                }
+            }
+            .navigationTitle("Log a Past Walk")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }.foregroundColor(.earthMuted)
+                }
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") {
+                        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                    }.fontWeight(.semibold).foregroundColor(.earthGreen)
+                }
+            }
+        }
+        .presentationDetents([.large])
+    }
+
+    private func formattedDistance(_ meters: Double) -> String {
+        let fmt = MKDistanceFormatter(); fmt.unitStyle = .abbreviated
+        return fmt.string(fromDistance: meters)
+    }
+
+    private func sectionCard<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(title).font(.caption.bold()).foregroundColor(.earthMuted).padding(.horizontal)
+            VStack(alignment: .leading, spacing: 8) { content() }
+                .padding(14).background(Color.earthCard).cornerRadius(14).padding(.horizontal)
+        }
+    }
+
+    private func save() {
+        guard let meters = distanceMeters else { return }
+        let totalSeconds = TimeInterval((durationHours * 60 + durationMinutes) * 60)
+        let name = routeName.trimmingCharacters(in: .whitespaces).isEmpty ? "Past Walk" : routeName
+        let session = WalkSession(
+            id: UUID(),
+            routeName: name,
+            date: walkDate,
+            elapsedTime: totalSeconds,
+            totalDistance: meters,
+            waypoints: [],
+            lapCount: 1,
+            isLoop: false
+        )
+        onSave(session)
+        dismiss()
     }
 }
 

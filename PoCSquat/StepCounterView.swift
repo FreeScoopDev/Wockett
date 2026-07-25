@@ -1483,6 +1483,19 @@ struct WeeklyCalendarView: View {
                 .padding(.horizontal, 16)
             }
         }
+        .gesture(
+            DragGesture(minimumDistance: 40, coordinateSpace: .local)
+                .onEnded { value in
+                    guard abs(value.translation.height) < 60 else { return }
+                    if value.translation.width < -40 {
+                        slideFromLeading = false
+                        onWeekChange(1)
+                    } else if value.translation.width > 40 {
+                        slideFromLeading = true
+                        onWeekChange(-1)
+                    }
+                }
+        )
     }
 }
 
@@ -3531,6 +3544,14 @@ struct PostToCommunitySheet: View {
         errorMessage = nil
         let customRoute = route.toCustomRoute(name: name)
         Task {
+            // Verify iCloud is available before attempting the write
+            let container = CKContainer(identifier: "iCloud.Scoops.PoCSquat")
+            let status = try? await container.accountStatus()
+            guard status == .available else {
+                errorMessage = "Sign into iCloud in Settings → [Your Name] to share routes."
+                isPosting = false
+                return
+            }
             do {
                 try await CommunityRouteService.shared.publish(route: customRoute)
                 routeStore.save(customRoute)
@@ -3538,6 +3559,20 @@ struct PostToCommunitySheet: View {
                 didPost = true
                 try? await Task.sleep(nanoseconds: 900_000_000)
                 dismiss()
+            } catch let ckError as CKError {
+                switch ckError.code {
+                case .notAuthenticated:
+                    errorMessage = "Sign into iCloud in Settings to share routes."
+                case .networkUnavailable, .networkFailure:
+                    errorMessage = "No internet connection. Try again when online."
+                case .unknownItem, .invalidArguments:
+                    errorMessage = "Schema not deployed. Open CloudKit Console → Deploy Schema to Production."
+                case .permissionFailure:
+                    errorMessage = "iCloud permission denied. Check app settings."
+                default:
+                    errorMessage = "Error \(ckError.code.rawValue): \(ckError.localizedDescription)"
+                }
+                isPosting = false
             } catch {
                 errorMessage = "Couldn't share: \(error.localizedDescription)"
                 isPosting = false
