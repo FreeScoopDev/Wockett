@@ -5,6 +5,7 @@ import CoreMotion
 import MapKit
 import CoreLocation
 import EventKit
+import CloudKit
 
 // MARK: - Calendar Day Model
 
@@ -732,6 +733,17 @@ struct SuggestedRoute: Identifiable {
             totalDistance: totalDistance
         )
     }
+
+    func toCustomRoute(name: String? = nil) -> CustomRoute {
+        CustomRoute(
+            id: UUID(),
+            name: name ?? (label ?? "\(directionName) \(isLoop ? "Loop" : "Route")"),
+            waypoints: legWaypoints.map { WaypointCoord($0) },
+            totalDistance: totalDistance,
+            isLoop: isLoop,
+            createdAt: Date()
+        )
+    }
 }
 
 // MARK: - Step Counter View
@@ -770,6 +782,9 @@ struct StepCounterView: View {
     @State private var communityRoutes: [SharedRoute] = []
     @State private var isLoadingCommunity = false
     @State private var showCommunityRoutes = false
+    @State private var savedRouteIds: Set<UUID> = []
+    @State private var savedCommunityIds: Set<String> = []
+    @State private var routeForPosting: SuggestedRoute? = nil
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -805,11 +820,13 @@ struct StepCounterView: View {
             }
             .scrollDismissesKeyboard(.interactively)
             .background(Color.earthBg.ignoresSafeArea())
-            .onChange(of: shouldScrollToResults) { _, should in
-                guard should else { return }
-                shouldScrollToResults = false
-                withAnimation(.easeInOut(duration: 0.5)) {
-                    proxy.scrollTo("routeResults", anchor: .top)
+            .onChange(of: routeManager.suggestedRoutes.count) { old, new in
+                guard old == 0, new > 0 else { return }
+                // Brief delay so SwiftUI can render the results section before we scroll to it
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                    withAnimation(.easeInOut(duration: 0.45)) {
+                        proxy.scrollTo("routeResults", anchor: .top)
+                    }
                 }
             }
         }
@@ -899,6 +916,11 @@ struct StepCounterView: View {
             }
         }
         .sheet(isPresented: $showGoalSheet)     { GoalEditorSheet(stepManager: stepManager) }
+        .sheet(item: $routeForPosting) { route in
+            PostToCommunitySheet(route: route, routeStore: routeStore) {
+                savedRouteIds.insert(route.id)
+            }
+        }
         .fullScreenCover(isPresented: $showFreeWalk) {
             FreeWalkView(historyStore: historyStore, routeStore: routeStore)
         }
@@ -1229,9 +1251,19 @@ struct StepCounterView: View {
 
                 let totalRoutes = routeManager.suggestedRoutes.count
                 ForEach(routeManager.suggestedRoutes) { route in
-                    RouteCard(route: route, isSelected: selectedRoute?.id == route.id, totalRoutes: totalRoutes)
-                        .padding(.horizontal)
-                        .onTapGesture { selectedRoute = route }
+                    RouteCard(
+                        route: route,
+                        isSelected: selectedRoute?.id == route.id,
+                        totalRoutes: totalRoutes,
+                        isSaved: savedRouteIds.contains(route.id),
+                        onSelect: { selectedRoute = (selectedRoute?.id == route.id) ? nil : route },
+                        onSave: {
+                            routeStore.save(route.toCustomRoute())
+                            savedRouteIds.insert(route.id)
+                        },
+                        onPost: { routeForPosting = route }
+                    )
+                    .padding(.horizontal)
                 }
 
                 if let selected = selectedRoute {
@@ -1317,11 +1349,23 @@ struct StepCounterView: View {
                         CommunityRouteCard(
                             route: $route,
                             hasVoted: CommunityRouteService.shared.hasVoted(for: route.id),
+                            isSaved: savedCommunityIds.contains(route.id.recordName),
                             onUpvote: {
                                 guard !CommunityRouteService.shared.hasVoted(for: route.id) else { return }
                                 route.upvotes += 1
                                 CommunityRouteService.shared.markVoted(for: route.id)
                                 Task { try? await CommunityRouteService.shared.upvote(id: route.id) }
+                            },
+                            onSave: {
+                                routeStore.save(CustomRoute(
+                                    id: UUID(),
+                                    name: route.name,
+                                    waypoints: route.waypoints,
+                                    totalDistance: route.distanceMeters,
+                                    isLoop: route.isLoop,
+                                    createdAt: Date()
+                                ))
+                                savedCommunityIds.insert(route.id.recordName)
                             },
                             onStart: { navigatingRoute = route.toNavigableRoute() }
                         )
@@ -1550,24 +1594,73 @@ struct RouteMapView: UIViewRepresentable {
     }
 
     func updateUIView(_ map: MKMapView, context: Context) {
-        map.removeOverlays(map.overlays)
+        let currentIds = routes.map { $0.id }
 
-        var coords: [CLLocationCoordinate2D] = []
-        for route in routes {
-            let pl = route.polyline
-            pl.title = route.id.uuidString
-            map.addOverlay(pl)
-            let pts = pl.points()
-            for i in 0..<pl.pointCount { coords.append(pts[i].coordinate) }
-        }
-        if let user = map.userLocation.location { coords.append(user.coordinate) }
-
-        if !coords.isEmpty && context.coordinator.lastRouteCount != routes.count {
-            context.coordinator.lastRouteCount = routes.count
-            let rect = coords.reduce(MKMapRect.null) { r, c in
-                let p = MKMapPoint(c); return r.union(MKMapRect(x: p.x, y: p.y, width: 0, height: 0))
+        // Only rebuild overlays when the route set itself changes
+        if context.coordinator.lastRouteIds != currentIds {
+            context.coordinator.lastRouteIds = currentIds
+            context.coordinator.lastSelectedId = nil  // reset so renderer update runs below
+            map.removeOverlays(map.overlays)
+            var coords: [CLLocationCoordinate2D] = []
+            for route in routes {
+                let pl = route.polyline
+                pl.title = route.id.uuidString
+                map.addOverlay(pl, level: .aboveRoads)
+                let pts = pl.points()
+                for i in 0..<pl.pointCount { coords.append(pts[i].coordinate) }
             }
-            map.setVisibleMapRect(rect, edgePadding: UIEdgeInsets(top: 50, left: 50, bottom: 50, right: 50), animated: true)
+            if let user = map.userLocation.location { coords.append(user.coordinate) }
+            if !coords.isEmpty {
+                let rect = coords.reduce(MKMapRect.null) { r, c in
+                    let p = MKMapPoint(c)
+                    return r.union(MKMapRect(x: p.x, y: p.y, width: 0, height: 0))
+                }
+                map.setVisibleMapRect(rect, edgePadding: UIEdgeInsets(top: 40, left: 40, bottom: 40, right: 40), animated: false)
+            }
+        }
+
+        // When selection changes, update renderer properties directly (no flash)
+        let newSelectedId = selectedRoute?.id
+        if context.coordinator.lastSelectedId != newSelectedId {
+            context.coordinator.lastSelectedId = newSelectedId
+            let total = routes.count
+            let hasSelection = selectedRoute != nil
+            for overlay in map.overlays {
+                guard let pl = overlay as? MKPolyline,
+                      let renderer = map.renderer(for: overlay) as? MKPolylineRenderer,
+                      let route = routes.first(where: { $0.id.uuidString == pl.title }) else { continue }
+                let isSelected = route.id == newSelectedId
+                renderer.strokeColor = SuggestedRoute.paletteUIColor(index: route.colorIndex, total: total)
+                renderer.lineWidth = isSelected ? 6 : 3
+                renderer.alpha     = isSelected ? 1.0 : (hasSelection ? 0.2 : 0.6)
+                renderer.setNeedsDisplay()
+            }
+
+            // Zoom to selected route; zoom out to show all when deselected
+            if let sel = selectedRoute {
+                var rect = MKMapRect.null
+                let pts = sel.polyline.points()
+                for i in 0..<sel.polyline.pointCount {
+                    let p = MKMapPoint(pts[i].coordinate)
+                    rect = rect.union(MKMapRect(x: p.x, y: p.y, width: 0, height: 0))
+                }
+                if !rect.isNull {
+                    map.setVisibleMapRect(rect, edgePadding: UIEdgeInsets(top: 50, left: 50, bottom: 50, right: 50), animated: true)
+                }
+            } else if !routes.isEmpty {
+                var coords: [CLLocationCoordinate2D] = []
+                for route in routes {
+                    let pts = route.polyline.points()
+                    for i in 0..<route.polyline.pointCount { coords.append(pts[i].coordinate) }
+                }
+                let rect = coords.reduce(MKMapRect.null) { r, c in
+                    let p = MKMapPoint(c)
+                    return r.union(MKMapRect(x: p.x, y: p.y, width: 0, height: 0))
+                }
+                if !rect.isNull {
+                    map.setVisibleMapRect(rect, edgePadding: UIEdgeInsets(top: 40, left: 40, bottom: 40, right: 40), animated: true)
+                }
+            }
         }
     }
 
@@ -1575,19 +1668,20 @@ struct RouteMapView: UIViewRepresentable {
 
     class Coordinator: NSObject, MKMapViewDelegate {
         var parent: RouteMapView
-        var lastRouteCount = 0
+        var lastRouteIds: [UUID] = []
+        var lastSelectedId: UUID? = UUID()  // non-nil sentinel forces first render
         init(_ p: RouteMapView) { parent = p }
 
         func mapView(_ map: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
             guard let pl = overlay as? MKPolyline else { return MKOverlayRenderer(overlay: overlay) }
-            let r          = MKPolylineRenderer(polyline: pl)
-            let total      = parent.routes.count
+            let r = MKPolylineRenderer(polyline: pl)
+            let total = parent.routes.count
             let hasSelection = parent.selectedRoute != nil
-            if let route   = parent.routes.first(where: { $0.id.uuidString == pl.title }) {
+            if let route = parent.routes.first(where: { $0.id.uuidString == pl.title }) {
                 let isSelected = route.id == parent.selectedRoute?.id
-                r.strokeColor  = SuggestedRoute.paletteUIColor(index: route.colorIndex, total: total)
-                r.lineWidth    = isSelected ? 6 : 3
-                r.alpha        = isSelected ? 1.0 : (hasSelection ? 0.2 : 0.6)
+                r.strokeColor = SuggestedRoute.paletteUIColor(index: route.colorIndex, total: total)
+                r.lineWidth   = isSelected ? 6 : 3
+                r.alpha       = isSelected ? 1.0 : (hasSelection ? 0.2 : 0.6)
             }
             return r
         }
@@ -1600,6 +1694,10 @@ struct RouteCard: View {
     let route: SuggestedRoute
     let isSelected: Bool
     let totalRoutes: Int
+    var isSaved: Bool = false
+    let onSelect: () -> Void
+    var onSave: (() -> Void)? = nil
+    var onPost: (() -> Void)? = nil
 
     private var routeColor: Color {
         SuggestedRoute.paletteColor(index: route.colorIndex, total: totalRoutes)
@@ -1620,57 +1718,81 @@ struct RouteCard: View {
     }
 
     var body: some View {
-        HStack(spacing: 16) {
-            ZStack {
-                Circle()
-                    .fill(routeColor.opacity(isSelected ? 0.3 : 0.18))
-                    .frame(width: 54, height: 54)
-                Image(systemName: cardIcon)
-                    .foregroundColor(routeColor)
-                    .font(.title3)
-            }
+        Button(action: onSelect) {
+            HStack(spacing: 16) {
+                ZStack {
+                    Circle()
+                        .fill(routeColor.opacity(isSelected ? 0.3 : 0.18))
+                        .frame(width: 54, height: 54)
+                    Image(systemName: cardIcon)
+                        .foregroundColor(routeColor)
+                        .font(.title3)
+                }
 
-            VStack(alignment: .leading, spacing: 6) {
-                Text(route.label ?? "\(route.directionName) \(route.isLoop ? "loop" : "route")")
-                    .font(.headline).foregroundColor(.earthCream)
-                HStack(spacing: 14) {
-                    Label(route.distanceText, systemImage: "ruler")
-                    Label(route.timeText,     systemImage: "clock")
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(route.label ?? "\(route.directionName) \(route.isLoop ? "loop" : "route")")
+                        .font(.headline).foregroundColor(.earthCream)
+                    HStack(spacing: 14) {
+                        Label(route.distanceText, systemImage: "ruler")
+                        Label(route.timeText,     systemImage: "clock")
+                    }
+                    .font(.footnote).foregroundColor(.earthMuted)
+                    if let elev = route.elevationSummary {
+                        Text(elev)
+                            .font(.caption).foregroundColor(routeColor.opacity(0.85))
+                    }
+                    HStack(spacing: 8) {
+                        Text("~\(route.estimatedSteps.formatted()) steps")
+                            .font(.footnote).foregroundColor(.earthGreen)
+                        DifficultyBadge(difficulty: .fromDistance(route.perLapDistance), compact: true)
+                        if route.lapCount > 1 {
+                            Text("×\(route.lapCount) laps")
+                                .font(.caption.bold()).foregroundColor(.earthOrange)
+                                .padding(.horizontal, 6).padding(.vertical, 3)
+                                .background(Color.earthOrange.opacity(0.15))
+                                .cornerRadius(20)
+                        }
+                    }
                 }
-                .font(.footnote).foregroundColor(.earthMuted)
-                if let elev = route.elevationSummary {
-                    Text(elev)
-                        .font(.caption).foregroundColor(routeColor.opacity(0.85))
-                }
-                HStack(spacing: 8) {
-                    Text("~\(route.estimatedSteps.formatted()) steps")
-                        .font(.footnote).foregroundColor(.earthGreen)
-                    DifficultyBadge(difficulty: .fromDistance(route.perLapDistance), compact: true)
-                    if route.lapCount > 1 {
-                        Text("×\(route.lapCount) laps")
-                            .font(.caption.bold()).foregroundColor(.earthOrange)
-                            .padding(.horizontal, 6).padding(.vertical, 3)
-                            .background(Color.earthOrange.opacity(0.15))
-                            .cornerRadius(20)
+
+                Spacer()
+
+                VStack(spacing: 10) {
+                    if isSelected {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundColor(routeColor)
+                            .font(.body)
+                    }
+                    if let onSave {
+                        Button(action: onSave) {
+                            Image(systemName: isSaved ? "bookmark.fill" : "bookmark")
+                                .foregroundColor(isSaved ? routeColor : .earthMuted)
+                                .font(.subheadline)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(isSaved)
+                    }
+                    if let onPost {
+                        Button(action: onPost) {
+                            Image(systemName: "square.and.arrow.up")
+                                .foregroundColor(.earthMuted)
+                                .font(.subheadline)
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
             }
-
-            Spacer()
-
-            if isSelected {
-                Image(systemName: "checkmark.circle.fill").foregroundColor(routeColor)
-            }
+            .padding()
+            .background(
+                RoundedRectangle(cornerRadius: 14)
+                    .fill(isSelected ? routeColor.opacity(0.1) : Color.earthCard)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14)
+                            .stroke(isSelected ? routeColor.opacity(0.5) : Color.earthMuted.opacity(0.15), lineWidth: 1)
+                    )
+            )
         }
-        .padding()
-        .background(
-            RoundedRectangle(cornerRadius: 14)
-                .fill(isSelected ? routeColor.opacity(0.1) : Color.earthCard)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 14)
-                        .stroke(isSelected ? routeColor.opacity(0.5) : Color.earthMuted.opacity(0.15), lineWidth: 1)
-                )
-        )
+        .buttonStyle(.plain)
     }
 }
 
@@ -3248,7 +3370,9 @@ private struct NearbyPlaceRow: View {
 struct CommunityRouteCard: View {
     @Binding var route: SharedRoute
     let hasVoted: Bool
+    var isSaved: Bool = false
     let onUpvote: () -> Void
+    var onSave: (() -> Void)? = nil
     let onStart: () -> Void
 
     var body: some View {
@@ -3282,6 +3406,19 @@ struct CommunityRouteCard: View {
 
                 Spacer()
 
+                if let onSave {
+                    Button(action: onSave) {
+                        Image(systemName: isSaved ? "bookmark.fill" : "bookmark")
+                            .foregroundColor(isSaved ? .earthGreen : .earthMuted)
+                            .font(.subheadline)
+                            .padding(.horizontal, 10).padding(.vertical, 8)
+                            .background(Color.earthCard)
+                            .cornerRadius(10)
+                            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.earthMuted.opacity(0.2), lineWidth: 1))
+                    }
+                    .disabled(isSaved)
+                }
+
                 Button(action: onStart) {
                     Label("Start Walk", systemImage: "figure.walk")
                         .font(.subheadline.bold())
@@ -3294,6 +3431,128 @@ struct CommunityRouteCard: View {
         .padding(16)
         .background(Color.earthCard)
         .cornerRadius(14)
+    }
+}
+
+// MARK: - Post to Community Sheet
+
+struct PostToCommunitySheet: View {
+    let route: SuggestedRoute
+    @ObservedObject var routeStore: CustomRouteStore
+    let onSaved: () -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var routeName = ""
+    @State private var isPosting = false
+    @State private var didPost = false
+    @State private var errorMessage: String? = nil
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Color.earthBg.ignoresSafeArea()
+                VStack(spacing: 28) {
+                    // Route preview stats
+                    HStack(spacing: 12) {
+                        statTile(value: route.distanceText, label: "Distance", icon: "ruler")
+                        statTile(value: route.timeText,     label: "Time",     icon: "clock")
+                        statTile(value: "~\(route.estimatedSteps.formatted())", label: "Steps", icon: "figure.walk")
+                    }
+                    .padding(.horizontal)
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Route name")
+                            .font(.caption).foregroundColor(.earthMuted)
+                            .padding(.horizontal)
+                        TextField("Name your route…", text: $routeName)
+                            .foregroundColor(.earthCream)
+                            .padding(14)
+                            .background(Color.earthCard)
+                            .cornerRadius(12)
+                            .padding(.horizontal)
+                    }
+
+                    if let err = errorMessage {
+                        Text(err)
+                            .font(.caption).foregroundColor(.orange)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal)
+                    }
+
+                    Button(action: post) {
+                        Group {
+                            if isPosting {
+                                ProgressView().tint(.white)
+                            } else if didPost {
+                                Label("Shared!", systemImage: "checkmark.circle.fill")
+                            } else {
+                                Label("Post & Save to My Routes", systemImage: "square.and.arrow.up")
+                            }
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 16)
+                        .background(didPost ? Color.earthGreen.opacity(0.6) : Color.earthGreen)
+                        .foregroundColor(.white)
+                        .font(.headline)
+                        .cornerRadius(14)
+                        .padding(.horizontal)
+                    }
+                    .disabled(isPosting || didPost || routeName.trimmingCharacters(in: .whitespaces).isEmpty)
+
+                    Spacer()
+                }
+                .padding(.top, 24)
+            }
+            .navigationTitle("Share Route")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }.foregroundColor(.earthMuted)
+                }
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") {
+                        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                    }
+                    .fontWeight(.semibold).foregroundColor(.earthGreen)
+                }
+            }
+        }
+        .presentationDetents([.medium])
+        .onAppear {
+            routeName = route.label ?? "\(route.directionName) \(route.isLoop ? "Loop" : "Route")"
+        }
+    }
+
+    private func post() {
+        let name = routeName.trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty else { return }
+        isPosting = true
+        errorMessage = nil
+        let customRoute = route.toCustomRoute(name: name)
+        Task {
+            do {
+                try await CommunityRouteService.shared.publish(route: customRoute)
+                routeStore.save(customRoute)
+                onSaved()
+                didPost = true
+                try? await Task.sleep(nanoseconds: 900_000_000)
+                dismiss()
+            } catch {
+                errorMessage = "Couldn't share: \(error.localizedDescription)"
+                isPosting = false
+            }
+        }
+    }
+
+    private func statTile(value: String, label: String, icon: String) -> some View {
+        VStack(spacing: 6) {
+            Image(systemName: icon).foregroundColor(.earthGreen).font(.title3)
+            Text(value).font(.headline.bold()).foregroundColor(.earthCream)
+            Text(label).font(.caption).foregroundColor(.earthMuted)
+        }
+        .frame(maxWidth: .infinity).padding(.vertical, 16)
+        .background(Color.earthCard).cornerRadius(14)
     }
 }
 
