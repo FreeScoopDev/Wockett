@@ -751,6 +751,7 @@ struct StepCounterView: View {
     @State private var showMyRoutes             = false
     @State private var showDestinationSearch = false
     @State private var showNearbySheet       = false
+    @State private var showBuildRoute        = false
     @State private var showWalkHistory       = false
     @State private var showPetManagement     = false
     @State private var navigatingRoute: NavigableRoute?
@@ -776,16 +777,7 @@ struct StepCounterView: View {
                 VStack(spacing: 24) {
                     progressSection.padding(.top, 8)
 
-                    Button { showFreeWalk = true } label: {
-                        Label("Start Walking", systemImage: "figure.walk")
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 16)
-                            .background(Color.earthGreen)
-                            .foregroundColor(.white)
-                            .font(.headline)
-                            .cornerRadius(14)
-                    }
-                    .padding(.horizontal)
+                    actionGrid.padding(.horizontal)
 
                     WeeklyCalendarView(
                         days: stepManager.weeklyCalendar,
@@ -868,6 +860,9 @@ struct StepCounterView: View {
         }
         .navigationDestination(isPresented: $showMyRoutes) {
             CustomRoutesListView(store: routeStore, historyStore: historyStore)
+        }
+        .navigationDestination(isPresented: $showBuildRoute) {
+            CustomRouteBuilderView { route in routeStore.save(route) }
         }
         .navigationDestination(isPresented: $showWalkHistory) {
             WalkHistoryView(store: historyStore)
@@ -1106,6 +1101,68 @@ struct StepCounterView: View {
         .padding(.horizontal)
     }
 
+    // MARK: Action Grid
+
+    private var actionGrid: some View {
+        LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
+            actionTile(icon: "figure.walk", label: "Start Walking",
+                       color: Color.earthGreen) { showFreeWalk = true }
+
+            actionTile(icon: routeManager.isGenerating ? "" : "map.fill",
+                       label: routeManager.isGenerating ? "Finding…" : "Recommend",
+                       color: Color(red: 0.13, green: 0.57, blue: 0.64),
+                       loading: routeManager.isGenerating) { triggerRecommend() }
+
+            actionTile(icon: "sparkles", label: "Explore",
+                       color: Color.earthOrange) { showNearbySheet = true }
+
+            actionTile(icon: "plus.circle.fill", label: "Build Route",
+                       color: Color(red: 0.28, green: 0.49, blue: 0.84)) { showBuildRoute = true }
+        }
+    }
+
+    private func actionTile(icon: String, label: String, color: Color, loading: Bool = false, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            VStack(spacing: 10) {
+                if loading {
+                    ProgressView().tint(.white).scaleEffect(1.1)
+                        .frame(height: 28)
+                } else {
+                    Image(systemName: icon)
+                        .font(.system(size: 26, weight: .medium))
+                        .frame(height: 28)
+                }
+                Text(label)
+                    .font(.subheadline.bold())
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+            }
+            .foregroundColor(.white)
+            .frame(maxWidth: .infinity)
+            .frame(height: 96)
+            .background(color)
+            .cornerRadius(16)
+        }
+        .disabled(loading)
+    }
+
+    private func triggerRecommend() {
+        clearRoutes()
+        Task {
+            let targetMeters: Double = {
+                switch walkIntent {
+                case .finishGoal:          return stepManager.remainingMeters
+                case .quickWalk(let mins): return Double(mins) * 80
+                }
+            }()
+            await routeManager.generateRoutes(remainingMeters: targetMeters, radius: selectedRadius)
+            if let loc = routeManager.lastLocation, !routeManager.suggestedRoutes.isEmpty {
+                routeWeather = await RouteWeatherService.shared.fetchWeather(for: loc.coordinate)
+            }
+            if !routeManager.suggestedRoutes.isEmpty { shouldScrollToResults = true }
+        }
+    }
+
     // MARK: Find Routes
 
     private var routeFindSection: some View {
@@ -1139,59 +1196,7 @@ struct StepCounterView: View {
             }
             .padding(.horizontal)
 
-            // Primary action: loop route
-            Button {
-                clearRoutes()
-                Task {
-                    let targetMeters: Double = {
-                        switch walkIntent {
-                        case .finishGoal: return stepManager.remainingMeters
-                        case .quickWalk(let mins): return Double(mins) * 80
-                        }
-                    }()
-                    await routeManager.generateRoutes(
-                        remainingMeters: targetMeters,
-                        radius: selectedRadius
-                    )
-                    if let loc = routeManager.lastLocation, !routeManager.suggestedRoutes.isEmpty {
-                        routeWeather = await RouteWeatherService.shared.fetchWeather(for: loc.coordinate)
-                    }
-                    if !routeManager.suggestedRoutes.isEmpty { shouldScrollToResults = true }
-                }
-            } label: {
-                HStack(spacing: 8) {
-                    if routeManager.isGenerating { POIEmojiLoader() }
-                    else { Image(systemName: "map.fill") }
-                    Text(routeManager.isGenerating ? "Finding routes..." : "Suggest a Route")
-                        .fontWeight(.semibold)
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 18).padding(.horizontal, 20)
-                .background(Color.earthGreen)
-                .foregroundColor(.white)
-                .cornerRadius(14)
-                .padding(.horizontal)
-            }
-            .disabled(routeManager.isGenerating)
-
-            // Discover Nearby — category grid
-            Button { showNearbySheet = true } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "sparkles")
-                    Text("Discover Nearby")
-                        .fontWeight(.semibold)
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 18).padding(.horizontal, 20)
-                .background(Color.earthCard)
-                .foregroundColor(.earthGreen)
-                .cornerRadius(14)
-                .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.earthGreen.opacity(0.45), lineWidth: 1.5))
-                .padding(.horizontal)
-            }
-            .disabled(routeManager.isGenerating)
-
-            // Manual search — tertiary text link
+            // Search for a specific destination
             Button { showDestinationSearch = true } label: {
                 HStack(spacing: 4) {
                     Image(systemName: "magnifyingglass")
@@ -1557,7 +1562,8 @@ struct RouteMapView: UIViewRepresentable {
         }
         if let user = map.userLocation.location { coords.append(user.coordinate) }
 
-        if !coords.isEmpty {
+        if !coords.isEmpty && context.coordinator.lastRouteCount != routes.count {
+            context.coordinator.lastRouteCount = routes.count
             let rect = coords.reduce(MKMapRect.null) { r, c in
                 let p = MKMapPoint(c); return r.union(MKMapRect(x: p.x, y: p.y, width: 0, height: 0))
             }
@@ -1569,17 +1575,19 @@ struct RouteMapView: UIViewRepresentable {
 
     class Coordinator: NSObject, MKMapViewDelegate {
         var parent: RouteMapView
+        var lastRouteCount = 0
         init(_ p: RouteMapView) { parent = p }
 
         func mapView(_ map: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
             guard let pl = overlay as? MKPolyline else { return MKOverlayRenderer(overlay: overlay) }
             let r          = MKPolylineRenderer(polyline: pl)
             let total      = parent.routes.count
+            let hasSelection = parent.selectedRoute != nil
             if let route   = parent.routes.first(where: { $0.id.uuidString == pl.title }) {
                 let isSelected = route.id == parent.selectedRoute?.id
                 r.strokeColor  = SuggestedRoute.paletteUIColor(index: route.colorIndex, total: total)
-                r.lineWidth    = isSelected ? 5 : 3
-                r.alpha        = isSelected ? 1.0 : 0.55
+                r.lineWidth    = isSelected ? 6 : 3
+                r.alpha        = isSelected ? 1.0 : (hasSelection ? 0.2 : 0.6)
             }
             return r
         }
