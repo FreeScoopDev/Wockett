@@ -227,6 +227,10 @@ final class StepManager: ObservableObject {
         return f.string(from: date)
     }
 
+    func fetchStepCounts(from startDate: Date, to endDate: Date) async -> [Date: Int] {
+        return await fetchWeeklyStepCounts(from: startDate, to: endDate)
+    }
+
     private func fetchWeeklyStepCounts(from startDate: Date, to endDate: Date) async -> [Date: Int] {
         guard HKHealthStore.isHealthDataAvailable() else { return [:] }
         let cal       = Calendar.current
@@ -492,12 +496,18 @@ final class RouteManager: NSObject, ObservableObject, CLLocationManagerDelegate 
 
     private func generateLoopRoutes(from start: CLLocation, targetMeters: Double, radius: Double) async -> [SuggestedRoute] {
         var routes: [SuggestedRoute] = []
-        // Three orientations of a clockwise quadrilateral — covers N/E/S/W starts
-        for bearing in [0.0, 45.0, 90.0] {
-            if let r = await makeLoopRoute(from: start, bearing: bearing, targetMeters: targetMeters, radius: radius) {
-                routes.append(r)
+        // All 8 compass orientations — N/NE/E/SE/S/SW/W/NW
+        await withTaskGroup(of: SuggestedRoute?.self) { group in
+            for bearing in [0.0, 45.0, 90.0, 135.0, 180.0, 225.0, 270.0, 315.0] {
+                group.addTask {
+                    await self.makeLoopRoute(from: start, bearing: bearing, targetMeters: targetMeters, radius: radius)
+                }
+            }
+            for await result in group {
+                if let r = result { routes.append(r) }
             }
         }
+        routes.sort { $0.bearing < $1.bearing }
         return routes
     }
 
@@ -522,16 +532,21 @@ final class RouteManager: NSObject, ObservableObject, CLLocationManagerDelegate 
         let perLapTime = leg1.expectedTravelTime + leg2.expectedTravelTime + leg3.expectedTravelTime + leg4.expectedTravelTime
         let laps       = max(1, min(8, Int(ceil(targetMeters / max(perLapDist, 1)))))
 
+        let elevCoords = [start.coordinate, coordA, coordB, coordC, start.coordinate]
+        let profile    = try? await ElevationService.shared.fetchProfile(for: elevCoords)
+
         return SuggestedRoute(
-            polyline:       combinePolylines([leg1.polyline, leg2.polyline, leg3.polyline, leg4.polyline]),
-            openInMapsItem: MKMapItem(location: coordA.clLocation, address: nil),
-            isLoop:         true,
-            bearing:        bearing,
-            totalDistance:  perLapDist * Double(laps),
-            totalTime:      perLapTime * Double(laps),
-            lapCount:       laps,
-            label:          nil,
-            legWaypoints:   [start.coordinate, coordA, coordB, coordC]
+            polyline:            combinePolylines([leg1.polyline, leg2.polyline, leg3.polyline, leg4.polyline]),
+            openInMapsItem:      MKMapItem(location: coordA.clLocation, address: nil),
+            isLoop:              true,
+            bearing:             bearing,
+            totalDistance:       perLapDist * Double(laps),
+            totalTime:           perLapTime * Double(laps),
+            lapCount:            laps,
+            label:               nil,
+            legWaypoints:        [start.coordinate, coordA, coordB, coordC],
+            elevationGainMeters: (profile?.totalGainMeters ?? 0) * Double(laps),
+            elevationLossMeters: (profile?.totalLossMeters ?? 0) * Double(laps)
         )
     }
 
@@ -655,6 +670,14 @@ struct SuggestedRoute: Identifiable {
     let lapCount:      Int      // 1 for single-circuit routes; >1 means repeat N times
     let label:         String?  // custom name (fallback only); nil shows direction-based name
     let legWaypoints:  [CLLocationCoordinate2D]
+    var elevationGainMeters: Double = 0
+    var elevationLossMeters: Double = 0
+
+    var elevationSummary: String? {
+        guard elevationGainMeters > 0 || elevationLossMeters > 0 else { return nil }
+        let fmt = MKDistanceFormatter(); fmt.unitStyle = .abbreviated
+        return "↑ \(fmt.string(fromDistance: elevationGainMeters)) · ↓ \(fmt.string(fromDistance: elevationLossMeters))"
+    }
 
     var estimatedSteps: Int    { Int(totalDistance / 0.762) }
     var perLapDistance: Double { totalDistance / Double(lapCount) }
@@ -1031,7 +1054,7 @@ struct StepCounterView: View {
 
             Button { showMyRoutes = true } label: {
                 HStack {
-                    Label("My Saved Routes", systemImage: "bookmark.map").foregroundColor(.earthCream)
+                    Label("Saved Items", systemImage: "bookmark.map").foregroundColor(.earthCream)
                     Spacer()
                     if !routeStore.routes.isEmpty {
                         Text("\(routeStore.routes.count)")
@@ -1552,6 +1575,17 @@ struct RouteCard: View {
     let route: SuggestedRoute
     let isSelected: Bool
 
+    private var difficulty: RouteDifficulty { .fromDistance(route.perLapDistance) }
+
+    private var difficultyColor: Color {
+        switch difficulty {
+        case .easy:   return Color(red: 0.22, green: 0.68, blue: 0.44)
+        case .moderate: return Color(red: 0.13, green: 0.57, blue: 0.64)
+        case .hard:   return Color(red: 0.18, green: 0.39, blue: 0.78)
+        case .expert: return Color(red: 0.35, green: 0.22, blue: 0.72)
+        }
+    }
+
     private var cardIcon: String {
         if route.label != nil { return "arrow.triangle.2.circlepath" }
         switch route.directionName {
@@ -1570,10 +1604,10 @@ struct RouteCard: View {
         HStack(spacing: 16) {
             ZStack {
                 Circle()
-                    .fill(isSelected ? Color.earthOrange.opacity(0.2) : Color.earthCard)
+                    .fill(difficultyColor.opacity(isSelected ? 0.3 : 0.15))
                     .frame(width: 54, height: 54)
                 Image(systemName: cardIcon)
-                    .foregroundColor(isSelected ? .earthOrange : .earthMuted)
+                    .foregroundColor(difficultyColor)
                     .font(.title3)
             }
 
@@ -1585,10 +1619,14 @@ struct RouteCard: View {
                     Label(route.timeText,     systemImage: "clock")
                 }
                 .font(.footnote).foregroundColor(.earthMuted)
+                if let elev = route.elevationSummary {
+                    Text(elev)
+                        .font(.caption).foregroundColor(difficultyColor.opacity(0.85))
+                }
                 HStack(spacing: 8) {
                     Text("~\(route.estimatedSteps.formatted()) steps")
                         .font(.footnote).foregroundColor(.earthGreen)
-                    DifficultyBadge(difficulty: .fromDistance(route.perLapDistance), compact: true)
+                    DifficultyBadge(difficulty: difficulty, compact: true)
                     if route.lapCount > 1 {
                         Text("×\(route.lapCount) laps")
                             .font(.caption.bold()).foregroundColor(.earthOrange)
@@ -1602,16 +1640,16 @@ struct RouteCard: View {
             Spacer()
 
             if isSelected {
-                Image(systemName: "checkmark.circle.fill").foregroundColor(.earthOrange)
+                Image(systemName: "checkmark.circle.fill").foregroundColor(difficultyColor)
             }
         }
         .padding()
         .background(
             RoundedRectangle(cornerRadius: 14)
-                .fill(isSelected ? Color.earthOrange.opacity(0.08) : Color.earthCard)
+                .fill(isSelected ? difficultyColor.opacity(0.1) : Color.earthCard)
                 .overlay(
                     RoundedRectangle(cornerRadius: 14)
-                        .stroke(isSelected ? Color.earthOrange.opacity(0.5) : Color.earthMuted.opacity(0.15), lineWidth: 1)
+                        .stroke(isSelected ? difficultyColor.opacity(0.5) : Color.earthMuted.opacity(0.15), lineWidth: 1)
                 )
         )
     }
@@ -2287,6 +2325,7 @@ struct MonthCalendarView: View {
     @State private var displayMonth: Date = Calendar.current.startOfDay(for: Date())
     @State private var selectedDay: CalendarDay?
     @State private var monthShiftDirection: Bool = false  // true = going forward
+    @State private var hkMonthSteps: [Date: Int] = [:]
 
     private static let monthFmt: DateFormatter = {
         let f = DateFormatter(); f.dateFormat = "MMMM yyyy"; return f
@@ -2312,7 +2351,20 @@ struct MonthCalendarView: View {
         let cal = Calendar.current
         if cal.isDateInToday(date) { return stepManager.todaySteps }
         if date > cal.startOfDay(for: Date()) { return nil }
+        if stepManager.trackingMode == .healthKit {
+            return hkMonthSteps[cal.startOfDay(for: date)]
+        }
         return sessions.filter { cal.isDate($0.date, inSameDayAs: date) }.reduce(0) { $0 + $1.estimatedSteps }
+    }
+
+    private func fetchHKSteps() async {
+        guard stepManager.trackingMode == .healthKit else { return }
+        let cal = Calendar.current
+        let today = cal.startOfDay(for: Date())
+        guard let start = cal.date(from: cal.dateComponents([.year, .month], from: monthStart)),
+              start < today else { return }
+        let end = min(today, cal.date(byAdding: .month, value: 1, to: start) ?? today)
+        hkMonthSteps = await stepManager.fetchStepCounts(from: start, to: end)
     }
 
     private func goalFor(_ date: Date) -> Int {
@@ -2427,11 +2479,13 @@ struct MonthCalendarView: View {
             }
         }
         .presentationDetents([.large])
+        .task { await fetchHKSteps() }
     }
 
     private func shiftMonth(_ delta: Int) {
         guard let next = Calendar.current.date(byAdding: .month, value: delta, to: displayMonth) else { return }
         displayMonth = next
+        Task { await fetchHKSteps() }
     }
 }
 

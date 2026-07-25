@@ -112,6 +112,7 @@ struct NavigableRoute: Identifiable, Hashable {
     let lapCount: Int
     let isLoop: Bool
     let totalDistance: Double
+    var isCustomRoute: Bool = false
 
     static func == (l: NavigableRoute, r: NavigableRoute) -> Bool { l.id == r.id }
     func hash(into hasher: inout Hasher) { hasher.combine(id) }
@@ -129,6 +130,9 @@ final class NavigationSessionManager: NSObject, ObservableObject, CLLocationMana
     @Published var totalDistanceCovered: Double = 0
     @Published var elapsedTime: TimeInterval = 0
     @Published var isCompleted = false
+    @Published var splitTimes: [(label: String, elapsed: TimeInterval)] = []
+
+    var onCheckpointReached: ((String) -> Void)?
 
     private let route: NavigableRoute
     private let locationManager = CLLocationManager()
@@ -136,6 +140,8 @@ final class NavigationSessionManager: NSObject, ObservableObject, CLLocationMana
     private var timer: Timer?
     private var lastLocation: CLLocation?
     private let arrivalRadius = 30.0
+    private var triggeredCheckpoints: Set<Int> = []
+    private let checkpointFractions = [0.2, 0.4, 0.6, 0.8]
 
     init(route: NavigableRoute) {
         self.route = route
@@ -206,6 +212,20 @@ final class NavigationSessionManager: NSObject, ObservableObject, CLLocationMana
             }
             self.lastLocation = loc
             self.checkArrival(at: loc)
+            if !self.route.isCustomRoute { self.checkDistanceCheckpoints() }
+        }
+    }
+
+    private func checkDistanceCheckpoints() {
+        guard route.totalDistance > 0, onCheckpointReached != nil else { return }
+        for (i, fraction) in checkpointFractions.enumerated() {
+            guard !triggeredCheckpoints.contains(i) else { continue }
+            if totalDistanceCovered >= route.totalDistance * fraction {
+                triggeredCheckpoints.insert(i)
+                let label = "\(Int(fraction * 100))%"
+                splitTimes.append((label: label, elapsed: elapsedTime))
+                onCheckpointReached?(label)
+            }
         }
     }
 
@@ -221,12 +241,16 @@ final class NavigationSessionManager: NSObject, ObservableObject, CLLocationMana
 
     private func advanceWaypoint() {
         currentWaypointIndex += 1
+        if route.isCustomRoute, onCheckpointReached != nil {
+            let wpNum = min(currentWaypointIndex, route.waypoints.count)
+            let label = "WP \(wpNum)/\(route.waypoints.count)"
+            splitTimes.append((label: label, elapsed: elapsedTime))
+            onCheckpointReached?(label)
+        }
         if route.isLoop {
             if currentWaypointIndex >= route.waypoints.count {
-                // Reached last point before start; now head back to start to close the loop
                 currentWaypointIndex = 0
             } else if currentWaypointIndex == 1 {
-                // Just passed through start — lap complete
                 currentLap += 1
                 if currentLap > route.lapCount { finish() }
             }
@@ -246,6 +270,7 @@ final class NavigationSessionManager: NSObject, ObservableObject, CLLocationMana
 struct NavigationMapView: UIViewRepresentable {
     let route: NavigableRoute
     let computedLegs: [MKRoute]
+    let currentWaypointIndex: Int
 
     func makeUIView(context: Context) -> MKMapView {
         let map = MKMapView()
@@ -253,7 +278,6 @@ struct NavigationMapView: UIViewRepresentable {
         map.showsUserLocation = true
         map.userTrackingMode = .follow
         map.overrideUserInterfaceStyle = .unspecified
-
         for (i, wp) in route.waypoints.enumerated() {
             let ann = MKPointAnnotation()
             ann.coordinate = wp
@@ -264,15 +288,29 @@ struct NavigationMapView: UIViewRepresentable {
     }
 
     func updateUIView(_ map: MKMapView, context: Context) {
-        guard !computedLegs.isEmpty, !context.coordinator.hasAddedLegs else { return }
-        context.coordinator.hasAddedLegs = true
-        for leg in computedLegs { map.addOverlay(leg.polyline) }
+        if !computedLegs.isEmpty, !context.coordinator.hasAddedLegs {
+            context.coordinator.hasAddedLegs = true
+            for leg in computedLegs { map.addOverlay(leg.polyline) }
+        }
+        // Refresh annotation tints when the current waypoint advances
+        if context.coordinator.lastWaypointIndex != currentWaypointIndex {
+            context.coordinator.lastWaypointIndex = currentWaypointIndex
+            for ann in map.annotations {
+                guard let marker = map.view(for: ann) as? MKMarkerAnnotationView,
+                      let pt = ann as? MKPointAnnotation,
+                      let title = pt.title else { continue }
+                let idx = title == "Start" ? 0 : (Int(title) ?? 0)
+                marker.markerTintColor = idx < currentWaypointIndex ? .systemGray3 : (title == "Start" ? .brandOrange : .brandGreen)
+                marker.alpha = idx < currentWaypointIndex ? 0.45 : 1.0
+            }
+        }
     }
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
     class Coordinator: NSObject, MKMapViewDelegate {
         var hasAddedLegs = false
+        var lastWaypointIndex = 0
 
         func mapView(_ map: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
             guard let pl = overlay as? MKPolyline else { return MKOverlayRenderer(overlay: overlay) }
@@ -307,12 +345,15 @@ struct WalkNavigationView: View {
     @State private var showComplete            = false
     @State private var showStopAlert           = false
     @State private var waterBreakEnabled       = false
+    @State private var checkpointsEnabled      = false
     @State private var scheduledBreakCount     = 0
     @State private var showHeatBanner          = false
     @State private var walkWeather: RouteWeather? = nil
     @State private var petCompletions: [PetCompletion] = []
     @State private var completedSession: WalkSession?
+    @State private var completedPetNames: [String] = []
     @State private var computedLegs: [MKRoute] = []
+    @State private var everActivePetIds: Set<UUID> = []
 
     init(route: NavigableRoute, historyStore: WalkHistoryStore) {
         self.route = route
@@ -321,62 +362,98 @@ struct WalkNavigationView: View {
     }
 
     var body: some View {
+        mapContent
+            .toolbar(.hidden, for: .navigationBar)
+            .task { await startWalk() }
+            .onDisappear { session.stop(); cancelWaterBreakReminders() }
+            .onChange(of: checkpointsEnabled) { _, enabled in handleCheckpointToggle(enabled) }
+            .onChange(of: session.isCompleted) { _, completed in
+                guard completed else { return }
+                handleWalkComplete()
+            }
+            .onChange(of: petStore.activePets.count) { _, count in handlePetCountChange(count) }
+            .onChange(of: waterBreakEnabled) { _, enabled in
+                guard enabled else { return }
+                Task { await scheduleWaterBreakReminders() }
+            }
+            .alert("End Walk?", isPresented: $showStopAlert) {
+                Button("Save Route & Exit") { saveCurrentRoute(); session.stop(); dismiss() }
+                Button("Exit", role: .destructive) { session.stop(); dismiss() }
+                Button("Keep Walking", role: .cancel) {}
+            } message: {
+                Text("Save this route to My Routes so you can walk it again later?")
+            }
+    }
+
+    @ViewBuilder private var mapContent: some View {
         ZStack(alignment: .bottom) {
-            NavigationMapView(route: route, computedLegs: computedLegs)
+            NavigationMapView(route: route, computedLegs: computedLegs, currentWaypointIndex: session.currentWaypointIndex)
                 .ignoresSafeArea()
             hudPanel
-        }
-        .toolbar(.hidden, for: .navigationBar)
-        .task {
-            session.start()
-            computedLegs = await computeWalkingLegs()
-            if let firstWaypoint = route.waypoints.first {
-                walkWeather = await RouteWeatherService.shared.fetchWeather(for: firstWaypoint)
-            }
-            if let w = walkWeather, w.temperatureCelsius > 27, !petStore.activePets.isEmpty {
-                showHeatBanner = true
-            }
-        }
-        .onDisappear { session.stop(); cancelWaterBreakReminders() }
-        .onChange(of: session.isCompleted) { _, completed in
-            guard completed else { return }
-            var s = session.completedSession
-            s.activePetIds = petStore.activePetIds
-            historyStore.add(s)
-            completedSession = s
-            petCompletions = petStore.activePets.map { pet in
-                let todaySteps = petStore.todaySteps(for: pet, in: historyStore.sessions)
-                return PetCompletion(pet: pet, progress: min(1.0, Double(todaySteps) / Double(max(1, pet.goalSteps))))
-            }
-            showComplete = true
-        }
-        .onChange(of: petStore.activePets.count) { _, count in
-            if count == 0 {
-                showHeatBanner = false
-                if waterBreakEnabled { cancelWaterBreakReminders(); waterBreakEnabled = false }
-            } else if let w = walkWeather, w.temperatureCelsius > 27 {
-                showHeatBanner = true
-            }
-        }
-        .onChange(of: waterBreakEnabled) { _, enabled in
-            guard enabled else { return }
-            Task { await scheduleWaterBreakReminders() }
-        }
-        .alert("End Walk?", isPresented: $showStopAlert) {
-            Button("Save Route & Exit") { saveCurrentRoute(); session.stop(); dismiss() }
-            Button("Exit", role: .destructive) { session.stop(); dismiss() }
-            Button("Keep Walking", role: .cancel) {}
-        } message: {
-            Text("Save this route to My Routes so you can walk it again later?")
         }
         .fullScreenCover(isPresented: $showComplete) {
             if let s = completedSession {
                 WalkCompleteView(
                     session: s,
-                    activePetNames: s.activePetIds.compactMap { id in petStore.pets.first { $0.id == id }?.name },
-                    petCompletions: petCompletions
-                ) { showComplete = false; dismiss() }
+                    activePetNames: completedPetNames,
+                    petCompletions: petCompletions,
+                    splits: session.splitTimes,
+                    onDismiss: { showComplete = false; dismiss() }
+                )
             }
+        }
+    }
+
+    private func handleCheckpointToggle(_ enabled: Bool) {
+        session.onCheckpointReached = enabled ? { [self] lbl in self.handleCheckpoint(lbl) } : nil
+    }
+
+    private func startWalk() async {
+        everActivePetIds = Set(petStore.activePetIds)
+        session.start()
+        session.onCheckpointReached = checkpointsEnabled ? { [self] lbl in self.handleCheckpoint(lbl) } : nil
+        computedLegs = await computeWalkingLegs()
+        if let firstWaypoint = route.waypoints.first {
+            walkWeather = await RouteWeatherService.shared.fetchWeather(for: firstWaypoint)
+        }
+        if let w = walkWeather, w.temperatureCelsius > 27, !petStore.activePets.isEmpty {
+            showHeatBanner = true
+        }
+    }
+
+    private func handleWalkComplete() {
+        var s = session.completedSession
+        s.activePetIds = Array(everActivePetIds)
+        historyStore.add(s)
+        completedSession = s
+        completedPetNames = petNamesFor(ids: s.activePetIds)
+        petCompletions = petStore.activePets.map { pet in
+            let todaySteps = petStore.todaySteps(for: pet, in: historyStore.sessions)
+            return PetCompletion(pet: pet, progress: min(1.0, Double(todaySteps) / Double(max(1, pet.goalSteps))))
+        }
+        showComplete = true
+    }
+
+    private func handlePetCountChange(_ count: Int) {
+        if count == 0 {
+            showHeatBanner = false
+            if waterBreakEnabled { cancelWaterBreakReminders(); waterBreakEnabled = false }
+        } else if let w = walkWeather, w.temperatureCelsius > 27 {
+            showHeatBanner = true
+        }
+    }
+
+    private func handleCheckpoint(_ label: String) {
+        let generator = UINotificationFeedbackGenerator()
+        generator.notificationOccurred(.success)
+        if checkpointsEnabled {
+            let content = UNMutableNotificationContent()
+            content.title = "Checkpoint \(label) 🎯"
+            content.body = "Keep it up!"
+            content.sound = .default
+            let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 0.5, repeats: false)
+            let req = UNNotificationRequest(identifier: "checkpoint-\(label)", content: content, trigger: trigger)
+            Task { try? await UNUserNotificationCenter.current().add(req) }
         }
     }
 
@@ -407,7 +484,9 @@ struct WalkNavigationView: View {
                     HStack(spacing: 2) {
                         ForEach(petStore.pets) { pet in
                             Button {
-                                petStore.setActive(pet.id, active: !pet.isActiveOnWalk)
+                                let willActivate = !pet.isActiveOnWalk
+                                petStore.setActive(pet.id, active: willActivate)
+                                if willActivate { everActivePetIds.insert(pet.id) }
                             } label: {
                                 Text(pet.displayEmoji)
                                     .font(.title2)
@@ -434,6 +513,22 @@ struct WalkNavigationView: View {
                         }
                     }
                     .animation(.spring(duration: 0.2), value: waterBreakEnabled)
+                }
+                .padding(.trailing, 10)
+                Button {
+                    checkpointsEnabled.toggle()
+                } label: {
+                    VStack(spacing: 1) {
+                        Image(systemName: checkpointsEnabled ? "flag.fill" : "flag")
+                            .font(.title2)
+                            .foregroundColor(checkpointsEnabled ? Color(red: 0.35, green: 0.22, blue: 0.72) : .earthMuted)
+                        if checkpointsEnabled {
+                            Text(route.isCustomRoute ? "WP" : "20%")
+                                .font(.system(size: 8, weight: .bold))
+                                .foregroundColor(Color(red: 0.35, green: 0.22, blue: 0.72))
+                        }
+                    }
+                    .animation(.spring(duration: 0.2), value: checkpointsEnabled)
                 }
                 .padding(.trailing, 10)
                 Button { showStopAlert = true } label: {
@@ -468,6 +563,10 @@ struct WalkNavigationView: View {
             Text(label).font(.caption2).foregroundColor(.earthMuted)
         }
         .frame(maxWidth: .infinity)
+    }
+
+    private func petNamesFor(ids: [UUID]) -> [String] {
+        ids.compactMap { id in petStore.pets.first { $0.id == id }?.name }
     }
 
     private func distText(_ m: Double) -> String {
@@ -590,6 +689,7 @@ struct WalkCompleteView: View {
     let session: WalkSession
     let activePetNames: [String]
     let petCompletions: [PetCompletion]
+    var splits: [(label: String, elapsed: TimeInterval)] = []
     let onDismiss: () -> Void
     @State private var showSchedule = false
     @State private var ringProgress: [UUID: Double] = [:]
@@ -632,6 +732,9 @@ struct WalkCompleteView: View {
                 if !petCompletions.isEmpty {
                     petRingsSection
                 }
+                if !splits.isEmpty {
+                    splitsSection
+                }
                 Spacer()
                 VStack(spacing: 12) {
                     Button { showSchedule = true } label: {
@@ -666,6 +769,37 @@ struct WalkCompleteView: View {
         }
         .frame(maxWidth: .infinity).padding(.vertical, 20)
         .background(Color.earthCard).cornerRadius(14)
+    }
+
+    private var splitsSection: some View {
+        VStack(spacing: 8) {
+            Text("Splits")
+                .font(.caption.bold()).foregroundColor(.earthMuted)
+            VStack(spacing: 4) {
+                ForEach(splits.indices, id: \.self) { i in
+                    HStack {
+                        Text(splits[i].label)
+                            .font(.caption.bold()).foregroundColor(.earthCream)
+                        Spacer()
+                        Text(splitTimeText(splits[i].elapsed))
+                            .font(.caption).foregroundColor(.earthMuted)
+                        if i > 0 {
+                            Text("(+\(splitTimeText(splits[i].elapsed - splits[i-1].elapsed)))")
+                                .font(.caption2).foregroundColor(.earthMuted.opacity(0.6))
+                        }
+                    }
+                    .padding(.horizontal, 16).padding(.vertical, 6)
+                    .background(Color.earthCard).cornerRadius(8)
+                }
+            }
+            .padding(.horizontal)
+        }
+        .padding(.vertical, 8)
+    }
+
+    private func splitTimeText(_ t: TimeInterval) -> String {
+        let s = Int(t); let m = s / 60
+        return m < 60 ? "\(m)m \(s % 60)s" : "\(m / 60)h \(m % 60)m"
     }
 
     private var petRingsSection: some View {

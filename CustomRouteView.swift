@@ -61,6 +61,13 @@ final class CustomRouteStore: ObservableObject {
         persist()
     }
 
+    func update(_ route: CustomRoute) {
+        if let idx = routes.firstIndex(where: { $0.id == route.id }) {
+            routes[idx] = route
+            persist()
+        }
+    }
+
     func delete(at offsets: IndexSet) {
         routes.remove(atOffsets: offsets)
         persist()
@@ -81,6 +88,57 @@ final class CustomRouteStore: ObservableObject {
     }
 }
 
+// MARK: - Bookmarked Location
+
+struct BookmarkedLocation: Identifiable, Codable {
+    let id: UUID
+    var name: String
+    var address: String
+    let latitude: Double
+    let longitude: Double
+    let createdAt: Date
+
+    var coordinate: CLLocationCoordinate2D {
+        CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
+    }
+}
+
+@MainActor
+final class BookmarkStore: ObservableObject {
+    static let shared = BookmarkStore()
+    @Published var bookmarks: [BookmarkedLocation] = []
+    private let udKey = "bookmarkedLocations_v1"
+
+    init() { load() }
+
+    func add(_ location: BookmarkedLocation) {
+        guard !bookmarks.contains(where: { $0.id == location.id }) else { return }
+        bookmarks.insert(location, at: 0)
+        persist()
+    }
+
+    func delete(at offsets: IndexSet) {
+        bookmarks.remove(atOffsets: offsets)
+        persist()
+    }
+
+    func isBookmarked(id: UUID) -> Bool {
+        bookmarks.contains { $0.id == id }
+    }
+
+    private func persist() {
+        if let data = try? JSONEncoder().encode(bookmarks) {
+            UserDefaults.standard.set(data, forKey: udKey)
+        }
+    }
+
+    private func load() {
+        guard let data    = UserDefaults.standard.data(forKey: udKey),
+              let decoded = try? JSONDecoder().decode([BookmarkedLocation].self, from: data) else { return }
+        bookmarks = decoded
+    }
+}
+
 // MARK: - Builder State
 
 @MainActor
@@ -90,6 +148,10 @@ final class CustomRouteBuilder: ObservableObject {
     @Published var loopLeg:      MKRoute?
     @Published var isComputing   = false
     @Published var isLoopClosed  = false
+
+    init(initialWaypoints: [CLLocationCoordinate2D] = []) {
+        self.waypoints = initialWaypoints
+    }
 
     var totalDistance: Double {
         let base = routeLegs.reduce(0) { $0 + $1.distance }
@@ -131,6 +193,24 @@ final class CustomRouteBuilder: ObservableObject {
             isLoop:        isLoopClosed,
             createdAt:     Date()
         )
+    }
+
+    func computeAllLegs(closedLoop: Bool = false) async {
+        guard waypoints.count >= 2 else { return }
+        isComputing = true
+        defer { isComputing = false }
+        routeLegs = []
+        loopLeg   = nil
+        isLoopClosed = false
+        for i in 0..<(waypoints.count - 1) {
+            if let leg = await walkingRoute(from: waypoints[i], to: waypoints[i + 1]) {
+                routeLegs.append(leg)
+            }
+        }
+        if closedLoop, let leg = await walkingRoute(from: waypoints.last!, to: waypoints.first!) {
+            loopLeg      = leg
+            isLoopClosed = true
+        }
     }
 
     private func computeLastLeg() async {
@@ -284,11 +364,19 @@ struct CustomRouteMapView: UIViewRepresentable {
 // MARK: - Route Builder View
 
 struct CustomRouteBuilderView: View {
-    @StateObject private var builder = CustomRouteBuilder()
+    @StateObject private var builder: CustomRouteBuilder
     @State private var showSaveSheet = false
     @State private var routeName     = ""
     @Environment(\.dismiss) private var dismiss
     let onSave: (CustomRoute) -> Void
+    private let initialIsLoop: Bool
+
+    init(initialWaypoints: [CLLocationCoordinate2D] = [], initialIsLoop: Bool = false, routeName: String = "", onSave: @escaping (CustomRoute) -> Void) {
+        _builder = StateObject(wrappedValue: CustomRouteBuilder(initialWaypoints: initialWaypoints))
+        self.initialIsLoop = initialIsLoop
+        self._routeName    = State(initialValue: routeName)
+        self.onSave        = onSave
+    }
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -375,8 +463,14 @@ struct CustomRouteBuilderView: View {
             .padding(.vertical, 14)
             .background(.ultraThinMaterial)
         }
-        .navigationTitle("Build Route")
-        .navigationBarTitleDisplayMode(.inline)        .sheet(isPresented: $showSaveSheet) {
+        .navigationTitle(builder.waypoints.isEmpty ? "Build Route" : "Edit Route")
+        .navigationBarTitleDisplayMode(.inline)
+        .task {
+            if !builder.waypoints.isEmpty {
+                await builder.computeAllLegs(closedLoop: initialIsLoop)
+            }
+        }
+        .sheet(isPresented: $showSaveSheet) {
             SaveRouteSheet(routeName: $routeName) {
                 let route = builder.build(name: routeName)
                 onSave(route)
@@ -445,18 +539,21 @@ struct SaveRouteSheet: View {
 // MARK: - My Routes List
 
 struct CustomRoutesListView: View {
-    @ObservedObject var store:        CustomRouteStore
-    @ObservedObject var historyStore: WalkHistoryStore
+    @ObservedObject var store:         CustomRouteStore
+    @ObservedObject var historyStore:  WalkHistoryStore
+    @ObservedObject var bookmarkStore: BookmarkStore = BookmarkStore.shared
     @State private var isBuilding = false
+
+    private var hasContent: Bool { !store.routes.isEmpty || !bookmarkStore.bookmarks.isEmpty }
 
     var body: some View {
         ZStack {
             Color.earthBg.ignoresSafeArea()
             Group {
-                if store.routes.isEmpty { emptyState } else { routeList }
+                if hasContent { contentList } else { emptyState }
             }
         }
-        .navigationTitle("My Routes")
+        .navigationTitle("Saved Items")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear { store.reload() }
         .toolbar {
@@ -473,11 +570,11 @@ struct CustomRoutesListView: View {
 
     private var emptyState: some View {
         VStack(spacing: 16) {
-            Image(systemName: "map")
+            Image(systemName: "bookmark")
                 .font(.system(size: 64)).foregroundColor(.earthMuted.opacity(0.4))
-            Text("No Saved Routes")
+            Text("Nothing Saved Yet")
                 .font(.headline).foregroundColor(.earthCream)
-            Text("Tap + to trace your first custom route")
+            Text("Build a custom route or bookmark locations to find them here")
                 .font(.subheadline).foregroundColor(.earthMuted)
                 .multilineTextAlignment(.center)
             Button { isBuilding = true } label: {
@@ -491,19 +588,65 @@ struct CustomRoutesListView: View {
         .padding()
     }
 
-    private var routeList: some View {
+    private var contentList: some View {
         List {
-            ForEach(store.routes) { route in
-                NavigationLink(destination: CustomRouteDetailView(route: route, historyStore: historyStore)) {
-                    CustomRouteRow(route: route)
+            if !store.routes.isEmpty {
+                Section {
+                    ForEach(store.routes) { route in
+                        NavigationLink(destination: CustomRouteDetailView(route: route, historyStore: historyStore, routeStore: store)) {
+                            CustomRouteRow(route: route)
+                        }
+                        .listRowBackground(Color.earthCard)
+                        .listRowSeparatorTint(Color.earthMuted.opacity(0.2))
+                    }
+                    .onDelete { store.delete(at: $0) }
+                } header: {
+                    Text("My Routes")
+                        .font(.caption.bold()).foregroundColor(.earthMuted)
+                        .textCase(nil)
                 }
-                .listRowBackground(Color.earthCard)
-                .listRowSeparatorTint(Color.earthMuted.opacity(0.2))
             }
-            .onDelete { store.delete(at: $0) }
+            if !bookmarkStore.bookmarks.isEmpty {
+                Section {
+                    ForEach(bookmarkStore.bookmarks) { bookmark in
+                        BookmarkRow(bookmark: bookmark)
+                            .listRowBackground(Color.earthCard)
+                            .listRowSeparatorTint(Color.earthMuted.opacity(0.2))
+                    }
+                    .onDelete { bookmarkStore.delete(at: $0) }
+                } header: {
+                    Text("Bookmarked Places")
+                        .font(.caption.bold()).foregroundColor(.earthMuted)
+                        .textCase(nil)
+                }
+            }
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
+    }
+}
+
+struct BookmarkRow: View {
+    let bookmark: BookmarkedLocation
+
+    var body: some View {
+        HStack(spacing: 14) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(Color(red: 0.28, green: 0.49, blue: 0.84).opacity(0.15))
+                    .frame(width: 46, height: 46)
+                Image(systemName: "bookmark.fill")
+                    .foregroundColor(Color(red: 0.28, green: 0.49, blue: 0.84))
+                    .font(.system(size: 18, weight: .medium))
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                Text(bookmark.name).font(.headline).foregroundColor(.earthCream)
+                Text(bookmark.address)
+                    .font(.footnote).foregroundColor(.earthMuted).lineLimit(1)
+            }
+            Spacer()
+        }
+        .padding(.vertical, 6)
     }
 }
 
@@ -541,6 +684,7 @@ struct CustomRouteRow: View {
 struct CustomRouteDetailView: View {
     let route:  CustomRoute
     @ObservedObject var historyStore: WalkHistoryStore
+    @ObservedObject var routeStore:   CustomRouteStore
     @State private var routeLegs:         [MKRoute] = []
     @State private var isLoading          = false
     @State private var routeWeather:      RouteWeather?
@@ -548,6 +692,7 @@ struct CustomRouteDetailView: View {
     @State private var isLoadingElevation = false
     @State private var showMapsAlert      = false
     @State private var navigatingRoute:   NavigableRoute?
+    @State private var isEditing          = false
     @State private var shareState: ShareState = .idle
 
     private enum ShareState { case idle, sharing, shared, failed }
@@ -632,7 +777,8 @@ struct CustomRouteDetailView: View {
                                 waypoints:     route.waypoints.map { $0.clCoordinate },
                                 lapCount:      1,
                                 isLoop:        route.isLoop,
-                                totalDistance: route.totalDistance
+                                totalDistance: route.totalDistance,
+                                isCustomRoute: true
                             )
                         } label: {
                             Label("Start Walk", systemImage: "figure.walk")
@@ -723,8 +869,34 @@ struct CustomRouteDetailView: View {
             }
         }
         .navigationTitle(route.name)
-        .navigationBarTitleDisplayMode(.inline)        .navigationDestination(item: $navigatingRoute) { r in
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button { isEditing = true } label: {
+                    Image(systemName: "pencil").foregroundColor(.earthGreen)
+                }
+            }
+        }
+        .navigationDestination(item: $navigatingRoute) { r in
             WalkNavigationView(route: r, historyStore: historyStore)
+        }
+        .navigationDestination(isPresented: $isEditing) {
+            CustomRouteBuilderView(
+                initialWaypoints: route.waypoints.map { $0.clCoordinate },
+                initialIsLoop:    route.isLoop,
+                routeName:        route.name
+            ) { updated in
+                var updatedRoute = updated
+                updatedRoute = CustomRoute(
+                    id:            route.id,
+                    name:          updated.name,
+                    waypoints:     updated.waypoints,
+                    totalDistance: updated.totalDistance,
+                    isLoop:        updated.isLoop,
+                    createdAt:     route.createdAt
+                )
+                routeStore.update(updatedRoute)
+            }
         }
         .task { await loadLegs() }
     }
