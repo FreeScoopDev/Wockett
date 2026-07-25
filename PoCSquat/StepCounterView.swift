@@ -729,6 +729,7 @@ struct StepCounterView: View {
     @State private var calendarWeekOffset: Int = 0
     @State private var showSettings = false
     @State private var showMonthCalendar = false
+    @State private var showFreeWalk = false
     @State private var communityRoutes: [SharedRoute] = []
     @State private var isLoadingCommunity = false
     @State private var showCommunityRoutes = false
@@ -738,6 +739,18 @@ struct StepCounterView: View {
             ScrollView {
                 VStack(spacing: 24) {
                     progressSection.padding(.top, 8)
+
+                    Button { showFreeWalk = true } label: {
+                        Label("Start Walking", systemImage: "figure.walk")
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 16)
+                            .background(Color.earthGreen)
+                            .foregroundColor(.white)
+                            .font(.headline)
+                            .cornerRadius(14)
+                    }
+                    .padding(.horizontal)
+
                     WeeklyCalendarView(
                         days: stepManager.weeklyCalendar,
                         sessions: historyStore.sessions,
@@ -855,6 +868,9 @@ struct StepCounterView: View {
             }
         }
         .sheet(isPresented: $showGoalSheet)     { GoalEditorSheet(stepManager: stepManager) }
+        .fullScreenCover(isPresented: $showFreeWalk) {
+            FreeWalkView(historyStore: historyStore, routeStore: routeStore)
+        }
         .sheet(isPresented: $showDestinationSearch) {
             DestinationSearchSheet(userLocation: routeManager.lastLocation) { destination in
                 clearRoutes()
@@ -1012,17 +1028,6 @@ struct StepCounterView: View {
             }
             .contentShape(Rectangle())
             .onTapGesture { showGoalSheet = true }
-
-            Button { showSettings = true } label: {
-                HStack {
-                    Label("Settings", systemImage: "gear").foregroundColor(.earthCream)
-                    Spacer()
-                    Text(stepManager.trackingMode.rawValue)
-                        .font(.caption).foregroundColor(.earthMuted).padding(.trailing, 4)
-                    Image(systemName: "chevron.right").font(.caption).foregroundColor(.earthMuted.opacity(0.6))
-                }
-                .padding(.horizontal, 16).padding(.vertical, 16)
-            }
 
             Button { showMyRoutes = true } label: {
                 HStack {
