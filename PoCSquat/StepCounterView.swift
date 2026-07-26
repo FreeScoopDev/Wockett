@@ -28,6 +28,8 @@ struct StepCounterView: View {
     @State private var showSettings = false
     @State private var showMonthCalendar = false
     @State private var showFreeWalk = false
+    @State private var freeWalkMode: ActivityMode = .walking
+    @State private var rollingBadgePhase: Int = 0
 
     var body: some View {
         stepCounterCore
@@ -47,7 +49,7 @@ struct StepCounterView: View {
             }
             .sheet(isPresented: $showGoalSheet) { GoalEditorSheet(stepManager: stepManager) }
             .fullScreenCover(isPresented: $showFreeWalk) {
-                FreeWalkView(historyStore: historyStore, routeStore: routeStore)
+                FreeWalkView(historyStore: historyStore, routeStore: routeStore, activityMode: freeWalkMode)
             }
             .fullScreenCover(isPresented: $showRouteFinder) {
                 RouteFinderView(
@@ -79,6 +81,14 @@ struct StepCounterView: View {
             .onChange(of: stepManager.currentGoal) { _, _ in clearRoutes() }
             .onChange(of: historyStore.sessions.count) { _, _ in
                 Task { await stepManager.refreshWeeklyCalendar(sessions: historyStore.sessions, weekOffset: calendarWeekOffset) }
+            }
+            .task {
+                while !Task.isCancelled {
+                    try? await Task.sleep(nanoseconds: 3_500_000_000)
+                    withAnimation(.spring(response: 0.45, dampingFraction: 0.85)) {
+                        rollingBadgePhase += 1
+                    }
+                }
             }
     }
 
@@ -268,24 +278,38 @@ struct StepCounterView: View {
         let streak   = StreakStore.shared.currentStreak
         let earned   = walkBadges.filter { $0.isEarned(sessions: sessions, currentStreak: streak) }
         let unearned = walkBadges.filter { !$0.isEarned(sessions: sessions, currentStreak: streak) }
-        let nextBadge = unearned.max { $0.progress(sessions: sessions, currentStreak: streak) < $1.progress(sessions: sessions, currentStreak: streak) }
 
-        // Up to 2 most recently earned, then fill with the closest-to-earning badge
-        var spotlight: [(WalkBadge, Double)] = []
-        for badge in earned.suffix(2).reversed() { spotlight.append((badge, 1.0)) }
-        if let next = nextBadge, spotlight.count < 3 {
-            spotlight.append((next, next.progress(sessions: sessions, currentStreak: streak)))
-        }
-        if spotlight.isEmpty, let first = walkBadges.first { spotlight.append((first, 0)) }
-        let badgeSpotlight = Array(spotlight.prefix(3))
+        // Fixed: up to 2 most recently earned badges
+        let fixedBadges: [(WalkBadge, Double)] = Array(earned.suffix(2).reversed().map { ($0, 1.0) })
+
+        // Rolling: cycles through all unearned badges to encourage badge hunting
+        let rollingBadge: WalkBadge? = unearned.isEmpty ? nil : unearned[rollingBadgePhase % unearned.count]
 
         return Button { showBadges = true } label: {
             VStack(spacing: 10) {
-                ForEach(badgeSpotlight.indices, id: \.self) { i in
-                    homeBadgeRing(badgeSpotlight[i].0, progress: badgeSpotlight[i].1,
-                                  sessions: sessions, streak: streak,
+                ForEach(fixedBadges, id: \.0.id) { badge, progress in
+                    homeBadgeRing(badge, progress: progress, sessions: sessions, streak: streak,
                                   ringSize: 54, lineWidth: 3, emojiSize: 21, labelSize: 9)
                 }
+                // Rolling slot — clips so the slide-in/out stays in bounds
+                ZStack {
+                    if let badge = rollingBadge {
+                        homeBadgeRing(badge,
+                                      progress: badge.progress(sessions: sessions, currentStreak: streak),
+                                      sessions: sessions, streak: streak,
+                                      ringSize: 54, lineWidth: 3, emojiSize: 21, labelSize: 9)
+                            .id(badge.id)
+                            .transition(.asymmetric(
+                                insertion: .move(edge: .bottom).combined(with: .opacity),
+                                removal:   .move(edge: .top).combined(with: .opacity)
+                            ))
+                    } else if fixedBadges.isEmpty, let first = walkBadges.first {
+                        homeBadgeRing(first, progress: 0, sessions: sessions, streak: streak,
+                                      ringSize: 54, lineWidth: 3, emojiSize: 21, labelSize: 9)
+                    }
+                }
+                .frame(height: 72)
+                .clipped()
             }
         }
         .buttonStyle(.plain)
@@ -435,8 +459,7 @@ struct StepCounterView: View {
 
     private var actionGrid: some View {
         LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
-            actionTile(icon: "figure.walk", label: "Start Walking",
-                       color: Color.earthGreen) { showFreeWalk = true }
+            startActivityTile
 
             actionTile(icon: "map.fill", label: "Recommend",
                        color: Color(red: 0.13, green: 0.57, blue: 0.64)) {
@@ -453,6 +476,50 @@ struct StepCounterView: View {
             actionTile(icon: "plus.circle.fill", label: "Build Route",
                        color: Color(red: 0.28, green: 0.49, blue: 0.84)) { showBuildRoute = true }
         }
+    }
+
+    private var startActivityTile: some View {
+        let isCycling = freeWalkMode == .cycling
+        let tileColor: Color = isCycling ? Color(red: 0.13, green: 0.57, blue: 0.64) : Color.earthGreen
+        return Button { showFreeWalk = true } label: {
+            ZStack(alignment: .bottomTrailing) {
+                VStack(spacing: 10) {
+                    Image(systemName: freeWalkMode.icon)
+                        .font(.system(size: 26, weight: .medium))
+                        .frame(height: 28)
+                        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: freeWalkMode)
+                    Text(isCycling ? "Start Biking" : "Start Walking")
+                        .font(.subheadline.bold())
+                        .multilineTextAlignment(.center)
+                        .lineLimit(2)
+                        .animation(.spring(response: 0.3), value: freeWalkMode)
+                }
+                .foregroundColor(.white)
+                .frame(maxWidth: .infinity)
+                .frame(height: 96)
+
+                // Folded corner — tap to toggle between walk and bike
+                Button {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
+                        freeWalkMode = isCycling ? .walking : .cycling
+                    }
+                } label: {
+                    ZStack(alignment: .bottomTrailing) {
+                        CornerFoldShape()
+                            .fill(Color.black.opacity(0.22))
+                            .frame(width: 44, height: 44)
+                        Image(systemName: isCycling ? "figure.walk" : "bicycle")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(.white.opacity(0.9))
+                            .padding(6)
+                    }
+                }
+                .buttonStyle(.plain)
+            }
+            .background(tileColor.animation(.spring(response: 0.35), value: freeWalkMode))
+            .cornerRadius(16)
+        }
+        .buttonStyle(BounceButtonStyle())
     }
 
     private func actionTile(icon: String, label: String, color: Color, action: @escaping () -> Void) -> some View {

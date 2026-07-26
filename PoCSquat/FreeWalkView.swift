@@ -27,6 +27,8 @@ final class FreeWalkManager: NSObject, ObservableObject, CLLocationManagerDelega
         locationManager.distanceFilter = 5
     }
 
+    var activityMode: ActivityMode = .walking
+
     func start() {
         guard !isTracking else { return }
         isTracking = true
@@ -36,8 +38,9 @@ final class FreeWalkManager: NSObject, ObservableObject, CLLocationManagerDelega
             DispatchQueue.main.async { self?.elapsedSeconds += 1 }
         }
         let capturedStart = startDate
+        let activityType = activityMode.hkActivityType
         Task {
-            let writer = HealthWorkoutWriter(activityType: .walking)
+            let writer = HealthWorkoutWriter(activityType: activityType)
             await writer.start(at: capturedStart)
             await MainActor.run { self.workoutWriter = writer }
         }
@@ -101,16 +104,20 @@ struct FreeWalkView: View {
     @ObservedObject var routeStore: CustomRouteStore
     @Environment(\.dismiss) private var dismiss
 
+    var activityMode: ActivityMode = .walking
+
     @StateObject private var walkManager = FreeWalkManager()
     @State private var showSummary = false
     @State private var position: MapCameraPosition = .userLocation(fallback: .automatic)
+
+    private var isCycling: Bool { activityMode == .cycling }
 
     var body: some View {
         ZStack(alignment: .top) {
             Map(position: $position) {
                 if walkManager.trackPoints.count > 1 {
                     MapPolyline(coordinates: walkManager.trackPoints)
-                        .stroke(Color.earthGreen, lineWidth: 5)
+                        .stroke(isCycling ? Color(red: 0.13, green: 0.57, blue: 0.64) : Color.earthGreen, lineWidth: 5)
                 }
                 UserAnnotation()
             }
@@ -124,7 +131,7 @@ struct FreeWalkView: View {
                     Divider().frame(height: 36)
                     hudStat(value: walkManager.elapsedText, label: "Time")
                     Divider().frame(height: 36)
-                    hudStat(value: walkManager.estimatedSteps.formatted(), label: "Steps")
+                    hudStat(value: walkManager.estimatedSteps.formatted(), label: isCycling ? "Rotations" : "Steps")
                 }
                 .padding(.vertical, 14)
                 .background(.ultraThinMaterial)
@@ -138,10 +145,10 @@ struct FreeWalkView: View {
                     walkManager.stop()
                     showSummary = true
                 } label: {
-                    Label("Finish Walk", systemImage: "checkmark.circle.fill")
+                    Label(isCycling ? "Finish Ride" : "Finish Walk", systemImage: "checkmark.circle.fill")
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 18)
-                        .background(Color.earthGreen)
+                        .background(isCycling ? Color(red: 0.13, green: 0.57, blue: 0.64) : Color.earthGreen)
                         .foregroundColor(.white)
                         .font(.headline)
                         .cornerRadius(14)
@@ -150,7 +157,10 @@ struct FreeWalkView: View {
                 .padding(.bottom, 48)
             }
         }
-        .onAppear { walkManager.start() }
+        .onAppear {
+            walkManager.activityMode = activityMode
+            walkManager.start()
+        }
         .onDisappear { walkManager.stop() }
         .sheet(isPresented: $showSummary) {
             FreeWalkSummarySheet(
@@ -288,14 +298,15 @@ struct FreeWalkSummarySheet: View {
         guard !savedToHistory else { return }
         let session = WalkSession(
             id: UUID(),
-            routeName: "Free Walk",
+            routeName: walkManager.activityMode == .cycling ? "Free Ride" : "Free Walk",
             date: walkManager.startDate,
             elapsedTime: TimeInterval(walkManager.elapsedSeconds),
             totalDistance: walkManager.totalDistance,
             waypoints: walkManager.trackPoints.map { WaypointCoord($0) },
             lapCount: 1,
             isLoop: false,
-            activePetIds: petStore.activePetIds
+            activePetIds: petStore.activePetIds,
+            activityType: walkManager.activityMode.rawValue
         )
         historyStore.add(session)
         savedToHistory = true

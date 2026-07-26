@@ -5,8 +5,9 @@ import Foundation
 enum WalkBadgeType: Equatable {
     case distance(km: Double)
     case streak(days: Int)
-    case earlyBird   // any session started before 8am
-    case nightOwl    // any session started after 8pm
+    case earlyBird      // any session started before 8am
+    case nightOwl       // any session started after 8pm
+    case badgeCount(n: Int) // earn this many other badges
 }
 
 // MARK: - Badge Model
@@ -28,6 +29,9 @@ struct WalkBadge: Identifiable {
             return sessions.contains { Calendar.current.component(.hour, from: $0.date) < 8 }
         case .nightOwl:
             return sessions.contains { Calendar.current.component(.hour, from: $0.date) >= 20 }
+        case .badgeCount(let n):
+            let others = walkBadges.filter { $0.id != id }
+            return others.filter { $0.isEarned(sessions: sessions, currentStreak: currentStreak) }.count >= n
         }
     }
 
@@ -39,6 +43,10 @@ struct WalkBadge: Identifiable {
             return min(1.0, Double(currentStreak) / Double(max(1, days)))
         case .earlyBird, .nightOwl:
             return isEarned(sessions: sessions, currentStreak: currentStreak) ? 1.0 : 0.0
+        case .badgeCount(let n):
+            let others = walkBadges.filter { $0.id != id }
+            let earnedCount = others.filter { $0.isEarned(sessions: sessions, currentStreak: currentStreak) }.count
+            return min(1.0, Double(earnedCount) / Double(max(1, n)))
         }
     }
 
@@ -62,8 +70,10 @@ let walkBadges: [WalkBadge] = [
     WalkBadge(id: "month1",    name: "Month Strong", description: "30-day goal streak",         emoji: "📅",  type: .streak(days: 30)),
     WalkBadge(id: "centurion", name: "Centurion",    description: "100-day goal streak",        emoji: "💎",  type: .streak(days: 100)),
     // Time-of-day
-    WalkBadge(id: "earlybird", name: "Early Bird",   description: "Complete a walk before 8am", emoji: "🌅",  type: .earlyBird),
-    WalkBadge(id: "nightowl",  name: "Night Owl",    description: "Complete a walk after 8pm",  emoji: "🌙",  type: .nightOwl),
+    WalkBadge(id: "earlybird",    name: "Early Bird",    description: "Complete a walk before 8am", emoji: "🌅",  type: .earlyBird),
+    WalkBadge(id: "nightowl",     name: "Night Owl",     description: "Complete a walk after 8pm",  emoji: "🌙",  type: .nightOwl),
+    // Meta
+    WalkBadge(id: "badgehunter",  name: "Badge Hunter",  description: "Earn 5 other badges",        emoji: "🏆",  type: .badgeCount(n: 5)),
 ]
 
 // MARK: - Streak Store

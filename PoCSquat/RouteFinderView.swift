@@ -226,6 +226,19 @@ struct RouteFinderView: View {
                 .disabled(routeManager.isGenerating)
                 .padding(.horizontal, 20)
 
+                if let err = routeManager.locationError {
+                    HStack(spacing: 6) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.caption)
+                        Text(err)
+                            .font(.caption)
+                            .multilineTextAlignment(.leading)
+                    }
+                    .foregroundColor(.orange)
+                    .padding(.horizontal, 20)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+                }
+
                 HStack(spacing: 20) {
                     Button { showDestSearch = true } label: {
                         HStack(spacing: 4) {
@@ -250,6 +263,7 @@ struct RouteFinderView: View {
                 .padding(.bottom, 4)
             }
             .padding(.bottom, 36)
+            .animation(.spring(response: 0.35), value: routeManager.locationError != nil)
         }
         .background(.ultraThinMaterial)
         .clipShape(UnevenRoundedRectangle(topLeadingRadius: 24, topTrailingRadius: 24))

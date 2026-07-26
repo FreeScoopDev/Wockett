@@ -422,6 +422,9 @@ final class RouteManager: NSObject, ObservableObject, CLLocationManagerDelegate 
         suggestedRoutes = routes.enumerated().map { i, r in
             var r = r; r.colorIndex = i; return r
         }
+        if suggestedRoutes.isEmpty {
+            locationError = "No routes found here. Try a wider reach or a different duration."
+        }
     }
 
     func generateDestinationRoute(to destination: MKMapItem,
@@ -686,7 +689,7 @@ enum WalkIntent: Equatable {
 enum ActivityMode: String {
     case walking, cycling
 
-    var icon:            String                    { self == .cycling ? "figure.cycling" : "figure.walk" }
+    var icon:            String                    { self == .cycling ? "bicycle" : "figure.walk" }
     var sessionLabel:    String                    { self == .cycling ? "Ride" : "Walk" }
     var transportType:   MKDirectionsTransportType { self == .cycling ? .cycling : .walking }
     var hkActivityType:  HKWorkoutActivityType     { self == .cycling ? .cycling : .walking }
