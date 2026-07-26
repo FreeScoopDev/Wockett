@@ -27,7 +27,7 @@
 	<key>NSHealthShareUsageDescription</key>
 	<string>Wockett reads your step count from Apple Health to track your daily walking goal.</string>
 	<key>NSHealthUpdateUsageDescription</key>
-	<string>Wockett does not write data to Apple Health.</string>
+	<string>Wockett saves your walks and rides to Apple Health, including distance, duration, active calories, and GPS route, so your activity contributes to your Move and Exercise rings.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Wockett uses your location to suggest nearby walking routes, track your position during in-app navigation, and calculate distances. Route coordinates are sent to a free elevation service (opentopodata.org) to display elevation profiles.</string>
 	<key>NSMotionUsageDescription</key>

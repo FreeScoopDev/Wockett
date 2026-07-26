@@ -2,6 +2,7 @@ import SwiftUI
 import Combine
 import MapKit
 import CoreLocation
+import HealthKit
 
 // MARK: - Free Walk Manager
 
@@ -10,6 +11,10 @@ final class FreeWalkManager: NSObject, ObservableObject, CLLocationManagerDelega
     @Published var totalDistance: Double = 0
     @Published var elapsedSeconds: Int = 0
     @Published var isTracking = false
+
+    private(set) var startDate = Date()
+    private var locationHistory: [CLLocation] = []
+    private var workoutWriter: HealthWorkoutWriter?
 
     private let locationManager = CLLocationManager()
     private var lastLocation: CLLocation?
@@ -25,9 +30,16 @@ final class FreeWalkManager: NSObject, ObservableObject, CLLocationManagerDelega
     func start() {
         guard !isTracking else { return }
         isTracking = true
+        startDate = Date()
         locationManager.startUpdatingLocation()
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             DispatchQueue.main.async { self?.elapsedSeconds += 1 }
+        }
+        let capturedStart = startDate
+        Task {
+            let writer = HealthWorkoutWriter(activityType: .walking)
+            await writer.start(at: capturedStart)
+            await MainActor.run { self.workoutWriter = writer }
         }
     }
 
@@ -37,6 +49,12 @@ final class FreeWalkManager: NSObject, ObservableObject, CLLocationManagerDelega
         locationManager.stopUpdatingLocation()
         timer?.invalidate()
         timer = nil
+    }
+
+    func finishWorkoutSession() async {
+        guard let writer = workoutWriter else { return }
+        workoutWriter = nil
+        await writer.finish(totalDistanceMeters: totalDistance, endDate: Date())
     }
 
     var estimatedSteps: Int { Int(totalDistance / 0.762) }
@@ -68,6 +86,8 @@ final class FreeWalkManager: NSObject, ObservableObject, CLLocationManagerDelega
                 }
                 self.lastLocation = location
                 self.trackPoints.append(location.coordinate)
+                self.locationHistory.append(location)
+                self.workoutWriter?.addLocations([location])
             }
         }
     }
@@ -269,7 +289,7 @@ struct FreeWalkSummarySheet: View {
         let session = WalkSession(
             id: UUID(),
             routeName: "Free Walk",
-            date: Date(),
+            date: walkManager.startDate,
             elapsedTime: TimeInterval(walkManager.elapsedSeconds),
             totalDistance: walkManager.totalDistance,
             waypoints: walkManager.trackPoints.map { WaypointCoord($0) },
@@ -279,6 +299,7 @@ struct FreeWalkSummarySheet: View {
         )
         historyStore.add(session)
         savedToHistory = true
+        Task { await walkManager.finishWorkoutSession() }
     }
 
     private func saveAsRoute() {

@@ -7,9 +7,15 @@ final class BannerStore {
     static let shared = BannerStore()
 
     var userAffirmations: [String] = []
+    private(set) var displayTitle: String = "Wockett"
+    private(set) var displayOpacity: Double = 1.0
+
     private let udKey = "bannerAffirmations_v1"
 
-    private init() { load() }
+    private init() {
+        load()
+        Task { @MainActor in await cycle() }
+    }
 
     var allQuotes: [String] { curatedQuotes + userAffirmations }
 
@@ -27,26 +33,41 @@ final class BannerStore {
 
     private func save() { UserDefaults.standard.set(userAffirmations, forKey: udKey) }
     private func load() { userAffirmations = UserDefaults.standard.stringArray(forKey: udKey) ?? [] }
+
+    @MainActor
+    private func cycle() async {
+        var shuffled = allQuotes.shuffled()
+        var phase = 0
+        while true {
+            try? await Task.sleep(nanoseconds: 4_500_000_000)
+            withAnimation(.easeOut(duration: 0.3)) { displayOpacity = 0 }
+            try? await Task.sleep(nanoseconds: 320_000_000)
+            phase += 1
+            let total = shuffled.count + 1   // +1 slot for "Wockett"
+            if phase % total == 0 {
+                shuffled = allQuotes.shuffled()
+                displayTitle = "Wockett"
+            } else {
+                displayTitle = shuffled[(phase % total) - 1]
+            }
+            withAnimation(.easeIn(duration: 0.3)) { displayOpacity = 1 }
+        }
+    }
 }
 
 // MARK: - Rotating Banner Title
 
 struct BannerTitleView: View {
     private var store = BannerStore.shared
-    @State private var phase = 0            // 0 = "Wockett", 1…n = quote index
-    @State private var opacity: Double = 1
-    @State private var shuffled: [String] = []
-
-    private var total: Int { 1 + shuffled.count }
 
     var body: some View {
         Group {
-            if phase == 0 || shuffled.isEmpty {
+            if store.displayTitle == "Wockett" {
                 Text("Wockett")
                     .font(.system(size: 17, weight: .black, design: .rounded))
                     .foregroundColor(.earthCream)
             } else {
-                Text(shuffled[(phase - 1) % shuffled.count])
+                Text(store.displayTitle)
                     .font(.system(size: 11, weight: .medium))
                     .italic()
                     .foregroundColor(.earthMuted)
@@ -56,19 +77,7 @@ struct BannerTitleView: View {
                     .minimumScaleFactor(0.8)
             }
         }
-        .opacity(opacity)
-        .onAppear { shuffled = store.allQuotes.shuffled() }
-        .task(id: 0) { await cycle() }
-    }
-
-    private func cycle() async {
-        while true {
-            try? await Task.sleep(nanoseconds: 4_500_000_000)
-            withAnimation(.easeOut(duration: 0.3)) { opacity = 0 }
-            try? await Task.sleep(nanoseconds: 320_000_000)
-            phase = (phase + 1) % max(total, 1)
-            withAnimation(.easeIn(duration: 0.3)) { opacity = 1 }
-        }
+        .opacity(store.displayOpacity)
     }
 }
 

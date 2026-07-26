@@ -47,3 +47,15 @@ extension UIColor {
             : UIColor(red: 0.769, green: 0.400, blue: 0.114, alpha: 1)
     }
 }
+
+// MARK: - Shared Button Styles
+
+struct BounceButtonStyle: ButtonStyle {
+    var scale: CGFloat = 0.96
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? scale : 1.0)
+            .animation(.spring(response: 0.25, dampingFraction: 0.6), value: configuration.isPressed)
+    }
+}

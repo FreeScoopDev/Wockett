@@ -17,14 +17,16 @@ struct WalkSession: Identifiable, Codable {
     let lapCount: Int
     let isLoop: Bool
     var activePetIds: [UUID]
+    var activityType: String  // "walking" or "cycling"; decoded with fallback for existing sessions
 
     init(id: UUID, routeName: String, date: Date, elapsedTime: TimeInterval,
          totalDistance: Double, waypoints: [WaypointCoord], lapCount: Int,
-         isLoop: Bool, activePetIds: [UUID] = []) {
+         isLoop: Bool, activePetIds: [UUID] = [], activityType: String = "walking") {
         self.id = id; self.routeName = routeName; self.date = date
         self.elapsedTime = elapsedTime; self.totalDistance = totalDistance
         self.waypoints = waypoints; self.lapCount = lapCount
         self.isLoop = isLoop; self.activePetIds = activePetIds
+        self.activityType = activityType
     }
 
     init(from decoder: Decoder) throws {
@@ -38,10 +40,11 @@ struct WalkSession: Identifiable, Codable {
         lapCount      = try c.decode(Int.self,             forKey: .lapCount)
         isLoop        = try c.decode(Bool.self,            forKey: .isLoop)
         activePetIds  = (try? c.decode([UUID].self,        forKey: .activePetIds)) ?? []
+        activityType  = (try? c.decode(String.self,        forKey: .activityType)) ?? "walking"
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, routeName, date, elapsedTime, totalDistance, waypoints, lapCount, isLoop, activePetIds
+        case id, routeName, date, elapsedTime, totalDistance, waypoints, lapCount, isLoop, activePetIds, activityType
     }
 
     var estimatedSteps: Int { Int(totalDistance / 0.762) }
@@ -67,7 +70,8 @@ struct WalkSession: Identifiable, Codable {
             waypoints: waypoints.map { $0.clCoordinate },
             lapCount: lapCount,
             isLoop: isLoop,
-            totalDistance: totalDistance
+            totalDistance: totalDistance,
+            activityMode: ActivityMode(rawValue: activityType) ?? .walking
         )
     }
 }
@@ -118,6 +122,7 @@ struct NavigableRoute: Identifiable, Hashable {
     let isLoop: Bool
     let totalDistance: Double
     var isCustomRoute: Bool = false
+    var activityMode:  ActivityMode = .walking
 
     static func == (l: NavigableRoute, r: NavigableRoute) -> Bool { l.id == r.id }
     func hash(into hasher: inout Hasher) { hasher.combine(id) }
@@ -147,6 +152,7 @@ final class NavigationSessionManager: NSObject, ObservableObject, CLLocationMana
     private let arrivalRadius = 30.0
     private var triggeredCheckpoints: Set<Int> = []
     private let checkpointFractions = [0.2, 0.4, 0.6, 0.8]
+    private var workoutWriter: HealthWorkoutWriter?
 
     init(route: NavigableRoute) {
         self.route = route
@@ -166,6 +172,13 @@ final class NavigationSessionManager: NSObject, ObservableObject, CLLocationMana
                 self.elapsedTime = Date().timeIntervalSince(self.startTime)
             }
         }
+        let capturedStartTime = startTime
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            let writer = HealthWorkoutWriter(activityType: route.activityMode.hkActivityType)
+            await writer.start(at: capturedStartTime)
+            self.workoutWriter = writer
+        }
     }
 
     func stop() {
@@ -173,6 +186,13 @@ final class NavigationSessionManager: NSObject, ObservableObject, CLLocationMana
         timer?.invalidate()
         timer = nil
         UIApplication.shared.isIdleTimerDisabled = false
+    }
+
+    // Finalises the HealthKit workout after the session is saved to local history.
+    func finishWorkoutSession() async {
+        guard let writer = workoutWriter else { return }
+        workoutWriter = nil
+        await writer.finish(totalDistanceMeters: totalDistanceCovered, endDate: Date())
     }
 
     var nextWaypoint: CLLocationCoordinate2D? {
@@ -203,7 +223,8 @@ final class NavigationSessionManager: NSObject, ObservableObject, CLLocationMana
             totalDistance: totalDistanceCovered,
             waypoints: route.waypoints.map { WaypointCoord($0) },
             lapCount: route.lapCount,
-            isLoop: route.isLoop
+            isLoop: route.isLoop,
+            activityType: route.activityMode.rawValue
         )
     }
 
@@ -216,6 +237,7 @@ final class NavigationSessionManager: NSObject, ObservableObject, CLLocationMana
                 if delta < 100 { self.totalDistanceCovered += delta }
             }
             self.lastLocation = loc
+            self.workoutWriter?.addLocations(locations)
             self.checkArrival(at: loc)
             if !self.route.isCustomRoute { self.checkDistanceCheckpoints() }
         }
@@ -276,6 +298,7 @@ struct NavigationMapView: UIViewRepresentable {
     let route: NavigableRoute
     let computedLegs: [MKRoute]
     let currentWaypointIndex: Int
+    let checkpointsEnabled: Bool
 
     func makeUIView(context: Context) -> MKMapView {
         let map = MKMapView()
@@ -297,6 +320,13 @@ struct NavigationMapView: UIViewRepresentable {
             context.coordinator.hasAddedLegs = true
             for leg in computedLegs { map.addOverlay(leg.polyline) }
         }
+        if checkpointsEnabled && !computedLegs.isEmpty && !context.coordinator.hasAddedCheckpoints {
+            context.coordinator.hasAddedCheckpoints = true
+            Self.addCheckpointMarkers(on: map, legs: computedLegs)
+        } else if !checkpointsEnabled && context.coordinator.hasAddedCheckpoints {
+            context.coordinator.hasAddedCheckpoints = false
+            map.removeOverlays(map.overlays.filter { $0 is NavCheckpointCircle })
+        }
         // Refresh annotation tints when the current waypoint advances
         if context.coordinator.lastWaypointIndex != currentWaypointIndex {
             context.coordinator.lastWaypointIndex = currentWaypointIndex
@@ -311,13 +341,75 @@ struct NavigationMapView: UIViewRepresentable {
         }
     }
 
+    static func addCheckpointMarkers(on map: MKMapView, legs: [MKRoute]) {
+        var allCoords: [CLLocationCoordinate2D] = []
+        for leg in legs {
+            let pts = leg.polyline.points()
+            for i in 0..<leg.polyline.pointCount { allCoords.append(pts[i].coordinate) }
+        }
+        guard allCoords.count > 1 else { return }
+        var combined = allCoords
+        let poly = MKPolyline(coordinates: &combined, count: combined.count)
+        for fraction in [0.2, 0.4, 0.6, 0.8] {
+            if let c = coordAlong(poly, fraction: fraction) {
+                map.addOverlay(NavCheckpointCircle(center: c, radius: 18), level: .aboveRoads)
+            }
+        }
+        let finish = NavCheckpointCircle(center: allCoords.last!, radius: 24)
+        finish.isFinish = true
+        map.addOverlay(finish, level: .aboveRoads)
+    }
+
+    static func coordAlong(_ polyline: MKPolyline, fraction: Double) -> CLLocationCoordinate2D? {
+        let n = polyline.pointCount
+        guard n > 1, fraction > 0 else { return polyline.points()[0].coordinate }
+        if fraction >= 1 { return polyline.points()[n - 1].coordinate }
+        let pts = polyline.points()
+        var total = 0.0
+        var lens = [Double]()
+        for i in 0..<n - 1 {
+            let a = CLLocation(latitude: pts[i].coordinate.latitude, longitude: pts[i].coordinate.longitude)
+            let b = CLLocation(latitude: pts[i + 1].coordinate.latitude, longitude: pts[i + 1].coordinate.longitude)
+            lens.append(a.distance(from: b)); total += lens.last!
+        }
+        let target = total * fraction
+        var accum = 0.0
+        for i in 0..<lens.count {
+            guard lens[i] > 0 else { accum += lens[i]; continue }
+            if accum + lens[i] >= target {
+                let t = (target - accum) / lens[i]
+                let a = pts[i].coordinate, b = pts[i + 1].coordinate
+                return CLLocationCoordinate2D(
+                    latitude: a.latitude + (b.latitude - a.latitude) * t,
+                    longitude: a.longitude + (b.longitude - a.longitude) * t
+                )
+            }
+            accum += lens[i]
+        }
+        return pts[n - 1].coordinate
+    }
+
     func makeCoordinator() -> Coordinator { Coordinator() }
 
     class Coordinator: NSObject, MKMapViewDelegate {
         var hasAddedLegs = false
         var lastWaypointIndex = 0
+        var hasAddedCheckpoints = false
 
         func mapView(_ map: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
+            if let circle = overlay as? NavCheckpointCircle {
+                let r = MKCircleRenderer(circle: circle)
+                if circle.isFinish {
+                    r.fillColor = UIColor.systemOrange.withAlphaComponent(0.3)
+                    r.strokeColor = UIColor.systemOrange
+                    r.lineWidth = 2
+                } else {
+                    r.fillColor = UIColor.white.withAlphaComponent(0.4)
+                    r.strokeColor = UIColor.systemGray2.withAlphaComponent(0.9)
+                    r.lineWidth = 1.5
+                }
+                return r
+            }
             guard let pl = overlay as? MKPolyline else { return MKOverlayRenderer(overlay: overlay) }
             let r = MKPolylineRenderer(polyline: pl)
             r.strokeColor = .brandGreen
@@ -392,18 +484,18 @@ struct WalkNavigationView: View {
 
     @ViewBuilder private var mapContent: some View {
         ZStack(alignment: .bottom) {
-            NavigationMapView(route: route, computedLegs: computedLegs, currentWaypointIndex: session.currentWaypointIndex)
+            NavigationMapView(route: route, computedLegs: computedLegs, currentWaypointIndex: session.currentWaypointIndex, checkpointsEnabled: checkpointsEnabled)
                 .ignoresSafeArea()
             hudPanel
         }
-        .fullScreenCover(isPresented: $showComplete) {
+        .fullScreenCover(isPresented: $showComplete, onDismiss: { dismiss() }) {
             if let s = completedSession {
                 WalkCompleteView(
                     session: s,
                     activePetNames: completedPetNames,
                     petCompletions: petCompletions,
                     splits: session.splitTimes,
-                    onDismiss: { showComplete = false; dismiss() }
+                    onDismiss: { showComplete = false }
                 )
             }
         }
@@ -430,6 +522,7 @@ struct WalkNavigationView: View {
         var s = session.completedSession
         s.activePetIds = Array(everActivePetIds)
         historyStore.add(s)
+        Task { await session.finishWorkoutSession() }
         completedSession = s
         completedPetNames = petNamesFor(ids: s.activePetIds)
         petCompletions = petStore.activePets.map { pet in
@@ -473,14 +566,20 @@ struct WalkNavigationView: View {
                     },
                     onDismiss: { showHeatBanner = false }
                 )
+                .transition(.move(edge: .top).combined(with: .opacity))
                 Rectangle()
                     .frame(height: 0.5)
                     .foregroundColor(Color.earthMuted.opacity(0.25))
+                    .transition(.opacity)
             }
             HStack {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(route.name)
-                        .font(.headline).foregroundColor(.earthCream).lineLimit(1)
+                    HStack(spacing: 6) {
+                        Image(systemName: route.activityMode.icon)
+                            .font(.subheadline).foregroundColor(.earthGreen)
+                        Text(route.name)
+                            .font(.headline).foregroundColor(.earthCream).lineLimit(1)
+                    }
                     Text(session.progressText)
                         .font(.subheadline).foregroundColor(.earthGreen)
                 }
@@ -558,6 +657,7 @@ struct WalkNavigationView: View {
             }
             .padding(.vertical, 18)
         }
+        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: showHeatBanner)
         .background(.ultraThinMaterial)
     }
 
@@ -644,13 +744,19 @@ struct WalkNavigationView: View {
             let req = MKDirections.Request()
             req.source        = MKMapItem(location: CLLocation(latitude: from.latitude, longitude: from.longitude), address: nil)
             req.destination   = MKMapItem(location: CLLocation(latitude: to.latitude, longitude: to.longitude), address: nil)
-            req.transportType = .walking
+            req.transportType = route.activityMode.transportType
             if let r = try? await MKDirections(request: req).calculate().routes.first {
                 legs.append(r)
             }
         }
         return legs
     }
+}
+
+// MARK: - Checkpoint circle overlay
+
+final class NavCheckpointCircle: MKCircle {
+    var isFinish = false
 }
 
 // MARK: - Heat Advisory Banner
@@ -711,6 +817,7 @@ struct WalkCompleteView: View {
     var body: some View {
         ZStack {
             Color.earthBg.ignoresSafeArea()
+            ConfettiOverlay()
             VStack(spacing: 0) {
                 Spacer()
                 VStack(spacing: 20) {
