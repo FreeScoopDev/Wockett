@@ -86,6 +86,11 @@ final class WalkHistoryStore: ObservableObject {
         persist()
     }
 
+    func addAll(_ newSessions: [WalkSession]) {
+        sessions.insert(contentsOf: newSessions.sorted { $0.date > $1.date }, at: 0)
+        persist()
+    }
+
     func delete(at offsets: IndexSet) {
         sessions.remove(atOffsets: offsets)
         persist()

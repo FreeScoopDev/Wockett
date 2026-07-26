@@ -4,11 +4,14 @@ import SwiftUI
 
 struct SettingsView: View {
     @ObservedObject var stepManager: StepManager
+    @ObservedObject var historyStore: WalkHistoryStore
+    @ObservedObject var routeStore: CustomRouteStore
     var bannerStore = BannerStore.shared
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
     @State private var isAddingAffirmation = false
     @State private var newAffirmation = ""
+    @State private var seedMessage: String? = nil
 
     private var appVersion: String {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "—"
@@ -124,6 +127,56 @@ struct SettingsView: View {
                             .foregroundColor(.earthGreen)
                     }
                     .listRowBackground(Color.earthCard)
+                }
+
+                // ── Developer ─────────────────────────────────────
+                Section {
+                    if stepManager.trackingMode == .healthKit {
+                        Text("Calendar views read from Apple Health in this mode. Seeding will switch to App Only so test data is visible.")
+                            .font(.caption).foregroundColor(.earthOrange)
+                            .listRowBackground(Color.earthCard)
+                    }
+
+                    if let msg = seedMessage {
+                        Text(msg)
+                            .font(.caption).foregroundColor(.earthGreen)
+                            .listRowBackground(Color.earthCard)
+                    }
+
+                    Button {
+                        if stepManager.trackingMode == .healthKit {
+                            stepManager.switchTrackingMode(to: .appOnly)
+                        }
+                        DevSeedStore.seedWalkSessions(into: historyStore)
+                        DevSeedStore.seedCustomRoutes(into: routeStore)
+                        StreakStore.shared.refresh(
+                            sessions: historyStore.sessions,
+                            todaySteps: stepManager.todaySteps,
+                            dailyGoal: stepManager.currentGoal
+                        )
+                        let count = historyStore.sessions.filter { $0.routeName.hasPrefix("[TEST]") }.count
+                        seedMessage = "Seeded \(count) sessions + 4 routes (App Only mode)"
+                    } label: {
+                        Label("Seed Test Data", systemImage: "wand.and.stars")
+                            .foregroundColor(.earthGreen)
+                    }
+                    .listRowBackground(Color.earthCard)
+
+                    Button(role: .destructive) {
+                        DevSeedStore.clearTestSessions(from: historyStore)
+                        DevSeedStore.clearTestRoutes(from: routeStore)
+                        StreakStore.shared.refresh(
+                            sessions: historyStore.sessions,
+                            todaySteps: stepManager.todaySteps,
+                            dailyGoal: stepManager.currentGoal
+                        )
+                        seedMessage = "Test data cleared"
+                    } label: {
+                        Label("Clear Test Data", systemImage: "trash")
+                    }
+                    .listRowBackground(Color.earthCard)
+                } header: {
+                    Text("Developer")
                 }
             }
             .listStyle(.insetGrouped)

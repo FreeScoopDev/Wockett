@@ -58,7 +58,7 @@ struct BannerTitleView: View {
         }
         .opacity(opacity)
         .onAppear { shuffled = store.allQuotes.shuffled() }
-        .task { await cycle() }
+        .task(id: 0) { await cycle() }
     }
 
     private func cycle() async {

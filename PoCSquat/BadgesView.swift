@@ -10,10 +10,16 @@ struct BadgesView: View {
 
     var streakStore: StreakStore = .shared
 
-    private var totalKm: Double { streakStore.totalKm(from: sessions) }
-    private var currentStreak: Int { streakStore.currentStreak }
-    private var appleADayStreak: Int { streakStore.appleADayStreak }
-    private var longestStreak: Int { streakStore.longestStreak }
+    private var totalKm:       Double { streakStore.totalKm(from: sessions) }
+    private var currentStreak: Int    { streakStore.currentStreak }
+    private var appleADayStreak: Int  { streakStore.appleADayStreak }
+    private var longestStreak: Int    { streakStore.longestStreak }
+
+    private var distanceBadges: [WalkBadge] { walkBadges.filter { if case .distance = $0.type { true } else { false } } }
+    private var streakBadges:   [WalkBadge] { walkBadges.filter { if case .streak   = $0.type { true } else { false } } }
+    private var timeBadges:     [WalkBadge] { walkBadges.filter {
+        switch $0.type { case .earlyBird, .nightOwl: true; default: false }
+    }}
 
     var body: some View {
         NavigationStack {
@@ -22,7 +28,9 @@ struct BadgesView: View {
                 ScrollView {
                     VStack(spacing: 24) {
                         streakSection
-                        badgesSection
+                        badgeSection(title: "Distance",  badges: distanceBadges)
+                        badgeSection(title: "Streaks",   badges: streakBadges)
+                        badgeSection(title: "Time-Based", badges: timeBadges)
                         if currentStreak > 0 { shareButton }
                     }
                     .padding(.horizontal)
@@ -48,11 +56,10 @@ struct BadgesView: View {
     private var streakSection: some View {
         VStack(spacing: 12) {
             HStack(spacing: 12) {
-                streakTile(value: currentStreak,    label: "Goal Streak",   emoji: "🔥")
-                streakTile(value: appleADayStreak,  label: "Apple a Day",   emoji: "🍎")
-                streakTile(value: longestStreak,    label: "Best Streak",   emoji: "🏆")
+                streakTile(value: currentStreak,   label: "Goal Streak",  emoji: "🔥")
+                streakTile(value: appleADayStreak, label: "Apple a Day",  emoji: "🍎")
+                streakTile(value: longestStreak,   label: "Best Streak",  emoji: "🏆")
             }
-
             HStack(spacing: 8) {
                 Image(systemName: "figure.walk").foregroundColor(.earthGreen)
                 Text(String(format: "%.1f km walked all time", totalKm))
@@ -83,15 +90,14 @@ struct BadgesView: View {
         .cornerRadius(14)
     }
 
-    // MARK: - Badges grid
+    // MARK: - Badge section
 
-    private var badgesSection: some View {
+    private func badgeSection(title: String, badges: [WalkBadge]) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Distance Badges")
+            Text(title)
                 .font(.headline).foregroundColor(.earthCream)
-
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-                ForEach(walkBadges) { badge in
+                ForEach(badges) { badge in
                     badgeTile(badge)
                 }
             }
@@ -99,12 +105,23 @@ struct BadgesView: View {
     }
 
     private func badgeTile(_ badge: WalkBadge) -> some View {
-        let earned = totalKm >= badge.requiredKm
+        let earned   = badge.isEarned(sessions: sessions, currentStreak: currentStreak)
+        let progress = badge.progress(sessions: sessions, currentStreak: currentStreak)
         return VStack(spacing: 6) {
-            Text(badge.emoji)
-                .font(.system(size: 30))
-                .opacity(earned ? 1.0 : 0.2)
-                .grayscale(earned ? 0 : 1)
+            ZStack {
+                Circle()
+                    .stroke(Color.earthMuted.opacity(0.15), lineWidth: 3)
+                Circle()
+                    .trim(from: 0, to: progress)
+                    .stroke(earned ? Color.earthGreen : Color.earthOrange,
+                            style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+                Text(badge.emoji)
+                    .font(.system(size: 26))
+                    .opacity(earned ? 1.0 : 0.25)
+                    .grayscale(earned ? 0 : 1)
+            }
+            .frame(width: 44, height: 44)
             Text(badge.name)
                 .font(.caption.bold())
                 .foregroundColor(earned ? .earthCream : .earthMuted)

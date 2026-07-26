@@ -760,6 +760,7 @@ struct StepCounterView: View {
     @State private var selectedRoute: SuggestedRoute?
     @State private var walkIntent: WalkIntent = .finishGoal
     @State private var showBadges               = false
+    @State private var earnedBadge: WalkBadge?  = nil
     @State private var showGoalSheet            = false
     @State private var showMyRoutes             = false
     @State private var showDestinationSearch = false
@@ -847,6 +848,9 @@ struct StepCounterView: View {
                     dailyGoal: stepManager.currentGoal
                 )
             }
+            .fullScreenCover(item: $earnedBadge) { badge in
+                BadgeEarnedView(badge: badge)
+            }
     }
 
     // Split into layers so each chunk stays within the Swift type-checker's budget.
@@ -855,11 +859,14 @@ struct StepCounterView: View {
             .onChange(of: stepManager.currentGoal) { _, _ in clearRoutes() }
             .onChange(of: selectedRadius) { _, _ in clearRoutes() }
             .onChange(of: selectedRoute?.id) { _, _ in handleSelectionChange() }
+            .onChange(of: historyStore.sessions.count) { _, _ in
+                Task { await stepManager.refreshWeeklyCalendar(sessions: historyStore.sessions, weekOffset: calendarWeekOffset) }
+            }
     }
 
     private var scrollWithDestinations: some View {
         scrollWithLifecycle
-            .navigationDestination(isPresented: $showSettings) { SettingsView(stepManager: stepManager) }
+            .navigationDestination(isPresented: $showSettings) { SettingsView(stepManager: stepManager, historyStore: historyStore, routeStore: routeStore) }
             .navigationDestination(isPresented: $showMyRoutes) { CustomRoutesListView(store: routeStore, historyStore: historyStore) }
             .navigationDestination(isPresented: $showBuildRoute) { CustomRouteBuilderView { route in routeStore.save(route) } }
             .navigationDestination(isPresented: $showWalkHistory) { WalkHistoryView(store: historyStore) }
@@ -878,11 +885,6 @@ struct StepCounterView: View {
                     }
                 }
                 ToolbarItem(placement: .principal) { BannerTitleView() }
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button { Task { await stepManager.refresh() } } label: {
-                        Image(systemName: "arrow.clockwise").foregroundColor(.earthGreen)
-                    }
-                }
             }
             .task {
                 await stepManager.initialize()
@@ -938,6 +940,7 @@ struct StepCounterView: View {
                 }
             )
         }
+        .refreshable { await stepManager.refresh() }
         .scrollDismissesKeyboard(.interactively)
         .background(Color.earthBg.ignoresSafeArea())
         .onChange(of: routeManager.suggestedRoutes.count) { old, new in
@@ -960,14 +963,18 @@ struct StepCounterView: View {
             calendarWeekOffset = 0
             Task { await stepManager.refreshWeeklyCalendar(sessions: historyStore.sessions, weekOffset: 0) }
         }
-        StreakStore.shared.refresh(sessions: historyStore.sessions, todaySteps: stepManager.todaySteps, dailyGoal: stepManager.currentGoal)
+        if let badge = StreakStore.shared.refresh(sessions: historyStore.sessions, todaySteps: stepManager.todaySteps, dailyGoal: stepManager.currentGoal) {
+            earnedBadge = badge
+        }
     }
 
     private func handleStepGoalCheck(_ steps: Int) {
         if steps >= stepManager.currentGoal, walkIntent == .finishGoal {
             walkIntent = .quickWalk(minutes: 30)
         }
-        StreakStore.shared.refresh(sessions: historyStore.sessions, todaySteps: steps, dailyGoal: stepManager.currentGoal)
+        if let badge = StreakStore.shared.refresh(sessions: historyStore.sessions, todaySteps: steps, dailyGoal: stepManager.currentGoal) {
+            earnedBadge = badge
+        }
     }
 
     private func clearRoutes() {
@@ -1027,13 +1034,11 @@ struct StepCounterView: View {
 
     private var progressSection: some View {
         let available = max(containerWidth - 32, 280)
-        let noPetsDiam: CGFloat  = min(available * 0.70, 275)
+        let noPetsDiam: CGFloat   = min(available * 0.70, 275)
         let withPetsDiam: CGFloat = min(available * 0.46, 200)
+        let hasPets = !petStore.activePets.isEmpty
         return VStack(spacing: 14) {
-            if petStore.activePets.isEmpty {
-                userRingView(diameter: noPetsDiam)
-                    .frame(maxWidth: .infinity)
-            } else {
+            if hasPets {
                 HStack(alignment: .center, spacing: 20) {
                     userRingView(diameter: withPetsDiam)
                     VStack(spacing: 16) {
@@ -1043,6 +1048,9 @@ struct StepCounterView: View {
                     }
                 }
                 .padding(.horizontal)
+            } else {
+                userRingView(diameter: noPetsDiam)
+                    .frame(maxWidth: .infinity)
             }
 
             if stepManager.todaySteps >= stepManager.currentGoal {
@@ -1054,9 +1062,74 @@ struct StepCounterView: View {
             }
 
             streakIndicator
+            homeBadgeRings(compact: hasPets)
         }
         .padding(.vertical, 24)
         .padding(.horizontal)
+    }
+
+    private func homeBadgeRings(compact: Bool) -> some View {
+        let sessions = historyStore.sessions
+        let streak   = StreakStore.shared.currentStreak
+        let earned   = walkBadges.filter { $0.isEarned(sessions: sessions, currentStreak: streak) }
+        let unearned = walkBadges.filter { !$0.isEarned(sessions: sessions, currentStreak: streak) }
+        // Pick the unearned badge closest to completion
+        let nextBadge   = unearned.max { $0.progress(sessions: sessions, currentStreak: streak) < $1.progress(sessions: sessions, currentStreak: streak) }
+        let recentBadge = earned.last
+
+        let ringSize: CGFloat  = compact ? 52 : 68
+        let lineWidth: CGFloat = compact ? 3 : 4
+        let emojiSize: CGFloat = compact ? 20 : 28
+        let labelSize: CGFloat = compact ? 9 : 10
+
+        return Button { showBadges = true } label: {
+            HStack(spacing: compact ? 16 : 24) {
+                if let badge = recentBadge {
+                    homeBadgeRing(badge, progress: 1.0, sessions: sessions, streak: streak,
+                                  ringSize: ringSize, lineWidth: lineWidth, emojiSize: emojiSize, labelSize: labelSize)
+                }
+                if let next = nextBadge {
+                    let p = next.progress(sessions: sessions, currentStreak: streak)
+                    homeBadgeRing(next, progress: p, sessions: sessions, streak: streak,
+                                  ringSize: ringSize, lineWidth: lineWidth, emojiSize: emojiSize, labelSize: labelSize)
+                }
+                if recentBadge == nil, nextBadge == nil, let first = walkBadges.first {
+                    homeBadgeRing(first, progress: 0, sessions: sessions, streak: streak,
+                                  ringSize: ringSize, lineWidth: lineWidth, emojiSize: emojiSize, labelSize: labelSize)
+                }
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func homeBadgeRing(_ badge: WalkBadge, progress: Double, sessions: [WalkSession], streak: Int,
+                                ringSize: CGFloat, lineWidth: CGFloat, emojiSize: CGFloat, labelSize: CGFloat) -> some View {
+        let earned = progress >= 1.0
+        return VStack(spacing: 5) {
+            ZStack {
+                Circle()
+                    .stroke(Color.earthMuted.opacity(0.15), lineWidth: lineWidth)
+                if progress > 0 {
+                    Circle()
+                        .trim(from: 0, to: min(progress, 1.0))
+                        .stroke(
+                            earned ? Color.earthGreen : Color.earthOrange,
+                            style: StrokeStyle(lineWidth: lineWidth, lineCap: .round)
+                        )
+                        .rotationEffect(.degrees(-90))
+                }
+                Text(badge.emoji)
+                    .font(.system(size: emojiSize))
+                    .opacity(earned ? 1.0 : 0.55)
+            }
+            .frame(width: ringSize, height: ringSize)
+
+            Text(badge.name)
+                .font(.system(size: labelSize, weight: .semibold))
+                .foregroundColor(earned ? .earthCream : .earthMuted)
+                .multilineTextAlignment(.center)
+                .lineLimit(1)
+        }
     }
 
     private var streakIndicator: some View {
