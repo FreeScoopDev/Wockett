@@ -30,7 +30,8 @@ struct RouteFinderView: View {
     // Community
     @State private var communityRoutes: [SharedRoute] = []
     @State private var isLoadingCommunity = false
-    @State private var showCommunityRoutes = false
+    @State private var showCommunityRoutes = true
+    @State private var communityLoadError: String? = nil
 
     // Navigation & sheets
     @State private var navigatingRoute: NavigableRoute?
@@ -89,6 +90,7 @@ struct RouteFinderView: View {
             if routeManager.lastLocation == nil {
                 Task { routeManager.lastLocation = await routeManager.fetchCurrentLocation() }
             }
+            Task { await loadCommunityRoutes() }
         }
         .onChange(of: selectedRoute?.id) { _, _ in loadElevation() }
         .onChange(of: selectedRadius) { _, v in
@@ -397,7 +399,7 @@ struct RouteFinderView: View {
         VStack(spacing: 10) {
             Button {
                 showCommunityRoutes.toggle()
-                if showCommunityRoutes && communityRoutes.isEmpty {
+                if showCommunityRoutes && communityRoutes.isEmpty && communityLoadError == nil {
                     Task { await loadCommunityRoutes() }
                 }
             } label: {
@@ -420,7 +422,34 @@ struct RouteFinderView: View {
             }
 
             if showCommunityRoutes {
-                if communityRoutes.isEmpty && !isLoadingCommunity {
+                if isLoadingCommunity {
+                    ProgressView("Loading routes…")
+                        .font(.caption).foregroundColor(.earthMuted)
+                        .padding(.vertical, 12)
+                } else if let error = communityLoadError {
+                    VStack(spacing: 10) {
+                        Image(systemName: "exclamationmark.icloud")
+                            .font(.system(size: 28))
+                            .foregroundColor(.earthMuted)
+                        Text(error)
+                            .font(.caption)
+                            .foregroundColor(.earthMuted)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 32)
+                        Button {
+                            communityLoadError = nil
+                            Task { await loadCommunityRoutes() }
+                        } label: {
+                            Label("Retry", systemImage: "arrow.clockwise")
+                                .font(.caption.bold())
+                                .padding(.horizontal, 16).padding(.vertical, 8)
+                                .background(Color.earthCard)
+                                .foregroundColor(.earthGreen)
+                                .cornerRadius(8)
+                        }
+                    }
+                    .padding(.vertical, 12)
+                } else if communityRoutes.isEmpty {
                     Text("No routes shared yet — be the first!")
                         .font(.caption).foregroundColor(.earthMuted)
                         .padding(.vertical, 8)
@@ -455,6 +484,7 @@ struct RouteFinderView: View {
             }
         }
         .animation(.easeInOut(duration: 0.2), value: showCommunityRoutes)
+        .animation(.easeInOut(duration: 0.2), value: communityLoadError)
     }
 
     // MARK: - Helpers
@@ -548,7 +578,25 @@ struct RouteFinderView: View {
 
     private func loadCommunityRoutes() async {
         isLoadingCommunity = true
-        communityRoutes = (try? await CommunityRouteService.shared.fetchRoutes()) ?? []
+        communityLoadError = nil
+        do {
+            communityRoutes = try await CommunityRouteService.shared.fetchRoutes()
+        } catch let ckError as CKError {
+            switch ckError.code {
+            case .notAuthenticated:
+                communityLoadError = "Sign into iCloud (Settings → [Your Name]) to view community routes."
+            case .networkUnavailable, .networkFailure:
+                communityLoadError = "No internet connection. Check your connection and retry."
+            case .unknownItem, .invalidArguments:
+                communityLoadError = "Community schema not deployed. Open CloudKit Console and deploy to Production."
+            case .serviceUnavailable:
+                communityLoadError = "iCloud is temporarily unavailable. Try again in a moment."
+            default:
+                communityLoadError = "Couldn't load routes (error \(ckError.code.rawValue)). Tap to retry."
+            }
+        } catch {
+            communityLoadError = "Couldn't load routes: \(error.localizedDescription)"
+        }
         isLoadingCommunity = false
     }
 

@@ -4,9 +4,10 @@ struct BadgeEarnedView: View {
     let badge: WalkBadge
     @Environment(\.dismiss) private var dismiss
 
-    @State private var scale: CGFloat = 0.3
-    @State private var opacity: Double = 0
-    @State private var glowRadius: CGFloat = 0
+    @State private var scale:        CGFloat = 0.3
+    @State private var opacity:      Double  = 0
+    @State private var glowRadius:   CGFloat = 0
+    @State private var showShareSheet = false
 
     var body: some View {
         ZStack {
@@ -32,19 +33,33 @@ struct BadgeEarnedView: View {
                     Text(badge.description)
                         .font(.subheadline)
                         .foregroundColor(.earthMuted)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 32)
                 }
 
                 Spacer()
 
                 VStack(spacing: 12) {
-                    let shareText = "I just earned the \"\(badge.name)\" badge on Wockett \(badge.emoji) Keep walking!"
-                    ShareLink(item: shareText) {
-                        Label("Share Achievement", systemImage: "square.and.arrow.up")
+                    // Share to community feed
+                    Button { showShareSheet = true } label: {
+                        Label("Share to Community", systemImage: "person.2.wave.2")
                             .font(.headline)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 16)
                             .background(Color.earthGreen)
                             .foregroundColor(.white)
+                            .cornerRadius(14)
+                    }
+
+                    // Standard iOS share sheet (Messages, social apps, etc.)
+                    let shareText = "I just earned the \"\(badge.name)\" badge on Wockett \(badge.emoji) Keep walking!"
+                    ShareLink(item: shareText) {
+                        Label("Share via Messages / Social", systemImage: "square.and.arrow.up")
+                            .font(.subheadline.bold())
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 14)
+                            .background(Color.earthCard)
+                            .foregroundColor(.earthCream)
                             .cornerRadius(14)
                     }
 
@@ -61,12 +76,15 @@ struct BadgeEarnedView: View {
         .onAppear {
             UINotificationFeedbackGenerator().notificationOccurred(.success)
             withAnimation(.spring(response: 0.55, dampingFraction: 0.6)) {
-                scale = 1.0
+                scale   = 1.0
                 opacity = 1.0
             }
             withAnimation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true)) {
                 glowRadius = 24
             }
+        }
+        .sheet(isPresented: $showShareSheet) {
+            ShareAchievementSheet(badge: badge) {}
         }
     }
 }

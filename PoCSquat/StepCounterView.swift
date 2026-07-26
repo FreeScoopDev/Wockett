@@ -29,6 +29,7 @@ struct StepCounterView: View {
     @State private var showMonthCalendar = false
     @State private var showFreeWalk = false
     @State private var showStationary = false
+    @State private var showAchievementFeed = false
     @State private var freeWalkMode: ActivityMode = .walking
     @State private var rollingBadgePhase: Int = 0
     @AppStorage("pinnedBadgeIds_v1") private var pinnedBadgeIdsStr: String = ""
@@ -82,6 +83,9 @@ struct StepCounterView: View {
             }
             .fullScreenCover(item: $earnedBadge) { badge in
                 BadgeEarnedView(badge: badge)
+            }
+            .sheet(isPresented: $showAchievementFeed) {
+                AchievementFeedView()
             }
     }
 
@@ -144,6 +148,7 @@ struct StepCounterView: View {
                 progressSection.padding(.top, 8)
                 actionGrid.padding(.horizontal)
                 communityRoutesCard
+                achievementFeedCard
                 streakIndicator
                 WeeklyCalendarView(
                     days: stepManager.weeklyCalendar,
@@ -518,6 +523,39 @@ struct StepCounterView: View {
                         .font(.subheadline.bold())
                         .foregroundColor(.earthCream)
                     Text("Discover walks shared by other users")
+                        .font(.caption)
+                        .foregroundColor(.earthMuted)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(.earthMuted.opacity(0.6))
+            }
+            .padding(14)
+            .background(Color.earthCard)
+            .cornerRadius(16)
+        }
+        .buttonStyle(BounceButtonStyle(scale: 0.98))
+        .padding(.horizontal)
+    }
+
+    private var achievementFeedCard: some View {
+        let orange = Color(red: 0.831, green: 0.294, blue: 0.180)
+        return Button { showAchievementFeed = true } label: {
+            HStack(spacing: 14) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(orange.opacity(0.15))
+                        .frame(width: 44, height: 44)
+                    Image(systemName: "medal.fill")
+                        .font(.system(size: 18, weight: .medium))
+                        .foregroundColor(orange)
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Achievement Feed")
+                        .font(.subheadline.bold())
+                        .foregroundColor(.earthCream)
+                    Text("See what badges the community earned")
                         .font(.caption)
                         .foregroundColor(.earthMuted)
                 }
