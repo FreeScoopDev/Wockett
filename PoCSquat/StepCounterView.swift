@@ -28,6 +28,7 @@ struct StepCounterView: View {
     @State private var showSettings = false
     @State private var showMonthCalendar = false
     @State private var showFreeWalk = false
+    @State private var showStationary = false
     @State private var freeWalkMode: ActivityMode = .walking
     @State private var rollingBadgePhase: Int = 0
     @AppStorage("pinnedBadgeIds_v1") private var pinnedBadgeIdsStr: String = ""
@@ -55,6 +56,9 @@ struct StepCounterView: View {
             .sheet(isPresented: $showGoalSheet) { GoalEditorSheet(stepManager: stepManager) }
             .fullScreenCover(isPresented: $showFreeWalk) {
                 FreeWalkView(historyStore: historyStore, routeStore: routeStore, activityMode: freeWalkMode)
+            }
+            .fullScreenCover(isPresented: $showStationary) {
+                StationaryWalkView(historyStore: historyStore)
             }
             .fullScreenCover(isPresented: $showRouteFinder) {
                 RouteFinderView(
@@ -554,36 +558,39 @@ struct StepCounterView: View {
     }
 
     private var startActivityTile: some View {
-        let isCycling = freeWalkMode == .cycling
-        let tileColor: Color = isCycling ? Color(red: 0.13, green: 0.57, blue: 0.64) : Color.earthGreen
-        return Button { showFreeWalk = true } label: {
+        return Button {
+            if freeWalkMode == .stationary {
+                showStationary = true
+            } else {
+                showFreeWalk = true
+            }
+        } label: {
             ZStack(alignment: .bottomTrailing) {
                 VStack(spacing: 10) {
                     Image(systemName: freeWalkMode.icon)
                         .font(.system(size: 26, weight: .medium))
                         .frame(height: 28)
-                        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: freeWalkMode)
-                    Text(isCycling ? "Start Biking" : "Start Walking")
+                    Text(freeWalkMode.tileLabel)
                         .font(.subheadline.bold())
                         .multilineTextAlignment(.center)
                         .lineLimit(2)
-                        .animation(.spring(response: 0.3), value: freeWalkMode)
                 }
+                .animation(.spring(response: 0.3, dampingFraction: 0.7), value: freeWalkMode)
                 .foregroundColor(.white)
                 .frame(maxWidth: .infinity)
                 .frame(height: 96)
 
-                // Folded corner — tap to toggle between walk and bike
+                // Fold corner — cycles walk → bike → indoor
                 Button {
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
-                        freeWalkMode = isCycling ? .walking : .cycling
+                        freeWalkMode = freeWalkMode.next
                     }
                 } label: {
                     ZStack(alignment: .bottomTrailing) {
                         CornerFoldShape()
                             .fill(Color.black.opacity(0.22))
                             .frame(width: 44, height: 44)
-                        Image(systemName: isCycling ? "figure.walk" : "bicycle")
+                        Image(systemName: freeWalkMode.next.icon)
                             .font(.system(size: 12, weight: .semibold))
                             .foregroundColor(.white.opacity(0.9))
                             .padding(6)
@@ -591,7 +598,7 @@ struct StepCounterView: View {
                 }
                 .buttonStyle(.plain)
             }
-            .background(tileColor.animation(.spring(response: 0.35), value: freeWalkMode))
+            .background(freeWalkMode.tileColor.animation(.spring(response: 0.35), value: freeWalkMode))
             .cornerRadius(16)
         }
         .buttonStyle(BounceButtonStyle())

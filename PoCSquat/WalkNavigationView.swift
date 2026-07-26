@@ -1424,11 +1424,19 @@ struct WalkHistoryRow: View {
     let onInfo: () -> Void
 
     private var rowIcon: String {
-        session.activityType == "cycling" ? "bicycle" : "figure.walk"
+        switch session.activityType {
+        case "cycling":    return "bicycle"
+        case "stationary": return "figure.walk.motion"
+        default:           return "figure.walk"
+        }
     }
 
     private var rowColor: Color {
-        session.activityType == "cycling" ? Color(red: 0.13, green: 0.57, blue: 0.64) : .earthGreen
+        switch session.activityType {
+        case "cycling":    return Color(red: 0.13, green: 0.57, blue: 0.64)
+        case "stationary": return Color(red: 0.42, green: 0.32, blue: 0.76)
+        default:           return .earthGreen
+        }
     }
 
     var body: some View {

@@ -687,12 +687,57 @@ enum WalkIntent: Equatable {
 // MARK: - Activity Mode
 
 enum ActivityMode: String {
-    case walking, cycling
+    case walking, cycling, stationary
 
-    var icon:            String                    { self == .cycling ? "bicycle" : "figure.walk" }
-    var sessionLabel:    String                    { self == .cycling ? "Ride" : "Walk" }
-    var transportType:   MKDirectionsTransportType { self == .cycling ? .cycling : .walking }
-    var hkActivityType:  HKWorkoutActivityType     { self == .cycling ? .cycling : .walking }
+    var icon: String {
+        switch self {
+        case .walking:    return "figure.walk"
+        case .cycling:    return "bicycle"
+        case .stationary: return "figure.walk.motion"
+        }
+    }
+
+    var sessionLabel: String {
+        switch self {
+        case .walking:    return "Walk"
+        case .cycling:    return "Ride"
+        case .stationary: return "Indoor"
+        }
+    }
+
+    var transportType: MKDirectionsTransportType {
+        self == .cycling ? .cycling : .walking
+    }
+
+    var hkActivityType: HKWorkoutActivityType {
+        self == .cycling ? .cycling : .walking
+    }
+
+    var isIndoor: Bool { self == .stationary }
+
+    var next: ActivityMode {
+        switch self {
+        case .walking:    return .cycling
+        case .cycling:    return .stationary
+        case .stationary: return .walking
+        }
+    }
+
+    var tileColor: Color {
+        switch self {
+        case .walking:    return Color.earthGreen
+        case .cycling:    return Color(red: 0.13, green: 0.57, blue: 0.64)
+        case .stationary: return Color(red: 0.42, green: 0.32, blue: 0.76)
+        }
+    }
+
+    var tileLabel: String {
+        switch self {
+        case .walking:    return "Start Walking"
+        case .cycling:    return "Start Biking"
+        case .stationary: return "Start Indoor"
+        }
+    }
 }
 
 // MARK: - Suggested Route Model

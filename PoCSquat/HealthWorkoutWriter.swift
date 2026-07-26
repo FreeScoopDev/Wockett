@@ -12,10 +12,12 @@ final class HealthWorkoutWriter {
     private var routeBuilder:  HKWorkoutRouteBuilder?
 
     let activityType: HKWorkoutActivityType
+    let isIndoor: Bool
     private var startDate: Date?
 
-    init(activityType: HKWorkoutActivityType) {
+    init(activityType: HKWorkoutActivityType, isIndoor: Bool = false) {
         self.activityType = activityType
+        self.isIndoor = isIndoor
     }
 
     // MARK: - Lifecycle
@@ -28,7 +30,7 @@ final class HealthWorkoutWriter {
 
         let config = HKWorkoutConfiguration()
         config.activityType = activityType
-        config.locationType = .outdoor
+        config.locationType = isIndoor ? .indoor : .outdoor
 
         let workoutBuilder = HKWorkoutBuilder(
             healthStore: healthStore,
