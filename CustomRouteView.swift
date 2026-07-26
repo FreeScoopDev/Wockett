@@ -239,8 +239,8 @@ final class CustomRouteBuilder: ObservableObject {
 
     private func walkingRoute(from: CLLocationCoordinate2D, to: CLLocationCoordinate2D) async -> MKRoute? {
         let req           = MKDirections.Request()
-        req.source        = MKMapItem(placemark: MKPlacemark(coordinate: from))
-        req.destination   = MKMapItem(placemark: MKPlacemark(coordinate: to))
+        req.source        = MKMapItem(location: CLLocation(latitude: from.latitude, longitude: from.longitude), address: nil)
+        req.destination   = MKMapItem(location: CLLocation(latitude: to.latitude, longitude: to.longitude), address: nil)
         req.transportType = .walking
         return try? await MKDirections(request: req).calculate().routes.first
     }
@@ -927,16 +927,16 @@ struct CustomRouteDetailView: View {
 
         for i in 0..<(coords.count - 1) {
             let req           = MKDirections.Request()
-            req.source        = MKMapItem(placemark: MKPlacemark(coordinate: coords[i]))
-            req.destination   = MKMapItem(placemark: MKPlacemark(coordinate: coords[i + 1]))
+            req.source        = MKMapItem(location: CLLocation(latitude: coords[i].latitude, longitude: coords[i].longitude), address: nil)
+            req.destination   = MKMapItem(location: CLLocation(latitude: coords[i + 1].latitude, longitude: coords[i + 1].longitude), address: nil)
             req.transportType = .walking
             if let r = try? await MKDirections(request: req).calculate().routes.first { legs.append(r) }
         }
 
         if route.isLoop, let first = coords.first, let last = coords.last {
             let req           = MKDirections.Request()
-            req.source        = MKMapItem(placemark: MKPlacemark(coordinate: last))
-            req.destination   = MKMapItem(placemark: MKPlacemark(coordinate: first))
+            req.source        = MKMapItem(location: CLLocation(latitude: last.latitude, longitude: last.longitude), address: nil)
+            req.destination   = MKMapItem(location: CLLocation(latitude: first.latitude, longitude: first.longitude), address: nil)
             req.transportType = .walking
             if let r = try? await MKDirections(request: req).calculate().routes.first { legs.append(r) }
         }
@@ -966,12 +966,12 @@ struct CustomRouteDetailView: View {
 
         var items: [MKMapItem] = [.forCurrentLocation()]
         for (i, coord) in coords.enumerated() {
-            let item = MKMapItem(placemark: MKPlacemark(coordinate: coord))
+            let item = MKMapItem(location: CLLocation(latitude: coord.latitude, longitude: coord.longitude), address: nil)
             item.name = i == 0 ? "\(route.name) — Start" : "Stop \(i + 1)"
             items.append(item)
         }
         if route.isLoop {
-            let ret = MKMapItem(placemark: MKPlacemark(coordinate: coords[0]))
+            let ret = MKMapItem(location: CLLocation(latitude: coords[0].latitude, longitude: coords[0].longitude), address: nil)
             ret.name = "\(route.name) — Return"
             items.append(ret)
         }
@@ -984,7 +984,7 @@ struct CustomRouteDetailView: View {
     // Fallback for multi-waypoint routes: navigate to start point only
     private func openInMapsStartOnly() {
         guard let first = route.waypoints.first else { return }
-        let item = MKMapItem(placemark: MKPlacemark(coordinate: first.clCoordinate))
+        let item = MKMapItem(location: CLLocation(latitude: first.clCoordinate.latitude, longitude: first.clCoordinate.longitude), address: nil)
         item.name = "\(route.name) — Start"
         item.openInMaps(launchOptions: [MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeWalking])
     }

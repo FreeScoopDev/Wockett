@@ -637,8 +637,8 @@ struct WalkNavigationView: View {
             let from = wps[i]
             let to = wps[(i + 1) % wps.count]
             let req = MKDirections.Request()
-            req.source        = MKMapItem(placemark: MKPlacemark(coordinate: from))
-            req.destination   = MKMapItem(placemark: MKPlacemark(coordinate: to))
+            req.source        = MKMapItem(location: CLLocation(latitude: from.latitude, longitude: from.longitude), address: nil)
+            req.destination   = MKMapItem(location: CLLocation(latitude: to.latitude, longitude: to.longitude), address: nil)
             req.transportType = .walking
             if let r = try? await MKDirections(request: req).calculate().routes.first {
                 legs.append(r)

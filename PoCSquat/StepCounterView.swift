@@ -759,6 +759,7 @@ struct StepCounterView: View {
     @State private var selectedRadius: Double = 1_000
     @State private var selectedRoute: SuggestedRoute?
     @State private var walkIntent: WalkIntent = .finishGoal
+    @State private var showBadges               = false
     @State private var showGoalSheet            = false
     @State private var showMyRoutes             = false
     @State private var showDestinationSearch = false
@@ -787,171 +788,186 @@ struct StepCounterView: View {
     @State private var routeForPosting: SuggestedRoute? = nil
 
     var body: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                VStack(spacing: 24) {
-                    progressSection.padding(.top, 8)
-
-                    actionGrid.padding(.horizontal)
-
-                    WeeklyCalendarView(
-                        days: stepManager.weeklyCalendar,
-                        sessions: historyStore.sessions,
-                        weekOffset: calendarWeekOffset,
-                        onDayTap: { selectedCalendarDay = $0 },
-                        onWeekChange: { delta in
-                            let newOffset = (calendarWeekOffset + delta).clamped(to: -52...52)
-                            guard newOffset != calendarWeekOffset else { return }
-                            calendarWeekOffset = newOffset
-                            Task { await stepManager.refreshWeeklyCalendar(sessions: historyStore.sessions, weekOffset: newOffset) }
-                        },
-                        onCalendarTap: { showMonthCalendar = true }
-                    )
-                    settingsSection
-                    routeFindSection
-                    routeResultsSection.id("routeResults")
+        stepCounterCore
+            .sheet(isPresented: $showUserDetail) {
+                UserStepDetailSheet(stepManager: stepManager, historyStore: historyStore)
+            }
+            .sheet(item: $selectedCalendarDay) { day in
+                DayDetailSheet(day: day, sessions: historyStore.sessions)
+            }
+            .sheet(isPresented: $showMonthCalendar) {
+                MonthCalendarView(stepManager: stepManager, sessions: historyStore.sessions)
+            }
+            .sheet(item: $selectedPetForDetail) { pet in
+                PetDetailSheet(pet: pet, petStore: petStore, historyStore: historyStore) {
+                    selectedPetForDetail = pet
                 }
-                .padding(.bottom, 40)
-                .background(
-                    GeometryReader { geo in
-                        Color.clear.onAppear { containerWidth = geo.size.width }
+            }
+            .sheet(isPresented: $showGoalSheet) { GoalEditorSheet(stepManager: stepManager) }
+            .sheet(item: $routeForPosting) { route in
+                PostToCommunitySheet(route: route, routeStore: routeStore) {
+                    savedRouteIds.insert(route.id)
+                }
+            }
+            .fullScreenCover(isPresented: $showFreeWalk) {
+                FreeWalkView(historyStore: historyStore, routeStore: routeStore)
+            }
+            .sheet(isPresented: $showDestinationSearch) {
+                DestinationSearchSheet(userLocation: routeManager.lastLocation) { destination in
+                    clearRoutes()
+                    Task {
+                        await routeManager.generateDestinationRoute(to: destination)
+                        if let loc = routeManager.lastLocation, !routeManager.suggestedRoutes.isEmpty {
+                            routeWeather = await RouteWeatherService.shared.fetchWeather(for: loc.coordinate)
+                        }
+                        if !routeManager.suggestedRoutes.isEmpty { shouldScrollToResults = true }
                     }
+                }
+            }
+            .sheet(isPresented: $showNearbySheet) {
+                NearbyPlacesSheet(fetchLocation: { await routeManager.fetchCurrentLocation() }) { destination, wantsLoop in
+                    clearRoutes()
+                    Task {
+                        if wantsLoop {
+                            await routeManager.generateLoopDestinationRoute(to: destination)
+                        } else {
+                            await routeManager.generateDestinationRoute(to: destination)
+                        }
+                        if let loc = routeManager.lastLocation, !routeManager.suggestedRoutes.isEmpty {
+                            routeWeather = await RouteWeatherService.shared.fetchWeather(for: loc.coordinate)
+                        }
+                        if !routeManager.suggestedRoutes.isEmpty { shouldScrollToResults = true }
+                    }
+                }
+            }
+            .sheet(isPresented: $showBadges) {
+                BadgesView(
+                    sessions: historyStore.sessions,
+                    todaySteps: stepManager.todaySteps,
+                    dailyGoal: stepManager.currentGoal
                 )
             }
-            .scrollDismissesKeyboard(.interactively)
-            .background(Color.earthBg.ignoresSafeArea())
-            .onChange(of: routeManager.suggestedRoutes.count) { old, new in
-                guard old == 0, new > 0 else { return }
-                // Brief delay so SwiftUI can render the results section before we scroll to it
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                    withAnimation(.easeInOut(duration: 0.45)) {
-                        proxy.scrollTo("routeResults", anchor: .top)
-                    }
-                }
-            }
-        }
-        .navigationTitle("Step Counter")
-        .navigationBarTitleDisplayMode(.inline)
-        
+    }
 
-        .toolbar {
-            ToolbarItem(placement: .navigationBarLeading) {
-                Button { showSettings = true } label: {
-                    Image(systemName: "gear").foregroundColor(.earthGreen)
-                }
-            }
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Button { Task { await stepManager.refresh() } } label: {
-                    Image(systemName: "arrow.clockwise").foregroundColor(.earthGreen)
-                }
-            }
-        }
-        .task {
-            await stepManager.initialize()
-            await stepManager.refreshWeeklyCalendar(sessions: historyStore.sessions, weekOffset: calendarWeekOffset)
-        }
-        .onChange(of: stepManager.todaySteps) { _, _ in
-            Task { await stepManager.refreshWeeklyCalendar(sessions: historyStore.sessions, weekOffset: calendarWeekOffset) }
-        }
-        .onChange(of: stepManager.tagConfigs) { _, _ in
-            Task { await stepManager.refreshWeeklyCalendar(sessions: historyStore.sessions, weekOffset: calendarWeekOffset) }
-        }
-        .onAppear {
-            if !routeManager.isGenerating { clearRoutes() }
-            if stepManager.todaySteps >= stepManager.currentGoal, walkIntent == .finishGoal {
-                walkIntent = .quickWalk(minutes: 30)
-            }
-            // Reset to current week whenever this screen comes back into view
-            if calendarWeekOffset != 0 {
-                calendarWeekOffset = 0
-                Task { await stepManager.refreshWeeklyCalendar(sessions: historyStore.sessions, weekOffset: 0) }
-            }
-        }
-        .onChange(of: stepManager.todaySteps) { _, steps in
-            if steps >= stepManager.currentGoal, walkIntent == .finishGoal {
-                walkIntent = .quickWalk(minutes: 30)
-            }
-        }
-        .navigationDestination(isPresented: $showSettings) {
-            SettingsView(stepManager: stepManager)
-        }
-        .navigationDestination(isPresented: $showMyRoutes) {
-            CustomRoutesListView(store: routeStore, historyStore: historyStore)
-        }
-        .navigationDestination(isPresented: $showBuildRoute) {
-            CustomRouteBuilderView { route in routeStore.save(route) }
-        }
-        .navigationDestination(isPresented: $showWalkHistory) {
-            WalkHistoryView(store: historyStore)
-        }
-        .navigationDestination(isPresented: $showPetManagement) {
-            PetManagementView(historyStore: historyStore, defaultGoal: stepManager.currentGoal)
-        }
-        .navigationDestination(item: $navigatingRoute) { route in
-            WalkNavigationView(route: route, historyStore: historyStore)
-        }
-        .onChange(of: stepManager.currentGoal) { _, _ in clearRoutes() }
-        .onChange(of: selectedRadius) { _, _ in clearRoutes() }
-        .onChange(of: selectedRoute?.id) { _, _ in
-            elevationProfile = nil
-            guard let coords = selectedRoute?.legWaypoints, coords.count >= 2 else { return }
-            isLoadingElevation = true
-            Task {
-                elevationProfile = try? await ElevationService.shared.fetchProfile(for: coords)
-                isLoadingElevation = false
-            }
-        }
-        .sheet(isPresented: $showUserDetail) {
-            UserStepDetailSheet(stepManager: stepManager, historyStore: historyStore)
-        }
-        .sheet(item: $selectedCalendarDay) { day in
-            DayDetailSheet(day: day, sessions: historyStore.sessions)
-        }
-        .sheet(isPresented: $showMonthCalendar) {
-            MonthCalendarView(stepManager: stepManager, sessions: historyStore.sessions)
-        }
-        .sheet(item: $selectedPetForDetail) { pet in
-            PetDetailSheet(pet: pet, petStore: petStore, historyStore: historyStore) {
-                selectedPetForDetail = pet  // re-open editor via management
-            }
-        }
-        .sheet(isPresented: $showGoalSheet)     { GoalEditorSheet(stepManager: stepManager) }
-        .sheet(item: $routeForPosting) { route in
-            PostToCommunitySheet(route: route, routeStore: routeStore) {
-                savedRouteIds.insert(route.id)
-            }
-        }
-        .fullScreenCover(isPresented: $showFreeWalk) {
-            FreeWalkView(historyStore: historyStore, routeStore: routeStore)
-        }
-        .sheet(isPresented: $showDestinationSearch) {
-            DestinationSearchSheet(userLocation: routeManager.lastLocation) { destination in
-                clearRoutes()
-                Task {
-                    await routeManager.generateDestinationRoute(to: destination)
-                    if let loc = routeManager.lastLocation, !routeManager.suggestedRoutes.isEmpty {
-                        routeWeather = await RouteWeatherService.shared.fetchWeather(for: loc.coordinate)
+    // Split into layers so each chunk stays within the Swift type-checker's budget.
+    private var stepCounterCore: some View {
+        scrollWithDestinations
+            .onChange(of: stepManager.currentGoal) { _, _ in clearRoutes() }
+            .onChange(of: selectedRadius) { _, _ in clearRoutes() }
+            .onChange(of: selectedRoute?.id) { _, _ in handleSelectionChange() }
+    }
+
+    private var scrollWithDestinations: some View {
+        scrollWithLifecycle
+            .navigationDestination(isPresented: $showSettings) { SettingsView(stepManager: stepManager) }
+            .navigationDestination(isPresented: $showMyRoutes) { CustomRoutesListView(store: routeStore, historyStore: historyStore) }
+            .navigationDestination(isPresented: $showBuildRoute) { CustomRouteBuilderView { route in routeStore.save(route) } }
+            .navigationDestination(isPresented: $showWalkHistory) { WalkHistoryView(store: historyStore) }
+            .navigationDestination(isPresented: $showPetManagement) { PetManagementView(historyStore: historyStore, defaultGoal: stepManager.currentGoal) }
+            .navigationDestination(item: $navigatingRoute) { (route: NavigableRoute) in WalkNavigationView(route: route, historyStore: historyStore) }
+    }
+
+    private var scrollWithLifecycle: some View {
+        ScrollViewReader { proxy in mainScrollView(proxy: proxy) }
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button { showSettings = true } label: {
+                        Image(systemName: "gear").foregroundColor(.earthGreen)
                     }
-                    if !routeManager.suggestedRoutes.isEmpty { shouldScrollToResults = true }
+                }
+                ToolbarItem(placement: .principal) { BannerTitleView() }
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button { Task { await stepManager.refresh() } } label: {
+                        Image(systemName: "arrow.clockwise").foregroundColor(.earthGreen)
+                    }
+                }
+            }
+            .task {
+                await stepManager.initialize()
+                await stepManager.refreshWeeklyCalendar(sessions: historyStore.sessions, weekOffset: calendarWeekOffset)
+            }
+            .onChange(of: stepManager.todaySteps) { _, _ in
+                Task { await stepManager.refreshWeeklyCalendar(sessions: historyStore.sessions, weekOffset: calendarWeekOffset) }
+            }
+            .onChange(of: stepManager.tagConfigs) { _, _ in
+                Task { await stepManager.refreshWeeklyCalendar(sessions: historyStore.sessions, weekOffset: calendarWeekOffset) }
+            }
+            .onAppear { handleAppear() }
+            .onChange(of: stepManager.todaySteps) { _, steps in handleStepGoalCheck(steps) }
+    }
+
+    private func handleSelectionChange() {
+        elevationProfile = nil
+        guard let coords = selectedRoute?.legWaypoints, coords.count >= 2 else { return }
+        isLoadingElevation = true
+        Task {
+            elevationProfile = try? await ElevationService.shared.fetchProfile(for: coords)
+            isLoadingElevation = false
+        }
+    }
+
+    @ViewBuilder
+    private func mainScrollView(proxy: ScrollViewProxy) -> some View {
+        ScrollView {
+            VStack(spacing: 24) {
+                progressSection.padding(.top, 8)
+                actionGrid.padding(.horizontal)
+                WeeklyCalendarView(
+                    days: stepManager.weeklyCalendar,
+                    sessions: historyStore.sessions,
+                    weekOffset: calendarWeekOffset,
+                    onDayTap: { selectedCalendarDay = $0 },
+                    onWeekChange: { delta in
+                        let newOffset = (calendarWeekOffset + delta).clamped(to: -52...52)
+                        guard newOffset != calendarWeekOffset else { return }
+                        calendarWeekOffset = newOffset
+                        Task { await stepManager.refreshWeeklyCalendar(sessions: historyStore.sessions, weekOffset: newOffset) }
+                    },
+                    onCalendarTap: { showMonthCalendar = true }
+                )
+                settingsSection
+                routeFindSection
+                routeResultsSection.id("routeResults")
+            }
+            .padding(.bottom, 40)
+            .background(
+                GeometryReader { geo in
+                    Color.clear.onAppear { containerWidth = geo.size.width }
+                }
+            )
+        }
+        .scrollDismissesKeyboard(.interactively)
+        .background(Color.earthBg.ignoresSafeArea())
+        .onChange(of: routeManager.suggestedRoutes.count) { old, new in
+            guard old == 0, new > 0 else { return }
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 150_000_000)
+                withAnimation(.easeInOut(duration: 0.45)) {
+                    proxy.scrollTo("routeResults", anchor: .top)
                 }
             }
         }
-        .sheet(isPresented: $showNearbySheet) {
-            NearbyPlacesSheet(fetchLocation: { await routeManager.fetchCurrentLocation() }) { destination, wantsLoop in
-                clearRoutes()
-                Task {
-                    if wantsLoop {
-                        await routeManager.generateLoopDestinationRoute(to: destination)
-                    } else {
-                        await routeManager.generateDestinationRoute(to: destination)
-                    }
-                    if let loc = routeManager.lastLocation, !routeManager.suggestedRoutes.isEmpty {
-                        routeWeather = await RouteWeatherService.shared.fetchWeather(for: loc.coordinate)
-                    }
-                    if !routeManager.suggestedRoutes.isEmpty { shouldScrollToResults = true }
-                }
-            }
+    }
+
+    private func handleAppear() {
+        if !routeManager.isGenerating { clearRoutes() }
+        if stepManager.todaySteps >= stepManager.currentGoal, walkIntent == .finishGoal {
+            walkIntent = .quickWalk(minutes: 30)
         }
+        if calendarWeekOffset != 0 {
+            calendarWeekOffset = 0
+            Task { await stepManager.refreshWeeklyCalendar(sessions: historyStore.sessions, weekOffset: 0) }
+        }
+        StreakStore.shared.refresh(sessions: historyStore.sessions, todaySteps: stepManager.todaySteps, dailyGoal: stepManager.currentGoal)
+    }
+
+    private func handleStepGoalCheck(_ steps: Int) {
+        if steps >= stepManager.currentGoal, walkIntent == .finishGoal {
+            walkIntent = .quickWalk(minutes: 30)
+        }
+        StreakStore.shared.refresh(sessions: historyStore.sessions, todaySteps: steps, dailyGoal: stepManager.currentGoal)
     }
 
     private func clearRoutes() {
@@ -1036,9 +1052,37 @@ struct StepCounterView: View {
                 Text("\(stepManager.remainingSteps.formatted()) remaining · ~\(Self.formatDistance(stepManager.remainingMeters)) to go")
                     .font(.subheadline).foregroundColor(.earthMuted)
             }
+
+            streakIndicator
         }
         .padding(.vertical, 24)
         .padding(.horizontal)
+    }
+
+    private var streakIndicator: some View {
+        let streak = StreakStore.shared.currentStreak
+        return Button { showBadges = true } label: {
+            HStack(spacing: 6) {
+                Text(streak > 0 ? "🔥" : "💤")
+                    .font(.system(size: 14))
+                if streak > 0 {
+                    Text("\(streak)-day streak")
+                        .font(.caption.bold())
+                        .foregroundColor(.earthGreen)
+                } else {
+                    Text("Start your streak today")
+                        .font(.caption)
+                        .foregroundColor(.earthMuted)
+                }
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundColor(.earthMuted)
+            }
+            .padding(.horizontal, 14).padding(.vertical, 7)
+            .background(Color.earthCard)
+            .cornerRadius(20)
+        }
+        .buttonStyle(.plain)
     }
 
     private func smallPetRing(pet: PetProfile) -> some View {
@@ -1405,193 +1449,6 @@ struct StepCounterView: View {
     }
 }
 
-// MARK: - Weekly Calendar View
-
-struct WeeklyCalendarView: View {
-    let days: [CalendarDay]
-    let sessions: [WalkSession]
-    let weekOffset: Int
-    let onDayTap: (CalendarDay) -> Void
-    let onWeekChange: (Int) -> Void
-    let onCalendarTap: () -> Void
-
-    @State private var slideFromLeading = false
-
-    private var weekLabel: String {
-        switch weekOffset {
-        case 0:  return "This Week"
-        case -1: return "Last Week"
-        case 1:  return "Next Week"
-        case let n where n < 0: return "\(-n) Weeks Ago"
-        default: return "In \(weekOffset) Weeks"
-        }
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
-                Button {
-                    slideFromLeading = true
-                    onWeekChange(-1)
-                } label: {
-                    Image(systemName: "chevron.left")
-                        .font(.caption.bold())
-                        .foregroundColor(weekOffset <= -52 ? .earthMuted.opacity(0.25) : .earthMuted)
-                }
-                .disabled(weekOffset <= -52)
-
-                // Label slides left when going forward, right when going back
-                ZStack {
-                    Text(weekLabel)
-                        .font(weekOffset == 0 ? .subheadline.bold() : .caption.bold())
-                        .foregroundColor(weekOffset == 0 ? .earthCream : .earthMuted)
-                        .id(weekOffset)
-                        .transition(.asymmetric(
-                            insertion: .move(edge: slideFromLeading ? .leading : .trailing)
-                                .combined(with: .opacity),
-                            removal: .move(edge: slideFromLeading ? .trailing : .leading)
-                                .combined(with: .opacity)
-                        ))
-                }
-                .frame(maxWidth: .infinity)
-                .clipped()
-                .animation(.easeInOut(duration: 0.22), value: weekOffset)
-
-                Button { onCalendarTap() } label: {
-                    Image(systemName: "calendar")
-                        .font(.caption.bold()).foregroundColor(.earthMuted)
-                }
-
-                Button {
-                    slideFromLeading = false
-                    onWeekChange(1)
-                } label: {
-                    Image(systemName: "chevron.right")
-                        .font(.caption.bold())
-                        .foregroundColor(weekOffset >= 52 ? .earthMuted.opacity(0.25) : .earthMuted)
-                }
-                .disabled(weekOffset >= 52)
-            }
-            .padding(.horizontal, 20)
-
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(days) { day in
-                        DayCell(day: day) { onDayTap(day) }
-                    }
-                }
-                .padding(.horizontal, 16)
-            }
-        }
-        .gesture(
-            DragGesture(minimumDistance: 40, coordinateSpace: .local)
-                .onEnded { value in
-                    guard abs(value.translation.height) < 60 else { return }
-                    if value.translation.width < -40 {
-                        slideFromLeading = false
-                        onWeekChange(1)
-                    } else if value.translation.width > 40 {
-                        slideFromLeading = true
-                        onWeekChange(-1)
-                    }
-                }
-        )
-    }
-}
-
-private struct DayCell: View {
-    let day: CalendarDay
-    let onTap: () -> Void
-
-    private static let dayFmt: DateFormatter = {
-        let f = DateFormatter(); f.dateFormat = "EEE"; return f
-    }()
-    private static let numFmt: DateFormatter = {
-        let f = DateFormatter(); f.dateFormat = "d"; return f
-    }()
-
-    var body: some View {
-        VStack(spacing: 5) {
-            Text(Self.dayFmt.string(from: day.date).uppercased())
-                .font(.system(size: 9, weight: .bold))
-                .foregroundColor(day.isToday ? .earthGreen : .earthMuted)
-
-            Text(Self.numFmt.string(from: day.date))
-                .font(.caption.bold())
-                .foregroundColor(day.isToday ? .earthCream : .earthMuted)
-
-            ZStack {
-                Circle()
-                    .stroke(Color.earthMuted.opacity(day.isFuture ? 0.08 : 0.18), lineWidth: 4)
-
-                if !day.isFuture, let steps = day.steps {
-                    let prog = min(1.0, Double(steps) / Double(max(1, day.goal)))
-                    Circle()
-                        .trim(from: 0, to: prog)
-                        .stroke(
-                            day.goalMet == true ? Color.earthGreen : Color.earthOrange,
-                            style: StrokeStyle(lineWidth: 4, lineCap: .round)
-                        )
-                        .rotationEffect(.degrees(-90))
-                }
-
-                Group {
-                    if day.isFuture {
-                        Image(systemName: "minus")
-                            .font(.system(size: 9)).foregroundColor(.earthMuted.opacity(0.3))
-                    } else if day.isToday {
-                        Image(systemName: "figure.walk")
-                            .font(.system(size: 10)).foregroundColor(.earthGreen)
-                    } else if let met = day.goalMet {
-                        Image(systemName: met ? "checkmark" : "xmark")
-                            .font(.system(size: 9, weight: .bold))
-                            .foregroundColor(met ? .earthGreen : .earthMuted.opacity(0.6))
-                    }
-                }
-            }
-            .frame(width: 38, height: 38)
-
-            // Color-coded activity tag badge
-            if let emoji = day.tagEmoji, let color = day.tagColor {
-                Text(emoji)
-                    .font(.system(size: 10))
-                    .padding(.horizontal, 3).padding(.vertical, 1)
-                    .background(color.opacity(0.18))
-                    .cornerRadius(4)
-                    .frame(height: 15)
-            } else if day.tag != nil {
-                Text(day.tag!)
-                    .font(.system(size: 7, weight: .bold))
-                    .lineLimit(1)
-                    .padding(.horizontal, 5).padding(.vertical, 2)
-                    .background(Color.earthCard)
-                    .foregroundColor(.earthMuted)
-                    .cornerRadius(5)
-                    .frame(height: 15)
-            } else {
-                Color.clear.frame(height: 15)
-            }
-
-            if let steps = day.steps {
-                Text(steps >= 1_000 ? "\(steps / 1_000)K" : "\(steps)")
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundColor(day.goalMet == true ? .earthGreen : .earthMuted)
-            } else {
-                Text("—").font(.system(size: 9)).foregroundColor(.earthMuted.opacity(0.3))
-            }
-        }
-        .frame(width: 50)
-        .padding(.vertical, 10)
-        .background(day.isToday ? Color.earthCard : Color.clear)
-        .cornerRadius(12)
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(day.isToday ? Color.earthGreen.opacity(0.35) : Color.clear, lineWidth: 1)
-        )
-        .onTapGesture { onTap() }
-    }
-}
-
 // MARK: - Route Map View
 
 struct RouteMapView: UIViewRepresentable {
@@ -1698,114 +1555,6 @@ struct RouteMapView: UIViewRepresentable {
             }
             return r
         }
-    }
-}
-
-// MARK: - Route Card
-
-struct RouteCard: View {
-    let route: SuggestedRoute
-    let isSelected: Bool
-    let totalRoutes: Int
-    var isSaved: Bool = false
-    let onSelect: () -> Void
-    var onSave: (() -> Void)? = nil
-    var onPost: (() -> Void)? = nil
-
-    private var routeColor: Color {
-        SuggestedRoute.paletteColor(index: route.colorIndex, total: totalRoutes)
-    }
-
-    private var cardIcon: String {
-        if route.label != nil { return "arrow.triangle.2.circlepath" }
-        switch route.directionName {
-        case "North":     return "arrow.up"
-        case "Northeast": return "arrow.up.right"
-        case "East":      return "arrow.right"
-        case "Southeast": return "arrow.down.right"
-        case "South":     return "arrow.down"
-        case "Southwest": return "arrow.down.left"
-        case "West":      return "arrow.left"
-        default:          return "arrow.up.left"
-        }
-    }
-
-    var body: some View {
-        Button(action: onSelect) {
-            HStack(spacing: 16) {
-                ZStack {
-                    Circle()
-                        .fill(routeColor.opacity(isSelected ? 0.3 : 0.18))
-                        .frame(width: 54, height: 54)
-                    Image(systemName: cardIcon)
-                        .foregroundColor(routeColor)
-                        .font(.title3)
-                }
-
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(route.label ?? "\(route.directionName) \(route.isLoop ? "loop" : "route")")
-                        .font(.headline).foregroundColor(.earthCream)
-                    HStack(spacing: 14) {
-                        Label(route.distanceText, systemImage: "ruler")
-                        Label(route.timeText,     systemImage: "clock")
-                    }
-                    .font(.footnote).foregroundColor(.earthMuted)
-                    if let elev = route.elevationSummary {
-                        Text(elev)
-                            .font(.caption).foregroundColor(routeColor.opacity(0.85))
-                    }
-                    HStack(spacing: 8) {
-                        Text("~\(route.estimatedSteps.formatted()) steps")
-                            .font(.footnote).foregroundColor(.earthGreen)
-                        DifficultyBadge(difficulty: .fromDistance(route.perLapDistance), compact: true)
-                        if route.lapCount > 1 {
-                            Text("×\(route.lapCount) laps")
-                                .font(.caption.bold()).foregroundColor(.earthOrange)
-                                .padding(.horizontal, 6).padding(.vertical, 3)
-                                .background(Color.earthOrange.opacity(0.15))
-                                .cornerRadius(20)
-                        }
-                    }
-                }
-
-                Spacer()
-
-                VStack(spacing: 10) {
-                    if isSelected {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundColor(routeColor)
-                            .font(.body)
-                    }
-                    if let onSave {
-                        Button(action: onSave) {
-                            Image(systemName: isSaved ? "bookmark.fill" : "bookmark")
-                                .foregroundColor(isSaved ? routeColor : .earthMuted)
-                                .font(.subheadline)
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(isSaved)
-                    }
-                    if let onPost {
-                        Button(action: onPost) {
-                            Image(systemName: "square.and.arrow.up")
-                                .foregroundColor(.earthMuted)
-                                .font(.subheadline)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-            }
-            .padding()
-            .background(
-                RoundedRectangle(cornerRadius: 14)
-                    .fill(isSelected ? routeColor.opacity(0.1) : Color.earthCard)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 14)
-                            .stroke(isSelected ? routeColor.opacity(0.5) : Color.earthMuted.opacity(0.15), lineWidth: 1)
-                    )
-            )
-        }
-        .buttonStyle(.plain)
     }
 }
 
@@ -2379,343 +2128,6 @@ struct DayDetailSheet: View {
         .background(Color.earthCard)
         .cornerRadius(12)
         .padding(.horizontal)
-    }
-}
-
-// MARK: - Settings View
-
-struct SettingsView: View {
-    @ObservedObject var stepManager: StepManager
-    @Environment(\.dismiss) private var dismiss
-    @Environment(\.openURL) private var openURL
-
-    private var appVersion: String {
-        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "—"
-    }
-    private var buildNumber: String {
-        Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "—"
-    }
-
-    var body: some View {
-        ZStack {
-            Color.earthBg.ignoresSafeArea()
-            List {
-                // ── Tracking ──────────────────────────────────────
-                Section("Tracking") {
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("Data Source")
-                            .font(.subheadline).foregroundColor(.earthCream)
-                        Picker("", selection: $stepManager.trackingMode) {
-                            ForEach(StepManager.TrackingMode.allCases) { Text($0.rawValue).tag($0) }
-                        }
-                        .pickerStyle(.segmented)
-                        .onChange(of: stepManager.trackingMode) { _, m in stepManager.switchTrackingMode(to: m) }
-                        Text(stepManager.trackingMode == .healthKit
-                             ? "Steps are pulled from Apple Health. HealthKit permission required."
-                             : "Steps are counted by this app using the device's motion sensor.")
-                            .font(.caption).foregroundColor(.earthMuted)
-                    }
-                    .padding(.vertical, 4)
-                    .listRowBackground(Color.earthCard)
-
-                    if stepManager.trackingMode == .healthKit {
-                        Button {
-                            if let url = URL(string: "x-apple-health://") { UIApplication.shared.open(url) }
-                        } label: {
-                            Label("Open Apple Health", systemImage: "heart.text.square")
-                                .foregroundColor(.earthGreen)
-                        }
-                        .listRowBackground(Color.earthCard)
-                    }
-                }
-
-                // ── About ─────────────────────────────────────────
-                Section("About") {
-                    HStack {
-                        Text("Version").foregroundColor(.earthCream)
-                        Spacer()
-                        Text("\(appVersion) (\(buildNumber))").foregroundColor(.earthMuted)
-                    }
-                    .listRowBackground(Color.earthCard)
-
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Troubleshooting").font(.subheadline).foregroundColor(.earthCream)
-                        Group {
-                            Text("• Steps not updating? Try switching Data Source to App Only and back to Apple Health.")
-                            Text("• If Health permission was denied, go to Settings → Privacy → Health → Wockett to re-enable.")
-                            Text("• Walk history and goals are stored on this device only.")
-                        }
-                        .font(.caption).foregroundColor(.earthMuted)
-                    }
-                    .padding(.vertical, 4)
-                    .listRowBackground(Color.earthCard)
-
-                    Button {
-                        if let url = URL(string: "mailto:joseph.amanatidis@gmail.com?subject=Wockett%20Feedback") {
-                            openURL(url)
-                        }
-                    } label: {
-                        Label("Send Feedback", systemImage: "envelope")
-                            .foregroundColor(.earthGreen)
-                    }
-                    .listRowBackground(Color.earthCard)
-                }
-            }
-            .listStyle(.insetGrouped)
-            .scrollContentBackground(.hidden)
-        }
-        .navigationTitle("Settings")
-        .navigationBarTitleDisplayMode(.inline)
-    }
-}
-
-// MARK: - Month Calendar View
-
-struct MonthCalendarView: View {
-    @ObservedObject var stepManager: StepManager
-    let sessions: [WalkSession]
-    @Environment(\.dismiss) private var dismiss
-
-    @State private var displayMonth: Date = Calendar.current.startOfDay(for: Date())
-    @State private var selectedDay: CalendarDay?
-    @State private var monthShiftDirection: Bool = false  // true = going forward
-    @State private var hkMonthSteps: [Date: Int] = [:]
-
-    private static let monthFmt: DateFormatter = {
-        let f = DateFormatter(); f.dateFormat = "MMMM yyyy"; return f
-    }()
-
-    private var monthStart: Date {
-        Calendar.current.date(from: Calendar.current.dateComponents([.year, .month], from: displayMonth))!
-    }
-
-    private var daysInGrid: [Date?] {
-        let cal          = Calendar.current
-        let firstWeekday = cal.component(.weekday, from: monthStart)
-        let range        = cal.range(of: .day, in: .month, for: monthStart)!
-        var grid: [Date?] = Array(repeating: nil, count: firstWeekday - 1)
-        for day in range {
-            grid.append(cal.date(byAdding: .day, value: day - 1, to: monthStart))
-        }
-        while grid.count % 7 != 0 { grid.append(nil) }
-        return grid
-    }
-
-    private func stepsFor(_ date: Date) -> Int? {
-        let cal = Calendar.current
-        if cal.isDateInToday(date) { return stepManager.todaySteps }
-        if date > cal.startOfDay(for: Date()) { return nil }
-        if stepManager.trackingMode == .healthKit {
-            return hkMonthSteps[cal.startOfDay(for: date)]
-        }
-        return sessions.filter { cal.isDate($0.date, inSameDayAs: date) }.reduce(0) { $0 + $1.estimatedSteps }
-    }
-
-    private func fetchHKSteps() async {
-        guard stepManager.trackingMode == .healthKit else { return }
-        let cal = Calendar.current
-        let today = cal.startOfDay(for: Date())
-        guard let start = cal.date(from: cal.dateComponents([.year, .month], from: monthStart)),
-              start < today else { return }
-        let end = min(today, cal.date(byAdding: .month, value: 1, to: start) ?? today)
-        hkMonthSteps = await stepManager.fetchStepCounts(from: start, to: end)
-    }
-
-    private func goalFor(_ date: Date) -> Int {
-        let cal = Calendar.current
-        let wd  = cal.component(.weekday, from: date)
-        if date < cal.startOfDay(for: Date()) {
-            let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"
-            f.locale = Locale(identifier: "en_US_POSIX")
-            if let stored = stepManager.historicalDayGoals[f.string(from: date)] { return stored }
-        }
-        return (stepManager.useCustomSchedule ? stepManager.weekdayGoals[wd] : nil) ?? stepManager.dailyGoal
-    }
-
-    private func calendarDay(for date: Date) -> CalendarDay {
-        let cal       = Calendar.current
-        let wd        = cal.component(.weekday, from: date)
-        let goal      = goalFor(date)
-        let steps     = stepsFor(date)
-        let tagId     = stepManager.weekdayTags[wd]
-        let tagConfig = tagId.flatMap { id in stepManager.tagConfigs.first { $0.id == id } }
-        return CalendarDay(
-            id: date, date: date, weekday: wd, goal: goal, steps: steps,
-            tag: tagId, tagEmoji: tagConfig?.emoji, tagColor: tagConfig?.color
-        )
-    }
-
-    private var isFutureMonth: Bool {
-        let cal     = Calendar.current
-        let current = cal.dateComponents([.year, .month], from: Date())
-        let shown   = cal.dateComponents([.year, .month], from: monthStart)
-        return shown.year! > current.year! || (shown.year! == current.year! && shown.month! > current.month!)
-    }
-
-    var body: some View {
-        NavigationStack {
-            ZStack {
-                Color.earthBg.ignoresSafeArea()
-                VStack(spacing: 0) {
-                    // Month navigation with directional slide
-                    HStack {
-                        Button {
-                            monthShiftDirection = false
-                            shiftMonth(-1)
-                        } label: {
-                            Image(systemName: "chevron.left").font(.subheadline.bold()).foregroundColor(.earthMuted)
-                        }
-
-                        ZStack {
-                            Text(Self.monthFmt.string(from: monthStart))
-                                .font(.headline).foregroundColor(.earthCream)
-                                .id(monthStart)
-                                .transition(.asymmetric(
-                                    insertion: .move(edge: monthShiftDirection ? .trailing : .leading).combined(with: .opacity),
-                                    removal: .move(edge: monthShiftDirection ? .leading : .trailing).combined(with: .opacity)
-                                ))
-                        }
-                        .frame(maxWidth: .infinity)
-                        .clipped()
-                        .animation(.easeInOut(duration: 0.22), value: monthStart)
-
-                        Button {
-                            monthShiftDirection = true
-                            shiftMonth(1)
-                        } label: {
-                            Image(systemName: "chevron.right").font(.subheadline.bold())
-                                .foregroundColor(isFutureMonth ? .earthMuted.opacity(0.3) : .earthMuted)
-                        }
-                        .disabled(isFutureMonth)
-                    }
-                    .padding(.horizontal, 20).padding(.vertical, 14)
-
-                    // Weekday headers
-                    HStack(spacing: 0) {
-                        ForEach(["S","M","T","W","T","F","S"], id: \.self) { d in
-                            Text(d).font(.caption2.bold()).foregroundColor(.earthMuted)
-                                .frame(maxWidth: .infinity)
-                        }
-                    }
-                    .padding(.horizontal, 8).padding(.bottom, 4)
-
-                    Divider().background(Color.earthMuted.opacity(0.15)).padding(.horizontal, 8)
-
-                    // Day grid — scrollable in case of tall months
-                    ScrollView {
-                        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 2), count: 7), spacing: 2) {
-                            ForEach(daysInGrid.indices, id: \.self) { idx in
-                                if let date = daysInGrid[idx] {
-                                    MonthDayCell(
-                                        date: date,
-                                        steps: stepsFor(date),
-                                        goal: goalFor(date),
-                                        onTap: { selectedDay = calendarDay(for: date) }
-                                    )
-                                } else {
-                                    Color.clear.frame(height: 58)
-                                }
-                            }
-                        }
-                        .padding(.horizontal, 8).padding(.top, 4)
-                    }
-                }
-            }
-            .navigationTitle("Activity Calendar")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }.foregroundColor(.earthGreen)
-                }
-            }
-            .sheet(item: $selectedDay) { day in
-                DayDetailSheet(day: day, sessions: sessions)
-            }
-        }
-        .presentationDetents([.large])
-        .task { await fetchHKSteps() }
-    }
-
-    private func shiftMonth(_ delta: Int) {
-        guard let next = Calendar.current.date(byAdding: .month, value: delta, to: displayMonth) else { return }
-        displayMonth = next
-        Task { await fetchHKSteps() }
-    }
-}
-
-private struct MonthDayCell: View {
-    let date: Date
-    let steps: Int?
-    let goal: Int
-    let onTap: () -> Void
-
-    private let cal = Calendar.current
-    private var isToday: Bool  { cal.isDateInToday(date) }
-    private var isFuture: Bool { date > cal.startOfDay(for: Date()) && !isToday }
-    private var progress: Double {
-        guard let s = steps else { return 0 }
-        return min(1.0, Double(s) / Double(max(1, goal)))
-    }
-    private var goalMet: Bool? {
-        guard let s = steps, !isFuture else { return nil }
-        return s >= goal
-    }
-    private var stepsLabel: String? {
-        guard let s = steps else { return nil }
-        return s >= 1_000 ? String(format: "%.1fK", Double(s) / 1_000) : "\(s)"
-    }
-
-    var body: some View {
-        VStack(spacing: 2) {
-            Text("\(cal.component(.day, from: date))")
-                .font(.system(size: 11, weight: isToday ? .bold : .regular))
-                .foregroundColor(isToday ? .earthGreen : isFuture ? .earthMuted.opacity(0.35) : .earthCream)
-
-            ZStack {
-                Circle()
-                    .stroke(Color.earthMuted.opacity(isFuture ? 0.07 : 0.18), lineWidth: 3)
-                if !isFuture, progress > 0 {
-                    Circle()
-                        .trim(from: 0, to: progress)
-                        .stroke(goalMet == true ? Color.earthGreen : Color.earthOrange,
-                                style: StrokeStyle(lineWidth: 3, lineCap: .round))
-                        .rotationEffect(.degrees(-90))
-                }
-                if isToday {
-                    Circle().fill(Color.earthGreen.opacity(0.12))
-                }
-                // Icon inside ring
-                Group {
-                    if isFuture {
-                        Image(systemName: "plus")
-                            .font(.system(size: 7)).foregroundColor(.earthMuted.opacity(0.3))
-                    } else if let met = goalMet {
-                        Image(systemName: met ? "checkmark" : "xmark")
-                            .font(.system(size: 7, weight: .bold))
-                            .foregroundColor(met ? .earthGreen : .earthMuted.opacity(0.5))
-                    }
-                }
-            }
-            .frame(width: 26, height: 26)
-
-            // Step count or goal
-            if let label = stepsLabel {
-                Text(label)
-                    .font(.system(size: 7, weight: .semibold))
-                    .foregroundColor(goalMet == true ? .earthGreen : .earthMuted)
-            } else if isFuture {
-                Text(goal >= 1_000 ? "\(goal / 1_000)K" : "\(goal)")
-                    .font(.system(size: 7))
-                    .foregroundColor(.earthMuted.opacity(0.3))
-            } else {
-                Text("—").font(.system(size: 7)).foregroundColor(.earthMuted.opacity(0.25))
-            }
-        }
-        .frame(height: 58)
-        .background(isToday ? Color.earthCard.opacity(0.6) : Color.clear)
-        .cornerRadius(8)
-        .contentShape(Rectangle())
-        .onTapGesture { onTap() }
     }
 }
 
@@ -3375,219 +2787,6 @@ private struct NearbyPlaceRow: View {
                 Label("Open in Apple Maps", systemImage: "map.fill")
             }
         }
-    }
-}
-
-// MARK: - Community Route Card
-
-struct CommunityRouteCard: View {
-    @Binding var route: SharedRoute
-    let hasVoted: Bool
-    var isSaved: Bool = false
-    let onUpvote: () -> Void
-    var onSave: (() -> Void)? = nil
-    let onStart: () -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(route.name)
-                        .font(.headline).foregroundColor(.earthCream)
-                    Text("by \(route.authorName)")
-                        .font(.caption).foregroundColor(.earthMuted)
-                }
-                Spacer()
-                DifficultyBadge(difficulty: route.difficulty, compact: true)
-            }
-
-            HStack(spacing: 16) {
-                Label(route.distanceText, systemImage: "ruler")
-                Label(route.timeText, systemImage: "clock")
-                Label("\(route.estimatedSteps.formatted()) steps", systemImage: "figure.walk")
-            }
-            .font(.caption).foregroundColor(.earthMuted)
-
-            HStack {
-                Button(action: onUpvote) {
-                    Label("\(route.upvotes)", systemImage: hasVoted ? "hand.thumbsup.fill" : "hand.thumbsup")
-                        .font(.subheadline)
-                        .foregroundColor(hasVoted ? .earthGreen : .earthMuted)
-                        .animation(.spring(duration: 0.2), value: hasVoted)
-                }
-                .disabled(hasVoted)
-
-                Spacer()
-
-                if let onSave {
-                    Button(action: onSave) {
-                        Image(systemName: isSaved ? "bookmark.fill" : "bookmark")
-                            .foregroundColor(isSaved ? .earthGreen : .earthMuted)
-                            .font(.subheadline)
-                            .padding(.horizontal, 10).padding(.vertical, 8)
-                            .background(Color.earthCard)
-                            .cornerRadius(10)
-                            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.earthMuted.opacity(0.2), lineWidth: 1))
-                    }
-                    .disabled(isSaved)
-                }
-
-                Button(action: onStart) {
-                    Label("Start Walk", systemImage: "figure.walk")
-                        .font(.subheadline.bold())
-                        .padding(.horizontal, 16).padding(.vertical, 8)
-                        .background(Color.earthGreen).foregroundColor(.white)
-                        .cornerRadius(10)
-                }
-            }
-        }
-        .padding(16)
-        .background(Color.earthCard)
-        .cornerRadius(14)
-    }
-}
-
-// MARK: - Post to Community Sheet
-
-struct PostToCommunitySheet: View {
-    let route: SuggestedRoute
-    @ObservedObject var routeStore: CustomRouteStore
-    let onSaved: () -> Void
-
-    @Environment(\.dismiss) private var dismiss
-    @State private var routeName = ""
-    @State private var isPosting = false
-    @State private var didPost = false
-    @State private var errorMessage: String? = nil
-
-    var body: some View {
-        NavigationStack {
-            ZStack {
-                Color.earthBg.ignoresSafeArea()
-                VStack(spacing: 28) {
-                    // Route preview stats
-                    HStack(spacing: 12) {
-                        statTile(value: route.distanceText, label: "Distance", icon: "ruler")
-                        statTile(value: route.timeText,     label: "Time",     icon: "clock")
-                        statTile(value: "~\(route.estimatedSteps.formatted())", label: "Steps", icon: "figure.walk")
-                    }
-                    .padding(.horizontal)
-
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Route name")
-                            .font(.caption).foregroundColor(.earthMuted)
-                            .padding(.horizontal)
-                        TextField("Name your route…", text: $routeName)
-                            .foregroundColor(.earthCream)
-                            .padding(14)
-                            .background(Color.earthCard)
-                            .cornerRadius(12)
-                            .padding(.horizontal)
-                    }
-
-                    if let err = errorMessage {
-                        Text(err)
-                            .font(.caption).foregroundColor(.orange)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal)
-                    }
-
-                    Button(action: post) {
-                        Group {
-                            if isPosting {
-                                ProgressView().tint(.white)
-                            } else if didPost {
-                                Label("Shared!", systemImage: "checkmark.circle.fill")
-                            } else {
-                                Label("Post & Save to My Routes", systemImage: "square.and.arrow.up")
-                            }
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 16)
-                        .background(didPost ? Color.earthGreen.opacity(0.6) : Color.earthGreen)
-                        .foregroundColor(.white)
-                        .font(.headline)
-                        .cornerRadius(14)
-                        .padding(.horizontal)
-                    }
-                    .disabled(isPosting || didPost || routeName.trimmingCharacters(in: .whitespaces).isEmpty)
-
-                    Spacer()
-                }
-                .padding(.top, 24)
-            }
-            .navigationTitle("Share Route")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }.foregroundColor(.earthMuted)
-                }
-                ToolbarItemGroup(placement: .keyboard) {
-                    Spacer()
-                    Button("Done") {
-                        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-                    }
-                    .fontWeight(.semibold).foregroundColor(.earthGreen)
-                }
-            }
-        }
-        .presentationDetents([.medium])
-        .onAppear {
-            routeName = route.label ?? "\(route.directionName) \(route.isLoop ? "Loop" : "Route")"
-        }
-    }
-
-    private func post() {
-        let name = routeName.trimmingCharacters(in: .whitespaces)
-        guard !name.isEmpty else { return }
-        isPosting = true
-        errorMessage = nil
-        let customRoute = route.toCustomRoute(name: name)
-        Task {
-            // Verify iCloud is available before attempting the write
-            let container = CKContainer(identifier: "iCloud.Scoops.PoCSquat")
-            let status = try? await container.accountStatus()
-            guard status == .available else {
-                errorMessage = "Sign into iCloud in Settings → [Your Name] to share routes."
-                isPosting = false
-                return
-            }
-            do {
-                try await CommunityRouteService.shared.publish(route: customRoute)
-                routeStore.save(customRoute)
-                onSaved()
-                didPost = true
-                try? await Task.sleep(nanoseconds: 900_000_000)
-                dismiss()
-            } catch let ckError as CKError {
-                switch ckError.code {
-                case .notAuthenticated:
-                    errorMessage = "Sign into iCloud in Settings to share routes."
-                case .networkUnavailable, .networkFailure:
-                    errorMessage = "No internet connection. Try again when online."
-                case .unknownItem, .invalidArguments:
-                    errorMessage = "Schema not deployed. Open CloudKit Console → Deploy Schema to Production."
-                case .permissionFailure:
-                    errorMessage = "iCloud permission denied. Check app settings."
-                default:
-                    errorMessage = "Error \(ckError.code.rawValue): \(ckError.localizedDescription)"
-                }
-                isPosting = false
-            } catch {
-                errorMessage = "Couldn't share: \(error.localizedDescription)"
-                isPosting = false
-            }
-        }
-    }
-
-    private func statTile(value: String, label: String, icon: String) -> some View {
-        VStack(spacing: 6) {
-            Image(systemName: icon).foregroundColor(.earthGreen).font(.title3)
-            Text(value).font(.headline.bold()).foregroundColor(.earthCream)
-            Text(label).font(.caption).foregroundColor(.earthMuted)
-        }
-        .frame(maxWidth: .infinity).padding(.vertical, 16)
-        .background(Color.earthCard).cornerRadius(14)
     }
 }
 

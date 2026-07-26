@@ -175,12 +175,29 @@ actor ElevationService {
     }
 }
 
-private struct OTDResponse: Decodable {
+private struct OTDResponse: Sendable {
     let results: [OTDResult]
     let status:  String
 }
-private struct OTDResult: Decodable {
+private struct OTDResult: Sendable {
     let elevation: Double?
+}
+
+// Explicit nonisolated Decodable inits so these can be decoded from any actor context.
+extension OTDResponse: Decodable {
+    nonisolated init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        results = try c.decode([OTDResult].self, forKey: .results)
+        status  = try c.decode(String.self, forKey: .status)
+    }
+    private enum CodingKeys: String, CodingKey { case results, status }
+}
+extension OTDResult: Decodable {
+    nonisolated init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        elevation = try c.decodeIfPresent(Double.self, forKey: .elevation)
+    }
+    private enum CodingKeys: String, CodingKey { case elevation }
 }
 
 // MARK: - Weather Widget
