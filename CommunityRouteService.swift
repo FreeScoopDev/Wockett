@@ -11,7 +11,7 @@ struct SharedRoute: Identifiable {
     let isLoop: Bool
     let distanceMeters: Double
     let difficulty: RouteDifficulty
-    var upvotes: Int
+    var wocketts: Int
     let authorName: String
     let createdAt: Date
 
@@ -52,7 +52,7 @@ struct SharedRoute: Identifiable {
         self.isLoop         = (record["isLoop"] as? Int ?? 0) == 1
         self.distanceMeters = distance
         self.difficulty     = RouteDifficulty(rawValue: record["difficultyTag"] as? String ?? "") ?? .easy
-        self.upvotes        = record["upvotes"] as? Int ?? 0
+        self.wocketts       = record["upvotes"] as? Int ?? 0
         self.authorName     = record["authorName"] as? String ?? "Anonymous"
         self.createdAt      = record.creationDate ?? Date()
     }
@@ -103,7 +103,7 @@ final class CommunityRouteService {
 
     // MARK: - Fetch
 
-    // Fetches newest 30 routes, sorts by upvotes client-side.
+    // Fetches newest 30 routes, sorts by Wocketts client-side.
     // Uses creationDate (auto-indexed by CloudKit) to avoid needing a custom index.
     func fetchRoutes(limit: Int = 30) async throws -> [SharedRoute] {
         let query = CKQuery(recordType: recordType, predicate: NSPredicate(value: true))
@@ -113,7 +113,7 @@ final class CommunityRouteService {
             guard let record = try? result.get() else { return nil }
             return SharedRoute(record: record)
         }
-        return routes.sorted { $0.upvotes > $1.upvotes }
+        return routes.sorted { $0.wocketts > $1.wocketts }
     }
 
     // MARK: - Publish
@@ -134,9 +134,9 @@ final class CommunityRouteService {
         _ = try await db.save(record)
     }
 
-    // MARK: - Upvote
+    // MARK: - Wockett
 
-    func upvote(id: CKRecord.ID) async throws {
+    func wockett(id: CKRecord.ID) async throws {
         let record  = try await db.record(for: id)
         let current = record["upvotes"] as? Int ?? 0
         record["upvotes"] = current + 1

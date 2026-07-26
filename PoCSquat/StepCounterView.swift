@@ -30,6 +30,11 @@ struct StepCounterView: View {
     @State private var showFreeWalk = false
     @State private var freeWalkMode: ActivityMode = .walking
     @State private var rollingBadgePhase: Int = 0
+    @AppStorage("pinnedBadgeIds_v1") private var pinnedBadgeIdsStr: String = ""
+
+    private var pinnedBadgeIds: [String] {
+        pinnedBadgeIdsStr.isEmpty ? [] : pinnedBadgeIdsStr.split(separator: ",").map(String.init)
+    }
 
     var body: some View {
         stepCounterCore
@@ -67,7 +72,8 @@ struct StepCounterView: View {
                 BadgesView(
                     sessions: historyStore.sessions,
                     todaySteps: stepManager.todaySteps,
-                    dailyGoal: stepManager.currentGoal
+                    dailyGoal: stepManager.currentGoal,
+                    pinnedBadgeIdsStr: $pinnedBadgeIdsStr
                 )
             }
             .fullScreenCover(item: $earnedBadge) { badge in
@@ -84,7 +90,7 @@ struct StepCounterView: View {
             }
             .task {
                 while !Task.isCancelled {
-                    try? await Task.sleep(nanoseconds: 3_500_000_000)
+                    try? await Task.sleep(nanoseconds: 5_500_000_000)
                     withAnimation(.spring(response: 0.45, dampingFraction: 0.85)) {
                         rollingBadgePhase += 1
                     }
@@ -133,6 +139,7 @@ struct StepCounterView: View {
             VStack(spacing: 24) {
                 progressSection.padding(.top, 8)
                 actionGrid.padding(.horizontal)
+                communityRoutesCard
                 streakIndicator
                 WeeklyCalendarView(
                     days: stepManager.weeklyCalendar,
@@ -279,17 +286,26 @@ struct StepCounterView: View {
         let earned   = walkBadges.filter { $0.isEarned(sessions: sessions, currentStreak: streak) }
         let unearned = walkBadges.filter { !$0.isEarned(sessions: sessions, currentStreak: streak) }
 
-        // Fixed: up to 2 most recently earned badges
-        let fixedBadges: [(WalkBadge, Double)] = Array(earned.suffix(2).reversed().map { ($0, 1.0) })
+        // Pinned badges fill fixed slots first, then fill with recently earned
+        let pinnedIds = pinnedBadgeIds
+        let pinned    = pinnedIds.compactMap { id in walkBadges.first { $0.id == id } }
+        let fixedBadges: [(WalkBadge, Double)] = {
+            var result: [WalkBadge] = pinned
+            for badge in earned.reversed() where !pinnedIds.contains(badge.id) && result.count < 2 {
+                result.append(badge)
+            }
+            return result.prefix(2).map { ($0, 1.0) }
+        }()
 
-        // Rolling: cycles through all unearned badges to encourage badge hunting
+        // Rolling slot cycles through unearned badges
         let rollingBadge: WalkBadge? = unearned.isEmpty ? nil : unearned[rollingBadgePhase % unearned.count]
 
         return Button { showBadges = true } label: {
             VStack(spacing: 10) {
-                ForEach(fixedBadges, id: \.0.id) { badge, progress in
-                    homeBadgeRing(badge, progress: progress, sessions: sessions, streak: streak,
-                                  ringSize: 54, lineWidth: 3, emojiSize: 21, labelSize: 9)
+                ForEach(fixedBadges, id: \.0.id) { badge, _ in
+                    homeBadgeRing(badge, progress: 1.0, sessions: sessions, streak: streak,
+                                  ringSize: 54, lineWidth: 3, emojiSize: 21, labelSize: 9,
+                                  isPinned: pinnedIds.contains(badge.id))
                 }
                 // Rolling slot — clips so the slide-in/out stays in bounds
                 ZStack {
@@ -308,7 +324,7 @@ struct StepCounterView: View {
                                       ringSize: 54, lineWidth: 3, emojiSize: 21, labelSize: 9)
                     }
                 }
-                .frame(height: 72)
+                .frame(height: 78)
                 .clipped()
             }
         }
@@ -316,26 +332,36 @@ struct StepCounterView: View {
     }
 
     private func homeBadgeRing(_ badge: WalkBadge, progress: Double, sessions: [WalkSession], streak: Int,
-                                ringSize: CGFloat, lineWidth: CGFloat, emojiSize: CGFloat, labelSize: CGFloat) -> some View {
+                                ringSize: CGFloat, lineWidth: CGFloat, emojiSize: CGFloat, labelSize: CGFloat,
+                                isPinned: Bool = false) -> some View {
         let earned = progress >= 1.0
         return VStack(spacing: 5) {
-            ZStack {
-                Circle()
-                    .stroke(Color.earthMuted.opacity(0.15), lineWidth: lineWidth)
-                if progress > 0 {
+            ZStack(alignment: .topTrailing) {
+                ZStack {
                     Circle()
-                        .trim(from: 0, to: min(progress, 1.0))
-                        .stroke(
-                            earned ? Color.earthGreen : Color.earthOrange,
-                            style: StrokeStyle(lineWidth: lineWidth, lineCap: .round)
-                        )
-                        .rotationEffect(.degrees(-90))
+                        .stroke(Color.earthMuted.opacity(0.15), lineWidth: lineWidth)
+                    if progress > 0 {
+                        Circle()
+                            .trim(from: 0, to: min(progress, 1.0))
+                            .stroke(
+                                earned ? Color.earthGreen : Color.earthOrange,
+                                style: StrokeStyle(lineWidth: lineWidth, lineCap: .round)
+                            )
+                            .rotationEffect(.degrees(-90))
+                    }
+                    Text(badge.emoji)
+                        .font(.system(size: emojiSize))
+                        .opacity(earned ? 1.0 : 0.55)
                 }
-                Text(badge.emoji)
-                    .font(.system(size: emojiSize))
-                    .opacity(earned ? 1.0 : 0.55)
+                .frame(width: ringSize, height: ringSize)
+
+                if isPinned {
+                    Image(systemName: "pin.fill")
+                        .font(.system(size: 7, weight: .bold))
+                        .foregroundColor(.earthOrange)
+                        .offset(x: 2, y: -2)
+                }
             }
-            .frame(width: ringSize, height: ringSize)
 
             Text(badge.name)
                 .font(.system(size: labelSize, weight: .semibold))
@@ -352,11 +378,16 @@ struct StepCounterView: View {
                 Text(streak > 0 ? "🔥" : "💤")
                     .font(.system(size: 14))
                 if streak > 0 {
-                    Text("\(streak)-day streak")
-                        .font(.caption.bold())
-                        .foregroundColor(.earthGreen)
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text("\(streak)-day streak")
+                            .font(.caption.bold())
+                            .foregroundColor(.earthGreen)
+                        Text(nextStreakMilestone(for: streak))
+                            .font(.system(size: 9))
+                            .foregroundColor(.earthMuted)
+                    }
                 } else {
-                    Text("Start your streak today")
+                    Text("Walk today — earn your first badge")
                         .font(.caption)
                         .foregroundColor(.earthMuted)
                 }
@@ -369,6 +400,17 @@ struct StepCounterView: View {
             .cornerRadius(20)
         }
         .buttonStyle(.plain)
+    }
+
+    private func nextStreakMilestone(for streak: Int) -> String {
+        let milestones = [7, 30, 100]
+        for m in milestones {
+            if streak < m {
+                let remaining = m - streak
+                return "\(remaining) more day\(remaining == 1 ? "" : "s") to \(m)-day badge"
+            }
+        }
+        return "Century walker — legendary!"
     }
 
     private func smallPetRing(pet: PetProfile) -> some View {
@@ -404,54 +446,87 @@ struct StepCounterView: View {
     // MARK: Settings
 
     private var settingsSection: some View {
-        VStack(spacing: 1) {
-            row {
-                Text("Daily Goal").foregroundColor(.earthCream)
-                Spacer()
-                Text("\(stepManager.currentGoal.formatted()) steps").foregroundColor(.earthGreen)
-                Image(systemName: "chevron.right").font(.caption).foregroundColor(.earthMuted.opacity(0.6))
-            }
-            .contentShape(Rectangle())
-            .onTapGesture { showGoalSheet = true }
+        LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
+            settingsTile(icon: "target", label: "Daily Goal",
+                         detail: "\(stepManager.currentGoal.formatted()) steps",
+                         color: .earthGreen) { showGoalSheet = true }
 
-            Button { showMyRoutes = true } label: {
-                HStack {
-                    Label("Saved Items", systemImage: "bookmark.map").foregroundColor(.earthCream)
-                    Spacer()
-                    if !routeStore.routes.isEmpty {
-                        Text("\(routeStore.routes.count)")
-                            .font(.caption).foregroundColor(.earthGreen).padding(.trailing, 4)
-                    }
-                    Image(systemName: "chevron.right").font(.caption).foregroundColor(.earthMuted.opacity(0.6))
-                }
-                .padding(.horizontal, 16).padding(.vertical, 16)
-            }
+            settingsTile(icon: "bookmark.map", label: "Saved Routes",
+                         detail: routeStore.routes.isEmpty ? "No routes saved" : "\(routeStore.routes.count) route\(routeStore.routes.count == 1 ? "" : "s")",
+                         color: Color(red: 0.28, green: 0.49, blue: 0.84)) { showMyRoutes = true }
 
-            Button { showWalkHistory = true } label: {
-                HStack {
-                    Label("Walk History", systemImage: "clock.arrow.circlepath").foregroundColor(.earthCream)
-                    Spacer()
-                    if !historyStore.sessions.isEmpty {
-                        Text("\(historyStore.sessions.count)")
-                            .font(.caption).foregroundColor(.earthGreen).padding(.trailing, 4)
-                    }
-                    Image(systemName: "chevron.right").font(.caption).foregroundColor(.earthMuted.opacity(0.6))
-                }
-                .padding(.horizontal, 16).padding(.vertical, 16)
-            }
+            settingsTile(icon: "clock.arrow.circlepath", label: "Walk History",
+                         detail: historyStore.sessions.isEmpty ? "No walks yet" : "\(historyStore.sessions.count) walk\(historyStore.sessions.count == 1 ? "" : "s")",
+                         color: .earthOrange) { showWalkHistory = true }
 
-            Button { showPetManagement = true } label: {
-                HStack {
-                    Label(petRowLabel, systemImage: petStore.activePets.isEmpty ? "pawprint" : "pawprint.fill")
-                        .foregroundColor(petStore.pets.isEmpty ? .earthCream : .earthGreen)
-                    Spacer()
-                    Image(systemName: "chevron.right").font(.caption).foregroundColor(.earthMuted.opacity(0.6))
-                }
-                .padding(.horizontal, 16).padding(.vertical, 16)
-            }
+            settingsTile(icon: petStore.activePets.isEmpty ? "pawprint" : "pawprint.fill",
+                         label: "My Pets",
+                         detail: petStore.pets.isEmpty ? "No pets added" : petRowLabel,
+                         color: Color(red: 0.73, green: 0.45, blue: 0.27)) { showPetManagement = true }
         }
-        .background(Color.earthCard)
-        .cornerRadius(16)
+        .padding(.horizontal)
+    }
+
+    private func settingsTile(icon: String, label: String, detail: String, color: Color, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Image(systemName: icon)
+                        .font(.system(size: 18, weight: .medium))
+                        .foregroundColor(color)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(.earthMuted.opacity(0.5))
+                }
+                Text(label)
+                    .font(.subheadline.bold())
+                    .foregroundColor(.earthCream)
+                Text(detail)
+                    .font(.caption)
+                    .foregroundColor(.earthMuted)
+                    .lineLimit(1)
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.earthCard)
+            .cornerRadius(16)
+        }
+        .buttonStyle(BounceButtonStyle(scale: 0.97))
+    }
+
+    private var communityRoutesCard: some View {
+        Button {
+            routeFinderShowsNearby = false
+            showRouteFinder = true
+        } label: {
+            HStack(spacing: 14) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(Color(red: 0.13, green: 0.57, blue: 0.64).opacity(0.15))
+                        .frame(width: 44, height: 44)
+                    Image(systemName: "person.2.wave.2")
+                        .font(.system(size: 18, weight: .medium))
+                        .foregroundColor(Color(red: 0.13, green: 0.57, blue: 0.64))
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Community Routes")
+                        .font(.subheadline.bold())
+                        .foregroundColor(.earthCream)
+                    Text("Discover walks shared by other users")
+                        .font(.caption)
+                        .foregroundColor(.earthMuted)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(.earthMuted.opacity(0.6))
+            }
+            .padding(14)
+            .background(Color.earthCard)
+            .cornerRadius(16)
+        }
+        .buttonStyle(BounceButtonStyle(scale: 0.98))
         .padding(.horizontal)
     }
 
@@ -542,11 +617,6 @@ struct StepCounterView: View {
         .buttonStyle(BounceButtonStyle())
     }
 
-    private func row<C: View>(@ViewBuilder _ content: () -> C) -> some View {
-        HStack { content() }
-            .padding(.horizontal, 16).padding(.vertical, 16)
-            .overlay(Rectangle().frame(height: 0.5).foregroundColor(Color.earthMuted.opacity(0.2)), alignment: .bottom)
-    }
 }
 
 // MARK: - Route Map View

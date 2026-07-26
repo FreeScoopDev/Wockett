@@ -18,15 +18,16 @@ struct WalkSession: Identifiable, Codable {
     let isLoop: Bool
     var activePetIds: [UUID]
     var activityType: String  // "walking" or "cycling"; decoded with fallback for existing sessions
+    var notes: String         // user notes per session; empty string for existing sessions
 
     init(id: UUID, routeName: String, date: Date, elapsedTime: TimeInterval,
          totalDistance: Double, waypoints: [WaypointCoord], lapCount: Int,
-         isLoop: Bool, activePetIds: [UUID] = [], activityType: String = "walking") {
+         isLoop: Bool, activePetIds: [UUID] = [], activityType: String = "walking", notes: String = "") {
         self.id = id; self.routeName = routeName; self.date = date
         self.elapsedTime = elapsedTime; self.totalDistance = totalDistance
         self.waypoints = waypoints; self.lapCount = lapCount
         self.isLoop = isLoop; self.activePetIds = activePetIds
-        self.activityType = activityType
+        self.activityType = activityType; self.notes = notes
     }
 
     init(from decoder: Decoder) throws {
@@ -41,10 +42,11 @@ struct WalkSession: Identifiable, Codable {
         isLoop        = try c.decode(Bool.self,            forKey: .isLoop)
         activePetIds  = (try? c.decode([UUID].self,        forKey: .activePetIds)) ?? []
         activityType  = (try? c.decode(String.self,        forKey: .activityType)) ?? "walking"
+        notes         = (try? c.decode(String.self,        forKey: .notes))        ?? ""
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, routeName, date, elapsedTime, totalDistance, waypoints, lapCount, isLoop, activePetIds, activityType
+        case id, routeName, date, elapsedTime, totalDistance, waypoints, lapCount, isLoop, activePetIds, activityType, notes
     }
 
     var estimatedSteps: Int { Int(totalDistance / 0.762) }
@@ -97,6 +99,12 @@ final class WalkHistoryStore: ObservableObject {
 
     func delete(at offsets: IndexSet) {
         sessions.remove(atOffsets: offsets)
+        persist()
+    }
+
+    func updateNotes(id: UUID, notes: String) {
+        guard let idx = sessions.firstIndex(where: { $0.id == id }) else { return }
+        sessions[idx].notes = notes
         persist()
     }
 
@@ -1039,6 +1047,29 @@ struct WalkHistoryView: View {
     @EnvironmentObject var petStore: PetStore
     @State private var navigatingRoute: NavigableRoute?
     @State private var showManualEntry = false
+    @State private var selectedSession: WalkSession?
+
+    private var totalWalks: Int { store.sessions.count }
+
+    private var avgDistanceText: String {
+        guard !store.sessions.isEmpty else { return "—" }
+        let avg = store.sessions.reduce(0.0) { $0 + $1.totalDistance } / Double(store.sessions.count)
+        let f = MKDistanceFormatter(); f.unitStyle = .abbreviated
+        return f.string(fromDistance: avg)
+    }
+
+    private var avgDurationText: String {
+        guard !store.sessions.isEmpty else { return "—" }
+        let avg = store.sessions.reduce(0.0) { $0 + $1.elapsedTime } / Double(store.sessions.count)
+        let mins = Int(avg) / 60
+        return mins < 60 ? "\(mins)m" : "\(mins / 60)h \(mins % 60)m"
+    }
+
+    private var walksThisWeek: Int {
+        let cal = Calendar.current
+        guard let weekStart = cal.date(from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: Date())) else { return 0 }
+        return store.sessions.filter { $0.date >= weekStart }.count
+    }
 
     var body: some View {
         ZStack {
@@ -1062,9 +1093,10 @@ struct WalkHistoryView: View {
             WalkNavigationView(route: route, historyStore: store)
         }
         .sheet(isPresented: $showManualEntry) {
-            ManualWalkEntrySheet { session in
-                store.add(session)
-            }
+            ManualWalkEntrySheet { session in store.add(session) }
+        }
+        .sheet(item: $selectedSession) { session in
+            WalkSessionDetailSheet(session: session, store: store)
         }
     }
 
@@ -1081,11 +1113,44 @@ struct WalkHistoryView: View {
         }.padding()
     }
 
+    private var statsHeader: some View {
+        HStack(spacing: 0) {
+            statCell("\(totalWalks)", "Total")
+            Divider().frame(height: 36)
+            statCell(avgDistanceText, "Avg Dist")
+            Divider().frame(height: 36)
+            statCell(avgDurationText, "Avg Time")
+            Divider().frame(height: 36)
+            statCell("\(walksThisWeek)", "This Week")
+        }
+        .padding(.vertical, 12)
+        .background(Color.earthCard)
+        .cornerRadius(14)
+        .padding(.horizontal)
+        .padding(.top, 8)
+    }
+
+    private func statCell(_ value: String, _ label: String) -> some View {
+        VStack(spacing: 2) {
+            Text(value).font(.headline.monospacedDigit()).foregroundColor(.earthCream)
+            Text(label).font(.caption2).foregroundColor(.earthMuted)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
     private var historyList: some View {
         List {
+            Section {
+                statsHeader
+                    .listRowInsets(EdgeInsets())
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+            }
             ForEach(store.sessions) { session in
                 WalkHistoryRow(session: session) {
                     navigatingRoute = session.toNavigableRoute()
+                } onInfo: {
+                    selectedSession = session
                 }
                 .listRowBackground(Color.earthCard)
                 .listRowSeparatorTint(Color.earthMuted.opacity(0.2))
@@ -1093,6 +1158,116 @@ struct WalkHistoryView: View {
             .onDelete { store.delete(at: $0) }
         }
         .listStyle(.plain).scrollContentBackground(.hidden)
+    }
+}
+
+// MARK: - Walk Session Detail Sheet
+
+struct WalkSessionDetailSheet: View {
+    let session: WalkSession
+    @ObservedObject var store: WalkHistoryStore
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var notes: String = ""
+
+    private static let dateFmt: DateFormatter = {
+        let f = DateFormatter(); f.dateStyle = .long; f.timeStyle = .short; return f
+    }()
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Color.earthBg.ignoresSafeArea()
+                ScrollView {
+                    VStack(spacing: 20) {
+                        Text(Self.dateFmt.string(from: session.date))
+                            .font(.subheadline).foregroundColor(.earthMuted)
+                            .padding(.top, 4)
+
+                        HStack(spacing: 12) {
+                            detailTile(session.distanceText, "Distance", "ruler")
+                            detailTile(session.timeText,     "Duration", "clock")
+                            detailTile("\(session.estimatedSteps.formatted())", "Steps", "figure.walk")
+                        }
+                        .padding(.horizontal)
+
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Notes")
+                                .font(.caption.bold()).foregroundColor(.earthMuted)
+                                .padding(.horizontal)
+                            ZStack(alignment: .topLeading) {
+                                if notes.isEmpty {
+                                    Text("Add a note about this walk…")
+                                        .font(.subheadline).foregroundColor(.earthMuted.opacity(0.5))
+                                        .padding(.horizontal, 14).padding(.top, 12)
+                                }
+                                TextEditor(text: $notes)
+                                    .foregroundColor(.earthCream)
+                                    .font(.subheadline)
+                                    .scrollContentBackground(.hidden)
+                                    .frame(minHeight: 88)
+                                    .padding(.horizontal, 10)
+                            }
+                            .padding(.vertical, 4)
+                            .background(Color.earthCard)
+                            .cornerRadius(14)
+                            .padding(.horizontal)
+                        }
+
+                        ShareLink(item: shareText) {
+                            Label("Share this Walk", systemImage: "square.and.arrow.up")
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 14)
+                                .background(Color.earthCard)
+                                .foregroundColor(.earthCream)
+                                .fontWeight(.semibold)
+                                .cornerRadius(14)
+                                .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.earthGreen.opacity(0.4), lineWidth: 1.5))
+                        }
+                        .padding(.horizontal)
+
+                        Spacer(minLength: 24)
+                    }
+                    .padding(.vertical, 8)
+                }
+            }
+            .navigationTitle(session.routeName)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") {
+                        store.updateNotes(id: session.id, notes: notes)
+                        dismiss()
+                    }
+                    .foregroundColor(.earthGreen)
+                }
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") {
+                        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                    }
+                    .fontWeight(.semibold).foregroundColor(.earthGreen)
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .onAppear { notes = session.notes }
+    }
+
+    private var shareText: String {
+        var text = "Just \(session.activityType == "cycling" ? "rode" : "walked") \(session.distanceText) in \(session.timeText) on Wockett 🚶"
+        if !notes.isEmpty { text += "\n\n\"\(notes)\"" }
+        return text
+    }
+
+    private func detailTile(_ value: String, _ label: String, _ icon: String) -> some View {
+        VStack(spacing: 6) {
+            Image(systemName: icon).foregroundColor(.earthGreen).font(.title3)
+            Text(value).font(.headline.bold()).foregroundColor(.earthCream)
+            Text(label).font(.caption).foregroundColor(.earthMuted)
+        }
+        .frame(maxWidth: .infinity).padding(.vertical, 16)
+        .background(Color.earthCard).cornerRadius(14)
     }
 }
 
@@ -1246,31 +1421,58 @@ struct ManualWalkEntrySheet: View {
 struct WalkHistoryRow: View {
     let session: WalkSession
     let onWalkAgain: () -> Void
+    let onInfo: () -> Void
+
+    private var rowIcon: String {
+        session.activityType == "cycling" ? "bicycle" : "figure.walk"
+    }
+
+    private var rowColor: Color {
+        session.activityType == "cycling" ? Color(red: 0.13, green: 0.57, blue: 0.64) : .earthGreen
+    }
 
     var body: some View {
         HStack(spacing: 14) {
             ZStack {
                 RoundedRectangle(cornerRadius: 10)
-                    .fill(Color.earthGreen.opacity(0.15)).frame(width: 46, height: 46)
-                Image(systemName: "figure.walk").foregroundColor(.earthGreen)
+                    .fill(rowColor.opacity(0.15)).frame(width: 46, height: 46)
+                Image(systemName: rowIcon).foregroundColor(rowColor)
             }
             VStack(alignment: .leading, spacing: 4) {
-                Text(session.routeName).font(.headline).foregroundColor(.earthCream)
+                Text(session.routeName).font(.headline).foregroundColor(.earthCream).lineLimit(1)
                 Text(session.formattedDate).font(.subheadline).foregroundColor(.earthMuted)
                 HStack(spacing: 10) {
                     Label(session.distanceText, systemImage: "ruler")
                     Label(session.timeText, systemImage: "clock")
                 }
                 .font(.footnote).foregroundColor(.earthMuted)
+                if !session.notes.isEmpty {
+                    Text(session.notes)
+                        .font(.caption).foregroundColor(.earthMuted.opacity(0.8))
+                        .lineLimit(1)
+                }
             }
             Spacer()
-            Button { onWalkAgain() } label: {
-                Label("Walk Again", systemImage: "arrow.clockwise")
-                    .font(.subheadline.bold())
-                    .padding(.horizontal, 12).padding(.vertical, 8)
-                    .background(Color.earthGreen.opacity(0.15)).foregroundColor(.earthGreen).cornerRadius(8)
+            VStack(spacing: 8) {
+                Button { onWalkAgain() } label: {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(rowColor)
+                        .frame(width: 34, height: 34)
+                        .background(rowColor.opacity(0.12))
+                        .cornerRadius(8)
+                }
+                .buttonStyle(.plain)
+                Button { onInfo() } label: {
+                    Image(systemName: session.notes.isEmpty ? "note.text.badge.plus" : "note.text")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(.earthMuted)
+                        .frame(width: 34, height: 34)
+                        .background(Color.earthMuted.opacity(0.1))
+                        .cornerRadius(8)
+                }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
         }
         .padding(.vertical, 8)
     }

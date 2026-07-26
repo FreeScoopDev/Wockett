@@ -141,7 +141,7 @@ struct MonthCalendarView: View {
                                         onTap: { selectedDay = calendarDay(for: date) }
                                     )
                                 } else {
-                                    Color.clear.frame(height: 58)
+                                    Color.clear.frame(height: 64)
                                 }
                             }
                         }
@@ -217,13 +217,23 @@ private struct MonthDayCell: View {
                         Image(systemName: "plus")
                             .font(.system(size: 7)).foregroundColor(.earthMuted.opacity(0.3))
                     } else if let met = goalMet {
-                        Image(systemName: met ? "checkmark" : "xmark")
-                            .font(.system(size: 7, weight: .bold))
-                            .foregroundColor(met ? .earthGreen : .earthMuted.opacity(0.5))
+                        if met {
+                            Image(systemName: "checkmark")
+                                .font(.system(size: 7, weight: .bold))
+                                .foregroundColor(.earthGreen)
+                        } else if let s = steps, s > 0 {
+                            Text("\(Int(Double(s) / Double(max(1, goal)) * 100))%")
+                                .font(.system(size: 6, weight: .bold))
+                                .foregroundColor(.orange)
+                        } else {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 6))
+                                .foregroundColor(.earthMuted.opacity(0.4))
+                        }
                     }
                 }
             }
-            .frame(width: 26, height: 26)
+            .frame(width: 28, height: 28)
 
             if let label = stepsLabel {
                 Text(label)
@@ -237,7 +247,7 @@ private struct MonthDayCell: View {
                 Text("—").font(.system(size: 7)).foregroundColor(.earthMuted.opacity(0.25))
             }
         }
-        .frame(height: 58)
+        .frame(height: 64)
         .background(isToday ? Color.earthCard.opacity(0.6) : Color.clear)
         .cornerRadius(8)
         .contentShape(Rectangle())

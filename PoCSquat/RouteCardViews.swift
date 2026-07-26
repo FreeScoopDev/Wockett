@@ -115,7 +115,7 @@ struct CommunityRouteCard: View {
     @Binding var route: SharedRoute
     let hasVoted: Bool
     var isSaved: Bool = false
-    let onUpvote: () -> Void
+    let onWockett: () -> Void
     var onSave: (() -> Void)? = nil
     let onStart: () -> Void
 
@@ -140,11 +140,17 @@ struct CommunityRouteCard: View {
             .font(.caption).foregroundColor(.earthMuted)
 
             HStack {
-                Button(action: onUpvote) {
-                    Label("\(route.upvotes)", systemImage: hasVoted ? "hand.thumbsup.fill" : "hand.thumbsup")
-                        .font(.subheadline)
-                        .foregroundColor(hasVoted ? .earthGreen : .earthMuted)
-                        .animation(.spring(duration: 0.2), value: hasVoted)
+                Button(action: onWockett) {
+                    HStack(spacing: 5) {
+                        Image(systemName: hasVoted ? "w.circle.fill" : "w.circle")
+                            .font(.system(size: 15, weight: .semibold))
+                        Text(hasVoted
+                             ? "\(route.wocketts) Wocketted!"
+                             : "\(route.wocketts) Wockett\(route.wocketts == 1 ? "" : "s")")
+                            .font(.subheadline.bold())
+                    }
+                    .foregroundColor(hasVoted ? .earthGreen : .earthMuted)
+                    .animation(.spring(duration: 0.2), value: hasVoted)
                 }
                 .disabled(hasVoted)
 

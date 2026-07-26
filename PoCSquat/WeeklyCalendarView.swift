@@ -137,9 +137,19 @@ private struct DayCell: View {
                         Image(systemName: "figure.walk")
                             .font(.system(size: 10)).foregroundColor(.earthGreen)
                     } else if let met = day.goalMet {
-                        Image(systemName: met ? "checkmark" : "xmark")
-                            .font(.system(size: 9, weight: .bold))
-                            .foregroundColor(met ? .earthGreen : .earthMuted.opacity(0.6))
+                        if met {
+                            Image(systemName: "checkmark")
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundColor(.earthGreen)
+                        } else if let steps = day.steps, steps > 0 {
+                            Text("\(Int(Double(steps) / Double(max(1, day.goal)) * 100))%")
+                                .font(.system(size: 8, weight: .bold))
+                                .foregroundColor(.orange)
+                        } else {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 8))
+                                .foregroundColor(.earthMuted.opacity(0.4))
+                        }
                     }
                 }
             }

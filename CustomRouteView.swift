@@ -148,6 +148,7 @@ final class CustomRouteBuilder: ObservableObject {
     @Published var loopLeg:      MKRoute?
     @Published var isComputing   = false
     @Published var isLoopClosed  = false
+    @Published var activityMode: ActivityMode = .walking
 
     init(initialWaypoints: [CLLocationCoordinate2D] = []) {
         self.waypoints = initialWaypoints
@@ -203,14 +204,20 @@ final class CustomRouteBuilder: ObservableObject {
         loopLeg   = nil
         isLoopClosed = false
         for i in 0..<(waypoints.count - 1) {
-            if let leg = await walkingRoute(from: waypoints[i], to: waypoints[i + 1]) {
+            if let leg = await routeLeg(from: waypoints[i], to: waypoints[i + 1]) {
                 routeLegs.append(leg)
             }
         }
-        if closedLoop, let leg = await walkingRoute(from: waypoints.last!, to: waypoints.first!) {
+        if closedLoop, let leg = await routeLeg(from: waypoints.last!, to: waypoints.first!) {
             loopLeg      = leg
             isLoopClosed = true
         }
+    }
+
+    func recomputeAllLegs() async {
+        guard waypoints.count >= 2 else { return }
+        let wasLoop = isLoopClosed
+        await computeAllLegs(closedLoop: wasLoop)
     }
 
     private func computeLastLeg() async {
@@ -219,7 +226,7 @@ final class CustomRouteBuilder: ObservableObject {
         isComputing = true
         defer { isComputing = false }
 
-        guard let leg = await walkingRoute(from: waypoints[n - 2], to: waypoints[n - 1]) else {
+        guard let leg = await routeLeg(from: waypoints[n - 2], to: waypoints[n - 1]) else {
             if waypoints.count == n { waypoints.removeLast() }
             return
         }
@@ -231,17 +238,17 @@ final class CustomRouteBuilder: ObservableObject {
         isComputing = true
         defer { isComputing = false }
 
-        if let leg = await walkingRoute(from: last, to: first) {
+        if let leg = await routeLeg(from: last, to: first) {
             loopLeg       = leg
             isLoopClosed  = true
         }
     }
 
-    private func walkingRoute(from: CLLocationCoordinate2D, to: CLLocationCoordinate2D) async -> MKRoute? {
+    private func routeLeg(from: CLLocationCoordinate2D, to: CLLocationCoordinate2D) async -> MKRoute? {
         let req           = MKDirections.Request()
         req.source        = MKMapItem(location: CLLocation(latitude: from.latitude, longitude: from.longitude), address: nil)
         req.destination   = MKMapItem(location: CLLocation(latitude: to.latitude, longitude: to.longitude), address: nil)
-        req.transportType = .walking
+        req.transportType = activityMode.transportType
         return try? await MKDirections(request: req).calculate().routes.first
     }
 }
@@ -394,7 +401,7 @@ struct CustomRouteBuilderView: View {
                         .font(.system(size: 34)).foregroundColor(.earthGreen)
                     Text("Tap the map to add waypoints")
                         .font(.headline).foregroundColor(.earthCream)
-                    Text("MapKit finds walking routes between each point")
+                    Text("MapKit finds \(builder.activityMode == .cycling ? "cycling" : "walking") routes between each point")
                         .font(.subheadline).foregroundColor(.earthMuted)
                         .multilineTextAlignment(.center)
                 }
@@ -406,6 +413,13 @@ struct CustomRouteBuilderView: View {
 
             // Bottom control panel
             VStack(spacing: 12) {
+                // Activity mode toggle chips
+                HStack(spacing: 8) {
+                    modeChip(.walking)
+                    modeChip(.cycling)
+                }
+                .padding(.horizontal)
+
                 if !builder.waypoints.isEmpty {
                     HStack(spacing: 0) {
                         statChip(value: "\(builder.waypoints.count)", label: "points")
@@ -477,6 +491,33 @@ struct CustomRouteBuilderView: View {
                 dismiss()
             }
         }
+    }
+
+    @ViewBuilder
+    private func modeChip(_ mode: ActivityMode) -> some View {
+        let selected = builder.activityMode == mode
+        Button {
+            guard !selected && !builder.isComputing else { return }
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                builder.activityMode = mode
+            }
+            if !builder.waypoints.isEmpty {
+                Task { await builder.recomputeAllLegs() }
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: mode.icon)
+                    .font(.system(size: 13, weight: .semibold))
+                Text(mode == .cycling ? "Cycling" : "Walking")
+                    .font(.subheadline.bold())
+            }
+            .padding(.horizontal, 16).padding(.vertical, 9)
+            .background(selected ? Color.earthGreen : Color.earthCard)
+            .foregroundColor(selected ? .white : .earthCream)
+            .cornerRadius(20)
+        }
+        .buttonStyle(BounceButtonStyle(scale: 0.95))
+        .disabled(builder.isComputing)
     }
 
     @ViewBuilder

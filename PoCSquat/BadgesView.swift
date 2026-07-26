@@ -6,6 +6,7 @@ struct BadgesView: View {
     let sessions: [WalkSession]
     let todaySteps: Int
     let dailyGoal: Int
+    @Binding var pinnedBadgeIdsStr: String
     @Environment(\.dismiss) private var dismiss
 
     var streakStore: StreakStore = .shared
@@ -15,10 +16,17 @@ struct BadgesView: View {
     private var appleADayStreak: Int  { streakStore.appleADayStreak }
     private var longestStreak: Int    { streakStore.longestStreak }
 
+    private var pinnedIds: [String] {
+        pinnedBadgeIdsStr.isEmpty ? [] : pinnedBadgeIdsStr.split(separator: ",").map(String.init)
+    }
+
     private var distanceBadges: [WalkBadge] { walkBadges.filter { if case .distance = $0.type { true } else { false } } }
     private var streakBadges:   [WalkBadge] { walkBadges.filter { if case .streak   = $0.type { true } else { false } } }
     private var timeBadges:     [WalkBadge] { walkBadges.filter {
         switch $0.type { case .earlyBird, .nightOwl: true; default: false }
+    }}
+    private var metaBadges: [WalkBadge] { walkBadges.filter {
+        if case .badgeCount = $0.type { true } else { false }
     }}
 
     var body: some View {
@@ -27,10 +35,12 @@ struct BadgesView: View {
                 Color.earthBg.ignoresSafeArea()
                 ScrollView {
                     VStack(spacing: 24) {
+                        pinHint
                         streakSection
-                        badgeSection(title: "Distance",  badges: distanceBadges)
-                        badgeSection(title: "Streaks",   badges: streakBadges)
+                        badgeSection(title: "Distance",   badges: distanceBadges)
+                        badgeSection(title: "Streaks",    badges: streakBadges)
                         badgeSection(title: "Time-Based", badges: timeBadges)
+                        badgeSection(title: "Meta",       badges: metaBadges)
                         if currentStreak > 0 { shareButton }
                     }
                     .padding(.horizontal)
@@ -49,6 +59,26 @@ struct BadgesView: View {
         .onAppear {
             streakStore.refresh(sessions: sessions, todaySteps: todaySteps, dailyGoal: dailyGoal)
         }
+    }
+
+    // MARK: - Pin hint
+
+    private var pinHint: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "pin.fill")
+                .font(.system(size: 11))
+                .foregroundColor(.earthOrange)
+            Text("Pin up to 2 badges to your home screen")
+                .font(.caption)
+                .foregroundColor(.earthMuted)
+            Spacer()
+            Text("\(pinnedIds.count)/2")
+                .font(.caption.bold())
+                .foregroundColor(pinnedIds.count == 2 ? .earthOrange : .earthMuted)
+        }
+        .padding(.horizontal, 14).padding(.vertical, 10)
+        .background(Color.earthCard)
+        .cornerRadius(12)
     }
 
     // MARK: - Streak tiles
@@ -107,6 +137,7 @@ struct BadgesView: View {
     private func badgeTile(_ badge: WalkBadge) -> some View {
         let earned   = badge.isEarned(sessions: sessions, currentStreak: currentStreak)
         let progress = badge.progress(sessions: sessions, currentStreak: currentStreak)
+        let isPinned = pinnedIds.contains(badge.id)
         return VStack(spacing: 6) {
             ZStack {
                 Circle()
@@ -136,8 +167,32 @@ struct BadgesView: View {
         .cornerRadius(12)
         .overlay(
             RoundedRectangle(cornerRadius: 12)
-                .stroke(earned ? Color.earthGreen.opacity(0.45) : Color.clear, lineWidth: 1)
+                .stroke(isPinned ? Color.earthOrange.opacity(0.6) : (earned ? Color.earthGreen.opacity(0.45) : Color.clear), lineWidth: 1.5)
         )
+        .overlay(alignment: .topTrailing) {
+            Button {
+                togglePin(badge.id)
+            } label: {
+                Image(systemName: isPinned ? "pin.fill" : "pin")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(isPinned ? .earthOrange : .earthMuted.opacity(0.4))
+                    .padding(7)
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private func togglePin(_ id: String) {
+        var ids = pinnedIds
+        if ids.contains(id) {
+            ids.removeAll { $0 == id }
+        } else if ids.count < 2 {
+            ids.append(id)
+        } else {
+            ids.removeFirst()
+            ids.append(id)
+        }
+        pinnedBadgeIdsStr = ids.joined(separator: ",")
     }
 
     // MARK: - Share challenge

@@ -430,11 +430,11 @@ struct RouteFinderView: View {
                             route: $route,
                             hasVoted: CommunityRouteService.shared.hasVoted(for: route.id),
                             isSaved: savedCommunityIds.contains(route.id.recordName),
-                            onUpvote: {
+                            onWockett: {
                                 guard !CommunityRouteService.shared.hasVoted(for: route.id) else { return }
-                                route.upvotes += 1
+                                route.wocketts += 1
                                 CommunityRouteService.shared.markVoted(for: route.id)
-                                Task { try? await CommunityRouteService.shared.upvote(id: route.id) }
+                                Task { try? await CommunityRouteService.shared.wockett(id: route.id) }
                             },
                             onSave: {
                                 routeStore.save(CustomRoute(
