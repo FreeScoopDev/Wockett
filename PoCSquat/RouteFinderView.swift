@@ -14,7 +14,6 @@ struct RouteFinderView: View {
     @Environment(\.dismiss) private var dismiss
 
     // Persisted config
-    @State private var selectedRadius: Double
     @State private var walkIntent: WalkIntent
     @State private var activityMode: ActivityMode
 
@@ -38,7 +37,9 @@ struct RouteFinderView: View {
     @State private var showNearbySheet = false
     @State private var showDestSearch = false
 
-    private let radiusKey = "wkt_lastRouteRadius_v1"
+    // Active search task — stored so it can be cancelled on retry or dismissal
+    @State private var activeTask: Task<Void, Never>?
+
     private let intentKey = "wkt_lastWalkIntent_v1"
 
     init(routeManager: RouteManager, historyStore: WalkHistoryStore,
@@ -49,9 +50,6 @@ struct RouteFinderView: View {
         self.routeStore = routeStore
         self.stepManager = stepManager
         self.openWithNearby = openWithNearby
-
-        let r = UserDefaults.standard.double(forKey: "wkt_lastRouteRadius_v1")
-        _selectedRadius = State(initialValue: r > 0 ? r : 1000)
 
         let s = UserDefaults.standard.string(forKey: "wkt_lastWalkIntent_v1") ?? "finishGoal"
         _walkIntent = State(initialValue: WalkIntent(rawStorageString: s))
@@ -67,7 +65,6 @@ struct RouteFinderView: View {
             RouteFinderMapView(
                 routes: routeManager.suggestedRoutes,
                 selectedRoute: $selectedRoute,
-                radiusMeters: selectedRadius,
                 goalDistanceMeters: Double(stepManager.currentGoal) * 0.762,
                 userLocation: routeManager.lastLocation?.coordinate
             )
@@ -92,10 +89,10 @@ struct RouteFinderView: View {
             }
             Task { await loadCommunityRoutes() }
         }
-        .onChange(of: selectedRoute?.id) { _, _ in loadElevation() }
-        .onChange(of: selectedRadius) { _, v in
-            UserDefaults.standard.set(v, forKey: radiusKey)
+        .onDisappear {
+            clearRoutes()
         }
+        .onChange(of: selectedRoute?.id) { _, _ in loadElevation() }
         .onChange(of: activityMode) { _, v in
             UserDefaults.standard.set(v.rawValue, forKey: "wkt_lastActivityMode_v1")
             clearRoutes()
@@ -190,23 +187,6 @@ struct RouteFinderView: View {
                     .padding(.horizontal, 20)
                 }
 
-                VStack(spacing: 8) {
-                    HStack {
-                        Text("Route reach")
-                            .font(.caption.bold())
-                            .foregroundColor(.earthMuted)
-                        Spacer()
-                        Text(formatDistance(selectedRadius))
-                            .font(.caption.bold())
-                            .foregroundColor(.earthGreen)
-                            .monospacedDigit()
-                            .animation(.none, value: selectedRadius)
-                    }
-                    Slider(value: $selectedRadius, in: 200...4_000)
-                        .tint(.earthGreen)
-                }
-                .padding(.horizontal, 20)
-
                 Button(action: triggerRecommend) {
                     Group {
                         if routeManager.isGenerating {
@@ -239,6 +219,17 @@ struct RouteFinderView: View {
                     .foregroundColor(.orange)
                     .padding(.horizontal, 20)
                     .transition(.opacity.combined(with: .move(edge: .top)))
+
+                    Button(action: triggerNearbyLoops) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "arrow.triangle.2.circlepath")
+                            Text("Try nearby loops instead")
+                        }
+                        .font(.subheadline.bold())
+                        .foregroundColor(.earthGreen)
+                    }
+                    .padding(.horizontal, 20)
+                    .transition(.opacity)
                 }
 
                 HStack(spacing: 20) {
@@ -525,7 +516,7 @@ struct RouteFinderView: View {
 
     private func triggerRecommend() {
         clearRoutes()
-        Task {
+        activeTask = Task {
             let target: Double = {
                 switch walkIntent {
                 case .finishGoal:
@@ -535,12 +526,34 @@ struct RouteFinderView: View {
                     return Double(mins) * 80
                 }
             }()
-            await routeManager.generateRoutes(remainingMeters: target, radius: selectedRadius, transportType: activityMode.transportType)
+            await routeManager.generateRoutes(remainingMeters: target, transportType: activityMode.transportType)
+            guard !Task.isCancelled else { return }
+            await loadWeather()
+        }
+    }
+
+    private func triggerNearbyLoops() {
+        clearRoutes()
+        activeTask = Task {
+            let target: Double = {
+                switch walkIntent {
+                case .finishGoal:
+                    let r = stepManager.remainingMeters
+                    return r > 100 ? r : 5000
+                case .quickWalk(let mins):
+                    return Double(mins) * 80
+                }
+            }()
+            await routeManager.generateNearbyLoops(remainingMeters: target, transportType: activityMode.transportType)
+            guard !Task.isCancelled else { return }
             await loadWeather()
         }
     }
 
     private func clearRoutes() {
+        activeTask?.cancel()
+        activeTask = nil
+        routeManager.isGenerating = false
         routeManager.suggestedRoutes = []
         routeManager.locationError = nil
         selectedRoute = nil
@@ -600,10 +613,6 @@ struct RouteFinderView: View {
         isLoadingCommunity = false
     }
 
-    private func formatDistance(_ meters: Double) -> String {
-        let f = MKDistanceFormatter(); f.unitStyle = .abbreviated
-        return f.string(fromDistance: meters)
-    }
 }
 
 // MARK: - WalkIntent persistence helpers
@@ -632,7 +641,6 @@ extension WalkIntent {
 struct RouteFinderMapView: UIViewRepresentable {
     let routes: [SuggestedRoute]
     @Binding var selectedRoute: SuggestedRoute?
-    let radiusMeters: Double
     let goalDistanceMeters: Double
     let userLocation: CLLocationCoordinate2D?
 
@@ -662,20 +670,11 @@ struct RouteFinderMapView: UIViewRepresentable {
             context.coordinator.lastRouteIds = currentIds
             context.coordinator.lastSelectedId = UUID()  // reset sentinel
 
-            map.removeOverlays(map.overlays.filter { !($0 is MKCircle) })
+            map.removeOverlays(map.overlays.filter { $0 is MKPolyline || $0 is MarkerCircle })
 
             if routes.isEmpty {
-                updateRadiusCircle(on: map, context: context)
-                if let loc = userLocation {
-                    let region = MKCoordinateRegion(
-                        center: loc,
-                        latitudinalMeters: radiusMeters * 3.5,
-                        longitudinalMeters: radiusMeters * 3.5
-                    )
-                    map.setRegion(region, animated: true)
-                }
+                // No routes — map stays at its current zoom.
             } else {
-                map.removeOverlays(map.overlays.filter { $0 is MKCircle })
                 var coords: [CLLocationCoordinate2D] = []
                 for route in routes {
                     let pl = route.polyline
@@ -698,10 +697,6 @@ struct RouteFinderMapView: UIViewRepresentable {
                     )
                 }
             }
-        }
-
-        if routes.isEmpty {
-            updateRadiusCircle(on: map, context: context)
         }
 
         // Selection rendering
@@ -772,16 +767,6 @@ struct RouteFinderMapView: UIViewRepresentable {
         }
     }
 
-    private func updateRadiusCircle(on map: MKMapView, context: Context) {
-        guard let center = userLocation else { return }
-        if abs(context.coordinator.lastRadius - radiusMeters) > 10
-            || map.overlays.filter({ $0 is MKCircle }).isEmpty {
-            map.removeOverlays(map.overlays.filter { $0 is MKCircle })
-            map.addOverlay(MKCircle(center: center, radius: radiusMeters), level: .aboveRoads)
-            context.coordinator.lastRadius = radiusMeters
-        }
-    }
-
     static func coordAlong(_ polyline: MKPolyline, fraction: Double) -> CLLocationCoordinate2D? {
         let n = polyline.pointCount
         guard n > 1, fraction > 0 else { return polyline.points()[0].coordinate }
@@ -818,7 +803,6 @@ struct RouteFinderMapView: UIViewRepresentable {
         var parent: RouteFinderMapView
         var lastRouteIds: [UUID] = []
         var lastSelectedId: UUID? = UUID()
-        var lastRadius: Double = -1
         var hasSetInitialRegion = false
         init(_ p: RouteFinderMapView) { parent = p }
 
@@ -834,13 +818,6 @@ struct RouteFinderMapView: UIViewRepresentable {
                     r.strokeColor = UIColor.systemGray2
                     r.lineWidth = 1.5
                 }
-                return r
-            }
-            if let circle = overlay as? MKCircle {
-                let r = MKCircleRenderer(circle: circle)
-                r.strokeColor = UIColor.systemGreen.withAlphaComponent(0.45)
-                r.fillColor = UIColor.systemGreen.withAlphaComponent(0.07)
-                r.lineWidth = 1.5
                 return r
             }
             guard let pl = overlay as? MKPolyline else { return MKOverlayRenderer(overlay: overlay) }

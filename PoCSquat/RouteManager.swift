@@ -378,6 +378,9 @@ final class RouteManager: NSObject, ObservableObject, CLLocationManagerDelegate 
 
     private let locationManager = CLLocationManager()
     nonisolated(unsafe) private var locationContinuation: CheckedContinuation<CLLocation?, Never>?
+    // Monotonically-increasing token: each new search increments this so stale
+    // tasks from a cancelled search can't overwrite isGenerating or suggestedRoutes.
+    private var searchGeneration = 0
 
     override init() {
         super.init()
@@ -388,12 +391,15 @@ final class RouteManager: NSObject, ObservableObject, CLLocationManagerDelegate 
 
     // MARK: - Public
 
-    func generateRoutes(remainingMeters: Double, radius: Double,
+    func generateRoutes(remainingMeters: Double,
                         transportType: MKDirectionsTransportType = .walking) async {
+        searchGeneration += 1
+        let myGen = searchGeneration
         isGenerating    = true
         locationError   = nil
         suggestedRoutes = []
-        defer { isGenerating = false }
+        // Only set isGenerating = false if no newer search has already taken over.
+        defer { if searchGeneration == myGen { isGenerating = false } }
 
         guard let location = await currentLocation() else {
             locationError = "Unable to get your location. Check that location permission is granted."
@@ -405,13 +411,8 @@ final class RouteManager: NSObject, ObservableObject, CLLocationManagerDelegate 
         let targetMeters = remainingMeters * 1.12
 
         var routes = await generateLoopRoutes(from: location, targetMeters: targetMeters,
-                                              radius: radius, transportType: transportType)
+                                              transportType: transportType)
 
-        // If Nearby radius found nothing routable, silently bump to Close.
-        if routes.isEmpty && radius <= 200 {
-            routes = await generateLoopRoutes(from: location, targetMeters: targetMeters,
-                                              radius: 500, transportType: transportType)
-        }
         // Guaranteed fallback so results are never empty.
         if routes.isEmpty, let fallback = await makeFallbackRoute(from: location,
                                                                    targetMeters: targetMeters,
@@ -419,12 +420,96 @@ final class RouteManager: NSObject, ObservableObject, CLLocationManagerDelegate 
             routes.append(fallback)
         }
 
+        // Bail if a newer search has started or this task was cancelled.
+        guard searchGeneration == myGen, !Task.isCancelled else { return }
         suggestedRoutes = routes.enumerated().map { i, r in
             var r = r; r.colorIndex = i; return r
         }
         if suggestedRoutes.isEmpty {
-            locationError = "No routes found here. Try a wider reach or a different duration."
+            locationError = "No routes found here. Try a different duration."
         }
+    }
+
+    /// Generates tight neighborhood loops close to home. Called when the primary search finds nothing.
+    func generateNearbyLoops(remainingMeters: Double,
+                              transportType: MKDirectionsTransportType = .walking) async {
+        searchGeneration += 1
+        let myGen = searchGeneration
+        isGenerating    = true
+        locationError   = nil
+        suggestedRoutes = []
+        defer { if searchGeneration == myGen { isGenerating = false } }
+
+        guard let location = await currentLocation() else {
+            locationError = "Unable to get your location. Check that location permission is granted."
+            return
+        }
+        lastLocation = location
+
+        let targetMeters = remainingMeters * 1.12
+        // Tight legs so the loop stays close to home regardless of overall goal distance.
+        let legDist = (targetMeters / 4.0).clamped(to: 120.0...400.0)
+
+        var routes: [SuggestedRoute] = []
+        await withTaskGroup(of: SuggestedRoute?.self) { group in
+            for bearing in [0.0, 90.0, 180.0, 270.0] {
+                group.addTask {
+                    await self.makeNearbyLoopRoute(from: location, bearing: bearing,
+                                                   targetMeters: targetMeters, legDist: legDist,
+                                                   transportType: transportType)
+                }
+            }
+            for await result in group { if let r = result { routes.append(r) } }
+        }
+        routes.sort { $0.bearing < $1.bearing }
+
+        if routes.isEmpty, let fallback = await makeFallbackRoute(from: location,
+                                                                   targetMeters: targetMeters,
+                                                                   transportType: transportType) {
+            routes.append(fallback)
+        }
+
+        guard searchGeneration == myGen, !Task.isCancelled else { return }
+        suggestedRoutes = routes.enumerated().map { i, r in var r = r; r.colorIndex = i; return r }
+        if suggestedRoutes.isEmpty {
+            locationError = "No routes found nearby. Try a different duration."
+        }
+    }
+
+    /// Small loop sized to radius; no quality ratio filter since multi-lap backtracking is expected.
+    private func makeNearbyLoopRoute(from start: CLLocation, bearing: Double,
+                                      targetMeters: Double, legDist: Double,
+                                      transportType: MKDirectionsTransportType) async -> SuggestedRoute? {
+        let coordA = start.coordinate.offset(bearing: bearing,       meters: legDist)
+        let coordB = coordA.offset(          bearing: bearing + 90,  meters: legDist)
+        let coordC = coordB.offset(          bearing: bearing + 180, meters: legDist)
+
+        guard let leg1 = await route(from: start.coordinate, to: coordA, transportType: transportType),
+              let leg2 = await route(from: coordA,            to: coordB, transportType: transportType),
+              let leg3 = await route(from: coordB,            to: coordC, transportType: transportType),
+              let leg4 = await route(from: coordC,            to: start.coordinate, transportType: transportType) else { return nil }
+
+        let perLapDist = leg1.distance + leg2.distance + leg3.distance + leg4.distance
+        let perLapTime = leg1.expectedTravelTime + leg2.expectedTravelTime + leg3.expectedTravelTime + leg4.expectedTravelTime
+        guard perLapDist > 50 else { return nil }
+
+        let laps = max(1, min(8, Int(ceil(targetMeters / max(perLapDist, 1)))))
+        let elevCoords = [start.coordinate, coordA, coordB, coordC, start.coordinate]
+        let profile = try? await ElevationService.shared.fetchProfile(for: elevCoords)
+
+        return SuggestedRoute(
+            polyline:            combinePolylines([leg1.polyline, leg2.polyline, leg3.polyline, leg4.polyline]),
+            openInMapsItem:      MKMapItem(location: coordA.clLocation, address: nil),
+            isLoop:              true,
+            bearing:             bearing,
+            totalDistance:       perLapDist * Double(laps),
+            totalTime:           perLapTime * Double(laps),
+            lapCount:            laps,
+            label:               nil,
+            legWaypoints:        [start.coordinate, coordA, coordB, coordC],
+            elevationGainMeters: (profile?.totalGainMeters ?? 0) * Double(laps),
+            elevationLossMeters: (profile?.totalLossMeters ?? 0) * Double(laps)
+        )
     }
 
     func generateDestinationRoute(to destination: MKMapItem,
@@ -516,37 +601,48 @@ final class RouteManager: NSObject, ObservableObject, CLLocationManagerDelegate 
     // MARK: - Loop Routes
 
     private func generateLoopRoutes(from start: CLLocation, targetMeters: Double,
-                                     radius: Double, transportType: MKDirectionsTransportType) async -> [SuggestedRoute] {
+                                     transportType: MKDirectionsTransportType) async -> [SuggestedRoute] {
         var routes: [SuggestedRoute] = []
-        // All 8 compass orientations — N/NE/E/SE/S/SW/W/NW
+        let idealLegDist = (targetMeters / 4.0).clamped(to: 250.0...2_000.0)
+
+        // All 8 compass orientations — N/NE/E/SE/S/SW/W/NW.
+        // Each bearing gets two attempts: ideal leg distance first, then 30% wider.
+        // The wider retry places waypoints on different streets, often finding a cleaner
+        // loop when the first geometry fails quality checks. Radius is a soft guideline.
         await withTaskGroup(of: SuggestedRoute?.self) { group in
             for bearing in [0.0, 45.0, 90.0, 135.0, 180.0, 225.0, 270.0, 315.0] {
                 group.addTask {
-                    await self.makeLoopRoute(from: start, bearing: bearing,
-                                            targetMeters: targetMeters, radius: radius,
-                                            transportType: transportType)
+                    if let r = await self.makeLoopRoute(from: start, bearing: bearing,
+                                                        legDist: idealLegDist,
+                                                        targetMeters: targetMeters,
+                                                        transportType: transportType) { return r }
+                    // Retry with wider legs: different streets, often no backtracking.
+                    let expanded = min(idealLegDist * 1.3, 2_000.0)
+                    return await self.makeLoopRoute(from: start, bearing: bearing,
+                                                   legDist: expanded,
+                                                   targetMeters: targetMeters,
+                                                   transportType: transportType)
                 }
             }
             for await result in group {
                 if let r = result { routes.append(r) }
             }
         }
-        routes.sort { $0.bearing < $1.bearing }
+        routes.sort { $0.totalDistance < $1.totalDistance }
         return routes
     }
 
     /// Quadrilateral loop: Start → A → B → C → Start, each leg at 90° to the previous.
-    /// This "around the block" geometry avoids the backtracking that triangular routes produce on street grids.
-    /// Waypoints sit at `radius × 0.65` so the diagonal corner stays within the chosen radius.
+    /// legDist is supplied by the caller so the caller can retry with expanded geometry
+    /// while keeping targetMeters (the real user goal) consistent for lap calculation.
     private func makeLoopRoute(from start: CLLocation,
                                bearing: Double,
+                               legDist: Double,
                                targetMeters: Double,
-                               radius: Double,
                                transportType: MKDirectionsTransportType) async -> SuggestedRoute? {
-        let legDist = radius * 0.65
-        let coordA  = start.coordinate.offset(bearing: bearing,       meters: legDist)
-        let coordB  = coordA.offset(          bearing: bearing + 90,  meters: legDist)
-        let coordC  = coordB.offset(          bearing: bearing + 180, meters: legDist)
+        let coordA = start.coordinate.offset(bearing: bearing,       meters: legDist)
+        let coordB = coordA.offset(          bearing: bearing + 90,  meters: legDist)
+        let coordC = coordB.offset(          bearing: bearing + 180, meters: legDist)
 
         guard let leg1 = await route(from: start.coordinate, to: coordA, transportType: transportType),
               let leg2 = await route(from: coordA,            to: coordB, transportType: transportType),
@@ -555,7 +651,26 @@ final class RouteManager: NSObject, ObservableObject, CLLocationManagerDelegate 
 
         let perLapDist = leg1.distance + leg2.distance + leg3.distance + leg4.distance
         let perLapTime = leg1.expectedTravelTime + leg2.expectedTravelTime + leg3.expectedTravelTime + leg4.expectedTravelTime
-        let laps       = max(1, min(8, Int(ceil(targetMeters / max(perLapDist, 1)))))
+
+        // Per-leg straightness: each leg must route within 1.8× its geodesic distance.
+        // Catches routes where 3 legs are clean but 1 leg backtracks — invisible to the
+        // total-perimeter check but obvious on the map.
+        let geo1 = start.distance(from: coordA.clLocation)
+        let geo2 = coordA.clLocation.distance(from: coordB.clLocation)
+        let geo3 = coordB.clLocation.distance(from: coordC.clLocation)
+        let geo4 = coordC.clLocation.distance(from: start)
+        guard leg1.distance <= geo1 * 1.8,
+              leg2.distance <= geo2 * 1.8,
+              leg3.distance <= geo3 * 1.8,
+              leg4.distance <= geo4 * 1.8 else { return nil }
+
+        // Overall perimeter sanity check (catches degenerate geometry).
+        let geometricPerimeter = legDist * 4.0
+        guard perLapDist >= geometricPerimeter * 0.5,
+              perLapDist <= geometricPerimeter * 2.5 else { return nil }
+
+        // Laps use the real target, not the (possibly expanded) legDist.
+        let laps = max(1, min(2, Int(ceil(targetMeters / max(perLapDist, 1)))))
 
         let elevCoords = [start.coordinate, coordA, coordB, coordC, start.coordinate]
         let profile    = try? await ElevationService.shared.fetchProfile(for: elevCoords)
@@ -579,7 +694,8 @@ final class RouteManager: NSObject, ObservableObject, CLLocationManagerDelegate 
 
     private func makeFallbackRoute(from start: CLLocation, targetMeters: Double,
                                     transportType: MKDirectionsTransportType) async -> SuggestedRoute? {
-        let legDist = 120.0
+        // Conservative ceiling: fallback caps at 500m legs (2km loop) to stay close to home.
+        let legDist = (targetMeters / 4.0).clamped(to: 250.0...500.0)
         let coordA  = start.coordinate.offset(bearing: 0,   meters: legDist)
         let coordB  = coordA.offset(          bearing: 90,  meters: legDist)
         let coordC  = coordB.offset(          bearing: 180, meters: legDist)
@@ -591,7 +707,7 @@ final class RouteManager: NSObject, ObservableObject, CLLocationManagerDelegate 
 
         let perLapDist = leg1.distance + leg2.distance + leg3.distance + leg4.distance
         let perLapTime = leg1.expectedTravelTime + leg2.expectedTravelTime + leg3.expectedTravelTime + leg4.expectedTravelTime
-        let laps       = max(1, min(8, Int(ceil(targetMeters / max(perLapDist, 1)))))
+        let laps       = max(1, min(2, Int(ceil(targetMeters / max(perLapDist, 1)))))
 
         return SuggestedRoute(
             polyline:       combinePolylines([leg1.polyline, leg2.polyline, leg3.polyline, leg4.polyline]),
