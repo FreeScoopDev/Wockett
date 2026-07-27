@@ -119,7 +119,7 @@ struct SettingsView: View {
                     .listRowBackground(Color.earthCard)
 
                     Button {
-                        if let url = URL(string: "mailto:joseph.amanatidis@gmail.com?subject=Wockett%20Feedback") {
+                        if let url = URL(string: "mailto:support@wockett.app?subject=Wockett%20Feedback") {
                             openURL(url)
                         }
                     } label: {
