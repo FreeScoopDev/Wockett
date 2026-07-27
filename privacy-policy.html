@@ -21,12 +21,12 @@
 <body>
 
 <h1>Privacy Policy</h1>
-<p class="updated">Last updated: July 25, 2026</p>
+<p class="updated">Last updated: July 27, 2026</p>
 
 <p>This Privacy Policy describes how Wockett ("the App", "We", "Us") handles your information when you use our iOS application. We are committed to being transparent and collecting only what is necessary to make the app work.</p>
 
 <h2>Summary</h2>
-<p>Wockett is a local-first app. We do not operate servers, do not create user accounts, and do not sell or share your personal data. All data stays on your device except where noted below.</p>
+<p>Wockett is a local-first app. We do not operate servers, do not create user accounts, and do not sell or share your personal data. All data stays on your device except where noted below. Some features use Apple's own services (Maps, Weather, Health) — those interactions are governed by <a href="https://www.apple.com/legal/privacy/" target="_blank">Apple's Privacy Policy</a>.</p>
 
 <h2>What We Access and Why</h2>
 
@@ -38,33 +38,28 @@
     </tr>
     <tr>
         <td>Location (while using the app)</td>
-        <td>Generate nearby walking route suggestions; track your position during in-app navigation sessions; calculate distance walked</td>
-        <td>Not stored between sessions. During navigation, your live position is used on-device only. GPS coordinates are sent to <a href="https://www.opentopodata.org" target="_blank">OpenTopoData</a> for elevation data only — no personal information is included.</td>
+        <td>Generate nearby walking route suggestions; track your position during navigation; calculate distance walked</td>
+        <td>Your live position is used on-device only during active walks. Route generation and street-level previews send coordinate data to Apple's Maps services — no personal information is included. Wockett itself never receives or stores your location. A GPS track may be saved temporarily to your device (see Walk Resume below).</td>
     </tr>
     <tr>
         <td>Walk history</td>
         <td>Remember completed walks so you can view your history and repeat favourite routes</td>
-        <td>Stored on-device only (route name, date, distance, duration). Never transmitted or shared.</td>
+        <td>Stored on-device only (route name, date, distance, duration, GPS waypoints). Never transmitted to Wockett.</td>
+    </tr>
+    <tr>
+        <td>Walk resume</td>
+        <td>Allow you to pick up a walk where you left off if the app is closed mid-session</td>
+        <td>Your walk progress (including GPS track points) is temporarily saved to your device for up to 4 hours, then automatically deleted. This data never leaves your device.</td>
     </tr>
     <tr>
         <td>Local notifications</td>
-        <td>Water break reminders during a walk session</td>
+        <td>Water break reminders and scheduled walk reminders</td>
         <td>Local notifications only — no server is involved. Wockett never sends push notifications or uses your device token.</td>
     </tr>
     <tr>
-        <td>Reminders (EventKit)</td>
-        <td>Add a walk reminder to your Apple Reminders app when you schedule a future day's walk</td>
-        <td>Reminder entries (title and due date) are written to your on-device Reminders app via Apple's EventKit framework. If you have iCloud Reminders enabled in iOS Settings, Apple will sync this data to iCloud per their privacy policy. We do not access, transmit, or store any Reminders data ourselves.</td>
-    </tr>
-    <tr>
-        <td>HealthKit step count</td>
-        <td>Track your daily step goal progress</td>
-        <td>Read only. Never leaves your device. We do not write to or modify your Health data.</td>
-    </tr>
-    <tr>
-        <td>Camera</td>
-        <td>ARKit body tracking to count squat repetitions</td>
-        <td>Processed on-device in real time. No images, video, or body data are recorded, stored, or transmitted.</td>
+        <td>HealthKit</td>
+        <td>Read your daily step count to track goal progress; write completed workouts (distance, duration, calories, GPS route) to Apple Health</td>
+        <td>Step count is read from your Health app. Completed walks and rides are written to Apple Health on your device. No Health data is transmitted to Wockett or any third party.</td>
     </tr>
     <tr>
         <td>Weather (via Apple WeatherKit)</td>
@@ -81,14 +76,16 @@
     <li>We do not create or require user accounts</li>
     <li>We do not use analytics or crash-reporting SDKs</li>
     <li>We do not use advertising or tracking frameworks</li>
-    <li>We do not collect photos or video from your camera or photo library</li>
+    <li>We do not collect photos, video, or camera data</li>
+    <li>We do not operate any servers that receive your data</li>
 </ul>
 
 <h2>Third-Party Services</h2>
+<p>Wockett uses the following Apple platform services. All are governed by <a href="https://www.apple.com/legal/privacy/" target="_blank">Apple's Privacy Policy</a>:</p>
 <ul>
-    <li><strong>OpenTopoData</strong> — receives GPS coordinate pairs to return elevation data. No personal information is transmitted. See their policy at <a href="https://www.opentopodata.org" target="_blank">opentopodata.org</a>.</li>
-    <li><strong>Apple WeatherKit</strong> — provides weather data based on approximate location. Governed by Apple's privacy policy.</li>
-    <li><strong>Apple HealthKit</strong> — step count is read from your Health app. We do not share this data with any third party.</li>
+    <li><strong>Apple Maps (MapKit)</strong> — used for route generation, on-screen directions, and street-level Look Around previews. Coordinate data is sent to Apple's servers to power these features.</li>
+    <li><strong>Apple WeatherKit</strong> — provides weather conditions based on your approximate location.</li>
+    <li><strong>Apple HealthKit</strong> — step count is read from and completed workouts are written to your Health app. This data is not shared with any third party.</li>
 </ul>
 
 <h2>Children's Privacy</h2>
