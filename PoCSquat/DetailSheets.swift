@@ -510,13 +510,7 @@ struct DayDetailSheet: View {
         let store = EKEventStore()
         let granted: Bool
         do {
-            if #available(iOS 17, *) {
-                granted = try await store.requestFullAccessToReminders()
-            } else {
-                granted = await withCheckedContinuation { cont in
-                    store.requestAccess(to: .reminder) { success, _ in cont.resume(returning: success) }
-                }
-            }
+            granted = try await store.requestFullAccessToReminders()
         } catch {
             showReminderError = true
             return
@@ -710,6 +704,10 @@ struct PetDetailSheet: View {
     private var progress: Double { min(1.0, Double(todaySteps) / Double(max(1, pet.goalSteps))) }
     private var totalWalks: Int { petStore.totalWalks(for: pet, in: historyStore.sessions) }
     private var totalDist: Double { petStore.totalDistance(for: pet, in: historyStore.sessions) }
+    private var streak: Int { petStore.walkStreak(for: pet, in: historyStore.sessions) }
+    private var weeklySteps: Int { petStore.weeklySteps(for: pet, in: historyStore.sessions) }
+    private var weeklyDist: Double { petStore.weeklyDistance(for: pet, in: historyStore.sessions) }
+    private var recentSessions: [WalkSession] { petStore.recentSessions(for: pet, in: historyStore.sessions) }
 
     var body: some View {
         NavigationStack {
@@ -750,10 +748,46 @@ struct PetDetailSheet: View {
 
                         HStack(spacing: 12) {
                             detailTile(value: "\(totalWalks)", label: "Total Walks", icon: "clock.arrow.circlepath", color: .earthGreen)
-                            let f = MKDistanceFormatter(); let _ = f.unitStyle = .abbreviated
-                            detailTile(value: f.string(fromDistance: totalDist), label: "Total Distance", icon: "ruler", color: .earthGreen)
+                            detailTile(value: MKDistanceFormatter.abbreviated.string(fromDistance: totalDist), label: "Total Distance", icon: "ruler", color: .earthGreen)
                         }
                         .padding(.horizontal)
+
+                        HStack(spacing: 12) {
+                            detailTile(value: streak > 0 ? "\(streak)d" : "—", label: "Walk Streak", icon: "flame.fill", color: streak > 0 ? .earthOrange : .earthMuted)
+                            detailTile(value: "\(recentSessions.count)", label: "Walks This Week", icon: "calendar", color: .earthMuted)
+                        }
+                        .padding(.horizontal)
+
+                        if !recentSessions.isEmpty {
+                            VStack(alignment: .leading, spacing: 10) {
+                                Text("Last 7 Days")
+                                    .font(.headline).foregroundColor(.earthCream)
+                                    .padding(.horizontal)
+
+                                HStack(spacing: 12) {
+                                    detailTile(value: weeklySteps.formatted(), label: "Steps", icon: "figure.walk", color: pet.accentColor)
+                                    detailTile(value: MKDistanceFormatter.abbreviated.string(fromDistance: weeklyDist), label: "Distance", icon: "ruler", color: pet.accentColor)
+                                }
+                                .padding(.horizontal)
+
+                                ForEach(recentSessions.prefix(5)) { session in
+                                    HStack {
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(session.routeName).font(.subheadline).foregroundColor(.earthCream).lineLimit(1)
+                                            Text(session.formattedDate).font(.caption).foregroundColor(.earthMuted)
+                                        }
+                                        Spacer()
+                                        VStack(alignment: .trailing, spacing: 2) {
+                                            Text(session.distanceText).font(.subheadline.bold()).foregroundColor(pet.accentColor)
+                                            Text("\(session.estimatedSteps.formatted()) steps").font(.caption).foregroundColor(.earthMuted)
+                                        }
+                                    }
+                                    .padding(.horizontal).padding(.vertical, 8)
+                                    .background(Color.earthCard).cornerRadius(10)
+                                    .padding(.horizontal)
+                                }
+                            }
+                        }
 
                         Spacer(minLength: 32)
                     }

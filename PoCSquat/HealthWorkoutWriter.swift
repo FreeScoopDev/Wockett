@@ -1,6 +1,9 @@
 import Foundation
 import HealthKit
 import CoreLocation
+import OSLog
+
+private let log = Logger(subsystem: "com.wockett.app", category: "HealthKit")
 
 // Wraps HKWorkoutBuilder + HKWorkoutRouteBuilder for a single workout session.
 // Silently no-ops if HealthKit write authorization is not granted, so it is
@@ -77,11 +80,19 @@ final class HealthWorkoutWriter {
             start: startDate, end: endDate
         )
 
-        try? await builder.addSamples([distanceSample, calSample])
-        try? await builder.endCollection(at: endDate)
-
-        guard let workout = try? await builder.finishWorkout() else { return nil }
-        try? await routeBuilder?.finishRoute(with: workout, metadata: nil)
-        return workout
+        do {
+            try await builder.addSamples([distanceSample, calSample])
+            try await builder.endCollection(at: endDate)
+            guard let workout = try await builder.finishWorkout() else { return nil }
+            do {
+                try await routeBuilder?.finishRoute(with: workout, metadata: nil)
+            } catch {
+                log.error("Failed to finish workout route: \(error.localizedDescription)")
+            }
+            return workout
+        } catch {
+            log.error("Failed to save HealthKit workout: \(error.localizedDescription)")
+            return nil
+        }
     }
 }

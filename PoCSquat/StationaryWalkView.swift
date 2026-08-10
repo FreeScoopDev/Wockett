@@ -58,7 +58,8 @@ final class StationaryWalkManager: ObservableObject {
         }
 
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
-            DispatchQueue.main.async { self?.elapsedSeconds += 1 }
+            guard let self else { return }
+            DispatchQueue.main.async { self.elapsedSeconds = Int(Date().timeIntervalSince(self.startDate)) }
         }
 
         let capturedStart = startDate
@@ -88,11 +89,13 @@ final class StationaryWalkManager: ObservableObject {
 
 struct StationaryWalkView: View {
     @ObservedObject var historyStore: WalkHistoryStore
+    var dailyGoal: Int = 10_000
     @EnvironmentObject var petStore: PetStore
     @Environment(\.dismiss) private var dismiss
 
     @StateObject private var manager = StationaryWalkManager()
     @State private var showSummary = false
+    @State private var petActiveSinceSteps: [UUID: Int] = [:]
 
     private let purple = Color(red: 0.42, green: 0.32, blue: 0.76)
 
@@ -125,7 +128,7 @@ struct StationaryWalkView: View {
                     Circle()
                         .stroke(purple.opacity(0.15), lineWidth: 18)
                     Circle()
-                        .trim(from: 0, to: min(1.0, Double(manager.steps) / 10_000))
+                        .trim(from: 0, to: min(1.0, Double(manager.steps) / Double(max(1, dailyGoal))))
                         .stroke(purple, style: StrokeStyle(lineWidth: 18, lineCap: .round))
                         .rotationEffect(.degrees(-90))
                         .animation(.easeInOut(duration: 0.4), value: manager.steps)
@@ -159,8 +162,50 @@ struct StationaryWalkView: View {
 
                 Spacer()
 
+                if !petStore.pets.isEmpty {
+                    HStack(spacing: 16) {
+                        ForEach(petStore.pets) { pet in
+                            Button {
+                                let willActivate = !pet.isActiveOnWalk
+                                let currentSteps = manager.steps
+                                petStore.setActive(pet.id, active: willActivate)
+                                if willActivate {
+                                    petActiveSinceSteps[pet.id] = currentSteps
+                                } else {
+                                    if let since = petActiveSinceSteps[pet.id] {
+                                        let deltaSteps = max(0, currentSteps - since)
+                                        if deltaSteps > 50, let p = petStore.pets.first(where: { $0.id == pet.id }) {
+                                            historyStore.add(WalkSession(
+                                                id: UUID(), routeName: "\(p.name)'s Indoor Walk",
+                                                date: manager.startDate, elapsedTime: 0,
+                                                totalDistance: Double(deltaSteps) * 0.762,
+                                                waypoints: [], lapCount: 1, isLoop: false,
+                                                activePetIds: [p.id], activityType: ActivityMode.stationary.rawValue
+                                            ))
+                                        }
+                                    }
+                                    petActiveSinceSteps.removeValue(forKey: pet.id)
+                                }
+                            } label: {
+                                VStack(spacing: 2) {
+                                    Text(pet.displayEmoji)
+                                        .font(.title2)
+                                        .opacity(pet.isActiveOnWalk ? 1.0 : 0.35)
+                                        .scaleEffect(pet.isActiveOnWalk ? 1.0 : 0.85)
+                                    Text(pet.name)
+                                        .font(.caption2)
+                                        .foregroundColor(pet.isActiveOnWalk ? .earthCream : .earthMuted)
+                                }
+                                .animation(.spring(duration: 0.2), value: pet.isActiveOnWalk)
+                            }
+                        }
+                    }
+                    .padding(.vertical, 12)
+                }
+
                 // Finish button
                 Button {
+                    flushAllActivePets()
                     manager.stop()
                     showSummary = true
                 } label: {
@@ -176,13 +221,35 @@ struct StationaryWalkView: View {
                 .padding(.bottom, 48)
             }
         }
-        .onAppear { manager.start() }
+        .onAppear {
+            manager.start()
+            for pet in petStore.activePets {
+                petActiveSinceSteps[pet.id] = 0
+            }
+        }
         .onDisappear { manager.stop() }
         .sheet(isPresented: $showSummary) {
             StationarySummarySheet(manager: manager, historyStore: historyStore) {
                 dismiss()
             }
         }
+    }
+
+    private func flushAllActivePets() {
+        let currentSteps = manager.steps
+        for (petId, sinceSteps) in petActiveSinceSteps {
+            guard let pet = petStore.pets.first(where: { $0.id == petId }) else { continue }
+            let deltaSteps = max(0, currentSteps - sinceSteps)
+            guard deltaSteps > 50 else { continue }
+            historyStore.add(WalkSession(
+                id: UUID(), routeName: "\(pet.name)'s Indoor Walk",
+                date: manager.startDate, elapsedTime: 0,
+                totalDistance: Double(deltaSteps) * 0.762,
+                waypoints: [], lapCount: 1, isLoop: false,
+                activePetIds: [pet.id], activityType: ActivityMode.stationary.rawValue
+            ))
+        }
+        petActiveSinceSteps.removeAll()
     }
 
     private func statCell(value: String, label: String, icon: String) -> some View {
@@ -279,7 +346,7 @@ private struct StationarySummarySheet: View {
             waypoints: [],
             lapCount: 1,
             isLoop: false,
-            activePetIds: petStore.activePetIds,
+            activePetIds: [],
             activityType: ActivityMode.stationary.rawValue
         )
         historyStore.add(session)

@@ -37,6 +37,7 @@ struct BadgesView: View {
                     VStack(spacing: 24) {
                         pinHint
                         streakSection
+                        personalRecordsSection
                         badgeSection(title: "Distance",   badges: distanceBadges)
                         badgeSection(title: "Streaks",    badges: streakBadges)
                         badgeSection(title: "Time-Based", badges: timeBadges)
@@ -118,6 +119,110 @@ struct BadgesView: View {
         .padding(.vertical, 16)
         .background(Color.earthCard)
         .cornerRadius(14)
+    }
+
+    // MARK: - Personal Records
+
+    @ViewBuilder
+    private var personalRecordsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Personal Records")
+                .font(.headline).foregroundColor(.earthCream)
+            if sessions.isEmpty {
+                Text("Complete walks to unlock personal records.")
+                    .font(.caption).foregroundColor(.earthMuted)
+                    .padding(14)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.earthCard).cornerRadius(12)
+            } else {
+                VStack(spacing: 8) {
+                    ForEach(computedPersonalRecords, id: \.label) { rec in
+                        HStack(spacing: 12) {
+                            Text(rec.emoji)
+                                .font(.system(size: 20))
+                                .frame(width: 32, alignment: .center)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(rec.label)
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundColor(.earthMuted)
+                                    .textCase(.uppercase)
+                                Text(rec.value)
+                                    .font(.subheadline.bold())
+                                    .foregroundColor(.earthCream)
+                            }
+                            Spacer()
+                            if let detail = rec.detail {
+                                Text(detail)
+                                    .font(.system(size: 10))
+                                    .foregroundColor(.earthMuted.opacity(0.7))
+                            }
+                        }
+                        .padding(.horizontal, 14).padding(.vertical, 11)
+                        .background(Color.earthCard)
+                        .cornerRadius(12)
+                    }
+                }
+            }
+        }
+    }
+
+    private var computedPersonalRecords: [PersonalRecord] {
+        var records: [PersonalRecord] = []
+        let cal = Calendar.current
+        let shortDate: (Date) -> String = {
+            let df = DateFormatter(); df.dateStyle = .medium; df.timeStyle = .none
+            return df.string(from: $0)
+        }
+
+        // Best single day (aggregate session steps by calendar day)
+        var stepsByDay: [Date: Int] = [:]
+        for s in sessions {
+            let day = cal.startOfDay(for: s.date)
+            stepsByDay[day, default: 0] += s.estimatedSteps
+        }
+        if let best = stepsByDay.max(by: { $0.value < $1.value }) {
+            records.append(PersonalRecord(
+                emoji: "🏆",
+                label: "Best Day",
+                value: best.value.formatted() + " steps",
+                detail: shortDate(best.key)
+            ))
+        }
+
+        // Longest single walk by distance
+        if let longest = sessions.max(by: { $0.totalDistance < $1.totalDistance }) {
+            records.append(PersonalRecord(
+                emoji: "📏",
+                label: "Longest Walk",
+                value: longest.distanceText,
+                detail: shortDate(longest.date)
+            ))
+        }
+
+        // Best pace — walking only, min 500 m
+        let walkSessions = sessions.filter {
+            $0.totalDistance >= 500 && $0.elapsedTime > 60 && $0.activityType != "cycling"
+        }
+        if let fastest = walkSessions.min(by: {
+            let p1 = ($0.elapsedTime / 60) / ($0.totalDistance / 1000)
+            let p2 = ($1.elapsedTime / 60) / ($1.totalDistance / 1000)
+            return p1 < p2
+        }) {
+            let useMetric = Locale.current.measurementSystem != .us
+            let divisor   = useMetric ? 1000.0 : 1609.34
+            let unit      = useMetric ? "/km"   : "/mi"
+            let mpu       = (fastest.elapsedTime / 60) / (fastest.totalDistance / divisor)
+            let mins      = Int(mpu)
+            let secs      = Int((mpu - Double(mins)) * 60)
+            records.append(PersonalRecord(
+                emoji: "⚡️",
+                label: "Best Pace",
+                value: String(format: "%d:%02d%@", mins, secs, unit),
+                detail: shortDate(fastest.date)
+            ))
+        }
+
+        return records
     }
 
     // MARK: - Badge section
@@ -210,4 +315,13 @@ struct BadgesView: View {
                 .cornerRadius(14)
         }
     }
+}
+
+// MARK: - Personal Record model
+
+private struct PersonalRecord {
+    let emoji:  String
+    let label:  String
+    let value:  String
+    let detail: String?
 }

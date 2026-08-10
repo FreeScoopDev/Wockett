@@ -7,15 +7,23 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		608392B4302523AE006100EE /* CustomRouteBuilderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 608392B3302523AE006100EE /* CustomRouteBuilderView.swift */; };
+		608392B6302523E9006100EE /* CustomRoutesListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 608392B5302523E9006100EE /* CustomRoutesListView.swift */; };
+		60AFBC59301DAC1500647902 /* FirebaseAnalytics in Frameworks */ = {isa = PBXBuildFile; productRef = 60AFBC58301DAC1500647902 /* FirebaseAnalytics */; };
+		60AFBC5B301DAC1500647902 /* FirebaseCrashlytics in Frameworks */ = {isa = PBXBuildFile; productRef = 60AFBC5A301DAC1500647902 /* FirebaseCrashlytics */; };
+		60AFBC63301DB0AE00647902 /* CustomRouteModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60AFBC62301DB0AE00647902 /* CustomRouteModels.swift */; };
+		60AFBC65301DB0D000647902 /* CustomRouteBuilderCore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60AFBC64301DB0D000647902 /* CustomRouteBuilderCore.swift */; };
 		60D6DE3330150BF50032FC50 /* CommunityRouteService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60D6DE3230150BF50032FC50 /* CommunityRouteService.swift */; };
-		60DBB4E43012582C00CB62E2 /* CustomRouteView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60DBB4E33012582B00CB62E2 /* CustomRouteView.swift */; };
 		60DBB4E630127E3000CB62E2 /* RouteIntelligenceService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60DBB4E530127E3000CB62E2 /* RouteIntelligenceService.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		608392B3302523AE006100EE /* CustomRouteBuilderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustomRouteBuilderView.swift; sourceTree = "<group>"; };
+		608392B5302523E9006100EE /* CustomRoutesListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustomRoutesListView.swift; sourceTree = "<group>"; };
 		6093BCDE3011AB1C00AD5E15 /* PoCSquat.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PoCSquat.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		60AFBC62301DB0AE00647902 /* CustomRouteModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustomRouteModels.swift; sourceTree = "<group>"; };
+		60AFBC64301DB0D000647902 /* CustomRouteBuilderCore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustomRouteBuilderCore.swift; sourceTree = "<group>"; };
 		60D6DE3230150BF50032FC50 /* CommunityRouteService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommunityRouteService.swift; sourceTree = "<group>"; };
-		60DBB4E33012582B00CB62E2 /* CustomRouteView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustomRouteView.swift; sourceTree = "<group>"; };
 		60DBB4E530127E3000CB62E2 /* RouteIntelligenceService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouteIntelligenceService.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -45,6 +53,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				60AFBC59301DAC1500647902 /* FirebaseAnalytics in Frameworks */,
+				60AFBC5B301DAC1500647902 /* FirebaseCrashlytics in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -56,10 +66,13 @@
 			children = (
 				6093BCE03011AB1C00AD5E15 /* PoCSquat */,
 				6093BCDF3011AB1C00AD5E15 /* Products */,
-				60DBB4E33012582B00CB62E2 /* CustomRouteView.swift */,
 				60DBB4E530127E3000CB62E2 /* RouteIntelligenceService.swift */,
 				60D6DE2C3013CAC20032FC50 /* Frameworks */,
 				60D6DE3230150BF50032FC50 /* CommunityRouteService.swift */,
+				60AFBC62301DB0AE00647902 /* CustomRouteModels.swift */,
+				60AFBC64301DB0D000647902 /* CustomRouteBuilderCore.swift */,
+				608392B3302523AE006100EE /* CustomRouteBuilderView.swift */,
+				608392B5302523E9006100EE /* CustomRoutesListView.swift */,
 			);
 			sourceTree = "<group>";
 		};
@@ -98,6 +111,8 @@
 			);
 			name = PoCSquat;
 			packageProductDependencies = (
+				60AFBC58301DAC1500647902 /* FirebaseAnalytics */,
+				60AFBC5A301DAC1500647902 /* FirebaseCrashlytics */,
 			);
 			productName = PoCSquat;
 			productReference = 6093BCDE3011AB1C00AD5E15 /* PoCSquat.app */;
@@ -128,6 +143,9 @@
 			);
 			mainGroup = 6093BCD53011AB1B00AD5E15;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				60AFBC57301DAC1500647902 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 6093BCDF3011AB1C00AD5E15 /* Products */;
 			projectDirPath = "";
@@ -154,8 +172,11 @@
 			buildActionMask = 2147483647;
 			files = (
 				60D6DE3330150BF50032FC50 /* CommunityRouteService.swift in Sources */,
-				60DBB4E43012582C00CB62E2 /* CustomRouteView.swift in Sources */,
 				60DBB4E630127E3000CB62E2 /* RouteIntelligenceService.swift in Sources */,
+				60AFBC65301DB0D000647902 /* CustomRouteBuilderCore.swift in Sources */,
+				608392B4302523AE006100EE /* CustomRouteBuilderView.swift in Sources */,
+				608392B6302523E9006100EE /* CustomRoutesListView.swift in Sources */,
+				60AFBC63301DB0AE00647902 /* CustomRouteModels.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -291,7 +312,7 @@
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = PoCSquat/PoCSquat.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 9;
+				CURRENT_PROJECT_VERSION = 13;
 				DEVELOPMENT_ASSET_PATHS = PoCSquat/Assets.xcassets;
 				DEVELOPMENT_TEAM = 7U83DJ2F97;
 				ENABLE_PREVIEWS = YES;
@@ -314,7 +335,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.4.1;
+				MARKETING_VERSION = 1.5;
 				PRODUCT_BUNDLE_IDENTIFIER = Scoops.PoCSquat;
 				PRODUCT_NAME = PoCSquat;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -337,7 +358,7 @@
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = PoCSquat/PoCSquat.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 9;
+				CURRENT_PROJECT_VERSION = 13;
 				DEVELOPMENT_ASSET_PATHS = PoCSquat/Assets.xcassets;
 				DEVELOPMENT_TEAM = 7U83DJ2F97;
 				ENABLE_PREVIEWS = YES;
@@ -360,7 +381,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.4.1;
+				MARKETING_VERSION = 1.5;
 				PRODUCT_BUNDLE_IDENTIFIER = Scoops.PoCSquat;
 				PRODUCT_NAME = PoCSquat;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -396,6 +417,30 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		60AFBC57301DAC1500647902 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/firebase/firebase-ios-sdk";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 12.17.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		60AFBC58301DAC1500647902 /* FirebaseAnalytics */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 60AFBC57301DAC1500647902 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseAnalytics;
+		};
+		60AFBC5A301DAC1500647902 /* FirebaseCrashlytics */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 60AFBC57301DAC1500647902 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseCrashlytics;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 6093BCD63011AB1B00AD5E15 /* Project object */;
 }

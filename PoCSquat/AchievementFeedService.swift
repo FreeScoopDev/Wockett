@@ -43,14 +43,9 @@ final class AchievementFeedService {
     private let recordType = "WocketAchievement"
     private let likedKey   = "achievementLikedIds"
 
-    private init() {}
+    init() {}
 
-    // MARK: - Username (shared key with CommunityRouteService)
-
-    var username: String {
-        UserDefaults.standard.string(forKey: "communityUsername")
-            ?? CommunityRouteService.shared.username
-    }
+    var username: String { CommunityRouteService.shared.username }
 
     // MARK: - Like tracking (local device)
 

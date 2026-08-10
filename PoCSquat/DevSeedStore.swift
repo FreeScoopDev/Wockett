@@ -1,3 +1,4 @@
+#if DEBUG
 import Foundation
 import MapKit
 
@@ -105,3 +106,4 @@ struct DevSeedStore {
         )
     }
 }
+#endif

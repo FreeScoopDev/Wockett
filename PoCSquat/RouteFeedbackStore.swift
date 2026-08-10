@@ -71,7 +71,7 @@ final class RouteFeedbackStore {
     private let udKey = "wkt_routeFeedback_v1"
     private var feedback: [String: RouteFeedback] = [:]
 
-    private init() { load() }
+    init() { load() }
 
     // MARK: - Record
 

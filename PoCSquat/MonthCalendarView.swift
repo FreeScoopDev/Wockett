@@ -1,4 +1,5 @@
 import SwiftUI
+import Charts
 
 // MARK: - Month Calendar View
 
@@ -52,13 +53,18 @@ struct MonthCalendarView: View {
         hkMonthSteps = await stepManager.fetchStepCounts(from: start, to: end)
     }
 
+    private static let goalDateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        f.locale     = Locale(identifier: "en_US_POSIX")
+        return f
+    }()
+
     private func goalFor(_ date: Date) -> Int {
         let cal = Calendar.current
         let wd  = cal.component(.weekday, from: date)
         if date < cal.startOfDay(for: Date()) {
-            let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"
-            f.locale = Locale(identifier: "en_US_POSIX")
-            if let stored = stepManager.historicalDayGoals[f.string(from: date)] { return stored }
+            if let stored = stepManager.historicalDayGoals[Self.goalDateFormatter.string(from: date)] { return stored }
         }
         return (stepManager.useCustomSchedule ? stepManager.weekdayGoals[wd] : nil) ?? stepManager.dailyGoal
     }
@@ -83,11 +89,52 @@ struct MonthCalendarView: View {
         return shown.year! > current.year! || (shown.year! == current.year! && shown.month! > current.month!)
     }
 
+    // MARK: - Monthly Stats
+
+    private struct MonthStats {
+        let total: Int; let avg: Int; let goalsMet: Int; let daysWithData: Int; let best: Int
+        var isEmpty: Bool { daysWithData == 0 }
+    }
+
+    private var monthlyStats: MonthStats {
+        let cal   = Calendar.current
+        let today = cal.startOfDay(for: Date())
+        var total = 0, goalsMet = 0, best = 0, days = 0
+        for date in daysInGrid.compactMap({ $0 }) {
+            guard cal.startOfDay(for: date) <= today else { continue }
+            guard let steps = stepsFor(date), steps > 0 else { continue }
+            total += steps; days += 1
+            if steps >= goalFor(date) { goalsMet += 1 }
+            if steps > best { best = steps }
+        }
+        return MonthStats(total: total, avg: days > 0 ? total / days : 0,
+                          goalsMet: goalsMet, daysWithData: days, best: best)
+    }
+
+    // MARK: - Trend Chart Data
+
+    private struct MonthPt: Identifiable {
+        let id: Date; let date: Date; let steps: Int; let isGoalMet: Bool
+    }
+
+    private var monthTrendPts: [MonthPt] {
+        let cal   = Calendar.current
+        let today = cal.startOfDay(for: Date())
+        return daysInGrid.compactMap { date -> MonthPt? in
+            guard let date, cal.startOfDay(for: date) <= today else { return nil }
+            let s = stepsFor(date) ?? 0
+            return MonthPt(id: date, date: date, steps: s, isGoalMet: s >= goalFor(date))
+        }
+    }
+
+    // MARK: - Body
+
     var body: some View {
         NavigationStack {
             ZStack {
                 Color.earthBg.ignoresSafeArea()
                 VStack(spacing: 0) {
+                    // Month navigation header
                     HStack {
                         Button {
                             monthShiftDirection = false
@@ -131,21 +178,37 @@ struct MonthCalendarView: View {
                     Divider().background(Color.earthMuted.opacity(0.15)).padding(.horizontal, 8)
 
                     ScrollView {
-                        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 2), count: 7), spacing: 2) {
-                            ForEach(daysInGrid.indices, id: \.self) { idx in
-                                if let date = daysInGrid[idx] {
-                                    MonthDayCell(
-                                        date: date,
-                                        steps: stepsFor(date),
-                                        goal: goalFor(date),
-                                        onTap: { selectedDay = calendarDay(for: date) }
-                                    )
-                                } else {
-                                    Color.clear.frame(height: 64)
+                        VStack(spacing: 0) {
+                            // Day grid
+                            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 2), count: 7), spacing: 2) {
+                                ForEach(daysInGrid.indices, id: \.self) { idx in
+                                    if let date = daysInGrid[idx] {
+                                        MonthDayCell(
+                                            date: date,
+                                            steps: stepsFor(date),
+                                            goal: goalFor(date),
+                                            onTap: { selectedDay = calendarDay(for: date) }
+                                        )
+                                    } else {
+                                        Color.clear.frame(height: 64)
+                                    }
                                 }
                             }
+                            .padding(.horizontal, 8).padding(.top, 4)
+
+                            // Monthly stats + trend chart
+                            let stats = monthlyStats
+                            if !stats.isEmpty {
+                                monthStatsBar(stats)
+                                    .padding(.horizontal, 12)
+                                    .padding(.top, 20)
+
+                                monthTrendChart
+                                    .padding(.horizontal, 12)
+                                    .padding(.top, 12)
+                                    .padding(.bottom, 28)
+                            }
                         }
-                        .padding(.horizontal, 8).padding(.top, 4)
                     }
                 }
             }
@@ -164,12 +227,127 @@ struct MonthCalendarView: View {
         .task { await fetchHKSteps() }
     }
 
+    // MARK: - Stats Bar
+
+    private func monthStatsBar(_ stats: MonthStats) -> some View {
+        LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
+            statTile(label: "Total Steps", value: formatK(stats.total), note: "this month")
+            statTile(label: "Daily Avg", value: formatK(stats.avg), note: "active days")
+            statTile(label: "Goals Met", value: "\(stats.goalsMet)", note: "of \(stats.daysWithData) days")
+            statTile(label: "Best Day", value: formatK(stats.best), note: "single day")
+        }
+    }
+
+    private func statTile(label: String, value: String, note: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(value)
+                .font(.system(size: 22, weight: .bold, design: .rounded))
+                .foregroundColor(.earthCream)
+            Text(label)
+                .font(.caption.bold())
+                .foregroundColor(.earthCream)
+            Text(note)
+                .font(.system(size: 10))
+                .foregroundColor(.earthMuted)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .background(Color.earthCard)
+        .cornerRadius(16)
+    }
+
+    // MARK: - Trend Chart
+
+    @ViewBuilder
+    private var monthTrendChart: some View {
+        let pts = monthTrendPts
+        if !pts.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Monthly Trend")
+                    .font(.caption.bold())
+                    .foregroundColor(.earthCream)
+
+                Chart {
+                    ForEach(pts) { pt in
+                        AreaMark(
+                            x: .value("Day", pt.date, unit: .day),
+                            y: .value("Steps", pt.steps)
+                        )
+                        .interpolationMethod(.catmullRom)
+                        .foregroundStyle(LinearGradient(
+                            colors: [Color.earthGreen.opacity(0.22), .clear],
+                            startPoint: .top, endPoint: .bottom
+                        ))
+                        LineMark(
+                            x: .value("Day", pt.date, unit: .day),
+                            y: .value("Steps", pt.steps)
+                        )
+                        .interpolationMethod(.catmullRom)
+                        .foregroundStyle(Color.earthGreen.opacity(0.85))
+                        .lineStyle(StrokeStyle(lineWidth: 2))
+                    }
+                    RuleMark(y: .value("Goal", stepManager.currentGoal))
+                        .lineStyle(StrokeStyle(lineWidth: 1, dash: [5, 4]))
+                        .foregroundStyle(Color.earthOrange.opacity(0.5))
+                        .annotation(position: .trailing, alignment: .center) {
+                            Text("Goal")
+                                .font(.system(size: 8))
+                                .foregroundColor(.earthOrange.opacity(0.7))
+                        }
+                    if let td = pts.first(where: { Calendar.current.isDateInToday($0.date) }), td.steps > 0 {
+                        PointMark(
+                            x: .value("Day", td.date, unit: .day),
+                            y: .value("Steps", td.steps)
+                        )
+                        .foregroundStyle(td.isGoalMet ? Color.earthGreen : Color.earthOrange)
+                        .symbolSize(44)
+                    }
+                }
+                .chartXAxis {
+                    AxisMarks(values: .stride(by: .day, count: 7)) { _ in
+                        AxisGridLine().foregroundStyle(Color.earthMuted.opacity(0.08))
+                        AxisValueLabel(format: .dateTime.day())
+                            .font(.system(size: 8))
+                            .foregroundStyle(Color.earthMuted)
+                    }
+                }
+                .chartYAxis {
+                    AxisMarks(values: .automatic(desiredCount: 3)) { v in
+                        AxisGridLine().foregroundStyle(Color.earthMuted.opacity(0.08))
+                        AxisValueLabel {
+                            if let d = v.as(Double.self) {
+                                Text(formatK(Int(d)))
+                                    .font(.system(size: 8))
+                                    .foregroundStyle(Color.earthMuted)
+                            }
+                        }
+                    }
+                }
+                .frame(height: 140)
+            }
+            .padding(14)
+            .background(Color.earthCard)
+            .cornerRadius(16)
+        }
+    }
+
+    // MARK: - Helpers
+
+    private func formatK(_ n: Int) -> String {
+        if n >= 1_000_000 { return String(format: "%.1fM", Double(n) / 1_000_000) }
+        if n >= 10_000    { return "\(n / 1_000)K" }
+        if n >= 1_000     { return String(format: "%.1fK", Double(n) / 1_000) }
+        return "\(n)"
+    }
+
     private func shiftMonth(_ delta: Int) {
         guard let next = Calendar.current.date(byAdding: .month, value: delta, to: displayMonth) else { return }
         displayMonth = next
         Task { await fetchHKSteps() }
     }
 }
+
+// MARK: - Month Day Cell
 
 private struct MonthDayCell: View {
     let date: Date

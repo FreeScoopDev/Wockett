@@ -1,5 +1,7 @@
 import SwiftUI
 import MapKit
+import CoreLocation
+import UserNotifications
 
 // MARK: - Step Counter View
 
@@ -10,6 +12,8 @@ struct StepCounterView: View {
     @StateObject private var historyStore = WalkHistoryStore()
 
     @EnvironmentObject private var petStore: PetStore
+    @Environment(\.scenePhase) private var scenePhase
+    var streakStore: StreakStore = .shared
 
     @State private var showBadges               = false
     @State private var earnedBadge: WalkBadge?  = nil
@@ -30,7 +34,9 @@ struct StepCounterView: View {
     @State private var showFreeWalk = false
     @State private var showStationary = false
     @State private var showAchievementFeed = false
+    @State private var showChallenges      = false
     @State private var freeWalkMode: ActivityMode = .walking
+    @State private var weatherLocator = HomeWeatherLocator()
     @State private var rollingBadgePhase: Int = 0
     @AppStorage("pinnedBadgeIds_v1") private var pinnedBadgeIdsStr: String = ""
 
@@ -59,7 +65,7 @@ struct StepCounterView: View {
                 FreeWalkView(historyStore: historyStore, routeStore: routeStore, activityMode: freeWalkMode)
             }
             .fullScreenCover(isPresented: $showStationary) {
-                StationaryWalkView(historyStore: historyStore)
+                StationaryWalkView(historyStore: historyStore, dailyGoal: stepManager.currentGoal)
             }
             .fullScreenCover(isPresented: $showRouteFinder) {
                 RouteFinderView(
@@ -87,6 +93,9 @@ struct StepCounterView: View {
             .sheet(isPresented: $showAchievementFeed) {
                 AchievementFeedView()
             }
+            .sheet(isPresented: $showChallenges) {
+                ChallengesView(stepManager: stepManager)
+            }
     }
 
     // Split into layers so each chunk stays within the Swift type-checker's budget.
@@ -108,7 +117,7 @@ struct StepCounterView: View {
 
     private var scrollWithDestinations: some View {
         scrollWithLifecycle
-            .navigationDestination(isPresented: $showSettings) { SettingsView(stepManager: stepManager, historyStore: historyStore, routeStore: routeStore) }
+            .navigationDestination(isPresented: $showSettings) { SettingsView(stepManager: stepManager) }
             .navigationDestination(isPresented: $showMyRoutes) { CustomRoutesListView(store: routeStore, historyStore: historyStore) }
             .navigationDestination(isPresented: $showBuildRoute) { CustomRouteBuilderView { route in routeStore.save(route) } }
             .navigationDestination(isPresented: $showWalkHistory) { WalkHistoryView(store: historyStore) }
@@ -130,9 +139,17 @@ struct StepCounterView: View {
             .task {
                 await stepManager.initialize()
                 await stepManager.refreshWeeklyCalendar(sessions: historyStore.sessions, weekOffset: calendarWeekOffset)
+                await stepManager.scheduleStreakNudge(currentStreak: streakStore.currentStreak)
+            }
+            .onChange(of: scenePhase) { _, phase in
+                guard phase == .active else { return }
+                Task { await stepManager.scheduleStreakNudge(currentStreak: streakStore.currentStreak) }
             }
             .onChange(of: stepManager.todaySteps) { _, _ in
-                Task { await stepManager.refreshWeeklyCalendar(sessions: historyStore.sessions, weekOffset: calendarWeekOffset) }
+                Task {
+                    await stepManager.refreshWeeklyCalendar(sessions: historyStore.sessions, weekOffset: calendarWeekOffset)
+                    await stepManager.scheduleStreakNudge(currentStreak: streakStore.currentStreak)
+                }
             }
             .onChange(of: stepManager.tagConfigs) { _, _ in
                 Task { await stepManager.refreshWeeklyCalendar(sessions: historyStore.sessions, weekOffset: calendarWeekOffset) }
@@ -146,14 +163,26 @@ struct StepCounterView: View {
         ScrollView {
             VStack(spacing: 24) {
                 progressSection.padding(.top, 8)
+                JourneyTrackView(
+                    progress:    stepManager.progress,
+                    avatarEmoji: petStore.activePets.first?.displayEmoji ?? "🚶"
+                )
+                if let weather = weatherLocator.weather {
+                    HomeWeatherChip(weather: weather)
+                        .padding(.horizontal)
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                }
+                RecoveryCard()
                 actionGrid.padding(.horizontal)
+                closeTheGapCard
                 communityRoutesCard
                 achievementFeedCard
+                challengesCard
                 streakIndicator
                 WeeklyCalendarView(
                     days: stepManager.weeklyCalendar,
-                    sessions: historyStore.sessions,
                     weekOffset: calendarWeekOffset,
+                    stepManager: stepManager,
                     onDayTap: { selectedCalendarDay = $0 },
                     onWeekChange: { delta in
                         let newOffset = (calendarWeekOffset + delta).clamped(to: -52...52)
@@ -163,6 +192,7 @@ struct StepCounterView: View {
                     },
                     onCalendarTap: { showMonthCalendar = true }
                 )
+                GaitHealthSection()
                 settingsSection
             }
             .padding(.bottom, 40)
@@ -182,13 +212,56 @@ struct StepCounterView: View {
             calendarWeekOffset = 0
             Task { await stepManager.refreshWeeklyCalendar(sessions: historyStore.sessions, weekOffset: 0) }
         }
-        if let badge = StreakStore.shared.refresh(sessions: historyStore.sessions, todaySteps: stepManager.todaySteps, dailyGoal: stepManager.currentGoal) {
+        if let badge = streakStore.refresh(sessions: historyStore.sessions, todaySteps: stepManager.todaySteps, dailyGoal: stepManager.currentGoal) {
             earnedBadge = badge
+        }
+        weatherLocator.fetchIfAuthorized()
+        scheduleWeeklySummaryNotification()
+    }
+
+    private func scheduleWeeklySummaryNotification() {
+        let center = UNUserNotificationCenter.current()
+        let sessions = historyStore.sessions
+        let streak = streakStore.currentStreak
+        Task {
+            let status = await center.notificationSettings().authorizationStatus
+            guard status == .authorized else { return }
+            let enabled = UserDefaults.standard.object(forKey: "notif_weeklySummary") as? Bool ?? true
+            guard enabled else {
+                center.removePendingNotificationRequests(withIdentifiers: ["wkt-weekly-summary"])
+                return
+            }
+
+            // This week's stats from sessions
+            let cal = Calendar.current
+            let weekStart = cal.date(from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: Date())) ?? Date()
+            let weekSessions = sessions.filter { $0.date >= weekStart }
+            let weekSteps    = weekSessions.reduce(0) { $0 + $1.estimatedSteps }
+            let weekKm       = weekSessions.reduce(0.0) { $0 + $1.totalDistance } / 1000
+
+            let content = UNMutableNotificationContent()
+            content.title = "Your week in review 📊"
+            if weekSteps > 0 {
+                let streakSuffix = streak > 0 ? " · \(streak)-day streak 🔥" : ""
+                content.body = "This week: \(weekSteps.formatted()) steps · \(String(format: "%.1f", weekKm)) km\(streakSuffix). Keep it up!"
+            } else {
+                content.body = "A new week starts today — lace up and start strong! 💪"
+            }
+            content.sound = .default
+
+            // Fire every Sunday at 8 pm, re-scheduled with fresh data each app open
+            var comps = DateComponents()
+            comps.weekday = 1
+            comps.hour    = 20
+            comps.minute  = 0
+            let trigger = UNCalendarNotificationTrigger(dateMatching: comps, repeats: true)
+            center.removePendingNotificationRequests(withIdentifiers: ["wkt-weekly-summary"])
+            try? await center.add(UNNotificationRequest(identifier: "wkt-weekly-summary", content: content, trigger: trigger))
         }
     }
 
     private func handleStepGoalCheck(_ steps: Int) {
-        if let badge = StreakStore.shared.refresh(sessions: historyStore.sessions, todaySteps: steps, dailyGoal: stepManager.currentGoal) {
+        if let badge = streakStore.refresh(sessions: historyStore.sessions, todaySteps: steps, dailyGoal: stepManager.currentGoal) {
             earnedBadge = badge
         }
     }
@@ -291,7 +364,7 @@ struct StepCounterView: View {
 
     private var badgeColumnView: some View {
         let sessions = historyStore.sessions
-        let streak   = StreakStore.shared.currentStreak
+        let streak   = streakStore.currentStreak
         let earned   = walkBadges.filter { $0.isEarned(sessions: sessions, currentStreak: streak) }
         let unearned = walkBadges.filter { !$0.isEarned(sessions: sessions, currentStreak: streak) }
 
@@ -381,7 +454,7 @@ struct StepCounterView: View {
     }
 
     private var streakIndicator: some View {
-        let streak = StreakStore.shared.currentStreak
+        let streak = streakStore.currentStreak
         return Button { showBadges = true } label: {
             HStack(spacing: 6) {
                 Text(streak > 0 ? "🔥" : "💤")
@@ -412,7 +485,7 @@ struct StepCounterView: View {
     }
 
     private func nextStreakMilestone(for streak: Int) -> String {
-        let milestones = [7, 30, 100]
+        let milestones = [7, 14, 30, 60, 100]
         for m in milestones {
             if streak < m {
                 let remaining = m - streak
@@ -504,6 +577,49 @@ struct StepCounterView: View {
         .buttonStyle(BounceButtonStyle(scale: 0.97))
     }
 
+    @ViewBuilder private var closeTheGapCard: some View {
+        let remaining = max(0, stepManager.currentGoal - stepManager.todaySteps)
+        let walkMinutes = max(5, Int(Double(remaining) * 0.762 / 84))
+        if remaining > 500 {
+            Button {
+                freeWalkMode = .walking
+                showFreeWalk = true
+            } label: {
+                HStack(spacing: 14) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 10)
+                            .fill(Color.earthGreen.opacity(0.15))
+                            .frame(width: 44, height: 44)
+                        Image(systemName: "figure.walk.motion")
+                            .font(.system(size: 18, weight: .medium))
+                            .foregroundColor(.earthGreen)
+                    }
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("\(remaining.formatted()) steps to go")
+                            .font(.subheadline.bold())
+                            .foregroundColor(.earthCream)
+                        Text("A \(walkMinutes)-min walk closes the gap")
+                            .font(.caption)
+                            .foregroundColor(.earthMuted)
+                    }
+                    Spacer()
+                    Text("Go →")
+                        .font(.caption.bold())
+                        .foregroundColor(.earthGreen)
+                        .padding(.horizontal, 12).padding(.vertical, 6)
+                        .background(Color.earthGreen.opacity(0.15))
+                        .cornerRadius(8)
+                }
+                .padding(14)
+                .background(Color.earthCard)
+                .cornerRadius(16)
+                .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.earthGreen.opacity(0.25), lineWidth: 1))
+            }
+            .buttonStyle(BounceButtonStyle(scale: 0.98))
+            .padding(.horizontal)
+        }
+    }
+
     private var communityRoutesCard: some View {
         Button {
             routeFinderShowsNearby = false
@@ -556,6 +672,38 @@ struct StepCounterView: View {
                         .font(.subheadline.bold())
                         .foregroundColor(.earthCream)
                     Text("See what badges the community earned")
+                        .font(.caption)
+                        .foregroundColor(.earthMuted)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(.earthMuted.opacity(0.6))
+            }
+            .padding(14)
+            .background(Color.earthCard)
+            .cornerRadius(16)
+        }
+        .buttonStyle(BounceButtonStyle(scale: 0.98))
+        .padding(.horizontal)
+    }
+
+    private var challengesCard: some View {
+        Button { showChallenges = true } label: {
+            HStack(spacing: 14) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(Color.earthGreen.opacity(0.15))
+                        .frame(width: 44, height: 44)
+                    Image(systemName: "trophy.fill")
+                        .font(.system(size: 18, weight: .medium))
+                        .foregroundColor(.earthGreen)
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Challenges")
+                        .font(.subheadline.bold())
+                        .foregroundColor(.earthCream)
+                    Text("Compete with the community")
                         .font(.caption)
                         .foregroundColor(.earthMuted)
                 }
@@ -662,113 +810,4 @@ struct StepCounterView: View {
         .buttonStyle(BounceButtonStyle())
     }
 
-}
-
-// MARK: - Route Map View
-
-struct RouteMapView: UIViewRepresentable {
-    let routes: [SuggestedRoute]
-    @Binding var selectedRoute: SuggestedRoute?
-
-    func makeUIView(context: Context) -> MKMapView {
-        let map = MKMapView()
-        map.delegate = context.coordinator
-        map.showsUserLocation = true
-        map.overrideUserInterfaceStyle = .unspecified
-        return map
-    }
-
-    func updateUIView(_ map: MKMapView, context: Context) {
-        let currentIds = routes.map { $0.id }
-
-        // Only rebuild overlays when the route set itself changes
-        if context.coordinator.lastRouteIds != currentIds {
-            context.coordinator.lastRouteIds = currentIds
-            context.coordinator.lastSelectedId = nil  // reset so renderer update runs below
-            map.removeOverlays(map.overlays)
-            var coords: [CLLocationCoordinate2D] = []
-            for route in routes {
-                let pl = route.polyline
-                pl.title = route.id.uuidString
-                map.addOverlay(pl, level: .aboveRoads)
-                let pts = pl.points()
-                for i in 0..<pl.pointCount { coords.append(pts[i].coordinate) }
-            }
-            if let user = map.userLocation.location { coords.append(user.coordinate) }
-            if !coords.isEmpty {
-                let rect = coords.reduce(MKMapRect.null) { r, c in
-                    let p = MKMapPoint(c)
-                    return r.union(MKMapRect(x: p.x, y: p.y, width: 0, height: 0))
-                }
-                map.setVisibleMapRect(rect, edgePadding: UIEdgeInsets(top: 40, left: 40, bottom: 40, right: 40), animated: false)
-            }
-        }
-
-        // When selection changes, update renderer properties directly (no flash)
-        let newSelectedId = selectedRoute?.id
-        if context.coordinator.lastSelectedId != newSelectedId {
-            context.coordinator.lastSelectedId = newSelectedId
-            let total = routes.count
-            let hasSelection = selectedRoute != nil
-            for overlay in map.overlays {
-                guard let pl = overlay as? MKPolyline,
-                      let renderer = map.renderer(for: overlay) as? MKPolylineRenderer,
-                      let route = routes.first(where: { $0.id.uuidString == pl.title }) else { continue }
-                let isSelected = route.id == newSelectedId
-                renderer.strokeColor = SuggestedRoute.paletteUIColor(index: route.colorIndex, total: total)
-                renderer.lineWidth = isSelected ? 6 : 3
-                renderer.alpha     = isSelected ? 1.0 : (hasSelection ? 0.2 : 0.6)
-                renderer.setNeedsDisplay()
-            }
-
-            // Zoom to selected route; zoom out to show all when deselected
-            if let sel = selectedRoute {
-                var rect = MKMapRect.null
-                let pts = sel.polyline.points()
-                for i in 0..<sel.polyline.pointCount {
-                    let p = MKMapPoint(pts[i].coordinate)
-                    rect = rect.union(MKMapRect(x: p.x, y: p.y, width: 0, height: 0))
-                }
-                if !rect.isNull {
-                    map.setVisibleMapRect(rect, edgePadding: UIEdgeInsets(top: 50, left: 50, bottom: 50, right: 50), animated: true)
-                }
-            } else if !routes.isEmpty {
-                var coords: [CLLocationCoordinate2D] = []
-                for route in routes {
-                    let pts = route.polyline.points()
-                    for i in 0..<route.polyline.pointCount { coords.append(pts[i].coordinate) }
-                }
-                let rect = coords.reduce(MKMapRect.null) { r, c in
-                    let p = MKMapPoint(c)
-                    return r.union(MKMapRect(x: p.x, y: p.y, width: 0, height: 0))
-                }
-                if !rect.isNull {
-                    map.setVisibleMapRect(rect, edgePadding: UIEdgeInsets(top: 40, left: 40, bottom: 40, right: 40), animated: true)
-                }
-            }
-        }
-    }
-
-    func makeCoordinator() -> Coordinator { Coordinator(self) }
-
-    class Coordinator: NSObject, MKMapViewDelegate {
-        var parent: RouteMapView
-        var lastRouteIds: [UUID] = []
-        var lastSelectedId: UUID? = UUID()  // non-nil sentinel forces first render
-        init(_ p: RouteMapView) { parent = p }
-
-        func mapView(_ map: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
-            guard let pl = overlay as? MKPolyline else { return MKOverlayRenderer(overlay: overlay) }
-            let r = MKPolylineRenderer(polyline: pl)
-            let total = parent.routes.count
-            let hasSelection = parent.selectedRoute != nil
-            if let route = parent.routes.first(where: { $0.id.uuidString == pl.title }) {
-                let isSelected = route.id == parent.selectedRoute?.id
-                r.strokeColor = SuggestedRoute.paletteUIColor(index: route.colorIndex, total: total)
-                r.lineWidth   = isSelected ? 6 : 3
-                r.alpha       = isSelected ? 1.0 : (hasSelection ? 0.2 : 0.6)
-            }
-            return r
-        }
-    }
 }

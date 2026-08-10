@@ -1,17 +1,21 @@
 import SwiftUI
+import UserNotifications
+import UIKit
 
 // MARK: - Settings View
 
 struct SettingsView: View {
     @ObservedObject var stepManager: StepManager
-    @ObservedObject var historyStore: WalkHistoryStore
-    @ObservedObject var routeStore: CustomRouteStore
-    var bannerStore = BannerStore.shared
+    var bannerStore: BannerStore = .shared
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
     @State private var isAddingAffirmation = false
     @State private var newAffirmation = ""
-    @State private var seedMessage: String? = nil
+
+    @AppStorage("notif_weeklySummary")     private var weeklySummaryEnabled = true
+    @AppStorage("notif_hydration")         private var hydrationEnabled = true
+    @AppStorage("notif_streakProtection")  private var streakProtectionEnabled = true
+    @State private var notifAuthorized = false
 
     private var appVersion: String {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "—"
@@ -51,6 +55,67 @@ struct SettingsView: View {
                         }
                         .listRowBackground(Color.earthCard)
                     }
+                }
+
+                // ── Notifications ─────────────────────────────────
+                Section("Notifications") {
+                    HStack {
+                        Label("Status", systemImage: "bell")
+                            .foregroundColor(.earthCream)
+                        Spacer()
+                        Text(notifAuthorized ? "Enabled" : "Disabled")
+                            .font(.caption)
+                            .foregroundColor(notifAuthorized ? .earthGreen : .orange)
+                    }
+                    .listRowBackground(Color.earthCard)
+
+                    if !notifAuthorized {
+                        Button {
+                            if let url = URL(string: UIApplication.openNotificationSettingsURLString) {
+                                UIApplication.shared.open(url)
+                            }
+                        } label: {
+                            Label("Enable in iOS Settings", systemImage: "arrow.up.right.square")
+                                .foregroundColor(.earthGreen)
+                        }
+                        .listRowBackground(Color.earthCard)
+                    }
+
+                    Toggle(isOn: $weeklySummaryEnabled) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Weekly Activity Summary")
+                                .foregroundColor(.earthCream)
+                            Text("Sunday evening recap of steps, distance, and streak")
+                                .font(.caption).foregroundColor(.earthMuted)
+                        }
+                    }
+                    .tint(.earthGreen)
+                    .disabled(!notifAuthorized)
+                    .listRowBackground(Color.earthCard)
+
+                    Toggle(isOn: $hydrationEnabled) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Post-walk Hydration Reminder")
+                                .foregroundColor(.earthCream)
+                            Text("Reminds you to drink water 5 minutes after finishing a walk")
+                                .font(.caption).foregroundColor(.earthMuted)
+                        }
+                    }
+                    .tint(.earthGreen)
+                    .disabled(!notifAuthorized)
+                    .listRowBackground(Color.earthCard)
+
+                    Toggle(isOn: $streakProtectionEnabled) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Streak Protection Nudge")
+                                .foregroundColor(.earthCream)
+                            Text("4:30 PM reminder when you're still short of today's step goal")
+                                .font(.caption).foregroundColor(.earthMuted)
+                        }
+                    }
+                    .tint(.earthGreen)
+                    .disabled(!notifAuthorized)
+                    .listRowBackground(Color.earthCard)
                 }
 
                 // ── Motivational Banner ───────────────────────────
@@ -129,60 +194,16 @@ struct SettingsView: View {
                     .listRowBackground(Color.earthCard)
                 }
 
-                // ── Developer ─────────────────────────────────────
-                Section {
-                    if stepManager.trackingMode == .healthKit {
-                        Text("Calendar views read from Apple Health in this mode. Seeding will switch to App Only so test data is visible.")
-                            .font(.caption).foregroundColor(.earthOrange)
-                            .listRowBackground(Color.earthCard)
-                    }
 
-                    if let msg = seedMessage {
-                        Text(msg)
-                            .font(.caption).foregroundColor(.earthGreen)
-                            .listRowBackground(Color.earthCard)
-                    }
-
-                    Button {
-                        if stepManager.trackingMode == .healthKit {
-                            stepManager.switchTrackingMode(to: .appOnly)
-                        }
-                        DevSeedStore.seedWalkSessions(into: historyStore)
-                        DevSeedStore.seedCustomRoutes(into: routeStore)
-                        StreakStore.shared.refresh(
-                            sessions: historyStore.sessions,
-                            todaySteps: stepManager.todaySteps,
-                            dailyGoal: stepManager.currentGoal
-                        )
-                        let count = historyStore.sessions.filter { $0.routeName.hasPrefix("[TEST]") }.count
-                        seedMessage = "Seeded \(count) sessions + 4 routes (App Only mode)"
-                    } label: {
-                        Label("Seed Test Data", systemImage: "wand.and.stars")
-                            .foregroundColor(.earthGreen)
-                    }
-                    .listRowBackground(Color.earthCard)
-
-                    Button(role: .destructive) {
-                        DevSeedStore.clearTestSessions(from: historyStore)
-                        DevSeedStore.clearTestRoutes(from: routeStore)
-                        StreakStore.shared.refresh(
-                            sessions: historyStore.sessions,
-                            todaySteps: stepManager.todaySteps,
-                            dailyGoal: stepManager.currentGoal
-                        )
-                        seedMessage = "Test data cleared"
-                    } label: {
-                        Label("Clear Test Data", systemImage: "trash")
-                    }
-                    .listRowBackground(Color.earthCard)
-                } header: {
-                    Text("Developer")
-                }
             }
             .listStyle(.insetGrouped)
             .scrollContentBackground(.hidden)
         }
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
+        .task {
+            let status = await UNUserNotificationCenter.current().notificationSettings().authorizationStatus
+            notifAuthorized = status == .authorized || status == .provisional
+        }
     }
 }

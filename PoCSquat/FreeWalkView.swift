@@ -4,6 +4,112 @@ import MapKit
 import CoreLocation
 import HealthKit
 
+// MARK: - POI Support
+
+enum WalkPOIFilter: String, CaseIterable {
+    case cafe, park, food, restroom, pharmacy
+
+    var emoji: String {
+        switch self {
+        case .cafe:     return "☕️"
+        case .park:     return "🌳"
+        case .food:     return "🍽️"
+        case .restroom: return "🚻"
+        case .pharmacy: return "💊"
+        }
+    }
+
+    var label: String {
+        switch self {
+        case .cafe:     return "Café"
+        case .park:     return "Park"
+        case .food:     return "Food"
+        case .restroom: return "Restroom"
+        case .pharmacy: return "Pharmacy"
+        }
+    }
+
+    var mkCategories: [MKPointOfInterestCategory] {
+        switch self {
+        case .cafe:     return [.cafe]
+        case .park:     return [.park, .nationalPark]
+        case .food:     return [.restaurant, .foodMarket, .bakery]
+        case .restroom: return [.restroom]
+        case .pharmacy: return [.pharmacy]
+        }
+    }
+
+    var color: Color {
+        switch self {
+        case .cafe:     return Color(red: 0.52, green: 0.33, blue: 0.18)
+        case .park:     return .earthGreen
+        case .food:     return .earthOrange
+        case .restroom: return Color(red: 0.28, green: 0.49, blue: 0.84)
+        case .pharmacy: return Color(red: 0.72, green: 0.22, blue: 0.28)
+        }
+    }
+}
+
+struct NearbyPOI: Identifiable {
+    let id = UUID()
+    let coordinate: CLLocationCoordinate2D
+    let name: String
+    let category: WalkPOIFilter
+    let mapItem: MKMapItem
+}
+
+@MainActor
+final class POIOverlayManager: ObservableObject {
+    @Published var activeCategories: Set<WalkPOIFilter> = []
+    @Published var pois: [NearbyPOI] = []
+    @Published var selectedPOI: NearbyPOI? = nil
+
+    private var lastFetchLocation: CLLocationCoordinate2D?
+
+    func enable(_ category: WalkPOIFilter, near coordinate: CLLocationCoordinate2D?) {
+        guard !activeCategories.contains(category) else { return }
+        activeCategories.insert(category)
+        guard let coord = coordinate else { return }
+        if lastFetchLocation == nil { lastFetchLocation = coord }
+        fetchCategory(category, near: coord)
+    }
+
+    func disable(_ category: WalkPOIFilter) {
+        activeCategories.remove(category)
+        pois.removeAll { $0.category == category }
+        if selectedPOI?.category == category { selectedPOI = nil }
+    }
+
+    func refreshIfNeeded(near coordinate: CLLocationCoordinate2D) {
+        guard !activeCategories.isEmpty else { return }
+        if let last = lastFetchLocation {
+            let dist = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
+                .distance(from: CLLocation(latitude: last.latitude, longitude: last.longitude))
+            guard dist >= 300 else { return }
+        }
+        lastFetchLocation = coordinate
+        for category in activeCategories { fetchCategory(category, near: coordinate) }
+    }
+
+    private func fetchCategory(_ category: WalkPOIFilter, near coordinate: CLLocationCoordinate2D) {
+        Task {
+            let region = MKCoordinateRegion(center: coordinate, latitudinalMeters: 800, longitudinalMeters: 800)
+            let request = MKLocalSearch.Request()
+            request.region = region
+            request.pointOfInterestFilter = MKPointOfInterestFilter(including: category.mkCategories)
+            request.resultTypes = .pointOfInterest
+            let items = (try? await MKLocalSearch(request: request).start())?.mapItems ?? []
+            let newPOIs = items.prefix(8).compactMap { item -> NearbyPOI? in
+                guard let name = item.name else { return nil }
+                return NearbyPOI(coordinate: item.location.coordinate, name: name,
+                                 category: category, mapItem: item)
+            }
+            pois.removeAll { $0.category == category }
+            pois.append(contentsOf: newPOIs)
+        }
+    }
+}
+
 // MARK: - Free Walk Manager
 
 final class FreeWalkManager: NSObject, ObservableObject, CLLocationManagerDelegate {
@@ -25,6 +131,9 @@ final class FreeWalkManager: NSObject, ObservableObject, CLLocationManagerDelega
         locationManager.delegate = self
         locationManager.desiredAccuracy = kCLLocationAccuracyBest
         locationManager.distanceFilter = 5
+        locationManager.activityType = .fitness
+        locationManager.allowsBackgroundLocationUpdates = true
+        locationManager.pausesLocationUpdatesAutomatically = false
     }
 
     var activityMode: ActivityMode = .walking
@@ -35,7 +144,8 @@ final class FreeWalkManager: NSObject, ObservableObject, CLLocationManagerDelega
         startDate = Date()
         locationManager.startUpdatingLocation()
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
-            DispatchQueue.main.async { self?.elapsedSeconds += 1 }
+            guard let self else { return }
+            DispatchQueue.main.async { self.elapsedSeconds = Int(Date().timeIntervalSince(self.startDate)) }
         }
         let capturedStart = startDate
         let activityType = activityMode.hkActivityType
@@ -81,9 +191,10 @@ final class FreeWalkManager: NSObject, ObservableObject, CLLocationManagerDelega
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         for location in locations {
             guard location.horizontalAccuracy > 0,
-                  location.horizontalAccuracy < 30 else { continue }
+                  location.horizontalAccuracy < 50 else { continue }
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
+                self.elapsedSeconds = Int(Date().timeIntervalSince(self.startDate))
                 if let last = self.lastLocation {
                     self.totalDistance += location.distance(from: last)
                 }
@@ -109,17 +220,41 @@ struct FreeWalkView: View {
     @StateObject private var walkManager = FreeWalkManager()
     @State private var showSummary = false
     @State private var position: MapCameraPosition = .userLocation(fallback: .automatic)
+    @State private var petActiveSinceDistance: [UUID: Double] = [:]
+    @StateObject private var poiManager = POIOverlayManager()
 
     private var isCycling: Bool { activityMode == .cycling }
 
     var body: some View {
         ZStack(alignment: .top) {
-            Map(position: $position) {
+            Map(position: $position, bounds: MapCameraBounds(minimumDistance: 100, maximumDistance: 800)) {
                 if walkManager.trackPoints.count > 1 {
                     MapPolyline(coordinates: walkManager.trackPoints)
                         .stroke(isCycling ? Color(red: 0.13, green: 0.57, blue: 0.64) : Color.earthGreen, lineWidth: 5)
                 }
                 UserAnnotation()
+                ForEach(poiManager.pois) { poi in
+                    Annotation("", coordinate: poi.coordinate, anchor: .bottom) {
+                        Button {
+                            withAnimation(.spring(response: 0.3)) {
+                                poiManager.selectedPOI = (poiManager.selectedPOI?.id == poi.id) ? nil : poi
+                            }
+                        } label: {
+                            ZStack {
+                                Circle()
+                                    .fill(poi.category.color)
+                                    .frame(width: 34, height: 34)
+                                    .shadow(color: .black.opacity(0.25), radius: 4, x: 0, y: 2)
+                                Text(poi.category.emoji)
+                                    .font(.system(size: 17))
+                            }
+                            .overlay(
+                                Circle()
+                                    .stroke(Color.white, lineWidth: poiManager.selectedPOI?.id == poi.id ? 2.5 : 0)
+                            )
+                        }
+                    }
+                }
             }
             .mapStyle(.standard)
             .ignoresSafeArea()
@@ -139,9 +274,112 @@ struct FreeWalkView: View {
                 .padding(.horizontal, 20)
                 .padding(.top, 56)
 
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(WalkPOIFilter.allCases, id: \.rawValue) { cat in
+                            Button {
+                                if poiManager.activeCategories.contains(cat) {
+                                    poiManager.disable(cat)
+                                } else {
+                                    poiManager.enable(cat, near: walkManager.trackPoints.last)
+                                }
+                            } label: {
+                                poiChip(cat)
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 20)
+                }
+                .padding(.vertical, 6)
+
+                if !petStore.pets.isEmpty {
+                    HStack(spacing: 12) {
+                        ForEach(petStore.pets) { pet in
+                            Button {
+                                let willActivate = !pet.isActiveOnWalk
+                                let currentDist = walkManager.totalDistance
+                                petStore.setActive(pet.id, active: willActivate)
+                                if willActivate {
+                                    petActiveSinceDistance[pet.id] = currentDist
+                                } else {
+                                    if let since = petActiveSinceDistance[pet.id] {
+                                        let delta = max(0, currentDist - since)
+                                        if delta > 5, let p = petStore.pets.first(where: { $0.id == pet.id }) {
+                                            historyStore.add(WalkSession(
+                                                id: UUID(), routeName: "\(p.name)'s Walk",
+                                                date: walkManager.startDate, elapsedTime: 0,
+                                                totalDistance: delta, waypoints: [], lapCount: 1, isLoop: false,
+                                                activePetIds: [p.id], activityType: activityMode.rawValue
+                                            ))
+                                        }
+                                    }
+                                    petActiveSinceDistance.removeValue(forKey: pet.id)
+                                }
+                            } label: {
+                                VStack(spacing: 2) {
+                                    Text(pet.displayEmoji)
+                                        .font(.title2)
+                                        .opacity(pet.isActiveOnWalk ? 1.0 : 0.35)
+                                        .scaleEffect(pet.isActiveOnWalk ? 1.0 : 0.85)
+                                    Text(pet.name)
+                                        .font(.system(size: 9, weight: .medium))
+                                        .foregroundColor(pet.isActiveOnWalk ? .primary : .secondary)
+                                }
+                                .animation(.spring(duration: 0.2), value: pet.isActiveOnWalk)
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 24).padding(.vertical, 10)
+                    .background(.ultraThinMaterial)
+                    .cornerRadius(18)
+                    .padding(.horizontal, 20)
+                }
+
                 Spacer()
 
+                if let poi = poiManager.selectedPOI {
+                    HStack(spacing: 12) {
+                        Text(poi.category.emoji).font(.title2)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(poi.name)
+                                .font(.subheadline.bold())
+                                .foregroundColor(.earthCream)
+                                .lineLimit(1)
+                            if let dist = distanceToUser(poi.coordinate) {
+                                Text(dist).font(.caption).foregroundColor(.earthMuted)
+                            }
+                        }
+                        Spacer()
+                        Button {
+                            poi.mapItem.openInMaps(launchOptions: [
+                                MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeWalking
+                            ])
+                        } label: {
+                            Image(systemName: "map.fill")
+                                .padding(9)
+                                .background(Color.earthGreen.opacity(0.9))
+                                .foregroundColor(.white)
+                                .clipShape(Circle())
+                        }
+                        Button {
+                            withAnimation(.spring(response: 0.3)) { poiManager.selectedPOI = nil }
+                        } label: {
+                            Image(systemName: "xmark")
+                                .padding(9)
+                                .background(Color.earthCard)
+                                .foregroundColor(.earthMuted)
+                                .clipShape(Circle())
+                        }
+                    }
+                    .padding(14)
+                    .background(.ultraThinMaterial)
+                    .cornerRadius(16)
+                    .padding(.horizontal, 20)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+
                 Button {
+                    flushAllActivePets()
                     walkManager.stop()
                     showSummary = true
                 } label: {
@@ -156,12 +394,21 @@ struct FreeWalkView: View {
                 }
                 .padding(.bottom, 48)
             }
+            .animation(.spring(response: 0.35, dampingFraction: 0.85), value: poiManager.selectedPOI?.id)
         }
         .onAppear {
             walkManager.activityMode = activityMode
             walkManager.start()
+            for pet in petStore.activePets {
+                petActiveSinceDistance[pet.id] = 0
+            }
         }
         .onDisappear { walkManager.stop() }
+        .onChange(of: walkManager.trackPoints.count) { _, _ in
+            if let last = walkManager.trackPoints.last {
+                poiManager.refreshIfNeeded(near: last)
+            }
+        }
         .sheet(isPresented: $showSummary) {
             FreeWalkSummarySheet(
                 walkManager: walkManager,
@@ -169,6 +416,22 @@ struct FreeWalkView: View {
                 routeStore: routeStore
             ) { dismiss() }
         }
+    }
+
+    private func flushAllActivePets() {
+        let currentDist = walkManager.totalDistance
+        for (petId, sinceDistance) in petActiveSinceDistance {
+            guard let pet = petStore.pets.first(where: { $0.id == petId }) else { continue }
+            let delta = max(0, currentDist - sinceDistance)
+            guard delta > 5 else { continue }
+            historyStore.add(WalkSession(
+                id: UUID(), routeName: "\(pet.name)'s Walk",
+                date: walkManager.startDate, elapsedTime: 0,
+                totalDistance: delta, waypoints: [], lapCount: 1, isLoop: false,
+                activePetIds: [pet.id], activityType: activityMode.rawValue
+            ))
+        }
+        petActiveSinceDistance.removeAll()
     }
 
     private func hudStat(value: String, label: String) -> some View {
@@ -182,6 +445,26 @@ struct FreeWalkView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.horizontal, 4)
+    }
+
+    private func poiChip(_ cat: WalkPOIFilter) -> some View {
+        let active = poiManager.activeCategories.contains(cat)
+        return HStack(spacing: 4) {
+            Text(cat.emoji).font(.footnote)
+            Text(cat.label).font(.system(size: 11, weight: .semibold))
+        }
+        .padding(.horizontal, 10).padding(.vertical, 6)
+        .background(active ? cat.color : Color(UIColor.systemGray6).opacity(0.9))
+        .foregroundColor(active ? Color.white : Color.secondary)
+        .clipShape(Capsule())
+        .animation(.spring(response: 0.25), value: active)
+    }
+
+    private func distanceToUser(_ coord: CLLocationCoordinate2D) -> String? {
+        guard let last = walkManager.trackPoints.last else { return nil }
+        let dist = CLLocation(latitude: coord.latitude, longitude: coord.longitude)
+            .distance(from: CLLocation(latitude: last.latitude, longitude: last.longitude))
+        return MKDistanceFormatter.abbreviated.string(fromDistance: dist) + " away"
     }
 }
 
@@ -199,6 +482,7 @@ struct FreeWalkSummarySheet: View {
     @State private var savedAsRoute = false
     @State private var showRouteNameField = false
     @State private var routeName = ""
+    @State private var newPRs: [PRType] = []
 
     var body: some View {
         NavigationStack {
@@ -219,6 +503,31 @@ struct FreeWalkSummarySheet: View {
                             statTile(value: walkManager.estimatedSteps.formatted(),     label: "Steps",    icon: "figure.walk")
                         }
                         .padding(.horizontal)
+
+                        if !newPRs.isEmpty {
+                            VStack(spacing: 8) {
+                                Text("New Personal Record\(newPRs.count > 1 ? "s" : "")! 🏅")
+                                    .font(.caption.bold()).foregroundColor(.earthOrange)
+                                HStack(spacing: 12) {
+                                    ForEach(newPRs) { pr in
+                                        VStack(spacing: 3) {
+                                            Text(pr.emoji).font(.title2)
+                                            Text(pr.title)
+                                                .font(.system(size: 10, weight: .bold))
+                                                .foregroundColor(.earthCream)
+                                            Text(pr.valueText)
+                                                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                                                .foregroundColor(.earthOrange)
+                                        }
+                                        .padding(.horizontal, 18).padding(.vertical, 10)
+                                        .background(Color.earthOrange.opacity(0.1))
+                                        .cornerRadius(12)
+                                        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.earthOrange.opacity(0.3), lineWidth: 1))
+                                    }
+                                }
+                            }
+                            .padding(.horizontal)
+                        }
 
                         Button { saveToHistory() } label: {
                             Label(
@@ -305,9 +614,10 @@ struct FreeWalkSummarySheet: View {
             waypoints: walkManager.trackPoints.map { WaypointCoord($0) },
             lapCount: 1,
             isLoop: false,
-            activePetIds: petStore.activePetIds,
+            activePetIds: [],
             activityType: walkManager.activityMode.rawValue
         )
+        newPRs = checkNewPRs(newSession: session, against: historyStore.sessions)
         historyStore.add(session)
         savedToHistory = true
         Task { await walkManager.finishWorkoutSession() }

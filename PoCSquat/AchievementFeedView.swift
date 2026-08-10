@@ -99,8 +99,8 @@ struct AchievementFeedView: View {
                 loadError = "Sign into iCloud in Settings to view the achievement feed."
             case .networkUnavailable, .networkFailure:
                 loadError = "No internet connection. Check your connection and retry."
-            case .unknownItem, .invalidArguments:
-                loadError = "Achievement feed not yet deployed. Open CloudKit Console and deploy WocketAchievement to Production."
+            case .unknownItem, .invalidArguments, .internalError:
+                loadError = "Achievement feed not yet deployed — open CloudKit Console and deploy WocketAchievement to Production."
             default:
                 loadError = "Couldn't load feed (error \(ck.code.rawValue))."
             }
@@ -188,7 +188,7 @@ private struct AchievementPostCard: View {
     }
 
     private func timeAgo(_ date: Date) -> String {
-        let s = Int(-date.timeIntervalSinceNow)
+        let s = max(0, Int(-date.timeIntervalSinceNow))
         if s < 60   { return "just now" }
         if s < 3600 { return "\(s/60)m ago" }
         if s < 86400 { return "\(s/3600)h ago" }

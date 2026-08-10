@@ -89,6 +89,52 @@ final class PetStore: ObservableObject {
             .reduce(0) { $0 + $1.totalDistance }
     }
 
+    func weeklySteps(for pet: PetProfile, in sessions: [WalkSession]) -> Int {
+        let cutoff = Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? Date()
+        return sessions
+            .filter { $0.date >= cutoff && $0.activePetIds.contains(pet.id) }
+            .reduce(0) { $0 + $1.estimatedSteps }
+    }
+
+    func weeklyDistance(for pet: PetProfile, in sessions: [WalkSession]) -> Double {
+        let cutoff = Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? Date()
+        return sessions
+            .filter { $0.date >= cutoff && $0.activePetIds.contains(pet.id) }
+            .reduce(0) { $0 + $1.totalDistance }
+    }
+
+    func recentSessions(for pet: PetProfile, in sessions: [WalkSession]) -> [WalkSession] {
+        let cutoff = Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? Date()
+        return sessions
+            .filter { $0.date >= cutoff && $0.activePetIds.contains(pet.id) }
+            .sorted { $0.date > $1.date }
+    }
+
+    func walkStreak(for pet: PetProfile, in sessions: [WalkSession]) -> Int {
+        let cal = Calendar.current
+        let walkedDays = Set(
+            sessions
+                .filter { $0.activePetIds.contains(pet.id) }
+                .map { cal.startOfDay(for: $0.date) }
+        ).sorted(by: >)
+        guard !walkedDays.isEmpty else { return 0 }
+        var streak = 0
+        var expected = cal.startOfDay(for: Date())
+        if !walkedDays.contains(expected) {
+            expected = cal.date(byAdding: .day, value: -1, to: expected) ?? expected
+            guard walkedDays.contains(expected) else { return 0 }
+        }
+        for day in walkedDays {
+            if day == expected {
+                streak += 1
+                expected = cal.date(byAdding: .day, value: -1, to: expected) ?? expected
+            } else if day < expected {
+                break
+            }
+        }
+        return streak
+    }
+
     private func persist() {
         guard let data = try? JSONEncoder().encode(pets) else { return }
         UserDefaults.standard.set(data, forKey: udKey)
@@ -389,6 +435,7 @@ struct PetEditorSheet: View {
         updated.goalSteps        = max(1_000, Int(goalText) ?? defaultGoal)
         updated.accentColorIndex = colorIndex
         updated.customEmoji      = emojiText.trimmingCharacters(in: .whitespaces).isEmpty ? nil : String(emojiText.trimmingCharacters(in: .whitespaces).prefix(2))
+        if pet == nil { updated.isActiveOnWalk = true }
         onSave(updated)
         dismiss()
     }

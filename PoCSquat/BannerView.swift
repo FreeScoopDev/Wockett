@@ -11,11 +11,17 @@ final class BannerStore {
     private(set) var displayOpacity: Double = 1.0
 
     private let udKey = "bannerAffirmations_v1"
+    private var cycleTask: Task<Void, Never>?
 
-    private init() {
+    init() {
         load()
-        Task { @MainActor in await cycle() }
+        cycleTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.cycle()
+        }
     }
+
+    deinit { cycleTask?.cancel() }
 
     var allQuotes: [String] { curatedQuotes + userAffirmations }
 
@@ -38,8 +44,9 @@ final class BannerStore {
     private func cycle() async {
         var shuffled = allQuotes.shuffled()
         var phase = 0
-        while true {
+        while !Task.isCancelled {
             try? await Task.sleep(nanoseconds: 4_500_000_000)
+            guard !Task.isCancelled else { break }
             withAnimation(.easeOut(duration: 0.3)) { displayOpacity = 0 }
             try? await Task.sleep(nanoseconds: 320_000_000)
             phase += 1
@@ -58,7 +65,7 @@ final class BannerStore {
 // MARK: - Rotating Banner Title
 
 struct BannerTitleView: View {
-    private var store = BannerStore.shared
+    var store: BannerStore = .shared
 
     var body: some View {
         Group {

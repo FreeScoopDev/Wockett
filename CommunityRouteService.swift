@@ -77,7 +77,7 @@ final class CommunityRouteService {
         "Stone", "River", "Meadow", "Pine", "Hawk", "Willow", "Aspen", "Moss", "Elk", "Sage"
     ]
 
-    private init() {}
+    init() {}
 
     // MARK: - Username
 

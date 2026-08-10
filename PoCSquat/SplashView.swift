@@ -33,13 +33,30 @@ private struct TopoBackground: View {
 
 private struct WLetterShape: Shape {
     func path(in rect: CGRect) -> Path {
-        var p = Path()
-        p.move(to:    CGPoint(x: rect.minX,                   y: rect.minY))
-        p.addLine(to: CGPoint(x: rect.minX + rect.width*0.25, y: rect.maxY))
-        p.addLine(to: CGPoint(x: rect.midX,                   y: rect.minY + rect.height*0.38))
-        p.addLine(to: CGPoint(x: rect.minX + rect.width*0.75, y: rect.maxY))
-        p.addLine(to: CGPoint(x: rect.maxX,                   y: rect.minY))
-        return p
+        let w = rect.width, h = rect.height
+        // s controls how much of each segment is used for the rounded corner transition
+        let s: CGFloat = 0.40
+
+        let p0 = CGPoint(x: 0,      y: 0)        // top-left tip
+        let p1 = CGPoint(x: w*0.25, y: h)         // valley 1
+        let p2 = CGPoint(x: w*0.50, y: h*0.38)   // center peak
+        let p3 = CGPoint(x: w*0.75, y: h)         // valley 2
+        let p4 = CGPoint(x: w,      y: 0)         // top-right tip
+
+        func lerp(_ a: CGPoint, _ b: CGPoint, _ t: CGFloat) -> CGPoint {
+            CGPoint(x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t)
+        }
+
+        var path = Path()
+        path.move(to: p0)
+        path.addLine(to: lerp(p0, p1, 1 - s))
+        path.addQuadCurve(to: lerp(p1, p2, s), control: p1)
+        path.addLine(to: lerp(p1, p2, 1 - s))
+        path.addQuadCurve(to: lerp(p2, p3, s), control: p2)
+        path.addLine(to: lerp(p2, p3, 1 - s))
+        path.addQuadCurve(to: lerp(p3, p4, s), control: p3)
+        path.addLine(to: p4)
+        return path
     }
 }
 
@@ -103,7 +120,7 @@ private struct WocketLogoView: View {
                         style: StrokeStyle(lineWidth: strokeWidth, lineCap: .round,
                                            dash: [10, 8]))
                 .frame(width: w, height: h)
-                .animation(.linear(duration: drawDuration), value: trimEnd)
+                .animation(.easeInOut(duration: drawDuration), value: trimEnd)
 
             // Arrowhead at top-right (springs in when draw completes)
             WArrowheadShape()

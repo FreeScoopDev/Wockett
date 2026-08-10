@@ -1,0 +1,402 @@
+import SwiftUI
+import MapKit
+import CoreLocation
+import UserNotifications
+import UIKit
+import HealthKit
+
+// MARK: - Checkpoint Circle Overlay
+
+final class NavCheckpointCircle: MKCircle {
+    var isFinish = false
+}
+
+// MARK: - Navigation Session Manager
+
+// waypoints[0] is the user's starting position.
+// Navigation begins at index 1. For loops, returning to index 0 (start) completes a lap.
+@Observable
+@MainActor
+final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
+    var currentWaypointIndex = 1
+    var currentLap = 1
+    var distanceToNextWaypoint: Double = 0
+    var totalDistanceCovered: Double = 0
+    var elapsedTime: TimeInterval = 0
+    var isCompleted = false
+    var splitTimes: [(label: String, elapsed: TimeInterval)] = []
+
+    var onCheckpointReached: ((String) -> Void)?
+
+    private let route: NavigableRoute
+    private let locationManager = CLLocationManager()
+    private var startTime = Date()
+    private var timer: Timer?
+    private var lastLocation: CLLocation?
+    private let arrivalRadius = 30.0
+    private var triggeredCheckpoints: Set<Int> = []
+    private let checkpointFractions = [0.2, 0.4, 0.6, 0.8]
+    private var workoutWriter: HealthWorkoutWriter?
+    var isPaused = false
+    private var pausedDuration: TimeInterval = 0
+    private var pauseStart: Date?
+
+    init(route: NavigableRoute) {
+        self.route = route
+        super.init()
+        locationManager.delegate = self
+        locationManager.desiredAccuracy = kCLLocationAccuracyBestForNavigation
+        locationManager.distanceFilter = 5
+        locationManager.activityType = .fitness
+        locationManager.allowsBackgroundLocationUpdates = true
+        locationManager.pausesLocationUpdatesAutomatically = false
+    }
+
+    func start() {
+        startTime = Date()
+        UIApplication.shared.isIdleTimerDisabled = true
+        locationManager.startUpdatingLocation()
+        startTimer()
+        let capturedStartTime = startTime
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            let writer = HealthWorkoutWriter(activityType: route.activityMode.hkActivityType)
+            await writer.start(at: capturedStartTime)
+            self.workoutWriter = writer
+        }
+    }
+
+    private func startTimer() {
+        timer?.invalidate()
+        timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.elapsedTime = Date().timeIntervalSince(self.startTime) - self.pausedDuration
+            }
+        }
+    }
+
+    func pause() {
+        guard !isPaused else { return }
+        isPaused = true
+        pauseStart = Date()
+        timer?.invalidate()
+        timer = nil
+        locationManager.stopUpdatingLocation()
+        UIApplication.shared.isIdleTimerDisabled = false
+    }
+
+    func resume() {
+        guard isPaused else { return }
+        if let ps = pauseStart {
+            pausedDuration += Date().timeIntervalSince(ps)
+            pauseStart = nil
+        }
+        isPaused = false
+        UIApplication.shared.isIdleTimerDisabled = true
+        locationManager.startUpdatingLocation()
+        startTimer()
+    }
+
+    func stop() {
+        locationManager.stopUpdatingLocation()
+        timer?.invalidate()
+        timer = nil
+        UIApplication.shared.isIdleTimerDisabled = false
+    }
+
+    // Finalises the HealthKit workout after the session is saved to local history.
+    func finishWorkoutSession() async {
+        guard let writer = workoutWriter else { return }
+        workoutWriter = nil
+        await writer.finish(totalDistanceMeters: totalDistanceCovered, endDate: Date())
+    }
+
+    var nextWaypoint: CLLocationCoordinate2D? {
+        guard !route.waypoints.isEmpty else { return nil }
+        if route.isLoop {
+            return route.waypoints[currentWaypointIndex % route.waypoints.count]
+        }
+        guard currentWaypointIndex < route.waypoints.count else { return nil }
+        return route.waypoints[currentWaypointIndex]
+    }
+
+    var progressText: String {
+        route.isLoop
+            ? "Lap \(min(currentLap, route.lapCount)) of \(route.lapCount)"
+            : "Heading to destination"
+    }
+
+    var remainingDistance: Double {
+        max(0, route.totalDistance - totalDistanceCovered)
+    }
+
+    // Average pace in min/km — shown as "--:--" until enough distance is covered.
+    var paceText: String {
+        guard totalDistanceCovered > 50, elapsedTime > 5 else { return "--:--" }
+        let useMetric = Locale.current.measurementSystem != .us
+        let divisor   = useMetric ? 1000.0 : 1609.34
+        let unit      = useMetric ? "/km" : "/mi"
+        let minPerUnit = (elapsedTime / 60.0) / (totalDistanceCovered / divisor)
+        let mins      = Int(minPerUnit)
+        let secs      = Int((minPerUnit - Double(mins)) * 60)
+        return String(format: "%d:%02d%@", mins, secs, unit)
+    }
+
+    var estimatedSteps: Int { Int(totalDistanceCovered / 0.762) }
+
+    var estimatedSecondsRemaining: Double? {
+        guard totalDistanceCovered > 100, elapsedTime > 10, remainingDistance > 10 else { return nil }
+        let mps = totalDistanceCovered / elapsedTime
+        return mps > 0 ? remainingDistance / mps : nil
+    }
+
+    var completedSession: WalkSession {
+        WalkSession(
+            id: UUID(),
+            routeName: route.name,
+            date: startTime,
+            elapsedTime: elapsedTime,
+            totalDistance: totalDistanceCovered,
+            waypoints: route.waypoints.map { WaypointCoord($0) },
+            lapCount: route.lapCount,
+            isLoop: route.isLoop,
+            activityType: route.activityMode.rawValue
+        )
+    }
+
+    nonisolated func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+        guard let loc = locations.last, loc.horizontalAccuracy < 50 else { return }
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            self.elapsedTime = Date().timeIntervalSince(self.startTime) - self.pausedDuration
+            if let last = self.lastLocation {
+                let delta = loc.distance(from: last)
+                if delta < 100 { self.totalDistanceCovered += delta }
+            }
+            self.lastLocation = loc
+            self.workoutWriter?.addLocations(locations)
+            self.checkArrival(at: loc)
+            if !self.route.isCustomRoute { self.checkDistanceCheckpoints() }
+        }
+    }
+
+    private func checkDistanceCheckpoints() {
+        guard route.totalDistance > 0, onCheckpointReached != nil else { return }
+        for (i, fraction) in checkpointFractions.enumerated() {
+            guard !triggeredCheckpoints.contains(i) else { continue }
+            if totalDistanceCovered >= route.totalDistance * fraction {
+                triggeredCheckpoints.insert(i)
+                let label = "\(Int(fraction * 100))%"
+                splitTimes.append((label: label, elapsed: elapsedTime))
+                onCheckpointReached?(label)
+            }
+        }
+    }
+
+    nonisolated func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {}
+
+    private func checkArrival(at location: CLLocation) {
+        guard let next = nextWaypoint else { return }
+        let dist = location.distance(from: CLLocation(latitude: next.latitude, longitude: next.longitude))
+        distanceToNextWaypoint = dist
+        guard dist < arrivalRadius else { return }
+        advanceWaypoint()
+    }
+
+    private func advanceWaypoint() {
+        let arrivedIndex = currentWaypointIndex
+        currentWaypointIndex += 1
+        if route.isCustomRoute, onCheckpointReached != nil {
+            let wpNum = min(currentWaypointIndex, route.waypoints.count)
+            let label = "WP \(wpNum)/\(route.waypoints.count)"
+            splitTimes.append((label: label, elapsed: elapsedTime))
+            onCheckpointReached?(label)
+        }
+        if route.isLoop {
+            if currentWaypointIndex >= route.waypoints.count {
+                currentWaypointIndex = 0
+            } else if currentWaypointIndex == 1 {
+                currentLap += 1
+                if currentLap > route.lapCount {
+                    finish()
+                } else {
+                    let lapsLeft = route.lapCount - (currentLap - 1)
+                    fireBackgroundNotification(
+                        title: "Lap \(currentLap - 1) of \(route.lapCount) complete 🔄",
+                        body: lapsLeft == 1 ? "Last lap — finish strong!" : "\(lapsLeft) laps to go"
+                    )
+                }
+            }
+        } else if currentWaypointIndex >= route.waypoints.count {
+            finish()
+        } else {
+            let total = route.waypoints.count - 1
+            let left = route.waypoints.count - currentWaypointIndex
+            fireBackgroundNotification(
+                title: "Checkpoint \(arrivedIndex) of \(total) ✓",
+                body: left == 1 ? "Almost there — final stretch!" : "\(left) waypoints to go"
+            )
+        }
+    }
+
+    private func finish() {
+        isCompleted = true
+        stop()
+        fireBackgroundNotification(title: "Walk complete! 🎉", body: "Great work on \(route.name)")
+    }
+
+    private func fireBackgroundNotification(title: String, body: String) {
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = body
+        content.sound = .default
+        let req = UNNotificationRequest(
+            identifier: "nav-\(UUID().uuidString)",
+            content: content,
+            trigger: UNTimeIntervalNotificationTrigger(timeInterval: 0.5, repeats: false)
+        )
+        Task { try? await UNUserNotificationCenter.current().add(req) }
+    }
+}
+
+// MARK: - Navigation Map
+
+struct NavigationMapView: UIViewRepresentable {
+    let route: NavigableRoute
+    let computedLegs: [MKRoute]
+    let currentWaypointIndex: Int
+    let checkpointsEnabled: Bool
+
+    func makeUIView(context: Context) -> MKMapView {
+        let map = MKMapView()
+        map.delegate = context.coordinator
+        map.showsUserLocation = true
+        map.userTrackingMode = .follow
+        map.overrideUserInterfaceStyle = .unspecified
+        map.setCameraZoomRange(
+            MKMapView.CameraZoomRange(maxCenterCoordinateDistance: 600),
+            animated: false
+        )
+        for (i, wp) in route.waypoints.enumerated() {
+            let ann = MKPointAnnotation()
+            ann.coordinate = wp
+            ann.title = i == 0 ? "Start" : "\(i)"
+            map.addAnnotation(ann)
+        }
+        return map
+    }
+
+    func updateUIView(_ map: MKMapView, context: Context) {
+        if !computedLegs.isEmpty, !context.coordinator.hasAddedLegs {
+            context.coordinator.hasAddedLegs = true
+            for leg in computedLegs { map.addOverlay(leg.polyline) }
+        }
+        if checkpointsEnabled && !computedLegs.isEmpty && !context.coordinator.hasAddedCheckpoints {
+            context.coordinator.hasAddedCheckpoints = true
+            Self.addCheckpointMarkers(on: map, legs: computedLegs)
+        } else if !checkpointsEnabled && context.coordinator.hasAddedCheckpoints {
+            context.coordinator.hasAddedCheckpoints = false
+            map.removeOverlays(map.overlays.filter { $0 is NavCheckpointCircle })
+        }
+        // Refresh annotation tints when the current waypoint advances
+        if context.coordinator.lastWaypointIndex != currentWaypointIndex {
+            context.coordinator.lastWaypointIndex = currentWaypointIndex
+            for ann in map.annotations {
+                guard let marker = map.view(for: ann) as? MKMarkerAnnotationView,
+                      let pt = ann as? MKPointAnnotation,
+                      let title = pt.title else { continue }
+                let idx = title == "Start" ? 0 : (Int(title) ?? 0)
+                marker.markerTintColor = idx < currentWaypointIndex ? .systemGray3 : (title == "Start" ? .brandOrange : .brandGreen)
+                marker.alpha = idx < currentWaypointIndex ? 0.45 : 1.0
+            }
+        }
+    }
+
+    static func addCheckpointMarkers(on map: MKMapView, legs: [MKRoute]) {
+        var allCoords: [CLLocationCoordinate2D] = []
+        for leg in legs {
+            let pts = leg.polyline.points()
+            for i in 0..<leg.polyline.pointCount { allCoords.append(pts[i].coordinate) }
+        }
+        guard allCoords.count > 1 else { return }
+        var combined = allCoords
+        let poly = MKPolyline(coordinates: &combined, count: combined.count)
+        for fraction in [0.2, 0.4, 0.6, 0.8] {
+            if let c = coordAlong(poly, fraction: fraction) {
+                map.addOverlay(NavCheckpointCircle(center: c, radius: 18), level: .aboveRoads)
+            }
+        }
+        let finish = NavCheckpointCircle(center: allCoords.last!, radius: 24)
+        finish.isFinish = true
+        map.addOverlay(finish, level: .aboveRoads)
+    }
+
+    static func coordAlong(_ polyline: MKPolyline, fraction: Double) -> CLLocationCoordinate2D? {
+        let n = polyline.pointCount
+        guard n > 1, fraction > 0 else { return polyline.points()[0].coordinate }
+        if fraction >= 1 { return polyline.points()[n - 1].coordinate }
+        let pts = polyline.points()
+        var total = 0.0
+        var lens = [Double]()
+        for i in 0..<n - 1 {
+            let a = CLLocation(latitude: pts[i].coordinate.latitude, longitude: pts[i].coordinate.longitude)
+            let b = CLLocation(latitude: pts[i + 1].coordinate.latitude, longitude: pts[i + 1].coordinate.longitude)
+            lens.append(a.distance(from: b)); total += lens.last!
+        }
+        let target = total * fraction
+        var accum = 0.0
+        for i in 0..<lens.count {
+            guard lens[i] > 0 else { accum += lens[i]; continue }
+            if accum + lens[i] >= target {
+                let t = (target - accum) / lens[i]
+                let a = pts[i].coordinate, b = pts[i + 1].coordinate
+                return CLLocationCoordinate2D(
+                    latitude: a.latitude + (b.latitude - a.latitude) * t,
+                    longitude: a.longitude + (b.longitude - a.longitude) * t
+                )
+            }
+            accum += lens[i]
+        }
+        return pts[n - 1].coordinate
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    class Coordinator: NSObject, MKMapViewDelegate {
+        var hasAddedLegs = false
+        var lastWaypointIndex = 0
+        var hasAddedCheckpoints = false
+
+        func mapView(_ map: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
+            if let circle = overlay as? NavCheckpointCircle {
+                let r = MKCircleRenderer(circle: circle)
+                if circle.isFinish {
+                    r.fillColor = UIColor.systemOrange.withAlphaComponent(0.3)
+                    r.strokeColor = UIColor.systemOrange
+                    r.lineWidth = 2
+                } else {
+                    r.fillColor = UIColor.white.withAlphaComponent(0.4)
+                    r.strokeColor = UIColor.systemGray2.withAlphaComponent(0.9)
+                    r.lineWidth = 1.5
+                }
+                return r
+            }
+            guard let pl = overlay as? MKPolyline else { return MKOverlayRenderer(overlay: overlay) }
+            let r = MKPolylineRenderer(polyline: pl)
+            r.strokeColor = .brandGreen
+            r.lineWidth = 5
+            r.alpha = 0.85
+            return r
+        }
+
+        func mapView(_ map: MKMapView, viewFor annotation: MKAnnotation) -> MKAnnotationView? {
+            guard let ann = annotation as? MKPointAnnotation else { return nil }
+            let view = MKMarkerAnnotationView(annotation: ann, reuseIdentifier: "nav")
+            view.glyphText = ann.title ?? ""
+            view.markerTintColor = ann.title == "Start" ? .brandOrange : .brandGreen
+            view.canShowCallout = false
+            return view
+        }
+    }
+}

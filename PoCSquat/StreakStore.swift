@@ -66,9 +66,11 @@ let walkBadges: [WalkBadge] = [
     WalkBadge(id: "marathon",  name: "Marathoner",   description: "500 km total walked",        emoji: "🏅",  type: .distance(km: 500)),
     WalkBadge(id: "legend",    name: "Legend",       description: "1,000 km total walked",      emoji: "🌟",  type: .distance(km: 1000)),
     // Streak milestones
-    WalkBadge(id: "week1",     name: "Week One",     description: "7-day goal streak",          emoji: "🗓️",  type: .streak(days: 7)),
-    WalkBadge(id: "month1",    name: "Month Strong", description: "30-day goal streak",         emoji: "📅",  type: .streak(days: 30)),
-    WalkBadge(id: "centurion", name: "Centurion",    description: "100-day goal streak",        emoji: "💎",  type: .streak(days: 100)),
+    WalkBadge(id: "week1",     name: "Week One",      description: "7-day goal streak",          emoji: "🗓️",  type: .streak(days: 7)),
+    WalkBadge(id: "fortnight", name: "Fortnight",     description: "14-day goal streak",         emoji: "🌱",  type: .streak(days: 14)),
+    WalkBadge(id: "month1",    name: "Month Strong",  description: "30-day goal streak",         emoji: "📅",  type: .streak(days: 30)),
+    WalkBadge(id: "ironwill",  name: "Iron Will",     description: "60-day goal streak",         emoji: "💪",  type: .streak(days: 60)),
+    WalkBadge(id: "centurion", name: "Centurion",     description: "100-day goal streak",        emoji: "💎",  type: .streak(days: 100)),
     // Time-of-day
     WalkBadge(id: "earlybird",    name: "Early Bird",    description: "Complete a walk before 8am", emoji: "🌅",  type: .earlyBird),
     WalkBadge(id: "nightowl",     name: "Night Owl",     description: "Complete a walk after 8pm",  emoji: "🌙",  type: .nightOwl),
@@ -89,7 +91,7 @@ final class StreakStore {
     private let longestKey    = "wkt_longestStreak_v1"
     private let seenBadgesKey = "wkt_seenBadges_v1"
 
-    private init() {
+    init() {
         longestStreak = UserDefaults.standard.integer(forKey: longestKey)
     }
 

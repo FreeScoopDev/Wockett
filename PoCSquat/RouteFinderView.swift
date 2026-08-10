@@ -40,6 +40,13 @@ struct RouteFinderView: View {
     // Active search task — stored so it can be cancelled on retry or dismissal
     @State private var activeTask: Task<Void, Never>?
 
+    // Elevation fetch — per-route cache prevents re-fetching on re-selection
+    @State private var elevationTask:  Task<Void, Never>? = nil
+    @State private var elevationCache: [UUID: ElevationProfile] = [:]
+    @State private var elevationError: String? = nil
+
+    @State private var wocketError: String? = nil
+
     private let intentKey = "wkt_lastWalkIntent_v1"
 
     init(routeManager: RouteManager, historyStore: WalkHistoryStore,
@@ -350,6 +357,15 @@ struct RouteFinderView: View {
                 .frame(height: 80)
                 .overlay(ProgressView().tint(.earthGreen))
                 .padding(.horizontal, 20)
+        } else if let err = elevationError {
+            HStack(spacing: 6) {
+                Image(systemName: "chart.line.uptrend.xyaxis")
+                    .font(.caption)
+                Text(err)
+                    .font(.caption)
+            }
+            .foregroundColor(.earthMuted)
+            .padding(.horizontal, 20)
         }
     }
 
@@ -388,6 +404,19 @@ struct RouteFinderView: View {
     @ViewBuilder
     private var communitySection: some View {
         VStack(spacing: 10) {
+            if let err = wocketError {
+                HStack(spacing: 6) {
+                    Image(systemName: "exclamationmark.circle.fill")
+                        .font(.caption)
+                    Text(err)
+                        .font(.caption)
+                }
+                .foregroundColor(.orange)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 20)
+                .transition(.opacity)
+            }
+
             Button {
                 showCommunityRoutes.toggle()
                 if showCommunityRoutes && communityRoutes.isEmpty && communityLoadError == nil {
@@ -454,7 +483,13 @@ struct RouteFinderView: View {
                                 guard !CommunityRouteService.shared.hasVoted(for: route.id) else { return }
                                 route.wocketts += 1
                                 CommunityRouteService.shared.markVoted(for: route.id)
-                                Task { try? await CommunityRouteService.shared.wockett(id: route.id) }
+                                Task {
+                                    do {
+                                        try await CommunityRouteService.shared.wockett(id: route.id)
+                                    } catch {
+                                        wocketError = "Couldn't save your Wockett — check your connection and try again."
+                                    }
+                                }
                             },
                             onSave: {
                                 routeStore.save(CustomRoute(
@@ -521,7 +556,9 @@ struct RouteFinderView: View {
                 switch walkIntent {
                 case .finishGoal:
                     let r = stepManager.remainingMeters
-                    return r > 100 ? r : 5000
+                    // Below ~650 steps remaining (500m), suggest a short finishing walk
+                    // rather than jumping to a full 5km fallback.
+                    return r > 500 ? r : 1500
                 case .quickWalk(let mins):
                     return Double(mins) * 80
                 }
@@ -539,7 +576,9 @@ struct RouteFinderView: View {
                 switch walkIntent {
                 case .finishGoal:
                     let r = stepManager.remainingMeters
-                    return r > 100 ? r : 5000
+                    // Below ~650 steps remaining (500m), suggest a short finishing walk
+                    // rather than jumping to a full 5km fallback.
+                    return r > 500 ? r : 1500
                 case .quickWalk(let mins):
                     return Double(mins) * 80
                 }
@@ -553,24 +592,46 @@ struct RouteFinderView: View {
     private func clearRoutes() {
         activeTask?.cancel()
         activeTask = nil
+        elevationTask?.cancel()
+        elevationTask = nil
         routeManager.isGenerating = false
         routeManager.suggestedRoutes = []
         routeManager.locationError = nil
         selectedRoute = nil
         routeWeather = nil
         elevationProfile = nil
+        elevationError = nil
+        wocketError = nil
     }
 
     private func loadElevation() {
-        guard let coords = selectedRoute?.legWaypoints, coords.count >= 2 else {
+        guard let route = selectedRoute, route.legWaypoints.count >= 2 else {
             elevationProfile = nil
+            elevationError = nil
             isLoadingElevation = false
             return
         }
+        // Serve from cache — avoid re-fetching when the user re-selects the same route.
+        if let cached = elevationCache[route.id] {
+            elevationProfile = cached
+            elevationError = nil
+            isLoadingElevation = false
+            return
+        }
+        elevationTask?.cancel()
         isLoadingElevation = true
         elevationProfile = nil
-        Task {
-            elevationProfile = try? await ElevationService.shared.fetchProfile(for: coords)
+        elevationError = nil
+        elevationTask = Task {
+            do {
+                let profile = try await ElevationService.shared.fetchProfile(for: route.legWaypoints)
+                guard !Task.isCancelled else { return }
+                elevationProfile = profile
+                elevationCache[route.id] = profile
+            } catch {
+                guard !Task.isCancelled else { return }
+                elevationError = "Elevation data unavailable"
+            }
             isLoadingElevation = false
         }
     }
@@ -600,8 +661,8 @@ struct RouteFinderView: View {
                 communityLoadError = "Sign into iCloud (Settings → [Your Name]) to view community routes."
             case .networkUnavailable, .networkFailure:
                 communityLoadError = "No internet connection. Check your connection and retry."
-            case .unknownItem, .invalidArguments:
-                communityLoadError = "Community schema not deployed. Open CloudKit Console and deploy to Production."
+            case .unknownItem, .invalidArguments, .internalError:
+                communityLoadError = "Community routes aren't set up yet — open CloudKit Console and deploy SharedRoute to Production."
             case .serviceUnavailable:
                 communityLoadError = "iCloud is temporarily unavailable. Try again in a moment."
             default:
