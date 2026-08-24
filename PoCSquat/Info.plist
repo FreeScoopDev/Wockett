@@ -40,6 +40,7 @@
 		<string>location</string>
 		<string>fetch</string>
 		<string>processing</string>
+		<string>remote-notification</string>
 	</array>
 	<key>NSMotionUsageDescription</key>
 	<string>Wockett counts your steps during walks using the device motion sensor, giving you an accurate step count alongside GPS distance tracking.</string>

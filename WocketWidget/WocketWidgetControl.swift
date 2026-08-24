@@ -26,8 +26,10 @@ private struct OpenWockettForWalkIntent: AppIntent {
     static var openAppWhenRun: Bool = true
 
     func perform() async throws -> some IntentResult {
-        UserDefaults.standard.set(true, forKey: "intent_startWalkPending")
-        UserDefaults.standard.set("walking", forKey: "intent_activityMode")
+        // Write to shared App Group so the main app can read it on next foreground
+        let ud = UserDefaults(suiteName: "group.com.scoops.wockett")
+        ud?.set(true, forKey: "intent_startWalkPending")
+        ud?.set("walking", forKey: "intent_activityMode")
         return .result()
     }
 }
