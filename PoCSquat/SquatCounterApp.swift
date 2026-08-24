@@ -1,8 +1,6 @@
 import SwiftUI
 import SwiftData
 import TipKit
-import FirebaseCore
-import FirebaseCrashlytics
 import BackgroundTasks
 
 @main
@@ -12,7 +10,6 @@ struct SquatCounterApp: App {
     @State private var showSplash = true
 
     init() {
-        FirebaseApp.configure()
         BackgroundTaskManager.shared.registerTasks()
         UNUserNotificationCenter.current().delegate = AppNotificationDelegate.shared
         UNUserNotificationCenter.registerActionCategories()
