@@ -3,6 +3,7 @@ import Combine
 import MapKit
 import CoreLocation
 import HealthKit
+import SwiftData
 
 // MARK: - Walk Intent
 
@@ -233,15 +234,19 @@ struct WalkSession: Identifiable, Codable {
     var activePetIds: [UUID]
     var activityType: String  // "walking" or "cycling"; decoded with fallback for existing sessions
     var notes: String         // user notes per session; empty string for existing sessions
+    var petDistances: [UUID: Double]  // meters walked per pet; empty on pre-v1.7 sessions
+    var steps: Int            // pedometer step count; 0 for pre-v1.7 sessions (falls back to distance estimate)
 
     init(id: UUID, routeName: String, date: Date, elapsedTime: TimeInterval,
          totalDistance: Double, waypoints: [WaypointCoord], lapCount: Int,
-         isLoop: Bool, activePetIds: [UUID] = [], activityType: String = "walking", notes: String = "") {
+         isLoop: Bool, activePetIds: [UUID] = [], activityType: String = "walking",
+         notes: String = "", petDistances: [UUID: Double] = [:], steps: Int = 0) {
         self.id = id; self.routeName = routeName; self.date = date
         self.elapsedTime = elapsedTime; self.totalDistance = totalDistance
         self.waypoints = waypoints; self.lapCount = lapCount
         self.isLoop = isLoop; self.activePetIds = activePetIds
         self.activityType = activityType; self.notes = notes
+        self.petDistances = petDistances; self.steps = steps
     }
 
     init(from decoder: Decoder) throws {
@@ -254,16 +259,19 @@ struct WalkSession: Identifiable, Codable {
         waypoints     = try c.decode([WaypointCoord].self, forKey: .waypoints)
         lapCount      = try c.decode(Int.self,             forKey: .lapCount)
         isLoop        = try c.decode(Bool.self,            forKey: .isLoop)
-        activePetIds  = (try? c.decode([UUID].self,        forKey: .activePetIds)) ?? []
-        activityType  = (try? c.decode(String.self,        forKey: .activityType)) ?? "walking"
-        notes         = (try? c.decode(String.self,        forKey: .notes))        ?? ""
+        activePetIds  = (try? c.decode([UUID].self,         forKey: .activePetIds))  ?? []
+        activityType  = (try? c.decode(String.self,         forKey: .activityType))  ?? "walking"
+        notes         = (try? c.decode(String.self,         forKey: .notes))         ?? ""
+        petDistances  = (try? c.decode([UUID: Double].self, forKey: .petDistances))  ?? [:]
+        steps         = (try? c.decode(Int.self,            forKey: .steps))          ?? 0
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, routeName, date, elapsedTime, totalDistance, waypoints, lapCount, isLoop, activePetIds, activityType, notes
+        case id, routeName, date, elapsedTime, totalDistance, waypoints, lapCount, isLoop, activePetIds, activityType, notes, petDistances, steps
     }
 
-    var estimatedSteps: Int { Int(totalDistance / 0.762) }
+    // Returns actual pedometer steps when available, otherwise estimates from GPS distance.
+    var estimatedSteps: Int { steps > 0 ? steps : Int(totalDistance / 0.762) }
 
     var distanceText: String {
         MKDistanceFormatter.abbreviated.string(fromDistance: totalDistance)
@@ -292,59 +300,79 @@ struct WalkSession: Identifiable, Codable {
 }
 
 // MARK: - Walk History Store
+//
+// SwiftData-backed store. Publishes [WalkSession] structs so all existing views
+// remain unchanged. Records are fetched from SwiftData on init and kept in sync
+// via the published array — no JSON file or UserDefaults involved.
 
 @MainActor
 final class WalkHistoryStore: ObservableObject {
     @Published var sessions: [WalkSession] = []
 
-    private static let storageURL: URL = {
-        let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        return dir.appendingPathComponent("walkHistory.json")
-    }()
-    private let legacyUDKey = "walkHistory_v1"
+    private let context: ModelContext
 
-    init() { load() }
+    init(context: ModelContext? = nil) {
+        self.context = context ?? AppModelContainer.shared.mainContext
+        load()
+    }
 
     func add(_ session: WalkSession) {
+        let record = WalkSessionRecord(from: session)
+        context.insert(record)
+        save()
         sessions.insert(session, at: 0)
-        persist()
     }
 
     func addAll(_ newSessions: [WalkSession]) {
-        sessions.insert(contentsOf: newSessions.sorted { $0.date > $1.date }, at: 0)
-        persist()
+        let sorted = newSessions.sorted { $0.date > $1.date }
+        sorted.forEach { context.insert(WalkSessionRecord(from: $0)) }
+        save()
+        sessions.insert(contentsOf: sorted, at: 0)
     }
 
     func delete(at offsets: IndexSet) {
+        let toDelete = offsets.map { sessions[$0] }
         sessions.remove(atOffsets: offsets)
-        persist()
+        deleteRecords(ids: toDelete.map(\.id))
     }
 
     func updateNotes(id: UUID, notes: String) {
         guard let idx = sessions.firstIndex(where: { $0.id == id }) else { return }
         sessions[idx].notes = notes
-        persist()
+        if let record = fetchRecord(id: id) {
+            record.notes = notes
+            save()
+        }
     }
 
-    private func persist() {
-        guard let data = try? JSONEncoder().encode(sessions) else { return }
-        try? data.write(to: Self.storageURL, options: .atomic)
-    }
+    // MARK: - Private helpers
 
     private func load() {
-        // Try file storage first (current format)
-        if let data = try? Data(contentsOf: Self.storageURL),
-           let decoded = try? JSONDecoder().decode([WalkSession].self, from: data) {
-            sessions = decoded
-            return
+        let descriptor = FetchDescriptor<WalkSessionRecord>(
+            sortBy: [SortDescriptor(\.date, order: .reverse)]
+        )
+        sessions = (try? context.fetch(descriptor))?.map { $0.toWalkSession() } ?? []
+    }
+
+    private func save() {
+        try? context.save()
+    }
+
+    private func fetchRecord(id: UUID) -> WalkSessionRecord? {
+        var descriptor = FetchDescriptor<WalkSessionRecord>(
+            predicate: #Predicate { $0.id == id }
+        )
+        descriptor.fetchLimit = 1
+        return try? context.fetch(descriptor).first
+    }
+
+    private func deleteRecords(ids: [UUID]) {
+        ids.forEach { id in
+            if let record = fetchRecord(id: id) {
+                context.delete(record)
+            }
         }
-        // Migrate legacy UserDefaults data on first launch after upgrade
-        guard let data = UserDefaults.standard.data(forKey: legacyUDKey),
-              let decoded = try? JSONDecoder().decode([WalkSession].self, from: data) else { return }
-        sessions = decoded
-        persist()
-        UserDefaults.standard.removeObject(forKey: legacyUDKey)
+        save()
     }
 }
 

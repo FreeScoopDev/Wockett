@@ -1,3 +1,5 @@
+import MapKit
+import MessageUI
 import SwiftUI
 import UserNotifications
 
@@ -10,8 +12,13 @@ struct WalkCompleteView: View {
     var splits: [(label: String, elapsed: TimeInterval)] = []
     var newPRs: [PRType] = []
     let onDismiss: () -> Void
-    @State private var showSchedule = false
+    @State private var showSchedule        = false
     @State private var ringProgress: [UUID: Double] = [:]
+    @State private var shareItems: [Any]   = []
+    @State private var showShareSheet      = false
+    @State private var messageRecipient: String? = nil
+    @State private var messageBody         = ""
+    @State private var showMessageSheet    = false
 
     private var completionMessage: String {
         switch activePetNames.count {
@@ -81,6 +88,14 @@ struct WalkCompleteView: View {
         }
         .sheet(isPresented: $showSchedule) {
             ScheduleWalkSheet(routeName: session.routeName)
+        }
+        .sheet(isPresented: $showShareSheet) {
+            ActivityShareSheet(activityItems: shareItems)
+        }
+        .sheet(isPresented: $showMessageSheet) {
+            if let phone = messageRecipient {
+                MessageComposeSheet(recipients: [phone], body: messageBody)
+            }
         }
     }
 
@@ -197,7 +212,54 @@ struct WalkCompleteView: View {
             Text(completion.pet.name)
                 .font(.caption2.bold())
                 .foregroundColor(.earthMuted)
+
+            HStack(spacing: 6) {
+                Button {
+                    shareCard(for: completion)
+                } label: {
+                    Label("Share", systemImage: "square.and.arrow.up")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(completion.pet.accentColor)
+                }
+                if completion.pet.ownerPhone != nil {
+                    Button {
+                        messageOwner(for: completion)
+                    } label: {
+                        Label("Message", systemImage: "message.fill")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundColor(.earthGreen)
+                    }
+                }
+            }
         }
+    }
+
+    @MainActor
+    private func shareCard(for completion: PetCompletion) {
+        let petMeters = session.petDistances[completion.pet.id] ?? 0
+        let card = PetWalkSummaryCard(
+            pet: completion.pet,
+            sessionDistance: petMeters,
+            sessionDuration: session.elapsedTime,
+            goalProgress: completion.progress,
+            date: session.date
+        )
+        let renderer = ImageRenderer(content: card)
+        renderer.scale = 3.0
+        guard let image = renderer.uiImage else { return }
+        shareItems = [image]
+        showShareSheet = true
+    }
+
+    private func messageOwner(for completion: PetCompletion) {
+        guard MFMessageComposeViewController.canSendText() else { return }
+        let petMeters = session.petDistances[completion.pet.id] ?? 0
+        let dist = MKDistanceFormatter.abbreviated.string(fromDistance: petMeters)
+        let steps = Int(petMeters / 0.762).formatted()
+        let ownerFirst = completion.pet.ownerName?.components(separatedBy: " ").first ?? "there"
+        messageBody = "Hi \(ownerFirst)! Just finished walking \(completion.pet.name) 🐾\n\n📏 \(dist)  👟 \(steps) steps  ⏱ \(session.timeText)\n\nSent from Wockett"
+        messageRecipient = completion.pet.ownerPhone
+        showMessageSheet = true
     }
 }
 
@@ -267,5 +329,155 @@ struct ScheduleWalkSheet: View {
         let trigger = UNCalendarNotificationTrigger(dateMatching: comps, repeats: false)
         try? await center.add(UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: trigger))
         dismiss()
+    }
+}
+
+// MARK: - Pet Walk Summary Card
+
+struct PetWalkSummaryCard: View {
+    let pet: PetProfile
+    let sessionDistance: Double
+    let sessionDuration: TimeInterval
+    let goalProgress: Double
+    let date: Date
+
+    private var steps: Int { Int(sessionDistance / 0.762) }
+    private var distText: String { MKDistanceFormatter.abbreviated.string(fromDistance: sessionDistance) }
+    private var timeText: String {
+        let m = Int(sessionDuration) / 60
+        return m < 60 ? "\(m) min" : "\(m / 60)h \(m % 60)m"
+    }
+    private var dateText: String {
+        let f = DateFormatter(); f.dateStyle = .medium
+        return f.string(from: date)
+    }
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            Color(red: 0.13, green: 0.12, blue: 0.11)
+
+            LinearGradient(
+                colors: [pet.accentColor.opacity(0.35), .clear],
+                startPoint: .topLeading, endPoint: .center
+            )
+
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(spacing: 14) {
+                    ZStack {
+                        Circle()
+                            .fill(pet.accentColor.opacity(0.25))
+                            .frame(width: 58, height: 58)
+                        Text(pet.displayEmoji).font(.system(size: 30))
+                    }
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(pet.name)
+                            .font(.system(size: 22, weight: .bold, design: .rounded))
+                            .foregroundColor(.white)
+                        if let breed = pet.breed {
+                            Text(breed)
+                                .font(.system(size: 12))
+                                .foregroundColor(.white.opacity(0.55))
+                        }
+                    }
+
+                    Spacer()
+
+                    ZStack {
+                        Circle()
+                            .stroke(.white.opacity(0.15), lineWidth: 4)
+                            .frame(width: 46, height: 46)
+                        Circle()
+                            .trim(from: 0, to: min(1, goalProgress))
+                            .stroke(pet.accentColor, style: StrokeStyle(lineWidth: 4, lineCap: .round))
+                            .frame(width: 46, height: 46)
+                            .rotationEffect(.degrees(-90))
+                        Text("\(Int(min(1, goalProgress) * 100))%")
+                            .font(.system(size: 9, weight: .bold, design: .rounded))
+                            .foregroundColor(.white)
+                    }
+                }
+
+                Rectangle()
+                    .fill(.white.opacity(0.1))
+                    .frame(height: 1)
+
+                HStack(spacing: 0) {
+                    statCol(value: distText,             label: "Distance")
+                    Rectangle().fill(.white.opacity(0.12)).frame(width: 1, height: 32)
+                    statCol(value: steps.formatted(),    label: "Steps")
+                    Rectangle().fill(.white.opacity(0.12)).frame(width: 1, height: 32)
+                    statCol(value: timeText,             label: "Duration")
+                }
+
+                HStack {
+                    Text(dateText)
+                        .font(.system(size: 10))
+                        .foregroundColor(.white.opacity(0.35))
+                    Spacer()
+                    HStack(spacing: 3) {
+                        Text("Wockett")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(pet.accentColor.opacity(0.85))
+                        Text("🐾").font(.system(size: 10))
+                    }
+                }
+            }
+            .padding(18)
+        }
+        .frame(width: 360, height: 210)
+        .clipShape(RoundedRectangle(cornerRadius: 20))
+    }
+
+    private func statCol(value: String, label: String) -> some View {
+        VStack(spacing: 3) {
+            Text(value)
+                .font(.system(size: 17, weight: .bold, design: .rounded))
+                .foregroundColor(.white)
+            Text(label)
+                .font(.system(size: 10))
+                .foregroundColor(.white.opacity(0.5))
+        }
+        .frame(maxWidth: .infinity)
+    }
+}
+
+// MARK: - Share Helpers
+
+struct ActivityShareSheet: UIViewControllerRepresentable {
+    let activityItems: [Any]
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+}
+
+struct MessageComposeSheet: UIViewControllerRepresentable {
+    let recipients: [String]
+    let body: String
+    @Environment(\.dismiss) private var dismiss
+
+    func makeUIViewController(context: Context) -> MFMessageComposeViewController {
+        let vc = MFMessageComposeViewController()
+        vc.recipients = recipients
+        vc.body = body
+        vc.messageComposeDelegate = context.coordinator
+        return vc
+    }
+
+    func updateUIViewController(_ vc: MFMessageComposeViewController, context: Context) {}
+
+    func makeCoordinator() -> Coordinator { Coordinator(dismiss: dismiss) }
+
+    class Coordinator: NSObject, MFMessageComposeViewControllerDelegate {
+        let dismiss: DismissAction
+        init(dismiss: DismissAction) { self.dismiss = dismiss }
+
+        func messageComposeViewController(_ controller: MFMessageComposeViewController,
+                                          didFinishWith result: MessageComposeResult) {
+            dismiss()
+        }
     }
 }

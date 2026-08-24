@@ -1,6 +1,7 @@
 import SwiftUI
 import UserNotifications
 import UIKit
+import EventKit
 
 // MARK: - Settings View
 
@@ -16,6 +17,7 @@ struct SettingsView: View {
     @AppStorage("notif_hydration")         private var hydrationEnabled = true
     @AppStorage("notif_streakProtection")  private var streakProtectionEnabled = true
     @State private var notifAuthorized = false
+    @State private var showScheduleSheet = false
 
     private var appVersion: String {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "—"
@@ -118,6 +120,39 @@ struct SettingsView: View {
                     .listRowBackground(Color.earthCard)
                 }
 
+                // ── Walk Reminders ────────────────────────────────
+                Section("Walk Reminders") {
+                    let scheduler = WalkSchedulerService.shared
+                    if scheduler.scheduledWalkEventIDs.isEmpty {
+                        Text("Add recurring walk reminders to your Calendar with a 10-minute heads-up alert.")
+                            .font(.caption).foregroundColor(.earthMuted)
+                            .listRowBackground(Color.earthCard)
+                    } else {
+                        ForEach(Array(scheduler.scheduledWalkEventIDs.enumerated()), id: \.element) { idx, eventID in
+                            HStack {
+                                Label("Walk Reminder \(idx + 1)", systemImage: "calendar.badge.clock")
+                                    .foregroundColor(.earthCream)
+                                Spacer()
+                                Button {
+                                    scheduler.removeWalk(eventID: eventID)
+                                } label: {
+                                    Image(systemName: "trash")
+                                        .foregroundColor(.red.opacity(0.7))
+                                }
+                                .buttonStyle(.plain)
+                            }
+                            .listRowBackground(Color.earthCard)
+                        }
+                    }
+                    Button {
+                        showScheduleSheet = true
+                    } label: {
+                        Label("Add Walk Reminder", systemImage: "calendar.badge.plus")
+                            .foregroundColor(.earthGreen)
+                    }
+                    .listRowBackground(Color.earthCard)
+                }
+
                 // ── Motivational Banner ───────────────────────────
                 Section("Motivational Banner") {
                     if bannerStore.userAffirmations.isEmpty && !isAddingAffirmation {
@@ -201,9 +236,141 @@ struct SettingsView: View {
         }
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
+        .sheet(isPresented: $showScheduleSheet) { WalkReminderSheet() }
         .task {
             let status = await UNUserNotificationCenter.current().notificationSettings().authorizationStatus
             notifAuthorized = status == .authorized || status == .provisional
         }
+    }
+}
+
+// MARK: - Schedule Walk Sheet
+
+private struct WalkReminderSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var title = "Morning Walk"
+    @State private var startTime: Date = {
+        Calendar.current.date(bySettingHour: 7, minute: 30, second: 0, of: Date()) ?? Date()
+    }()
+    @State private var repeatOption: RepeatOption = .daily
+    @State private var selectedWeekday: EKWeekday = .monday
+    @State private var durationMinutes = 30
+    @State private var isScheduling = false
+    @State private var scheduleFailed = false
+
+    enum RepeatOption: String, CaseIterable, Identifiable {
+        case once   = "Once"
+        case daily  = "Daily"
+        case weekly = "Weekly"
+        var id: String { rawValue }
+    }
+
+    private let durations = [15, 20, 30, 45, 60, 90]
+    private let weekdays: [(String, EKWeekday)] = [
+        ("Mon", .monday), ("Tue", .tuesday), ("Wed", .wednesday),
+        ("Thu", .thursday), ("Fri", .friday), ("Sat", .saturday), ("Sun", .sunday)
+    ]
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Color.earthBg.ignoresSafeArea()
+                Form {
+                    Section("Reminder") {
+                        TextField("Title", text: $title)
+                            .foregroundColor(.earthCream)
+                            .listRowBackground(Color.earthCard)
+                        DatePicker("Time", selection: $startTime, displayedComponents: .hourAndMinute)
+                            .colorScheme(.dark)
+                            .listRowBackground(Color.earthCard)
+                    }
+
+                    Section("Repeat") {
+                        Picker("Frequency", selection: $repeatOption) {
+                            ForEach(RepeatOption.allCases) { Text($0.rawValue).tag($0) }
+                        }
+                        .pickerStyle(.segmented)
+                        .listRowBackground(Color.earthCard)
+
+                        if repeatOption == .weekly {
+                            Picker("Day", selection: $selectedWeekday) {
+                                ForEach(weekdays, id: \.1) { label, day in
+                                    Text(label).tag(day)
+                                }
+                            }
+                            .pickerStyle(.segmented)
+                            .listRowBackground(Color.earthCard)
+                        }
+                    }
+
+                    Section("Duration") {
+                        Picker("Duration", selection: $durationMinutes) {
+                            ForEach(durations, id: \.self) { Text("\($0) min").tag($0) }
+                        }
+                        .pickerStyle(.segmented)
+                        .listRowBackground(Color.earthCard)
+                    }
+                }
+                .scrollContentBackground(.hidden)
+            }
+            .navigationTitle("Add Walk Reminder")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                        .foregroundColor(.earthGreen)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button {
+                        Task { await schedule() }
+                    } label: {
+                        if isScheduling {
+                            ProgressView().tint(.earthGreen)
+                        } else {
+                            Text("Add").bold().foregroundColor(.earthGreen)
+                        }
+                    }
+                    .disabled(isScheduling || title.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+            }
+            .alert("Could not add reminder", isPresented: $scheduleFailed) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text("Please grant Wockett access to Calendar in iOS Settings → Privacy → Calendars.")
+            }
+        }
+    }
+
+    private func schedule() async {
+        isScheduling = true
+        let scheduler = WalkSchedulerService.shared
+
+        // Resolve date: apply chosen time to today, roll to tomorrow if already past
+        let comps = Calendar.current.dateComponents([.hour, .minute], from: startTime)
+        var target = Calendar.current.dateComponents([.year, .month, .day], from: Date())
+        target.hour   = comps.hour
+        target.minute = comps.minute
+        target.second = 0
+        var date = Calendar.current.date(from: target) ?? Date()
+        if date < Date() {
+            date = Calendar.current.date(byAdding: .day, value: 1, to: date) ?? date
+        }
+
+        let rule: EKRecurrenceRule?
+        switch repeatOption {
+        case .once:   rule = nil
+        case .daily:  rule = WalkSchedulerService.dailyRule()
+        case .weekly: rule = WalkSchedulerService.weeklyRule(on: selectedWeekday)
+        }
+
+        let success = await scheduler.scheduleWalk(
+            title: title.trimmingCharacters(in: .whitespaces),
+            startDate: date,
+            durationMinutes: durationMinutes,
+            recurrenceRule: rule
+        )
+        isScheduling = false
+        if success { dismiss() } else { scheduleFailed = true }
     }
 }

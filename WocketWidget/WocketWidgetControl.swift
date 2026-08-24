@@ -1,0 +1,33 @@
+import AppIntents
+import SwiftUI
+import WidgetKit
+
+// MARK: - Start Walk Control
+//
+// Appears in Control Center (iOS 18+). Tapping opens Wockett and
+// signals the app to begin a free walk session.
+
+struct WocketStartWalkControl: ControlWidget {
+    static let kind = "com.scoops.wockett.StartWalkControl"
+
+    var body: some ControlWidgetConfiguration {
+        StaticControlConfiguration(kind: Self.kind) {
+            ControlWidgetButton(action: OpenWockettForWalkIntent()) {
+                Label("Start Walk", systemImage: "figure.walk")
+            }
+        }
+        .displayName("Start Walk")
+        .description("Open Wockett and begin a free walk.")
+    }
+}
+
+private struct OpenWockettForWalkIntent: AppIntent {
+    static var title: LocalizedStringResource = "Open Wockett for Walk"
+    static var openAppWhenRun: Bool = true
+
+    func perform() async throws -> some IntentResult {
+        UserDefaults.standard.set(true, forKey: "intent_startWalkPending")
+        UserDefaults.standard.set("walking", forKey: "intent_activityMode")
+        return .result()
+    }
+}

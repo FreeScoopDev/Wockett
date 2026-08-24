@@ -1,4 +1,5 @@
 import Foundation
+import WidgetKit
 
 // MARK: - Badge Type
 
@@ -104,6 +105,7 @@ final class StreakStore {
             longestStreak = currentStreak
             UserDefaults.standard.set(longestStreak, forKey: longestKey)
         }
+        UserDefaults(suiteName: "group.com.scoops.wockett")?.set(currentStreak, forKey: "wkt_widget_streak")
         return checkNewBadge(sessions: sessions)
     }
 

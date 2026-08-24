@@ -104,9 +104,9 @@ struct BadgesView: View {
 
     private func streakTile(value: Int, label: String, emoji: String) -> some View {
         VStack(spacing: 4) {
-            Text(emoji).font(.system(size: 28))
+            Text(emoji).font(.system(size: 24))
             Text("\(value)")
-                .font(.system(size: 30, weight: .black, design: .rounded))
+                .font(.system(size: 26, weight: .black, design: .rounded))
                 .foregroundColor(.earthCream)
             Text("day\(value == 1 ? "" : "s")")
                 .font(.caption2).foregroundColor(.earthMuted)

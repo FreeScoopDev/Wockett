@@ -2,6 +2,8 @@ import Combine
 import Foundation
 import MapKit
 import SwiftUI
+import SwiftData
+import UserNotifications
 
 // MARK: - Pet Profile
 
@@ -14,6 +16,25 @@ struct PetProfile: Identifiable, Codable, Equatable {
     var accentColorIndex: Int = 0
     var isActiveOnWalk: Bool = false
     var customEmoji: String?
+    var ownerName: String?
+    var ownerPhone: String?
+
+    init(id: UUID = UUID(), name: String, species: String = "Dog", breed: String? = nil,
+         goalSteps: Int = 10_000, accentColorIndex: Int = 0, isActiveOnWalk: Bool = false,
+         customEmoji: String? = nil, ownerName: String? = nil, ownerPhone: String? = nil) {
+        self.id               = id
+        self.name             = name
+        self.species          = species
+        self.breed            = breed
+        self.goalSteps        = goalSteps
+        self.accentColorIndex = accentColorIndex
+        self.isActiveOnWalk   = isActiveOnWalk
+        self.customEmoji      = customEmoji
+        self.ownerName        = ownerName
+        self.ownerPhone       = ownerPhone
+    }
+
+    var hasOwnerContact: Bool { ownerName != nil || ownerPhone != nil }
 
     var displayEmoji: String { customEmoji ?? emoji }
 
@@ -40,7 +61,7 @@ struct PetProfile: Identifiable, Codable, Equatable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, name, species, breed, goalSteps, accentColorIndex, isActiveOnWalk, customEmoji
+        case id, name, species, breed, goalSteps, accentColorIndex, isActiveOnWalk, customEmoji, ownerName, ownerPhone
     }
 }
 
@@ -49,64 +70,100 @@ struct PetProfile: Identifiable, Codable, Equatable {
 @MainActor
 final class PetStore: ObservableObject {
     @Published var pets: [PetProfile] = []
-    private let udKey = "petProfiles_v2"
 
-    init() { load() }
+    private let context: ModelContext
+
+    init(context: ModelContext) {
+        self.context = context
+        load()
+    }
 
     var activePets: [PetProfile] { pets.filter(\.isActiveOnWalk) }
     var activePetIds: [UUID] { activePets.map(\.id) }
 
-    func add(_ pet: PetProfile) { pets.append(pet); persist() }
+    func add(_ pet: PetProfile) {
+        context.insert(PetProfileRecord(from: pet))
+        save()
+        pets.append(pet)
+    }
 
     func update(_ pet: PetProfile) {
         guard let i = pets.firstIndex(where: { $0.id == pet.id }) else { return }
-        pets[i] = pet; persist()
+        pets[i] = pet
+        if let record = fetchRecord(id: pet.id) {
+            record.name             = pet.name
+            record.species          = pet.species
+            record.breed            = pet.breed
+            record.goalSteps        = pet.goalSteps
+            record.accentColorIndex = pet.accentColorIndex
+            record.isActiveOnWalk   = pet.isActiveOnWalk
+            record.customEmoji      = pet.customEmoji
+            record.ownerName        = pet.ownerName
+            record.ownerPhone       = pet.ownerPhone
+        }
+        save()
     }
 
     func remove(id: UUID) {
-        pets.removeAll { $0.id == id }; persist()
+        pets.removeAll { $0.id == id }
+        if let record = fetchRecord(id: id) { context.delete(record) }
+        save()
     }
 
     func setActive(_ id: UUID, active: Bool) {
         guard let i = pets.firstIndex(where: { $0.id == id }) else { return }
-        pets[i].isActiveOnWalk = active; persist()
+        pets[i].isActiveOnWalk = active
+        fetchRecord(id: id)?.isActiveOnWalk = active
+        save()
+    }
+
+    // Backward-compatible helpers: use petDistances when present, fall back to activePetIds.
+    private func petParticipated(_ pet: PetProfile, in session: WalkSession) -> Bool {
+        session.petDistances.isEmpty
+            ? session.activePetIds.contains(pet.id)
+            : (session.petDistances[pet.id] ?? 0) > 0
+    }
+
+    private func petWalkedMeters(_ pet: PetProfile, in session: WalkSession) -> Double {
+        if session.petDistances.isEmpty {
+            return session.activePetIds.contains(pet.id) ? session.totalDistance : 0
+        }
+        return session.petDistances[pet.id] ?? 0
     }
 
     func todaySteps(for pet: PetProfile, in sessions: [WalkSession]) -> Int {
         let cal = Calendar.current
         return sessions
-            .filter { cal.isDateInToday($0.date) && $0.activePetIds.contains(pet.id) }
-            .reduce(0) { $0 + $1.estimatedSteps }
+            .filter { cal.isDateInToday($0.date) }
+            .reduce(0) { $0 + Int(petWalkedMeters(pet, in: $1) / 0.762) }
     }
 
     func totalWalks(for pet: PetProfile, in sessions: [WalkSession]) -> Int {
-        sessions.filter { $0.activePetIds.contains(pet.id) }.count
+        sessions.filter { petParticipated(pet, in: $0) }.count
     }
 
     func totalDistance(for pet: PetProfile, in sessions: [WalkSession]) -> Double {
-        sessions
-            .filter { $0.activePetIds.contains(pet.id) }
-            .reduce(0) { $0 + $1.totalDistance }
+        sessions.reduce(0) { $0 + petWalkedMeters(pet, in: $1) }
     }
 
     func weeklySteps(for pet: PetProfile, in sessions: [WalkSession]) -> Int {
         let cutoff = Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? Date()
         return sessions
-            .filter { $0.date >= cutoff && $0.activePetIds.contains(pet.id) }
-            .reduce(0) { $0 + $1.estimatedSteps }
+            .filter { $0.date >= cutoff }
+            .reduce(0) { $0 + Int(petWalkedMeters(pet, in: $1) / 0.762) }
     }
 
     func weeklyDistance(for pet: PetProfile, in sessions: [WalkSession]) -> Double {
         let cutoff = Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? Date()
         return sessions
-            .filter { $0.date >= cutoff && $0.activePetIds.contains(pet.id) }
-            .reduce(0) { $0 + $1.totalDistance }
+            .filter { $0.date >= cutoff }
+            .reduce(0) { $0 + petWalkedMeters(pet, in: $1) }
     }
 
     func recentSessions(for pet: PetProfile, in sessions: [WalkSession]) -> [WalkSession] {
         let cutoff = Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? Date()
         return sessions
-            .filter { $0.date >= cutoff && $0.activePetIds.contains(pet.id) }
+            .filter { $0.date >= cutoff && petParticipated(pet, in: $0) }
             .sorted { $0.date > $1.date }
     }
 
@@ -114,7 +171,7 @@ final class PetStore: ObservableObject {
         let cal = Calendar.current
         let walkedDays = Set(
             sessions
-                .filter { $0.activePetIds.contains(pet.id) }
+                .filter { petParticipated(pet, in: $0) }
                 .map { cal.startOfDay(for: $0.date) }
         ).sorted(by: >)
         guard !walkedDays.isEmpty else { return 0 }
@@ -135,16 +192,67 @@ final class PetStore: ObservableObject {
         return streak
     }
 
-    private func persist() {
-        guard let data = try? JSONEncoder().encode(pets) else { return }
-        UserDefaults.standard.set(data, forKey: udKey)
+    func schedulePetNudge(sessions: [WalkSession]) async {
+        guard UserDefaults.standard.object(forKey: "notif_petNudge") as? Bool ?? true else { return }
+        let center = UNUserNotificationCenter.current()
+        center.removePendingNotificationRequests(withIdentifiers: ["pet-nudge"])
+
+        let settings = await center.notificationSettings()
+        guard settings.authorizationStatus == .authorized else { return }
+
+        let cal = Calendar.current
+        let twoDaysAgo = cal.date(byAdding: .day, value: -2, to: Date()) ?? Date()
+
+        let overduePets = activePets.filter { pet in
+            let lastWalk = sessions
+                .filter { petParticipated(pet, in: $0) }
+                .map(\.date)
+                .max()
+            guard let last = lastWalk else { return true }
+            return last < twoDaysAgo
+        }
+
+        guard !overduePets.isEmpty else { return }
+
+        var comps = cal.dateComponents([.year, .month, .day], from: Date())
+        comps.day = (comps.day ?? 0) + 1
+        comps.hour = 9; comps.minute = 0
+        guard let fireDate = cal.date(from: comps), fireDate > Date() else { return }
+
+        let names = overduePets.prefix(2).map(\.name).joined(separator: " & ")
+        let extra = overduePets.count > 2 ? " +\(overduePets.count - 2)" : ""
+        let content = UNMutableNotificationContent()
+        content.title = "\(names)\(extra) could use a walk! 🐾"
+        content.body = overduePets.count == 1
+            ? "\(overduePets[0].name) hasn't been on a walk in a couple of days."
+            : "Your pets haven't walked in a couple of days."
+        content.sound = .default
+
+        try? await center.add(UNNotificationRequest(
+            identifier: "pet-nudge",
+            content: content,
+            trigger: UNCalendarNotificationTrigger(
+                dateMatching: cal.dateComponents([.year, .month, .day, .hour, .minute], from: fireDate),
+                repeats: false
+            )
+        ))
     }
 
+    // MARK: - Private helpers
+
+    private func save() { try? context.save() }
+
     private func load() {
-        guard let data = UserDefaults.standard.data(forKey: udKey),
-              let decoded = try? JSONDecoder().decode([PetProfile].self, from: data)
-        else { return }
-        pets = decoded
+        let descriptor = FetchDescriptor<PetProfileRecord>()
+        pets = (try? context.fetch(descriptor))?.map { $0.toPetProfile() } ?? []
+    }
+
+    private func fetchRecord(id: UUID) -> PetProfileRecord? {
+        var descriptor = FetchDescriptor<PetProfileRecord>(
+            predicate: #Predicate { $0.id == id }
+        )
+        descriptor.fetchLimit = 1
+        return try? context.fetch(descriptor).first
     }
 }
 
@@ -287,14 +395,43 @@ struct PetEditorSheet: View {
     var onDelete: (() -> Void)? = nil
 
     @Environment(\.dismiss) private var dismiss
-    @State private var name        = ""
-    @State private var species     = "Dog"
-    @State private var breed       = ""
-    @State private var goalText    = ""
-    @State private var colorIndex  = 0
-    @State private var emojiText   = ""
+    @State private var name             = ""
+    @State private var species          = "Dog"
+    @State private var breed            = ""
+    @State private var goalText         = ""
+    @State private var colorIndex       = 0
+    @State private var emojiText        = ""
+    @State private var hasOwnerContact  = false
+    @State private var ownerNameText    = ""
+    @State private var ownerPhoneText   = ""
 
     private let speciesOptions = ["Dog", "Cat", "Rabbit", "Bird", "Other"]
+
+    private static let breedGoalSuggestions: [(keywords: [String], steps: Int)] = [
+        (["border collie"],                                      18_000),
+        (["husky", "malamute"],                                  16_000),
+        (["vizsla", "weimaraner", "pointer", "setter"],          15_000),
+        (["dalmatian", "aussie", "australian shepherd"],         14_000),
+        (["labrador", "lab", "golden retriever"],                13_000),
+        (["german shepherd", "doberman", "rottweiler", "boxer"], 12_000),
+        (["beagle", "poodle", "schnauzer"],                      10_000),
+        (["cocker spaniel", "corgi"],                             9_000),
+        (["bulldog", "basset hound"],                             5_000),
+        (["french bulldog", "shih tzu", "chihuahua"],             5_000),
+        (["pomeranian", "maltese", "dachshund", "yorkie", "yorkshire"], 5_000),
+        (["great dane", "mastiff", "saint bernard"],              6_000),
+        (["persian", "siamese", "maine coon", "bengal",
+           "ragdoll", "british shorthair"],                       3_000),
+        (["mixed", "mutt"],                                       8_000),
+    ]
+
+    private var suggestedGoal: Int? {
+        let lower = breed.lowercased().trimmingCharacters(in: .whitespaces)
+        guard !lower.isEmpty else { return nil }
+        return Self.breedGoalSuggestions.first { entry in
+            entry.keywords.contains { lower.contains($0) }
+        }?.steps
+    }
 
     var body: some View {
         NavigationStack {
@@ -330,6 +467,18 @@ struct PetEditorSheet: View {
                             TextField("Golden Retriever, Mixed…", text: $breed).foregroundColor(.earthCream)
                         }
 
+                        if breed.trimmingCharacters(in: .whitespaces).isEmpty {
+                            Text("Enter a breed to get a step goal suggestion. For mixed breeds, use the dominant breed (e.g. 'Labrador').")
+                                .font(.caption)
+                                .foregroundColor(.earthMuted)
+                                .padding(.horizontal, 4)
+                        } else if suggestedGoal == nil {
+                            Text("No suggestion for this breed — try a common name like 'Labrador', 'Poodle', or 'Golden Retriever'.")
+                                .font(.caption)
+                                .foregroundColor(.earthMuted)
+                                .padding(.horizontal, 4)
+                        }
+
                         VStack(alignment: .leading, spacing: 8) {
                             Text("Custom Emoji (optional)")
                                 .font(.caption.bold()).foregroundColor(.earthMuted).padding(.horizontal, 4)
@@ -353,6 +502,15 @@ struct PetEditorSheet: View {
                             TextField("10000", text: $goalText).keyboardType(.numberPad).foregroundColor(.earthCream)
                         }
 
+                        if let suggested = suggestedGoal, Int(goalText) != suggested {
+                            Button { goalText = "\(suggested)" } label: {
+                                Label("Suggested for this breed: \(suggested.formatted()) steps", systemImage: "lightbulb.fill")
+                                    .font(.caption.bold())
+                                    .foregroundColor(.earthOrange)
+                            }
+                            .padding(.horizontal, 4)
+                        }
+
                         VStack(alignment: .leading, spacing: 8) {
                             Text("Color").font(.caption.bold()).foregroundColor(.earthMuted).padding(.horizontal, 4)
                             HStack(spacing: 12) {
@@ -370,6 +528,31 @@ struct PetEditorSheet: View {
                             }
                         }
 
+                        VStack(alignment: .leading, spacing: 12) {
+                            Toggle(isOn: $hasOwnerContact.animation()) {
+                                Label("This pet has an owner to notify", systemImage: "person.fill")
+                                    .font(.subheadline)
+                                    .foregroundColor(.earthCream)
+                            }
+                            .tint(.earthGreen)
+                            .padding(.horizontal, 4)
+
+                            if hasOwnerContact {
+                                field(label: "Owner Name") {
+                                    TextField("Jane Smith", text: $ownerNameText).foregroundColor(.earthCream)
+                                }
+                                field(label: "Owner Phone") {
+                                    TextField("+1 555 000 0000", text: $ownerPhoneText)
+                                        .keyboardType(.phonePad)
+                                        .foregroundColor(.earthCream)
+                                }
+                                Text("Used to quickly message the owner after walks. Stored only on this device.")
+                                    .font(.caption)
+                                    .foregroundColor(.earthMuted)
+                                    .padding(.horizontal, 4)
+                            }
+                        }
+
                         if onDelete != nil {
                             Button(role: .destructive) { onDelete?(); dismiss() } label: {
                                 Text("Remove \(name.isEmpty ? "Pet" : name)")
@@ -384,12 +567,15 @@ struct PetEditorSheet: View {
             .navigationTitle(pet != nil ? "Edit Pet" : "Add a Pet")
             .navigationBarTitleDisplayMode(.inline)
             .onAppear {
-                name       = pet?.name ?? ""
-                species    = pet?.species ?? "Dog"
-                breed      = pet?.breed ?? ""
-                goalText   = "\(pet?.goalSteps ?? defaultGoal)"
-                colorIndex = pet?.accentColorIndex ?? 0
-                emojiText  = pet?.customEmoji ?? ""
+                name             = pet?.name ?? ""
+                species          = pet?.species ?? "Dog"
+                breed            = pet?.breed ?? ""
+                goalText         = "\(pet?.goalSteps ?? defaultGoal)"
+                colorIndex       = pet?.accentColorIndex ?? 0
+                emojiText        = pet?.customEmoji ?? ""
+                hasOwnerContact  = pet?.hasOwnerContact ?? false
+                ownerNameText    = pet?.ownerName ?? ""
+                ownerPhoneText   = pet?.ownerPhone ?? ""
             }
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
@@ -434,7 +620,9 @@ struct PetEditorSheet: View {
         updated.breed            = breed.trimmingCharacters(in: .whitespaces).isEmpty ? nil : breed.trimmingCharacters(in: .whitespaces)
         updated.goalSteps        = max(1_000, Int(goalText) ?? defaultGoal)
         updated.accentColorIndex = colorIndex
-        updated.customEmoji      = emojiText.trimmingCharacters(in: .whitespaces).isEmpty ? nil : String(emojiText.trimmingCharacters(in: .whitespaces).prefix(2))
+        updated.customEmoji  = emojiText.trimmingCharacters(in: .whitespaces).isEmpty ? nil : String(emojiText.trimmingCharacters(in: .whitespaces).prefix(2))
+        updated.ownerName    = hasOwnerContact && !ownerNameText.trimmingCharacters(in: .whitespaces).isEmpty ? ownerNameText.trimmingCharacters(in: .whitespaces) : nil
+        updated.ownerPhone   = hasOwnerContact && !ownerPhoneText.trimmingCharacters(in: .whitespaces).isEmpty ? ownerPhoneText.trimmingCharacters(in: .whitespaces) : nil
         if pet == nil { updated.isActiveOnWalk = true }
         onSave(updated)
         dismiss()

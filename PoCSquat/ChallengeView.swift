@@ -149,10 +149,14 @@ struct ChallengesView: View {
         do {
             challenges = try await ChallengeService.shared.fetchActiveChallenges()
         } catch let ck as CKError {
+            #if DEBUG
             print("[ChallengeService] CKError \(ck.code.rawValue): \(ck)")
+            #endif
             loadError = ckErrorMessage(ck)
         } catch {
+            #if DEBUG
             print("[ChallengeService] Error: \(error)")
+            #endif
             loadError = "Couldn't load challenges: \(error.localizedDescription)"
         }
         isLoading = false

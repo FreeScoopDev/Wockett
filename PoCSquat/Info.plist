@@ -22,8 +22,6 @@
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
-	<key>NSCameraUsageDescription</key>
-	<string>Wockett uses the camera to detect your body position and count squat and push-up reps.</string>
 	<key>NSHealthShareUsageDescription</key>
 	<string>Wockett reads your step count from Apple Health to track your daily walking goal.</string>
 	<key>NSHealthUpdateUsageDescription</key>
@@ -32,14 +30,29 @@
 	<string>Wockett continues tracking your walk when the screen is off so your route and distance stay accurate.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Wockett uses your location to suggest nearby walking routes, track your position during in-app navigation, and calculate distances. Route coordinates are sent to a free elevation service (opentopodata.org) to display elevation profiles.</string>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>com.scoops.wockett.healthkit-refresh</string>
+		<string>com.scoops.wockett.cloudkit-sync</string>
+	</array>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>location</string>
+		<string>fetch</string>
+		<string>processing</string>
 	</array>
 	<key>NSMotionUsageDescription</key>
-	<string>Wockett uses motion data to count your steps when Apple Health is unavailable.</string>
+	<string>Wockett counts your steps during walks using the device motion sensor, giving you an accurate step count alongside GPS distance tracking.</string>
+	<key>NSCalendarsUsageDescription</key>
+	<string>Wockett can add recurring walk reminders to your calendar so you never miss a walk.</string>
+	<key>NSCalendarsWriteOnlyAccessUsageDescription</key>
+	<string>Wockett can add recurring walk reminders to your calendar so you never miss a walk.</string>
 	<key>NSRemindersUsageDescription</key>
 	<string>Wockett adds walk reminders to your Reminders app to help you hit your daily step goal.</string>
+	<key>NSSupportsLiveActivities</key>
+	<true/>
+	<key>NSSupportsLiveActivitiesFrequentUpdates</key>
+	<true/>
 	<key>UILaunchScreen</key>
 	<dict/>
 	<key>UISupportedInterfaceOrientations</key>

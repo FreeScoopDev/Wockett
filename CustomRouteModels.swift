@@ -2,6 +2,7 @@ import SwiftUI
 import Combine
 import MapKit
 import CoreLocation
+import SwiftData
 
 // MARK: - Waypoint Coord
 
@@ -41,6 +42,7 @@ struct CustomRoute: Identifiable, Codable {
     }
 
     var centroid: CLLocationCoordinate2D {
+        guard !waypoints.isEmpty else { return CLLocationCoordinate2D() }
         let n   = Double(waypoints.count)
         let lat = waypoints.reduce(0.0) { $0 + $1.latitude }  / n
         let lon = waypoints.reduce(0.0) { $0 + $1.longitude } / n
@@ -53,39 +55,55 @@ struct CustomRoute: Identifiable, Codable {
 @MainActor
 final class CustomRouteStore: ObservableObject {
     @Published var routes: [CustomRoute] = []
-    private let udKey = "customRoutes_v1"
 
-    init() { load() }
+    private let context: ModelContext
+
+    init(context: ModelContext? = nil) {
+        self.context = context ?? AppModelContainer.shared.mainContext
+        load()
+    }
 
     func save(_ route: CustomRoute) {
+        context.insert(CustomRouteRecord(from: route))
+        try? context.save()
         routes.insert(route, at: 0)
-        persist()
     }
 
     func update(_ route: CustomRoute) {
-        if let idx = routes.firstIndex(where: { $0.id == route.id }) {
-            routes[idx] = route
-            persist()
+        guard let idx = routes.firstIndex(where: { $0.id == route.id }) else { return }
+        routes[idx] = route
+        if let record = fetchRecord(id: route.id) {
+            record.name          = route.name
+            record.totalDistance = route.totalDistance
+            record.isLoop        = route.isLoop
         }
+        try? context.save()
     }
 
     func delete(at offsets: IndexSet) {
+        let toDelete = offsets.map { routes[$0] }
         routes.remove(atOffsets: offsets)
-        persist()
+        toDelete.forEach { route in
+            if let record = fetchRecord(id: route.id) { context.delete(record) }
+        }
+        try? context.save()
     }
 
     func reload() { load() }
 
-    private func persist() {
-        if let data = try? JSONEncoder().encode(routes) {
-            UserDefaults.standard.set(data, forKey: udKey)
-        }
+    private func load() {
+        let descriptor = FetchDescriptor<CustomRouteRecord>(
+            sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
+        )
+        routes = (try? context.fetch(descriptor))?.map { $0.toCustomRoute() } ?? []
     }
 
-    private func load() {
-        guard let data    = UserDefaults.standard.data(forKey: udKey),
-              let decoded = try? JSONDecoder().decode([CustomRoute].self, from: data) else { return }
-        routes = decoded
+    private func fetchRecord(id: UUID) -> CustomRouteRecord? {
+        var descriptor = FetchDescriptor<CustomRouteRecord>(
+            predicate: #Predicate { $0.id == id }
+        )
+        descriptor.fetchLimit = 1
+        return try? context.fetch(descriptor).first
     }
 }
 
@@ -110,34 +128,46 @@ struct BookmarkedLocation: Identifiable, Codable {
 final class BookmarkStore: ObservableObject {
     static let shared = BookmarkStore()
     @Published var bookmarks: [BookmarkedLocation] = []
-    private let udKey = "bookmarkedLocations_v1"
 
-    init() { load() }
+    private let context: ModelContext
+
+    init(context: ModelContext? = nil) {
+        self.context = context ?? AppModelContainer.shared.mainContext
+        load()
+    }
 
     func add(_ location: BookmarkedLocation) {
         guard !bookmarks.contains(where: { $0.id == location.id }) else { return }
+        context.insert(BookmarkedLocationRecord(from: location))
+        try? context.save()
         bookmarks.insert(location, at: 0)
-        persist()
     }
 
     func delete(at offsets: IndexSet) {
+        let toDelete = offsets.map { bookmarks[$0] }
         bookmarks.remove(atOffsets: offsets)
-        persist()
+        toDelete.forEach { loc in
+            if let record = fetchRecord(id: loc.id) { context.delete(record) }
+        }
+        try? context.save()
     }
 
     func isBookmarked(id: UUID) -> Bool {
         bookmarks.contains { $0.id == id }
     }
 
-    private func persist() {
-        if let data = try? JSONEncoder().encode(bookmarks) {
-            UserDefaults.standard.set(data, forKey: udKey)
-        }
+    private func load() {
+        let descriptor = FetchDescriptor<BookmarkedLocationRecord>(
+            sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
+        )
+        bookmarks = (try? context.fetch(descriptor))?.map { $0.toBookmarkedLocation() } ?? []
     }
 
-    private func load() {
-        guard let data    = UserDefaults.standard.data(forKey: udKey),
-              let decoded = try? JSONDecoder().decode([BookmarkedLocation].self, from: data) else { return }
-        bookmarks = decoded
+    private func fetchRecord(id: UUID) -> BookmarkedLocationRecord? {
+        var descriptor = FetchDescriptor<BookmarkedLocationRecord>(
+            predicate: #Predicate { $0.id == id }
+        )
+        descriptor.fetchLimit = 1
+        return try? context.fetch(descriptor).first
     }
 }

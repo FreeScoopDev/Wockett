@@ -5,12 +5,27 @@ import WeatherKit
 
 // MARK: - Route Weather
 
+struct HourlyWeatherPoint: Sendable {
+    let date: Date
+    let temperatureText: String
+    let symbolName: String
+    let precipitationChance: Double
+
+    var hourLabel: String {
+        if Calendar.current.isDate(date, equalTo: Date(), toGranularity: .hour) { return "Now" }
+        let f = DateFormatter()
+        f.dateFormat = "ha"
+        return f.string(from: date)  // e.g. "3PM"
+    }
+}
+
 struct RouteWeather: Sendable {
     let symbolName: String
     let conditionDescription: String
     let temperatureText: String
     let precipitationChance: Double
     let temperatureCelsius: Double
+    let hourlyForecast: [HourlyWeatherPoint]
 
     var statusText: String {
         switch precipitationChance {
@@ -95,17 +110,33 @@ actor RouteWeatherService {
 
     func fetchWeather(for coordinate: CLLocationCoordinate2D) async -> RouteWeather? {
         let location = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
-        guard let weather = try? await WeatherService.shared.weather(for: location) else { return nil }
-        let current = weather.currentWeather
-        let tempText = current.temperature.formatted(.measurement(width: .abbreviated, usage: .weather))
-        let precipChance = weather.hourlyForecast.first?.precipitationChance ?? 0
-        return RouteWeather(
-            symbolName:           current.symbolName,
-            conditionDescription: current.condition.description,
-            temperatureText:      tempText,
-            precipitationChance:  precipChance,
-            temperatureCelsius:   current.temperature.converted(to: .celsius).value
-        )
+        do {
+            let weather = try await WeatherService.shared.weather(for: location)
+            let current = weather.currentWeather
+            let tempText = current.temperature.formatted(.measurement(width: .abbreviated, usage: .weather))
+            let precipChance = weather.hourlyForecast.first?.precipitationChance ?? 0
+            let hourly: [HourlyWeatherPoint] = weather.hourlyForecast.prefix(6).map { h in
+                HourlyWeatherPoint(
+                    date:               h.date,
+                    temperatureText:    h.temperature.formatted(.measurement(width: .abbreviated, usage: .weather)),
+                    symbolName:         h.symbolName,
+                    precipitationChance: h.precipitationChance
+                )
+            }
+            return RouteWeather(
+                symbolName:           current.symbolName,
+                conditionDescription: current.condition.description,
+                temperatureText:      tempText,
+                precipitationChance:  precipChance,
+                temperatureCelsius:   current.temperature.converted(to: .celsius).value,
+                hourlyForecast:       hourly
+            )
+        } catch {
+            #if DEBUG
+            print("[WeatherKit] fetchWeather failed: \(error)")
+            #endif
+            return nil
+        }
     }
 }
 
@@ -206,28 +237,44 @@ struct WeatherWidget: View {
     let weather: RouteWeather
 
     var body: some View {
-        HStack(spacing: 14) {
-            Image(systemName: weather.symbolName)
-                .font(.title2)
-                .symbolRenderingMode(.multicolor)
-                .frame(width: 32)
+        VStack(spacing: 0) {
+            // Current conditions
+            HStack(spacing: 14) {
+                Image(systemName: weather.symbolName)
+                    .font(.title2)
+                    .symbolRenderingMode(.multicolor)
+                    .frame(width: 32)
 
-            VStack(alignment: .leading, spacing: 3) {
-                Text(weather.conditionDescription)
-                    .font(.subheadline.bold())
-                    .foregroundColor(.earthCream)
-                Label(weather.statusText, systemImage: weather.statusSymbol)
-                    .font(.subheadline)
-                    .foregroundColor(weather.statusColor)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(weather.conditionDescription)
+                        .font(.subheadline.bold())
+                        .foregroundColor(.earthCream)
+                    Label(weather.statusText, systemImage: weather.statusSymbol)
+                        .font(.subheadline)
+                        .foregroundColor(weather.statusColor)
+                }
+
+                Spacer()
+
+                VStack(alignment: .trailing, spacing: 4) {
+                    Text(weather.temperatureText)
+                        .font(.title3.bold())
+                        .foregroundColor(.earthCream)
+                    WeatherAttributionLink()
+                }
             }
+            .padding(14)
 
-            Spacer()
-
-            Text(weather.temperatureText)
-                .font(.title3.bold())
-                .foregroundColor(.earthCream)
+            // Hourly strip
+            if !weather.hourlyForecast.isEmpty {
+                Divider()
+                    .background(Color.earthMuted.opacity(0.15))
+                    .padding(.horizontal, 14)
+                HourlyWeatherRow(points: weather.hourlyForecast)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 10)
+            }
         }
-        .padding(14)
         .background(Color.earthCard)
         .cornerRadius(12)
     }

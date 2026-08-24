@@ -350,7 +350,8 @@ struct RecoveryCard: View {
         let recent = gait.snapshots.suffix(7).compactMap { $0.speedMps }
         guard !recent.isEmpty else { return nil }
         let avg = recent.reduce(0, +) / Double(recent.count)
-        let st  = GaitMetricConfig.all.first!.statusOf(avg)
+        guard let config = GaitMetricConfig.all.first else { return nil }
+        let st = config.statusOf(avg)
         return (st.label, st.color, st.icon)
     }
 

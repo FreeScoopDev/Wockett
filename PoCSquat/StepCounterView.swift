@@ -103,7 +103,10 @@ struct StepCounterView: View {
         scrollWithDestinations
             .onChange(of: stepManager.currentGoal) { _, _ in clearRoutes() }
             .onChange(of: historyStore.sessions.count) { _, _ in
-                Task { await stepManager.refreshWeeklyCalendar(sessions: historyStore.sessions, weekOffset: calendarWeekOffset) }
+                Task {
+                    await stepManager.refresh()
+                    await stepManager.refreshWeeklyCalendar(sessions: historyStore.sessions, weekOffset: calendarWeekOffset)
+                }
             }
             .task {
                 while !Task.isCancelled {
@@ -140,10 +143,18 @@ struct StepCounterView: View {
                 await stepManager.initialize()
                 await stepManager.refreshWeeklyCalendar(sessions: historyStore.sessions, weekOffset: calendarWeekOffset)
                 await stepManager.scheduleStreakNudge(currentStreak: streakStore.currentStreak)
+                await petStore.schedulePetNudge(sessions: historyStore.sessions)
             }
             .onChange(of: scenePhase) { _, phase in
-                guard phase == .active else { return }
-                Task { await stepManager.scheduleStreakNudge(currentStreak: streakStore.currentStreak) }
+                if phase == .background {
+                    ActivityDetectionService.shared.stopDetection()
+                } else if phase == .active {
+                    ActivityDetectionService.shared.startDetection()
+                    Task {
+                        await stepManager.scheduleStreakNudge(currentStreak: streakStore.currentStreak)
+                        await petStore.schedulePetNudge(sessions: historyStore.sessions)
+                    }
+                }
             }
             .onChange(of: stepManager.todaySteps) { _, _ in
                 Task {
@@ -167,10 +178,43 @@ struct StepCounterView: View {
                     progress:    stepManager.progress,
                     avatarEmoji: petStore.activePets.first?.displayEmoji ?? "🚶"
                 )
-                if let weather = weatherLocator.weather {
-                    HomeWeatherChip(weather: weather)
+                switch weatherLocator.fetchState {
+                case .loaded:
+                    if let weather = weatherLocator.weather {
+                        HomeWeatherChip(weather: weather)
+                            .padding(.horizontal)
+                            .transition(.opacity.combined(with: .move(edge: .top)))
+                    }
+                case .denied:
+                    WeatherDeniedChip()
                         .padding(.horizontal)
-                        .transition(.opacity.combined(with: .move(edge: .top)))
+                        .transition(.opacity)
+                case .failed:
+                    WeatherFailedChip { weatherLocator.retry() }
+                        .padding(.horizontal)
+                        .transition(.opacity)
+                case .idle, .loading:
+                    EmptyView()
+                }
+                if ActivityDetectionService.shared.showWalkSuggestion {
+                    ActivitySuggestionBanner(
+                        activity: ActivityDetectionService.shared.detectedActivity,
+                        onStart: {
+                            let mode: ActivityMode = ActivityDetectionService.shared.detectedActivity == .cycling ? .cycling : .walking
+                            withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                                ActivityDetectionService.shared.dismissSuggestion()
+                            }
+                            freeWalkMode = mode
+                            showFreeWalk = true
+                        },
+                        onDismiss: {
+                            withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                                ActivityDetectionService.shared.dismissSuggestion()
+                            }
+                        }
+                    )
+                    .padding(.horizontal)
+                    .transition(.move(edge: .top).combined(with: .opacity))
                 }
                 RecoveryCard()
                 actionGrid.padding(.horizontal)
@@ -179,6 +223,8 @@ struct StepCounterView: View {
                 achievementFeedCard
                 challengesCard
                 streakIndicator
+                FunStatsCard(sessions: historyStore.sessions, todaySteps: stepManager.todaySteps)
+                    .padding(.horizontal)
                 WeeklyCalendarView(
                     days: stepManager.weeklyCalendar,
                     weekOffset: calendarWeekOffset,
@@ -217,6 +263,7 @@ struct StepCounterView: View {
         }
         weatherLocator.fetchIfAuthorized()
         scheduleWeeklySummaryNotification()
+        ActivityDetectionService.shared.startDetection()
     }
 
     private func scheduleWeeklySummaryNotification() {
@@ -498,6 +545,7 @@ struct StepCounterView: View {
     private func smallPetRing(pet: PetProfile) -> some View {
         let steps = petStore.todaySteps(for: pet, in: historyStore.sessions)
         let progress = min(1.0, Double(steps) / Double(max(1, pet.goalSteps)))
+        let streak = petStore.walkStreak(for: pet, in: historyStore.sessions)
         return VStack(spacing: 4) {
             ZStack {
                 Circle()
@@ -520,6 +568,11 @@ struct StepCounterView: View {
                 .font(.system(size: 9, weight: .bold))
                 .foregroundColor(.earthMuted)
                 .lineLimit(1)
+            if streak > 0 {
+                Text("🔥 \(streak)")
+                    .font(.system(size: 8, weight: .semibold))
+                    .foregroundColor(.earthOrange)
+            }
         }
         .frame(width: 60)
         .onTapGesture { selectedPetForDetail = pet }
@@ -533,7 +586,7 @@ struct StepCounterView: View {
                          detail: "\(stepManager.currentGoal.formatted()) steps",
                          color: .earthGreen) { showGoalSheet = true }
 
-            settingsTile(icon: "bookmark.map", label: "Saved Routes",
+            settingsTile(icon: "mappin.and.ellipse", label: "Saved Routes",
                          detail: routeStore.routes.isEmpty ? "No routes saved" : "\(routeStore.routes.count) route\(routeStore.routes.count == 1 ? "" : "s")",
                          color: Color(red: 0.28, green: 0.49, blue: 0.84)) { showMyRoutes = true }
 
@@ -554,7 +607,7 @@ struct StepCounterView: View {
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
                     Image(systemName: icon)
-                        .font(.system(size: 18, weight: .medium))
+                        .font(.system(size: 15, weight: .medium))
                         .foregroundColor(color)
                     Spacer()
                     Image(systemName: "chevron.right")
@@ -589,9 +642,9 @@ struct StepCounterView: View {
                     ZStack {
                         RoundedRectangle(cornerRadius: 10)
                             .fill(Color.earthGreen.opacity(0.15))
-                            .frame(width: 44, height: 44)
+                            .frame(width: 38, height: 38)
                         Image(systemName: "figure.walk.motion")
-                            .font(.system(size: 18, weight: .medium))
+                            .font(.system(size: 15, weight: .medium))
                             .foregroundColor(.earthGreen)
                     }
                     VStack(alignment: .leading, spacing: 3) {
@@ -629,9 +682,9 @@ struct StepCounterView: View {
                 ZStack {
                     RoundedRectangle(cornerRadius: 10)
                         .fill(Color(red: 0.13, green: 0.57, blue: 0.64).opacity(0.15))
-                        .frame(width: 44, height: 44)
+                        .frame(width: 38, height: 38)
                     Image(systemName: "person.2.wave.2")
-                        .font(.system(size: 18, weight: .medium))
+                        .font(.system(size: 15, weight: .medium))
                         .foregroundColor(Color(red: 0.13, green: 0.57, blue: 0.64))
                 }
                 VStack(alignment: .leading, spacing: 2) {
@@ -662,9 +715,9 @@ struct StepCounterView: View {
                 ZStack {
                     RoundedRectangle(cornerRadius: 10)
                         .fill(orange.opacity(0.15))
-                        .frame(width: 44, height: 44)
+                        .frame(width: 38, height: 38)
                     Image(systemName: "medal.fill")
-                        .font(.system(size: 18, weight: .medium))
+                        .font(.system(size: 15, weight: .medium))
                         .foregroundColor(orange)
                 }
                 VStack(alignment: .leading, spacing: 2) {
@@ -694,9 +747,9 @@ struct StepCounterView: View {
                 ZStack {
                     RoundedRectangle(cornerRadius: 10)
                         .fill(Color.earthGreen.opacity(0.15))
-                        .frame(width: 44, height: 44)
+                        .frame(width: 38, height: 38)
                     Image(systemName: "trophy.fill")
-                        .font(.system(size: 18, weight: .medium))
+                        .font(.system(size: 15, weight: .medium))
                         .foregroundColor(.earthGreen)
                 }
                 VStack(alignment: .leading, spacing: 2) {
@@ -752,10 +805,10 @@ struct StepCounterView: View {
             }
         } label: {
             ZStack(alignment: .bottomTrailing) {
-                VStack(spacing: 10) {
+                VStack(spacing: 8) {
                     Image(systemName: freeWalkMode.icon)
-                        .font(.system(size: 26, weight: .medium))
-                        .frame(height: 28)
+                        .font(.system(size: 22, weight: .medium))
+                        .frame(height: 24)
                     Text(freeWalkMode.tileLabel)
                         .font(.subheadline.bold())
                         .multilineTextAlignment(.center)
@@ -764,7 +817,7 @@ struct StepCounterView: View {
                 .animation(.spring(response: 0.3, dampingFraction: 0.7), value: freeWalkMode)
                 .foregroundColor(.white)
                 .frame(maxWidth: .infinity)
-                .frame(height: 96)
+                .frame(height: 84)
 
                 // Fold corner — cycles walk → bike → indoor
                 Button {
@@ -792,10 +845,10 @@ struct StepCounterView: View {
 
     private func actionTile(icon: String, label: String, color: Color, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            VStack(spacing: 10) {
+            VStack(spacing: 8) {
                 Image(systemName: icon)
-                    .font(.system(size: 26, weight: .medium))
-                    .frame(height: 28)
+                    .font(.system(size: 22, weight: .medium))
+                    .frame(height: 24)
                 Text(label)
                     .font(.subheadline.bold())
                     .multilineTextAlignment(.center)
@@ -803,11 +856,141 @@ struct StepCounterView: View {
             }
             .foregroundColor(.white)
             .frame(maxWidth: .infinity)
-            .frame(height: 96)
+            .frame(height: 84)
             .background(color)
             .cornerRadius(16)
         }
         .buttonStyle(BounceButtonStyle())
     }
 
+}
+
+// MARK: - Activity Suggestion Banner
+
+// MARK: - Fun Stats Card
+
+private struct FunStatsCard: View {
+    let sessions: [WalkSession]
+    let todaySteps: Int
+
+    private var totalKm: Double { sessions.reduce(0.0) { $0 + $1.totalDistance } / 1000 }
+    private var totalSteps: Int { sessions.reduce(0) { $0 + $1.estimatedSteps } + todaySteps }
+
+    private struct Fact: Identifiable {
+        let id = UUID()
+        let emoji: String
+        let headline: String
+        let detail: String
+    }
+
+    private var facts: [Fact] {
+        var result: [Fact] = []
+        // Golden Gate Bridge crossings (2.73 km one way)
+        let bridges = Int(totalKm / 2.73)
+        if bridges >= 1 {
+            result.append(Fact(emoji: "🌉",
+                headline: "\(bridges) Golden Gate crossing\(bridges == 1 ? "" : "s")",
+                detail: "Total distance walked"))
+        }
+        // Marathons (42.195 km)
+        let marathons = Int(totalKm / 42.195)
+        if marathons >= 1 {
+            result.append(Fact(emoji: "🏅",
+                headline: "\(marathons) marathon\(marathons == 1 ? "" : "s") completed",
+                detail: "Based on total distance"))
+        }
+        // Empire State Building stair climbs (1,576 steps per ascent)
+        let esbClimbs = totalSteps / 1_576
+        if esbClimbs >= 1 {
+            result.append(Fact(emoji: "🏙️",
+                headline: "\(esbClimbs)× up the Empire State Building",
+                detail: "1,576 steps per climb"))
+        }
+        // Earth circumference % (40,075 km)
+        let earthPct = (totalKm / 40_075) * 100
+        if earthPct >= 0.01 {
+            result.append(Fact(emoji: "🌍",
+                headline: String(format: "%.2f%% around Earth", earthPct),
+                detail: "40,075 km circumference"))
+        }
+        return Array(result.prefix(2))
+    }
+
+    var body: some View {
+        if facts.isEmpty { EmptyView() } else {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Your Journey in Perspective")
+                    .font(.caption.bold())
+                    .foregroundColor(.earthMuted)
+                    .textCase(.uppercase)
+                HStack(spacing: 10) {
+                    ForEach(facts) { fact in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(fact.emoji).font(.title2)
+                            Text(fact.headline)
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundColor(.earthCream)
+                                .lineLimit(2)
+                                .fixedSize(horizontal: false, vertical: true)
+                            Text(fact.detail)
+                                .font(.system(size: 10))
+                                .foregroundColor(.earthMuted)
+                        }
+                        .padding(12)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color.earthCard)
+                        .cornerRadius(14)
+                    }
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Activity Suggestion Banner
+
+private struct ActivitySuggestionBanner: View {
+    let activity: ActivityDetectionService.DetectedActivity
+    let onStart: () -> Void
+    let onDismiss: () -> Void
+
+    private var icon: String { activity == .cycling ? "bicycle" : "figure.walk" }
+    private var label: String { activity == .cycling ? "cycling" : "walking" }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            ZStack {
+                Circle()
+                    .fill(Color.earthGreen.opacity(0.15))
+                    .frame(width: 40, height: 40)
+                Image(systemName: icon)
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundColor(.earthGreen)
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Looks like you're \(label)")
+                    .font(.subheadline.bold())
+                    .foregroundColor(.earthCream)
+                Text("Want to start tracking?")
+                    .font(.caption)
+                    .foregroundColor(.earthMuted)
+            }
+            Spacer()
+            Button("Start") { onStart() }
+                .font(.caption.bold())
+                .foregroundColor(.earthGreen)
+                .padding(.horizontal, 12).padding(.vertical, 6)
+                .background(Color.earthGreen.opacity(0.15))
+                .cornerRadius(8)
+            Button(action: onDismiss) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(.earthMuted)
+            }
+        }
+        .padding(14)
+        .background(Color.earthCard)
+        .cornerRadius(16)
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.earthGreen.opacity(0.25), lineWidth: 1))
+    }
 }

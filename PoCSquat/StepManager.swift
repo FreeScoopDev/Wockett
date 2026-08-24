@@ -3,6 +3,7 @@ import Combine
 import HealthKit
 import CoreMotion
 import UserNotifications
+import WidgetKit
 
 // MARK: - Calendar Day Model
 
@@ -302,6 +303,16 @@ final class StepManager: ObservableObject {
         let (s, d) = await (steps, dist)
         todaySteps          = Int(s)
         todayDistanceMeters = d
+        writeWidgetData(steps: Int(s), distance: d)
+    }
+
+    private func writeWidgetData(steps: Int, distance: Double) {
+        let ud = UserDefaults(suiteName: "group.com.scoops.wockett")
+        ud?.set(steps,        forKey: "wkt_widget_steps")
+        ud?.set(currentGoal,  forKey: "wkt_widget_goal")
+        ud?.set(distance,     forKey: "wkt_widget_distanceMeters")
+        ud?.set(Date(),       forKey: "wkt_widget_lastRefresh")
+        WidgetCenter.shared.reloadTimelines(ofKind: "WocketStepWidget")
     }
 
     private func fetchTodaySum(_ type: HKQuantityType, unit: HKUnit, predicate: NSPredicate) async -> Double {
@@ -409,6 +420,7 @@ final class StepManager: ObservableObject {
             : "Don't break your streak today! 🔥"
         content.body = "You're \(remaining.formatted()) steps away — a \(walkMins)-min walk closes the gap."
         content.sound = .default
+        content.categoryIdentifier = NotificationCategory.streakNudge
 
         let trigger = UNCalendarNotificationTrigger(
             dateMatching: Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: fireDate),

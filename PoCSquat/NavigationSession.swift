@@ -1,6 +1,7 @@
 import SwiftUI
 import MapKit
 import CoreLocation
+import CoreMotion
 import UserNotifications
 import UIKit
 import HealthKit
@@ -25,11 +26,14 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
     var elapsedTime: TimeInterval = 0
     var isCompleted = false
     var splitTimes: [(label: String, elapsed: TimeInterval)] = []
+    var liveSteps: Int = 0
+    var cadence: Double? = nil  // steps/min; nil until pedometer warms up
 
     var onCheckpointReached: ((String) -> Void)?
 
     private let route: NavigableRoute
     private let locationManager = CLLocationManager()
+    private let pedometer = CMPedometer()
     private var startTime = Date()
     private var timer: Timer?
     private var lastLocation: CLLocation?
@@ -57,6 +61,20 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
         UIApplication.shared.isIdleTimerDisabled = true
         locationManager.startUpdatingLocation()
         startTimer()
+        // Real-time step count + cadence from the motion coprocessor (walking only).
+        if route.activityMode == .walking && CMPedometer.isStepCountingAvailable() {
+            let from = startTime
+            pedometer.startUpdates(from: from) { [weak self] data, error in
+                guard let self, let data, error == nil else { return }
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    self.liveSteps = data.numberOfSteps.intValue
+                    if let c = data.currentCadence {
+                        self.cadence = c.doubleValue * 60  // steps/sec → steps/min
+                    }
+                }
+            }
+        }
         let capturedStartTime = startTime
         Task { @MainActor [weak self] in
             guard let self else { return }
@@ -100,6 +118,7 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
 
     func stop() {
         locationManager.stopUpdatingLocation()
+        pedometer.stopUpdates()
         timer?.invalidate()
         timer = nil
         UIApplication.shared.isIdleTimerDisabled = false
@@ -143,7 +162,7 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
         return String(format: "%d:%02d%@", mins, secs, unit)
     }
 
-    var estimatedSteps: Int { Int(totalDistanceCovered / 0.762) }
+    var estimatedSteps: Int { liveSteps > 0 ? liveSteps : Int(totalDistanceCovered / 0.762) }
 
     var estimatedSecondsRemaining: Double? {
         guard totalDistanceCovered > 100, elapsedTime > 10, remainingDistance > 10 else { return nil }
@@ -161,7 +180,8 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
             waypoints: route.waypoints.map { WaypointCoord($0) },
             lapCount: route.lapCount,
             isLoop: route.isLoop,
-            activityType: route.activityMode.rawValue
+            activityType: route.activityMode.rawValue,
+            steps: liveSteps
         )
     }
 
@@ -178,6 +198,14 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
             self.workoutWriter?.addLocations(locations)
             self.checkArrival(at: loc)
             if !self.route.isCustomRoute { self.checkDistanceCheckpoints() }
+            let paceSecsPerKm: Double? = self.totalDistanceCovered > 100 && self.elapsedTime > 10
+                ? self.elapsedTime / (self.totalDistanceCovered / 1000)
+                : nil
+            WalkAudioCueService.shared.update(
+                distanceCoveredMeters: self.totalDistanceCovered,
+                paceSecsPerKm: paceSecsPerKm,
+                activityMode: self.route.activityMode
+            )
         }
     }
 
@@ -244,6 +272,7 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
         isCompleted = true
         stop()
         fireBackgroundNotification(title: "Walk complete! 🎉", body: "Great work on \(route.name)")
+        WalkAudioCueService.shared.announce("Walk complete! Great job on \(route.name).")
     }
 
     private func fireBackgroundNotification(title: String, body: String) {
@@ -262,11 +291,23 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
 
 // MARK: - Navigation Map
 
+// Annotation dropped on the route at every 1 km milestone during an active walk.
+final class MilestoneAnnotation: NSObject, MKAnnotation {
+    var coordinate: CLLocationCoordinate2D
+    let distanceMeters: Double
+    init(coordinate: CLLocationCoordinate2D, distanceMeters: Double) {
+        self.coordinate = coordinate
+        self.distanceMeters = distanceMeters
+    }
+    var title: String? { String(format: "%.0f km", distanceMeters / 1000) }
+}
+
 struct NavigationMapView: UIViewRepresentable {
     let route: NavigableRoute
     let computedLegs: [MKRoute]
     let currentWaypointIndex: Int
     let checkpointsEnabled: Bool
+    var distanceCoveredMeters: Double = 0
 
     func makeUIView(context: Context) -> MKMapView {
         let map = MKMapView()
@@ -274,8 +315,12 @@ struct NavigationMapView: UIViewRepresentable {
         map.showsUserLocation = true
         map.userTrackingMode = .follow
         map.overrideUserInterfaceStyle = .unspecified
+        // Allow zooming from street-level (30 m) to neighbourhood-level (50 km)
         map.setCameraZoomRange(
-            MKMapView.CameraZoomRange(maxCenterCoordinateDistance: 600),
+            MKMapView.CameraZoomRange(
+                minCenterCoordinateDistance: 30,
+                maxCenterCoordinateDistance: 50_000
+            ),
             animated: false
         )
         for (i, wp) in route.waypoints.enumerated() {
@@ -311,6 +356,30 @@ struct NavigationMapView: UIViewRepresentable {
                 marker.alpha = idx < currentWaypointIndex ? 0.45 : 1.0
             }
         }
+
+        // 1 km milestone markers — placed on the route polyline as the user walks
+        if !computedLegs.isEmpty && distanceCoveredMeters > 0 {
+            let milestoneKm = Int(distanceCoveredMeters / 1000)
+            guard milestoneKm > context.coordinator.lastMilestoneKm else { return }
+            var allCoords: [CLLocationCoordinate2D] = []
+            for leg in computedLegs {
+                let pts = leg.polyline.points()
+                for i in 0..<leg.polyline.pointCount { allCoords.append(pts[i].coordinate) }
+            }
+            guard allCoords.count > 1 else { return }
+            var combined = allCoords
+            let poly = MKPolyline(coordinates: &combined, count: combined.count)
+            let totalLegDist = computedLegs.reduce(0.0) { $0 + $1.distance }
+            guard totalLegDist > 0 else { return }
+            for km in (context.coordinator.lastMilestoneKm + 1)...milestoneKm {
+                let targetMeters = Double(km) * 1000
+                let fraction = min(targetMeters / totalLegDist, 0.99)
+                if let coord = Self.coordAlong(poly, fraction: fraction) {
+                    map.addAnnotation(MilestoneAnnotation(coordinate: coord, distanceMeters: targetMeters))
+                }
+            }
+            context.coordinator.lastMilestoneKm = milestoneKm
+        }
     }
 
     static func addCheckpointMarkers(on map: MKMapView, legs: [MKRoute]) {
@@ -327,7 +396,8 @@ struct NavigationMapView: UIViewRepresentable {
                 map.addOverlay(NavCheckpointCircle(center: c, radius: 18), level: .aboveRoads)
             }
         }
-        let finish = NavCheckpointCircle(center: allCoords.last!, radius: 24)
+        guard let lastCoord = allCoords.last else { return }
+        let finish = NavCheckpointCircle(center: lastCoord, radius: 24)
         finish.isFinish = true
         map.addOverlay(finish, level: .aboveRoads)
     }
@@ -342,7 +412,8 @@ struct NavigationMapView: UIViewRepresentable {
         for i in 0..<n - 1 {
             let a = CLLocation(latitude: pts[i].coordinate.latitude, longitude: pts[i].coordinate.longitude)
             let b = CLLocation(latitude: pts[i + 1].coordinate.latitude, longitude: pts[i + 1].coordinate.longitude)
-            lens.append(a.distance(from: b)); total += lens.last!
+            let seg = a.distance(from: b)
+            lens.append(seg); total += seg
         }
         let target = total * fraction
         var accum = 0.0
@@ -367,6 +438,7 @@ struct NavigationMapView: UIViewRepresentable {
         var hasAddedLegs = false
         var lastWaypointIndex = 0
         var hasAddedCheckpoints = false
+        var lastMilestoneKm = 0
 
         func mapView(_ map: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
             if let circle = overlay as? NavCheckpointCircle {
@@ -391,6 +463,14 @@ struct NavigationMapView: UIViewRepresentable {
         }
 
         func mapView(_ map: MKMapView, viewFor annotation: MKAnnotation) -> MKAnnotationView? {
+            if let milestone = annotation as? MilestoneAnnotation {
+                let view = MKMarkerAnnotationView(annotation: milestone, reuseIdentifier: "milestone")
+                view.glyphImage = UIImage(systemName: "flag.fill")
+                view.markerTintColor = UIColor(red: 0.13, green: 0.57, blue: 0.64, alpha: 1)
+                view.titleVisibility = .visible
+                view.canShowCallout = false
+                return view
+            }
             guard let ann = annotation as? MKPointAnnotation else { return nil }
             let view = MKMarkerAnnotationView(annotation: ann, reuseIdentifier: "nav")
             view.glyphText = ann.title ?? ""

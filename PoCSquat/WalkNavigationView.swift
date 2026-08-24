@@ -27,6 +27,7 @@ struct WalkNavigationView: View {
     @State private var completedPRs: [PRType] = []
     @State private var computedLegs: [MKRoute] = []
     @State private var petActiveSinceDistance: [UUID: Double] = [:]
+    @State private var petAccumulatedDistances: [UUID: Double] = [:]
     @State private var allWalkPetIds: Set<UUID> = []
     @State private var walkStartDate: Date = Date()
 
@@ -46,14 +47,48 @@ struct WalkNavigationView: View {
                 guard completed else { return }
                 handleWalkComplete()
             }
+            .onChange(of: session.totalDistanceCovered) { _, dist in
+                Task {
+                    let pace = dist > 100 && session.elapsedTime > 10
+                        ? session.elapsedTime / (dist / 1000) : nil
+                    await WalkLiveActivityManager.shared.update(
+                        distanceCovered: dist,
+                        elapsedSeconds: Int(session.elapsedTime),
+                        isPaused: session.isPaused,
+                        paceSecsPerKm: pace
+                    )
+                }
+            }
+            .onChange(of: session.isPaused) { _, paused in
+                Task {
+                    let dist = session.totalDistanceCovered
+                    let pace = dist > 100 && session.elapsedTime > 10
+                        ? session.elapsedTime / (dist / 1000) : nil
+                    await WalkLiveActivityManager.shared.update(
+                        distanceCovered: dist,
+                        elapsedSeconds: Int(session.elapsedTime),
+                        isPaused: paused,
+                        paceSecsPerKm: pace
+                    )
+                }
+            }
             .onChange(of: petStore.activePets.count) { _, count in handlePetCountChange(count) }
             .onChange(of: waterBreakEnabled) { _, enabled in
                 guard enabled else { return }
                 Task { await scheduleWaterBreakReminders() }
             }
             .alert("End Walk?", isPresented: $showStopAlert) {
-                Button("Save Route & Exit") { saveCurrentRoute(); session.stop(); dismiss() }
-                Button("Exit", role: .destructive) { session.stop(); dismiss() }
+                Button("Save Route & Exit") {
+                    saveCurrentRoute()
+                    session.stop()
+                    Task { await WalkLiveActivityManager.shared.end(distanceCovered: session.totalDistanceCovered, elapsedSeconds: Int(session.elapsedTime)) }
+                    dismiss()
+                }
+                Button("Exit", role: .destructive) {
+                    session.stop()
+                    Task { await WalkLiveActivityManager.shared.end(distanceCovered: session.totalDistanceCovered, elapsedSeconds: Int(session.elapsedTime)) }
+                    dismiss()
+                }
                 Button("Keep Walking", role: .cancel) {}
             } message: {
                 Text("Save this route to My Routes so you can walk it again later?")
@@ -62,7 +97,7 @@ struct WalkNavigationView: View {
 
     @ViewBuilder private var mapContent: some View {
         ZStack(alignment: .bottom) {
-            NavigationMapView(route: route, computedLegs: computedLegs, currentWaypointIndex: session.currentWaypointIndex, checkpointsEnabled: checkpointsEnabled)
+            NavigationMapView(route: route, computedLegs: computedLegs, currentWaypointIndex: session.currentWaypointIndex, checkpointsEnabled: checkpointsEnabled, distanceCoveredMeters: session.totalDistanceCovered)
                 .ignoresSafeArea()
             hudPanel
         }
@@ -94,8 +129,14 @@ struct WalkNavigationView: View {
             petActiveSinceDistance[pet.id] = 0
             allWalkPetIds.insert(pet.id)
         }
+        WalkAudioCueService.shared.reset()
         session.start()
         session.onCheckpointReached = checkpointsEnabled ? { [self] lbl in self.handleCheckpoint(lbl) } : nil
+        WalkLiveActivityManager.shared.start(
+            routeName: route.name,
+            totalDistanceMeters: route.totalDistance,
+            activityMode: route.activityMode.rawValue
+        )
         computedLegs = await computeWalkingLegs()
         if let firstWaypoint = route.waypoints.first {
             walkWeather = await RouteWeatherService.shared.fetchWeather(for: firstWaypoint)
@@ -108,18 +149,28 @@ struct WalkNavigationView: View {
     private func handleWalkComplete() {
         let finalWalked = route.totalDistance - session.remainingDistance
         for (petId, sinceDistance) in petActiveSinceDistance {
-            if let pet = petStore.pets.first(where: { $0.id == petId }) {
-                flushPetMiniSession(pet: pet, deltaDistance: max(0, finalWalked - sinceDistance))
-            }
+            petAccumulatedDistances[petId, default: 0] += max(0, finalWalked - sinceDistance)
         }
         petActiveSinceDistance.removeAll()
 
         var s = session.completedSession
-        s.activePetIds = []
+        s.activePetIds = Array(petAccumulatedDistances.keys)
+        s.petDistances = petAccumulatedDistances
         let previousSessions = historyStore.sessions
         completedPRs = checkNewPRs(newSession: s, against: previousSessions)
+        if !completedPRs.isEmpty {
+            let prText = completedPRs.map(\.title).joined(separator: " and ")
+            WalkAudioCueService.shared.announce("Personal record! New \(prText)!")
+        }
         historyStore.add(s)
-        Task { await session.finishWorkoutSession() }
+        BackgroundTaskManager.shared.scheduleCloudKitSync()
+        Task {
+            await WalkLiveActivityManager.shared.end(
+                distanceCovered: s.totalDistance,
+                elapsedSeconds: Int(s.elapsedTime)
+            )
+            await session.finishWorkoutSession()
+        }
         completedSession = s
         completedPetNames = petNamesFor(ids: Array(allWalkPetIds))
         let walkPets = petStore.pets.filter { allWalkPetIds.contains($0.id) }
@@ -131,25 +182,10 @@ struct WalkNavigationView: View {
         showComplete = true
     }
 
-    private func flushPetMiniSession(pet: PetProfile, deltaDistance: Double) {
-        guard deltaDistance > 5 else { return }
-        historyStore.add(WalkSession(
-            id: UUID(),
-            routeName: "\(pet.name)'s Walk",
-            date: walkStartDate,
-            elapsedTime: 0,
-            totalDistance: deltaDistance,
-            waypoints: [],
-            lapCount: 1,
-            isLoop: false,
-            activePetIds: [pet.id],
-            activityType: route.activityMode.rawValue
-        ))
-    }
-
     private func scheduleHydrationNudge(distanceMeters: Double) {
         guard UserDefaults.standard.object(forKey: "notif_hydration") as? Bool ?? true else { return }
         let content = UNMutableNotificationContent()
+        content.categoryIdentifier = NotificationCategory.hydration
         content.title = "Time to rehydrate! 💧"
         let distKm = distanceMeters / 1000
         if distKm >= 5 {
@@ -227,7 +263,7 @@ struct WalkNavigationView: View {
                                     allWalkPetIds.insert(pet.id)
                                 } else {
                                     if let since = petActiveSinceDistance[pet.id] {
-                                        flushPetMiniSession(pet: pet, deltaDistance: max(0, walked - since))
+                                        petAccumulatedDistances[pet.id, default: 0] += max(0, walked - since)
                                     }
                                     petActiveSinceDistance.removeValue(forKey: pet.id)
                                 }
@@ -242,6 +278,14 @@ struct WalkNavigationView: View {
                     }
                     .padding(.trailing, 6)
                 }
+                Button {
+                    WalkAudioCueService.shared.isEnabled.toggle()
+                } label: {
+                    Image(systemName: WalkAudioCueService.shared.isEnabled ? "speaker.wave.2.fill" : "speaker.slash")
+                        .font(.title2)
+                        .foregroundColor(WalkAudioCueService.shared.isEnabled ? .earthGreen : .earthMuted)
+                }
+                .padding(.trailing, 10)
                 Button {
                     waterBreakEnabled.toggle()
                     if !waterBreakEnabled { cancelWaterBreakReminders() }
@@ -335,7 +379,17 @@ struct WalkNavigationView: View {
                     .frame(height: 0.5)
                     .foregroundColor(Color.earthMuted.opacity(0.25))
                 HStack(spacing: 0) {
-                    hudStat(value: session.estimatedSteps.formatted(), label: "steps", icon: "figure.walk")
+                    VStack(spacing: 5) {
+                        Image(systemName: "figure.walk").font(.caption).foregroundColor(.earthGreen)
+                        Text(session.estimatedSteps.formatted()).font(.subheadline.bold()).foregroundColor(.earthCream)
+                        Text("steps").font(.caption2).foregroundColor(.earthMuted)
+                        if let cad = session.cadence, cad > 0 {
+                            Text("\(Int(cad))/min")
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundColor(.earthGreen)
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
                     if let eta = session.estimatedSecondsRemaining {
                         Rectangle().frame(width: 0.5, height: 36).foregroundColor(Color.earthMuted.opacity(0.25))
                         hudStat(value: etaText(eta), label: "est. left", icon: "timer")
@@ -413,6 +467,7 @@ struct WalkNavigationView: View {
                 ? "Time for a water break."
                 : "Time to hydrate — your \(petStore.activePets.count == 1 ? "pup" : "pups") need water too."
             content.sound = .default
+            content.categoryIdentifier = NotificationCategory.waterBreak
             let trigger = UNTimeIntervalNotificationTrigger(timeInterval: Double(i) * intervalSecs, repeats: false)
             try? await center.add(UNNotificationRequest(identifier: "waterBreak-\(i)", content: content, trigger: trigger))
         }

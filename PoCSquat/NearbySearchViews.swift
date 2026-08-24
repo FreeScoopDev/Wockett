@@ -200,6 +200,7 @@ struct POICategory: Identifiable {
     static let all: [POICategory] = [
         POICategory(name: "Parks",          emoji: "🌳", mkCategory: .park),
         POICategory(name: "National Parks", emoji: "🏞️", mkCategory: .nationalPark),
+        POICategory(name: "Trails",         emoji: "🥾", query: "hiking trail trailhead"),
         POICategory(name: "Beaches",        emoji: "🏖️", mkCategory: .beach),
         POICategory(name: "Museums",        emoji: "🏛️", mkCategory: .museum),
         POICategory(name: "Libraries",      emoji: "📚", mkCategory: .library),

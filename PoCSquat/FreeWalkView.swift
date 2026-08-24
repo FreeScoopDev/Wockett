@@ -2,7 +2,9 @@ import SwiftUI
 import Combine
 import MapKit
 import CoreLocation
+import CoreMotion
 import HealthKit
+import MessageUI
 
 // MARK: - POI Support
 
@@ -117,12 +119,15 @@ final class FreeWalkManager: NSObject, ObservableObject, CLLocationManagerDelega
     @Published var totalDistance: Double = 0
     @Published var elapsedSeconds: Int = 0
     @Published var isTracking = false
+    @Published var liveSteps: Int = 0
+    @Published var cadence: Double? = nil  // steps/min; nil until pedometer warms up
 
     private(set) var startDate = Date()
     private var locationHistory: [CLLocation] = []
     private var workoutWriter: HealthWorkoutWriter?
 
     private let locationManager = CLLocationManager()
+    private let pedometer = CMPedometer()
     private var lastLocation: CLLocation?
     private var timer: Timer?
 
@@ -147,6 +152,19 @@ final class FreeWalkManager: NSObject, ObservableObject, CLLocationManagerDelega
             guard let self else { return }
             DispatchQueue.main.async { self.elapsedSeconds = Int(Date().timeIntervalSince(self.startDate)) }
         }
+        // Real-time step count + cadence from the motion coprocessor (walking only).
+        if activityMode == .walking && CMPedometer.isStepCountingAvailable() {
+            let from = startDate
+            pedometer.startUpdates(from: from) { [weak self] data, error in
+                guard let self, let data, error == nil else { return }
+                DispatchQueue.main.async {
+                    self.liveSteps = data.numberOfSteps.intValue
+                    if let c = data.currentCadence {
+                        self.cadence = c.doubleValue * 60  // steps/sec → steps/min
+                    }
+                }
+            }
+        }
         let capturedStart = startDate
         let activityType = activityMode.hkActivityType
         Task {
@@ -160,6 +178,7 @@ final class FreeWalkManager: NSObject, ObservableObject, CLLocationManagerDelega
         guard isTracking else { return }
         isTracking = false
         locationManager.stopUpdatingLocation()
+        pedometer.stopUpdates()
         timer?.invalidate()
         timer = nil
     }
@@ -221,7 +240,12 @@ struct FreeWalkView: View {
     @State private var showSummary = false
     @State private var position: MapCameraPosition = .userLocation(fallback: .automatic)
     @State private var petActiveSinceDistance: [UUID: Double] = [:]
+    @State private var petDistances: [UUID: Double] = [:]
     @StateObject private var poiManager = POIOverlayManager()
+    @State private var showOwnerUpdateSheet   = false
+    @State private var ownerUpdateRecipient: String? = nil
+    @State private var ownerUpdateBody        = ""
+    @State private var ownerUpdatePickerPets: [PetProfile] = []
 
     private var isCycling: Bool { activityMode == .cycling }
 
@@ -266,7 +290,11 @@ struct FreeWalkView: View {
                     Divider().frame(height: 36)
                     hudStat(value: walkManager.elapsedText, label: "Time")
                     Divider().frame(height: 36)
-                    hudStat(value: walkManager.estimatedSteps.formatted(), label: isCycling ? "Rotations" : "Steps")
+                    hudStepStat(
+                        steps: isCycling ? walkManager.estimatedSteps : walkManager.liveSteps,
+                        cadence: isCycling ? nil : walkManager.cadence,
+                        label: isCycling ? "Rotations" : "Steps"
+                    )
                 }
                 .padding(.vertical, 14)
                 .background(.ultraThinMaterial)
@@ -303,15 +331,7 @@ struct FreeWalkView: View {
                                     petActiveSinceDistance[pet.id] = currentDist
                                 } else {
                                     if let since = petActiveSinceDistance[pet.id] {
-                                        let delta = max(0, currentDist - since)
-                                        if delta > 5, let p = petStore.pets.first(where: { $0.id == pet.id }) {
-                                            historyStore.add(WalkSession(
-                                                id: UUID(), routeName: "\(p.name)'s Walk",
-                                                date: walkManager.startDate, elapsedTime: 0,
-                                                totalDistance: delta, waypoints: [], lapCount: 1, isLoop: false,
-                                                activePetIds: [p.id], activityType: activityMode.rawValue
-                                            ))
-                                        }
+                                        petDistances[pet.id, default: 0] += max(0, currentDist - since)
                                     }
                                     petActiveSinceDistance.removeValue(forKey: pet.id)
                                 }
@@ -333,6 +353,25 @@ struct FreeWalkView: View {
                     .background(.ultraThinMaterial)
                     .cornerRadius(18)
                     .padding(.horizontal, 20)
+
+                    let activePetsWithOwner = petStore.activePets.filter { $0.ownerPhone != nil }
+                    if !activePetsWithOwner.isEmpty && MFMessageComposeViewController.canSendText() {
+                        Button {
+                            if activePetsWithOwner.count == 1 {
+                                composeOwnerUpdate(for: activePetsWithOwner[0])
+                            } else {
+                                ownerUpdatePickerPets = activePetsWithOwner
+                            }
+                        } label: {
+                            Label("Update Owner\(activePetsWithOwner.count > 1 ? "s" : "")", systemImage: "message.fill")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 14).padding(.vertical, 7)
+                                .background(Color.earthGreen.opacity(0.85))
+                                .cornerRadius(14)
+                        }
+                        .padding(.horizontal, 20)
+                    }
                 }
 
                 Spacer()
@@ -379,7 +418,7 @@ struct FreeWalkView: View {
                 }
 
                 Button {
-                    flushAllActivePets()
+                    flushActivePetDistances()
                     walkManager.stop()
                     showSummary = true
                 } label: {
@@ -413,23 +452,40 @@ struct FreeWalkView: View {
             FreeWalkSummarySheet(
                 walkManager: walkManager,
                 historyStore: historyStore,
-                routeStore: routeStore
+                routeStore: routeStore,
+                petDistances: petDistances
             ) { dismiss() }
+        }
+        .sheet(isPresented: $showOwnerUpdateSheet) {
+            if let phone = ownerUpdateRecipient {
+                MessageComposeSheet(recipients: [phone], body: ownerUpdateBody)
+            }
+        }
+        .confirmationDialog("Send update to owner", isPresented: .init(
+            get: { ownerUpdatePickerPets.count > 1 && showOwnerUpdateSheet == false && !ownerUpdatePickerPets.isEmpty },
+            set: { if !$0 { ownerUpdatePickerPets = [] } }
+        ), titleVisibility: .visible) {
+            ForEach(ownerUpdatePickerPets, id: \.id) { pet in
+                Button(pet.ownerName ?? pet.name) { composeOwnerUpdate(for: pet) }
+            }
         }
     }
 
-    private func flushAllActivePets() {
+    private func composeOwnerUpdate(for pet: PetProfile) {
+        guard let phone = pet.ownerPhone, MFMessageComposeViewController.canSendText() else { return }
+        let dist = MKDistanceFormatter.abbreviated.string(fromDistance: walkManager.totalDistance)
+        let petDist = MKDistanceFormatter.abbreviated.string(fromDistance: petDistances[pet.id] ?? 0)
+        let ownerFirst = pet.ownerName?.components(separatedBy: " ").first ?? "there"
+        ownerUpdateBody = "Hi \(ownerFirst)! Currently walking \(pet.name) 🐾\n\n📏 \(petDist) so far (total walk: \(dist))\n\nSent from Wockett"
+        ownerUpdateRecipient = phone
+        ownerUpdatePickerPets = []
+        showOwnerUpdateSheet = true
+    }
+
+    private func flushActivePetDistances() {
         let currentDist = walkManager.totalDistance
         for (petId, sinceDistance) in petActiveSinceDistance {
-            guard let pet = petStore.pets.first(where: { $0.id == petId }) else { continue }
-            let delta = max(0, currentDist - sinceDistance)
-            guard delta > 5 else { continue }
-            historyStore.add(WalkSession(
-                id: UUID(), routeName: "\(pet.name)'s Walk",
-                date: walkManager.startDate, elapsedTime: 0,
-                totalDistance: delta, waypoints: [], lapCount: 1, isLoop: false,
-                activePetIds: [pet.id], activityType: activityMode.rawValue
-            ))
+            petDistances[petId, default: 0] += max(0, currentDist - sinceDistance)
         }
         petActiveSinceDistance.removeAll()
     }
@@ -442,6 +498,24 @@ struct FreeWalkView: View {
             Text(label)
                 .font(.caption2)
                 .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 4)
+    }
+
+    private func hudStepStat(steps: Int, cadence: Double?, label: String) -> some View {
+        VStack(spacing: 2) {
+            Text(steps.formatted())
+                .font(.system(size: 16, weight: .bold, design: .rounded))
+                .foregroundStyle(.primary)
+            Text(label)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            if let cad = cadence, cad > 0 {
+                Text("\(Int(cad))/min")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(.earthGreen)
+            }
         }
         .frame(maxWidth: .infinity)
         .padding(.horizontal, 4)
@@ -475,14 +549,24 @@ struct FreeWalkSummarySheet: View {
     @ObservedObject var historyStore: WalkHistoryStore
     @ObservedObject var routeStore: CustomRouteStore
     @EnvironmentObject var petStore: PetStore
+    let petDistances: [UUID: Double]
     let onDone: () -> Void
 
     @Environment(\.dismiss) private var dismiss
-    @State private var savedToHistory = false
-    @State private var savedAsRoute = false
+    @State private var savedToHistory    = false
+    @State private var savedAsRoute      = false
     @State private var showRouteNameField = false
-    @State private var routeName = ""
-    @State private var newPRs: [PRType] = []
+    @State private var routeName         = ""
+    @State private var newPRs: [PRType]  = []
+    @State private var shareItems: [Any] = []
+    @State private var showShareSheet    = false
+    @State private var msgRecipient: String? = nil
+    @State private var msgBody           = ""
+    @State private var showMsgSheet      = false
+
+    private var walkedPets: [PetProfile] {
+        petStore.pets.filter { (petDistances[$0.id] ?? 0) > 0 }
+    }
 
     var body: some View {
         NavigationStack {
@@ -500,7 +584,7 @@ struct FreeWalkSummarySheet: View {
                         HStack(spacing: 12) {
                             statTile(value: walkManager.distanceText,                   label: "Distance", icon: "ruler")
                             statTile(value: walkManager.elapsedText,                    label: "Time",     icon: "clock")
-                            statTile(value: walkManager.estimatedSteps.formatted(),     label: "Steps",    icon: "figure.walk")
+                            statTile(value: (walkManager.liveSteps > 0 ? walkManager.liveSteps : walkManager.estimatedSteps).formatted(), label: "Steps", icon: "figure.walk")
                         }
                         .padding(.horizontal)
 
@@ -527,6 +611,17 @@ struct FreeWalkSummarySheet: View {
                                 }
                             }
                             .padding(.horizontal)
+                        }
+
+                        if !walkedPets.isEmpty {
+                            VStack(alignment: .leading, spacing: 10) {
+                                Text("Your Crew")
+                                    .font(.caption.bold()).foregroundColor(.earthMuted)
+                                    .padding(.horizontal)
+                                ForEach(walkedPets) { pet in
+                                    petSummaryRow(pet: pet)
+                                }
+                            }
                         }
 
                         Button { saveToHistory() } label: {
@@ -597,10 +692,84 @@ struct FreeWalkSummarySheet: View {
             }
         }
         .presentationDetents([.medium, .large])
+        .sheet(isPresented: $showShareSheet) {
+            ActivityShareSheet(activityItems: shareItems)
+        }
+        .sheet(isPresented: $showMsgSheet) {
+            if let phone = msgRecipient {
+                MessageComposeSheet(recipients: [phone], body: msgBody)
+            }
+        }
         .onAppear {
             // Auto-save walks longer than 50 metres
             if walkManager.totalDistance > 50 { saveToHistory() }
         }
+    }
+
+    @MainActor
+    private func petSummaryRow(pet: PetProfile) -> some View {
+        let meters = petDistances[pet.id] ?? 0
+        let goalProgress = Double(Int(meters / 0.762)) / Double(max(1, pet.goalSteps))
+        return VStack(spacing: 8) {
+            PetWalkSummaryCard(
+                pet: pet,
+                sessionDistance: meters,
+                sessionDuration: TimeInterval(walkManager.elapsedSeconds),
+                goalProgress: goalProgress,
+                date: walkManager.startDate
+            )
+            .padding(.horizontal)
+
+            HStack(spacing: 12) {
+                Button {
+                    sharePetCard(pet: pet, meters: meters, goalProgress: goalProgress)
+                } label: {
+                    Label("Share", systemImage: "square.and.arrow.up")
+                        .font(.caption.bold())
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .background(Color.earthCard)
+                        .foregroundColor(pet.accentColor)
+                        .cornerRadius(10)
+                }
+
+                if let phone = pet.ownerPhone, MFMessageComposeViewController.canSendText() {
+                    Button {
+                        let ownerFirst = pet.ownerName?.components(separatedBy: " ").first ?? "there"
+                        let dist = MKDistanceFormatter.abbreviated.string(fromDistance: meters)
+                        let steps = Int(meters / 0.762).formatted()
+                        msgBody = "Hi \(ownerFirst)! Here's \(pet.name)'s walk summary 🐾\n\n📏 \(dist)  👟 \(steps) steps  ⏱ \(walkManager.elapsedText)\n\nSent from Wockett"
+                        msgRecipient = phone
+                        showMsgSheet = true
+                    } label: {
+                        Label("Message \(pet.ownerName?.components(separatedBy: " ").first ?? "Owner")", systemImage: "message.fill")
+                            .font(.caption.bold())
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 10)
+                            .background(Color.earthCard)
+                            .foregroundColor(.earthGreen)
+                            .cornerRadius(10)
+                    }
+                }
+            }
+            .padding(.horizontal)
+        }
+    }
+
+    @MainActor
+    private func sharePetCard(pet: PetProfile, meters: Double, goalProgress: Double) {
+        let card = PetWalkSummaryCard(
+            pet: pet,
+            sessionDistance: meters,
+            sessionDuration: TimeInterval(walkManager.elapsedSeconds),
+            goalProgress: goalProgress,
+            date: walkManager.startDate
+        )
+        let renderer = ImageRenderer(content: card)
+        renderer.scale = 3.0
+        guard let image = renderer.uiImage else { return }
+        shareItems = [image]
+        showShareSheet = true
     }
 
     private func saveToHistory() {
@@ -614,8 +783,10 @@ struct FreeWalkSummarySheet: View {
             waypoints: walkManager.trackPoints.map { WaypointCoord($0) },
             lapCount: 1,
             isLoop: false,
-            activePetIds: [],
-            activityType: walkManager.activityMode.rawValue
+            activePetIds: Array(petDistances.keys),
+            activityType: walkManager.activityMode.rawValue,
+            petDistances: petDistances,
+            steps: walkManager.liveSteps
         )
         newPRs = checkNewPRs(newSession: session, against: historyStore.sessions)
         historyStore.add(session)

@@ -7,6 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		60062A7F303AA71A002D5E94 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 60062A7E303AA71A002D5E94 /* WidgetKit.framework */; };
+		60062A81303AA71A002D5E94 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 60062A80303AA71A002D5E94 /* SwiftUI.framework */; };
+		60062A92303AA71B002D5E94 /* WocketWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 60062A7D303AA71A002D5E94 /* WocketWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		608392B4302523AE006100EE /* CustomRouteBuilderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 608392B3302523AE006100EE /* CustomRouteBuilderView.swift */; };
 		608392B6302523E9006100EE /* CustomRoutesListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 608392B5302523E9006100EE /* CustomRoutesListView.swift */; };
 		60AFBC59301DAC1500647902 /* FirebaseAnalytics in Frameworks */ = {isa = PBXBuildFile; productRef = 60AFBC58301DAC1500647902 /* FirebaseAnalytics */; };
@@ -17,7 +20,35 @@
 		60DBB4E630127E3000CB62E2 /* RouteIntelligenceService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60DBB4E530127E3000CB62E2 /* RouteIntelligenceService.swift */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		60062A90303AA71B002D5E94 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 6093BCD63011AB1B00AD5E15 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 60062A7C303AA71A002D5E94;
+			remoteInfo = WocketWidgetExtension;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		60062A97303AA71B002D5E94 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				60062A92303AA71B002D5E94 /* WocketWidgetExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
+		60062A7D303AA71A002D5E94 /* WocketWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = WocketWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		60062A7E303AA71A002D5E94 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
+		60062A80303AA71A002D5E94 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
+		60062A9F303AAAA3002D5E94 /* WocketWidgetExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = WocketWidgetExtension.entitlements; sourceTree = "<group>"; };
 		608392B3302523AE006100EE /* CustomRouteBuilderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustomRouteBuilderView.swift; sourceTree = "<group>"; };
 		608392B5302523E9006100EE /* CustomRoutesListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustomRoutesListView.swift; sourceTree = "<group>"; };
 		6093BCDE3011AB1C00AD5E15 /* PoCSquat.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PoCSquat.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -28,6 +59,20 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		60062A96303AA71B002D5E94 /* Exceptions for "WocketWidget" folder in "WocketWidgetExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 60062A7C303AA71A002D5E94 /* WocketWidgetExtension */;
+		};
+		60062A9E303AA909002D5E94 /* Exceptions for "WocketWidget" folder in "PoCSquat" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				WalkActivityAttributes.swift,
+			);
+			target = 6093BCDD3011AB1C00AD5E15 /* PoCSquat */;
+		};
 		6093BD043011D61A00AD5E15 /* Exceptions for "PoCSquat" folder in "PoCSquat" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
@@ -38,6 +83,15 @@
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		60062A82303AA71A002D5E94 /* WocketWidget */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				60062A9E303AA909002D5E94 /* Exceptions for "WocketWidget" folder in "PoCSquat" target */,
+				60062A96303AA71B002D5E94 /* Exceptions for "WocketWidget" folder in "WocketWidgetExtension" target */,
+			);
+			path = WocketWidget;
+			sourceTree = "<group>";
+		};
 		6093BCE03011AB1C00AD5E15 /* PoCSquat */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
@@ -49,6 +103,15 @@
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		60062A7A303AA71A002D5E94 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				60062A81303AA71A002D5E94 /* SwiftUI.framework in Frameworks */,
+				60062A7F303AA71A002D5E94 /* WidgetKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		6093BCDB3011AB1C00AD5E15 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -64,7 +127,9 @@
 		6093BCD53011AB1B00AD5E15 = {
 			isa = PBXGroup;
 			children = (
+				60062A9F303AAAA3002D5E94 /* WocketWidgetExtension.entitlements */,
 				6093BCE03011AB1C00AD5E15 /* PoCSquat */,
+				60062A82303AA71A002D5E94 /* WocketWidget */,
 				6093BCDF3011AB1C00AD5E15 /* Products */,
 				60DBB4E530127E3000CB62E2 /* RouteIntelligenceService.swift */,
 				60D6DE2C3013CAC20032FC50 /* Frameworks */,
@@ -80,6 +145,7 @@
 			isa = PBXGroup;
 			children = (
 				6093BCDE3011AB1C00AD5E15 /* PoCSquat.app */,
+				60062A7D303AA71A002D5E94 /* WocketWidgetExtension.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -87,6 +153,8 @@
 		60D6DE2C3013CAC20032FC50 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
+				60062A7E303AA71A002D5E94 /* WidgetKit.framework */,
+				60062A80303AA71A002D5E94 /* SwiftUI.framework */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -94,6 +162,28 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		60062A7C303AA71A002D5E94 /* WocketWidgetExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 60062A93303AA71B002D5E94 /* Build configuration list for PBXNativeTarget "WocketWidgetExtension" */;
+			buildPhases = (
+				60062A79303AA71A002D5E94 /* Sources */,
+				60062A7A303AA71A002D5E94 /* Frameworks */,
+				60062A7B303AA71A002D5E94 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				60062A82303AA71A002D5E94 /* WocketWidget */,
+			);
+			name = WocketWidgetExtension;
+			packageProductDependencies = (
+			);
+			productName = WocketWidgetExtension;
+			productReference = 60062A7D303AA71A002D5E94 /* WocketWidgetExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 		6093BCDD3011AB1C00AD5E15 /* PoCSquat */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 6093BCE93011AB1D00AD5E15 /* Build configuration list for PBXNativeTarget "PoCSquat" */;
@@ -101,10 +191,12 @@
 				6093BCDA3011AB1C00AD5E15 /* Sources */,
 				6093BCDB3011AB1C00AD5E15 /* Frameworks */,
 				6093BCDC3011AB1C00AD5E15 /* Resources */,
+				60062A97303AA71B002D5E94 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				60062A91303AA71B002D5E94 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				6093BCE03011AB1C00AD5E15 /* PoCSquat */,
@@ -128,6 +220,9 @@
 				LastSwiftUpdateCheck = 2660;
 				LastUpgradeCheck = 2660;
 				TargetAttributes = {
+					60062A7C303AA71A002D5E94 = {
+						CreatedOnToolsVersion = 26.6;
+					};
 					6093BCDD3011AB1C00AD5E15 = {
 						CreatedOnToolsVersion = 26.6;
 						LastSwiftMigration = 2660;
@@ -152,11 +247,19 @@
 			projectRoot = "";
 			targets = (
 				6093BCDD3011AB1C00AD5E15 /* PoCSquat */,
+				60062A7C303AA71A002D5E94 /* WocketWidgetExtension */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		60062A7B303AA71A002D5E94 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		6093BCDC3011AB1C00AD5E15 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -167,6 +270,13 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		60062A79303AA71A002D5E94 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		6093BCDA3011AB1C00AD5E15 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -182,7 +292,77 @@
 		};
 /* End PBXSourcesBuildPhase section */
 
+/* Begin PBXTargetDependency section */
+		60062A91303AA71B002D5E94 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 60062A7C303AA71A002D5E94 /* WocketWidgetExtension */;
+			targetProxy = 60062A90303AA71B002D5E94 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
 /* Begin XCBuildConfiguration section */
+		60062A94303AA71B002D5E94 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_ENTITLEMENTS = WocketWidgetExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 7U83DJ2F97;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = WocketWidget/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = WocketWidget;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = Scoops.PoCSquat.WocketWidget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		60062A95303AA71B002D5E94 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_ENTITLEMENTS = WocketWidgetExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 7U83DJ2F97;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = WocketWidget/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = WocketWidget;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = Scoops.PoCSquat.WocketWidget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 		6093BCE73011AB1D00AD5E15 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -398,6 +578,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		60062A93303AA71B002D5E94 /* Build configuration list for PBXNativeTarget "WocketWidgetExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				60062A94303AA71B002D5E94 /* Debug */,
+				60062A95303AA71B002D5E94 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		6093BCD93011AB1C00AD5E15 /* Build configuration list for PBXProject "PoCSquat" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
