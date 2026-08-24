@@ -16,3 +16,6 @@ build/
 # Swift Package Manager
 .build/
 .swiftpm/
+
+# Firebase — contains API keys, do not commit
+GoogleService-Info.plist
