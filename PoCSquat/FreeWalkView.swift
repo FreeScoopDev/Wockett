@@ -419,6 +419,10 @@ struct FreeWalkView: View {
 
                 Button {
                     flushActivePetDistances()
+                    Task { await WalkLiveActivityManager.shared.end(
+                        distanceCovered: walkManager.totalDistance,
+                        elapsedSeconds: walkManager.elapsedSeconds
+                    )}
                     walkManager.stop()
                     showSummary = true
                 } label: {
@@ -441,8 +445,31 @@ struct FreeWalkView: View {
             for pet in petStore.activePets {
                 petActiveSinceDistance[pet.id] = 0
             }
+            WalkLiveActivityManager.shared.start(
+                routeName: isCycling ? "Free Ride" : "Free Walk",
+                totalDistanceMeters: 0,
+                activityMode: activityMode.rawValue
+            )
         }
-        .onDisappear { walkManager.stop() }
+        .onDisappear {
+            walkManager.stop()
+            Task { await WalkLiveActivityManager.shared.end(
+                distanceCovered: walkManager.totalDistance,
+                elapsedSeconds: walkManager.elapsedSeconds
+            )}
+        }
+        .onChange(of: walkManager.elapsedSeconds) { _, elapsed in
+            guard elapsed > 0, elapsed % 10 == 0 else { return }
+            let pace: Double? = walkManager.totalDistance > 50
+                ? Double(elapsed) / (walkManager.totalDistance / 1_000)
+                : nil
+            Task { await WalkLiveActivityManager.shared.update(
+                distanceCovered: walkManager.totalDistance,
+                elapsedSeconds: elapsed,
+                isPaused: false,
+                paceSecsPerKm: pace
+            )}
+        }
         .onChange(of: walkManager.trackPoints.count) { _, _ in
             if let last = walkManager.trackPoints.last {
                 poiManager.refreshIfNeeded(near: last)

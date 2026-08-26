@@ -21,14 +21,22 @@ struct SquatCounterApp: App {
 
     var body: some Scene {
         WindowGroup {
-            NavigationStack {
-                StepCounterView()
+            ZStack {
+                NavigationStack {
+                    StepCounterView()
+                }
+                // Splash renders on top from the very first frame — no system presentation
+                // delay, so the dashboard is never visible before it. showSplash starts true
+                // on cold launch; @State persists across background/foreground, so the splash
+                // never re-appears when the user returns to an already-open app.
+                if showSplash {
+                    SplashView { showSplash = false }
+                        .ignoresSafeArea()
+                        .zIndex(1)
+                }
             }
             .environmentObject(petStore)
             .modelContainer(container)
-            .fullScreenCover(isPresented: $showSplash) {
-                SplashView { showSplash = false }
-            }
         }
     }
 }

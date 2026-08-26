@@ -195,6 +195,7 @@ struct HourlyWeatherRow: View {
 
 struct HomeWeatherChip: View {
     let weather: RouteWeather
+    @Environment(\.openURL) private var openURL
 
     private var isHot: Bool   { weather.temperatureCelsius > 28 }
     private var isRainy: Bool { weather.precipitationChance >= 0.4 }
@@ -240,6 +241,11 @@ struct HomeWeatherChip: View {
             RoundedRectangle(cornerRadius: 12)
                 .stroke(isHot ? Color.earthOrange.opacity(0.3) : (isRainy ? Color.blue.opacity(0.3) : Color.clear), lineWidth: 1)
         )
+        // Tapping anywhere on the chip (outside the attribution link) opens Apple Weather
+        .contentShape(Rectangle())
+        .onTapGesture {
+            if let url = URL(string: "weather://") { openURL(url) }
+        }
     }
 
     private var advisoryText: String {
