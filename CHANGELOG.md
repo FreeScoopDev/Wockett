@@ -10,28 +10,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [1.8.1] - 2026-08-26
 
 ### Added
-- Content moderation: lightweight profanity/length filter applied before any CloudKit `db.save()` that stores user text (route names ≤ 60 chars, messages ≤ 200 chars)
-- Report action on community route cards, achievement feed posts, and challenge cards — flags the item locally and hides it immediately
-- Block user feature — stores blocked author names locally (UserDefaults) and filters them from all three public CloudKit fetches (routes, feed, challenges)
-- **17 new badges** across 6 new categories — Rides, Pets, Explorer, Consistency, Collection, Social:
-  - Rides: Two Wheels, Century Ride, Pedal Power, Cross Trainer, Road Warrior (7-day cycling streak)
-  - Pets: First Walkies, Pack Leader (2+ pets at once), Paw Prints (25 pet walks)
-  - Explorer: Cartographer (custom route built), Community Builder (route published), Trailblazer (5 community routes completed), Route Scout (10 routes bookmarked)
-  - Consistency: Rain Check (5 indoor walks)
-  - Collection: Note Taker (notes on 10 walks), Historian (manual entry), Wockett Giver (first upvote given)
-  - Social: Challenge Accepted (challenge a friend)
-- Wocketts received: publishing a community route now tracks its CloudKit record ID; `BadgesView` fetches total upvotes received across all published routes and caches for display
-- `isCommunityRoute` flag on `WalkSession` — sessions started from community route cards are marked and tracked toward Explorer badges
-- Renamed existing "Century" badge → "Century Walk" (same `id`, earned state preserved); cycling "Century Ride" is a distinct badge
-- Challenge a Friend share button now records `wkt_challengeShared` flag so the "Challenge Accepted" badge can be awarded
+- 17 new badges across 6 new categories — Rides (Two Wheels, Century Ride, Pedal Power, Cross Trainer, Road Warrior), Pets (First Walkies, Pack Leader, Paw Prints), Explorer (Cartographer, Community Builder, Trailblazer, Route Scout), Consistency (Rain Check), Collection (Note Taker, Historian, Wockett Giver), Social (Challenge Accepted)
+- Live Activity on lock screen now appears during free walks and free rides, not just guided routes
+- Tapping the weather chip opens Apple Weather for the full local forecast
+- Report and block controls on community route cards, challenge cards, and achievement feed posts — flagged content disappears immediately
+- Content filter on all community text (route names, challenge titles, feed messages) prevents profanity and enforces length limits before publishing to CloudKit
+- Wocketts received counter — publishing a community route tracks how many upvotes it earns; visible on the badges screen
 
 ### Fixed
-- CloudKit push notification mode: added `remote-notification` to `UIBackgroundModes` — resolves "BUG IN CLIENT OF CLOUDKIT" warning and enables proper CloudKit sync via push
-- Widget control center intent now writes to shared App Group UserDefaults so the main app can receive the start-walk signal
-- Force-unwrap crashes removed: `waypoints.last!`/`waypoints.first!` in `CustomRouteBuilderCore`, `day.tag!` in `WeeklyCalendarView`, four `year!`/`month!` force-unwraps in `MonthCalendarView`, `cal.date(byAdding:)!` in `ChallengeService`
+- Splash screen now appears instantly on cold launch; the dashboard no longer flashes before it
+- Force-unwrap crashes removed in the custom route builder, weekly and monthly calendar views, and challenge scheduling
+- CloudKit sync now triggers correctly on push notification (resolves a silent background sync failure)
+- Control Center start-walk shortcut correctly signals the main app via shared App Group UserDefaults
 
 ### Changed
-- Weather temperatures now display as whole numbers (no decimal places) in home chip and route weather widget
+- "Century" badge renamed to "Century Walk" — earned state is preserved; "Century Ride" (100 km cycled) is now a separate badge
+- Weather temperatures display as whole numbers throughout the app
 
 ---
 
