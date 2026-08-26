@@ -156,6 +156,7 @@ struct WalkNavigationView: View {
         var s = session.completedSession
         s.activePetIds = Array(petAccumulatedDistances.keys)
         s.petDistances = petAccumulatedDistances
+        s.isCommunityRoute = route.isCommunityRoute
         let previousSessions = historyStore.sessions
         completedPRs = checkNewPRs(newSession: s, against: previousSessions)
         if !completedPRs.isEmpty {

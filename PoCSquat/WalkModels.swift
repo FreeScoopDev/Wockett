@@ -236,38 +236,42 @@ struct WalkSession: Identifiable, Codable {
     var notes: String         // user notes per session; empty string for existing sessions
     var petDistances: [UUID: Double]  // meters walked per pet; empty on pre-v1.7 sessions
     var steps: Int            // pedometer step count; 0 for pre-v1.7 sessions (falls back to distance estimate)
+    var isCommunityRoute: Bool // true when session originated from a community route card
 
     init(id: UUID, routeName: String, date: Date, elapsedTime: TimeInterval,
          totalDistance: Double, waypoints: [WaypointCoord], lapCount: Int,
          isLoop: Bool, activePetIds: [UUID] = [], activityType: String = "walking",
-         notes: String = "", petDistances: [UUID: Double] = [:], steps: Int = 0) {
+         notes: String = "", petDistances: [UUID: Double] = [:], steps: Int = 0,
+         isCommunityRoute: Bool = false) {
         self.id = id; self.routeName = routeName; self.date = date
         self.elapsedTime = elapsedTime; self.totalDistance = totalDistance
         self.waypoints = waypoints; self.lapCount = lapCount
         self.isLoop = isLoop; self.activePetIds = activePetIds
         self.activityType = activityType; self.notes = notes
         self.petDistances = petDistances; self.steps = steps
+        self.isCommunityRoute = isCommunityRoute
     }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        id            = try c.decode(UUID.self,            forKey: .id)
-        routeName     = try c.decode(String.self,          forKey: .routeName)
-        date          = try c.decode(Date.self,            forKey: .date)
-        elapsedTime   = try c.decode(TimeInterval.self,    forKey: .elapsedTime)
-        totalDistance = try c.decode(Double.self,          forKey: .totalDistance)
-        waypoints     = try c.decode([WaypointCoord].self, forKey: .waypoints)
-        lapCount      = try c.decode(Int.self,             forKey: .lapCount)
-        isLoop        = try c.decode(Bool.self,            forKey: .isLoop)
-        activePetIds  = (try? c.decode([UUID].self,         forKey: .activePetIds))  ?? []
-        activityType  = (try? c.decode(String.self,         forKey: .activityType))  ?? "walking"
-        notes         = (try? c.decode(String.self,         forKey: .notes))         ?? ""
-        petDistances  = (try? c.decode([UUID: Double].self, forKey: .petDistances))  ?? [:]
-        steps         = (try? c.decode(Int.self,            forKey: .steps))          ?? 0
+        id               = try c.decode(UUID.self,            forKey: .id)
+        routeName        = try c.decode(String.self,          forKey: .routeName)
+        date             = try c.decode(Date.self,            forKey: .date)
+        elapsedTime      = try c.decode(TimeInterval.self,    forKey: .elapsedTime)
+        totalDistance    = try c.decode(Double.self,          forKey: .totalDistance)
+        waypoints        = try c.decode([WaypointCoord].self, forKey: .waypoints)
+        lapCount         = try c.decode(Int.self,             forKey: .lapCount)
+        isLoop           = try c.decode(Bool.self,            forKey: .isLoop)
+        activePetIds     = (try? c.decode([UUID].self,         forKey: .activePetIds))     ?? []
+        activityType     = (try? c.decode(String.self,         forKey: .activityType))     ?? "walking"
+        notes            = (try? c.decode(String.self,         forKey: .notes))            ?? ""
+        petDistances     = (try? c.decode([UUID: Double].self, forKey: .petDistances))     ?? [:]
+        steps            = (try? c.decode(Int.self,            forKey: .steps))            ?? 0
+        isCommunityRoute = (try? c.decode(Bool.self,           forKey: .isCommunityRoute)) ?? false
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, routeName, date, elapsedTime, totalDistance, waypoints, lapCount, isLoop, activePetIds, activityType, notes, petDistances, steps
+        case id, routeName, date, elapsedTime, totalDistance, waypoints, lapCount, isLoop, activePetIds, activityType, notes, petDistances, steps, isCommunityRoute
     }
 
     // Returns actual pedometer steps when available, otherwise estimates from GPS distance.
@@ -451,6 +455,7 @@ struct NavigableRoute: Identifiable, Hashable {
     let isLoop: Bool
     let totalDistance: Double
     var isCustomRoute: Bool = false
+    var isCommunityRoute: Bool = false
     var activityMode:  ActivityMode = .walking
 
     static func == (l: NavigableRoute, r: NavigableRoute) -> Bool { l.id == r.id }

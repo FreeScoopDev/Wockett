@@ -373,6 +373,8 @@ struct ManualWalkEntrySheet: View {
             lapCount: 1,
             isLoop: false
         )
+        let count = UserDefaults.standard.integer(forKey: "wkt_manualEntries_count")
+        UserDefaults.standard.set(count + 1, forKey: "wkt_manualEntries_count")
         onSave(session)
         dismiss()
     }

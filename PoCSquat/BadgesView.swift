@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 // MARK: - Badges & Streaks View
 
@@ -20,13 +21,31 @@ struct BadgesView: View {
         pinnedBadgeIdsStr.isEmpty ? [] : pinnedBadgeIdsStr.split(separator: ",").map(String.init)
     }
 
-    private var distanceBadges: [WalkBadge] { walkBadges.filter { if case .distance = $0.type { true } else { false } } }
-    private var streakBadges:   [WalkBadge] { walkBadges.filter { if case .streak   = $0.type { true } else { false } } }
-    private var timeBadges:     [WalkBadge] { walkBadges.filter {
+    private var distanceBadges:    [WalkBadge] { walkBadges.filter { if case .distance = $0.type { true } else { false } } }
+    private var streakBadges:      [WalkBadge] { walkBadges.filter { if case .streak   = $0.type { true } else { false } } }
+    private var timeBadges:        [WalkBadge] { walkBadges.filter {
         switch $0.type { case .earlyBird, .nightOwl: true; default: false }
     }}
-    private var metaBadges: [WalkBadge] { walkBadges.filter {
+    private var metaBadges:        [WalkBadge] { walkBadges.filter {
         if case .badgeCount = $0.type { true } else { false }
+    }}
+    private var rideBadges:        [WalkBadge] { walkBadges.filter {
+        switch $0.type { case .rideKm, .rideStreak, .crossTrainDay: true; default: false }
+    }}
+    private var petBadges:         [WalkBadge] { walkBadges.filter {
+        switch $0.type { case .petWalks, .multiPetWalk: true; default: false }
+    }}
+    private var explorerBadges:    [WalkBadge] { walkBadges.filter {
+        switch $0.type { case .communityRoutesCompleted, .routesBookmarked, .customRouteCreated, .customRouteShared: true; default: false }
+    }}
+    private var consistencyBadges: [WalkBadge] { walkBadges.filter {
+        switch $0.type { case .indoorWalks: true; default: false }
+    }}
+    private var collectionBadges:  [WalkBadge] { walkBadges.filter {
+        switch $0.type { case .walkNotesAdded, .manualEntries, .wockettsGiven, .wockettsReceived: true; default: false }
+    }}
+    private var socialBadges:      [WalkBadge] { walkBadges.filter {
+        switch $0.type { case .challengeShared: true; default: false }
     }}
 
     var body: some View {
@@ -38,10 +57,16 @@ struct BadgesView: View {
                         pinHint
                         streakSection
                         personalRecordsSection
-                        badgeSection(title: "Distance",   badges: distanceBadges)
-                        badgeSection(title: "Streaks",    badges: streakBadges)
-                        badgeSection(title: "Time-Based", badges: timeBadges)
-                        badgeSection(title: "Meta",       badges: metaBadges)
+                        badgeSection(title: "Distance",    badges: distanceBadges)
+                        badgeSection(title: "Streaks",     badges: streakBadges)
+                        badgeSection(title: "Time-Based",  badges: timeBadges)
+                        badgeSection(title: "Rides",       badges: rideBadges)
+                        badgeSection(title: "Pets",        badges: petBadges)
+                        badgeSection(title: "Explorer",    badges: explorerBadges)
+                        badgeSection(title: "Consistency", badges: consistencyBadges)
+                        badgeSection(title: "Collection",  badges: collectionBadges)
+                        badgeSection(title: "Social",      badges: socialBadges)
+                        badgeSection(title: "Meta",        badges: metaBadges)
                         if currentStreak > 0 { shareButton }
                     }
                     .padding(.horizontal)
@@ -59,6 +84,10 @@ struct BadgesView: View {
         }
         .onAppear {
             streakStore.refresh(sessions: sessions, todaySteps: todaySteps, dailyGoal: dailyGoal)
+            Task {
+                let count = await CommunityRouteService.shared.fetchReceivedWocketts()
+                UserDefaults.standard.set(count, forKey: "wkt_wocketts_received")
+            }
         }
     }
 
@@ -305,7 +334,14 @@ struct BadgesView: View {
     private var shareButton: some View {
         let challenge = Int(Double(dailyGoal) * 1.1)
         let text = "I've walked \(currentStreak) day\(currentStreak == 1 ? "" : "s") in a row on Wockett 🔥 Think you can hit \(challenge.formatted()) steps today?"
-        return ShareLink(item: text) {
+        return Button {
+            UserDefaults.standard.set(true, forKey: "wkt_challengeShared")
+            let av = UIActivityViewController(activityItems: [text], applicationActivities: nil)
+            UIApplication.shared.connectedScenes
+                .compactMap { $0 as? UIWindowScene }
+                .first?.windows.first?.rootViewController?
+                .present(av, animated: true)
+        } label: {
             Label("Challenge a Friend", systemImage: "square.and.arrow.up")
                 .font(.headline)
                 .frame(maxWidth: .infinity)
@@ -314,6 +350,7 @@ struct BadgesView: View {
                 .foregroundColor(.white)
                 .cornerRadius(14)
         }
+        .buttonStyle(.plain)
     }
 }
 

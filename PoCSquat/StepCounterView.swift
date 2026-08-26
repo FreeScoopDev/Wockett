@@ -122,7 +122,10 @@ struct StepCounterView: View {
         scrollWithLifecycle
             .navigationDestination(isPresented: $showSettings) { SettingsView(stepManager: stepManager) }
             .navigationDestination(isPresented: $showMyRoutes) { CustomRoutesListView(store: routeStore, historyStore: historyStore) }
-            .navigationDestination(isPresented: $showBuildRoute) { CustomRouteBuilderView { route in routeStore.save(route) } }
+            .navigationDestination(isPresented: $showBuildRoute) { CustomRouteBuilderView { route in
+                routeStore.save(route)
+                UserDefaults.standard.set(true, forKey: "wkt_customRouteCreated")
+            } }
             .navigationDestination(isPresented: $showWalkHistory) { WalkHistoryView(store: historyStore) }
             .navigationDestination(isPresented: $showPetManagement) { PetManagementView(historyStore: historyStore, defaultGoal: stepManager.currentGoal) }
     }

@@ -321,6 +321,8 @@ struct RouteFinderView: View {
                             onSave: {
                                 routeStore.save(route.toCustomRoute())
                                 savedRouteIds.insert(route.id)
+                                let count = UserDefaults.standard.integer(forKey: "wkt_routesBookmarked_count")
+                                UserDefaults.standard.set(count + 1, forKey: "wkt_routesBookmarked_count")
                             },
                             onPost: { routeForPosting = route }
                         )
@@ -501,8 +503,14 @@ struct RouteFinderView: View {
                                     createdAt: Date()
                                 ))
                                 savedCommunityIds.insert(route.id.recordName)
+                                let count = UserDefaults.standard.integer(forKey: "wkt_routesBookmarked_count")
+                                UserDefaults.standard.set(count + 1, forKey: "wkt_routesBookmarked_count")
                             },
-                            onStart: { navigatingRoute = route.toNavigableRoute() },
+                            onStart: {
+                                var nav = route.toNavigableRoute()
+                                nav.isCommunityRoute = true
+                                navigatingRoute = nav
+                            },
                             onHide: { communityRoutes.removeAll { $0.id == route.id } }
                         )
                         .padding(.horizontal, 20)

@@ -27,18 +27,20 @@ final class WalkSessionRecord {
     // JSON-encoded [String: Double] (keys are UUID strings)
     @Attribute(.externalStorage) var petDistancesData: Data = Data()
     var steps: Int = 0
+    var isCommunityRoute: Bool = false
 
     init(from session: WalkSession) {
-        id             = session.id
-        routeName      = session.routeName
-        date           = session.date
-        elapsedTime    = session.elapsedTime
-        totalDistance  = session.totalDistance
-        lapCount       = session.lapCount
-        isLoop         = session.isLoop
-        activityType   = session.activityType
-        notes          = session.notes
-        steps          = session.steps
+        id               = session.id
+        routeName        = session.routeName
+        date             = session.date
+        elapsedTime      = session.elapsedTime
+        totalDistance    = session.totalDistance
+        lapCount         = session.lapCount
+        isLoop           = session.isLoop
+        activityType     = session.activityType
+        notes            = session.notes
+        steps            = session.steps
+        isCommunityRoute = session.isCommunityRoute
         activePetIdsData  = (try? JSONEncoder().encode(session.activePetIds.map(\.uuidString))) ?? Data()
         waypointsData     = (try? JSONEncoder().encode(session.waypoints)) ?? Data()
         let distStrings   = Dictionary(uniqueKeysWithValues: session.petDistances.map { (k, v) in (k.uuidString, v) })
@@ -54,19 +56,20 @@ final class WalkSessionRecord {
             return (uuid, v)
         })
         return WalkSession(
-            id:            id,
-            routeName:     routeName,
-            date:          date,
-            elapsedTime:   elapsedTime,
-            totalDistance: totalDistance,
-            waypoints:     waypoints,
-            lapCount:      lapCount,
-            isLoop:        isLoop,
-            activePetIds:  petIdStrings.compactMap { UUID(uuidString: $0) },
-            activityType:  activityType,
-            notes:         notes,
-            petDistances:  distances,
-            steps:         steps
+            id:              id,
+            routeName:       routeName,
+            date:            date,
+            elapsedTime:     elapsedTime,
+            totalDistance:   totalDistance,
+            waypoints:       waypoints,
+            lapCount:        lapCount,
+            isLoop:          isLoop,
+            activePetIds:    petIdStrings.compactMap { UUID(uuidString: $0) },
+            activityType:    activityType,
+            notes:           notes,
+            petDistances:    distances,
+            steps:           steps,
+            isCommunityRoute: isCommunityRoute
         )
     }
 }

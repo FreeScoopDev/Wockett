@@ -65,8 +65,9 @@ final class CommunityRouteService {
 
     private let db         = CKContainer(identifier: "iCloud.Scoops.PoCSquat").publicCloudDatabase
     private let recordType = "SharedRoute"
-    private let votedKey   = "communityVotedRoutes"
-    private let usernameKey = "communityUsername"
+    private let votedKey      = "communityVotedRoutes"
+    private let usernameKey   = "communityUsername"
+    private let publishedKey  = "wkt_publishedRouteIds"
 
     private let adjectives = [
         "Misty", "Golden", "Ancient", "Silent", "Swift", "Wild", "Calm",
@@ -134,7 +135,28 @@ final class CommunityRouteService {
         record["upvotes"]       = 0
         record["authorName"]    = username
 
-        _ = try await db.save(record)
+        let saved = try await db.save(record)
+        // Track published route ID so we can fetch received wocketts later
+        var published = UserDefaults.standard.stringArray(forKey: publishedKey) ?? []
+        published.append(saved.recordID.recordName)
+        UserDefaults.standard.set(published, forKey: publishedKey)
+        UserDefaults.standard.set(true, forKey: "wkt_customRouteShared")
+    }
+
+    // MARK: - Received Wocketts
+
+    /// Sums upvotes across all routes the current user has published. Returns 0 on error.
+    func fetchReceivedWocketts() async -> Int {
+        let ids = UserDefaults.standard.stringArray(forKey: publishedKey) ?? []
+        guard !ids.isEmpty else { return 0 }
+        var total = 0
+        for idString in ids {
+            let recordID = CKRecord.ID(recordName: idString)
+            if let record = try? await db.record(for: recordID) {
+                total += record["upvotes"] as? Int ?? 0
+            }
+        }
+        return total
     }
 
     // MARK: - Wockett

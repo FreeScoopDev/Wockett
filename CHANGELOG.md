@@ -3,12 +3,27 @@
 All notable changes to Wockett are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Unreleased]
+
+---
+
 ## [1.8.1] - 2026-08-26
 
 ### Added
 - Content moderation: lightweight profanity/length filter applied before any CloudKit `db.save()` that stores user text (route names ≤ 60 chars, messages ≤ 200 chars)
 - Report action on community route cards, achievement feed posts, and challenge cards — flags the item locally and hides it immediately
 - Block user feature — stores blocked author names locally (UserDefaults) and filters them from all three public CloudKit fetches (routes, feed, challenges)
+- **17 new badges** across 6 new categories — Rides, Pets, Explorer, Consistency, Collection, Social:
+  - Rides: Two Wheels, Century Ride, Pedal Power, Cross Trainer, Road Warrior (7-day cycling streak)
+  - Pets: First Walkies, Pack Leader (2+ pets at once), Paw Prints (25 pet walks)
+  - Explorer: Cartographer (custom route built), Community Builder (route published), Trailblazer (5 community routes completed), Route Scout (10 routes bookmarked)
+  - Consistency: Rain Check (5 indoor walks)
+  - Collection: Note Taker (notes on 10 walks), Historian (manual entry), Wockett Giver (first upvote given)
+  - Social: Challenge Accepted (challenge a friend)
+- Wocketts received: publishing a community route now tracks its CloudKit record ID; `BadgesView` fetches total upvotes received across all published routes and caches for display
+- `isCommunityRoute` flag on `WalkSession` — sessions started from community route cards are marked and tracked toward Explorer badges
+- Renamed existing "Century" badge → "Century Walk" (same `id`, earned state preserved); cycling "Century Ride" is a distinct badge
+- Challenge a Friend share button now records `wkt_challengeShared` flag so the "Challenge Accepted" badge can be awarded
 
 ### Fixed
 - CloudKit push notification mode: added `remote-notification` to `UIBackgroundModes` — resolves "BUG IN CLIENT OF CLOUDKIT" warning and enables proper CloudKit sync via push
