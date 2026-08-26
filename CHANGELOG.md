@@ -3,7 +3,7 @@
 All notable changes to Wockett are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## [Unreleased]
+## [1.8.1] - 2026-08-26
 
 ### Added
 - Content moderation: lightweight profanity/length filter applied before any CloudKit `db.save()` that stores user text (route names ≤ 60 chars, messages ≤ 200 chars)
