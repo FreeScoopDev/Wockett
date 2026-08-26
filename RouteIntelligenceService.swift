@@ -113,12 +113,13 @@ actor RouteWeatherService {
         do {
             let weather = try await WeatherService.shared.weather(for: location)
             let current = weather.currentWeather
-            let tempText = current.temperature.formatted(.measurement(width: .abbreviated, usage: .weather))
+            let tempFormat = Measurement<UnitTemperature>.FormatStyle.measurement(width: .abbreviated, usage: .weather, numberFormatStyle: .number.precision(.fractionLength(0)))
+            let tempText = current.temperature.formatted(tempFormat)
             let precipChance = weather.hourlyForecast.first?.precipitationChance ?? 0
             let hourly: [HourlyWeatherPoint] = weather.hourlyForecast.prefix(6).map { h in
                 HourlyWeatherPoint(
                     date:               h.date,
-                    temperatureText:    h.temperature.formatted(.measurement(width: .abbreviated, usage: .weather)),
+                    temperatureText:    h.temperature.formatted(tempFormat),
                     symbolName:         h.symbolName,
                     precipitationChance: h.precipitationChance
                 )

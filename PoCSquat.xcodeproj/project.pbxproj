@@ -12,8 +12,6 @@
 		60062A92303AA71B002D5E94 /* WocketWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 60062A7D303AA71A002D5E94 /* WocketWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		608392B4302523AE006100EE /* CustomRouteBuilderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 608392B3302523AE006100EE /* CustomRouteBuilderView.swift */; };
 		608392B6302523E9006100EE /* CustomRoutesListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 608392B5302523E9006100EE /* CustomRoutesListView.swift */; };
-		60AFBC59301DAC1500647902 /* FirebaseAnalytics in Frameworks */ = {isa = PBXBuildFile; productRef = 60AFBC58301DAC1500647902 /* FirebaseAnalytics */; };
-		60AFBC5B301DAC1500647902 /* FirebaseCrashlytics in Frameworks */ = {isa = PBXBuildFile; productRef = 60AFBC5A301DAC1500647902 /* FirebaseCrashlytics */; };
 		60AFBC63301DB0AE00647902 /* CustomRouteModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60AFBC62301DB0AE00647902 /* CustomRouteModels.swift */; };
 		60AFBC65301DB0D000647902 /* CustomRouteBuilderCore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60AFBC64301DB0D000647902 /* CustomRouteBuilderCore.swift */; };
 		60D6DE3330150BF50032FC50 /* CommunityRouteService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60D6DE3230150BF50032FC50 /* CommunityRouteService.swift */; };
@@ -116,8 +114,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				60AFBC59301DAC1500647902 /* FirebaseAnalytics in Frameworks */,
-				60AFBC5B301DAC1500647902 /* FirebaseCrashlytics in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -203,8 +199,6 @@
 			);
 			name = PoCSquat;
 			packageProductDependencies = (
-				60AFBC58301DAC1500647902 /* FirebaseAnalytics */,
-				60AFBC5A301DAC1500647902 /* FirebaseCrashlytics */,
 			);
 			productName = PoCSquat;
 			productReference = 6093BCDE3011AB1C00AD5E15 /* PoCSquat.app */;
@@ -239,7 +233,6 @@
 			mainGroup = 6093BCD53011AB1B00AD5E15;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				60AFBC57301DAC1500647902 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 6093BCDF3011AB1C00AD5E15 /* Products */;
@@ -606,30 +599,6 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
-
-/* Begin XCRemoteSwiftPackageReference section */
-		60AFBC57301DAC1500647902 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/firebase/firebase-ios-sdk";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 12.17.0;
-			};
-		};
-/* End XCRemoteSwiftPackageReference section */
-
-/* Begin XCSwiftPackageProductDependency section */
-		60AFBC58301DAC1500647902 /* FirebaseAnalytics */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 60AFBC57301DAC1500647902 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
-			productName = FirebaseAnalytics;
-		};
-		60AFBC5A301DAC1500647902 /* FirebaseCrashlytics */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 60AFBC57301DAC1500647902 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
-			productName = FirebaseCrashlytics;
-		};
-/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 6093BCD63011AB1B00AD5E15 /* Project object */;
 }
