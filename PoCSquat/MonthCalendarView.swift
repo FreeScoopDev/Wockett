@@ -86,7 +86,9 @@ struct MonthCalendarView: View {
         let cal     = Calendar.current
         let current = cal.dateComponents([.year, .month], from: Date())
         let shown   = cal.dateComponents([.year, .month], from: monthStart)
-        return shown.year! > current.year! || (shown.year! == current.year! && shown.month! > current.month!)
+        guard let sy = shown.year, let cy = current.year,
+              let sm = shown.month, let cm = current.month else { return false }
+        return sy > cy || (sy == cy && sm > cm)
     }
 
     // MARK: - Monthly Stats

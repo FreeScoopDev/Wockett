@@ -113,12 +113,15 @@ final class CommunityRouteService {
             guard let record = try? result.get() else { return nil }
             return SharedRoute(record: record)
         }
-        return routes.sorted { $0.wocketts > $1.wocketts }
+        return routes
+            .filter { !CommunityModerationStore.shared.shouldHide(id: $0.id, author: $0.authorName) }
+            .sorted { $0.wocketts > $1.wocketts }
     }
 
     // MARK: - Publish
 
     func publish(route: CustomRoute) async throws {
+        try ContentFilter.validate(name: route.name)
         let waypointData  = try JSONEncoder().encode(route.waypoints)
         let waypointsJSON = String(data: waypointData, encoding: .utf8) ?? "[]"
 

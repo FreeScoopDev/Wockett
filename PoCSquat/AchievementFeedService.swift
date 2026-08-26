@@ -70,11 +70,13 @@ final class AchievementFeedService {
             guard let record = try? result.get() else { return nil }
             return AchievementPost(record: record)
         }
+        .filter { !CommunityModerationStore.shared.shouldHide(id: $0.id, author: $0.authorName) }
     }
 
     // MARK: - Post
 
     func post(badgeName: String, badgeEmoji: String, message: String) async throws {
+        try ContentFilter.validate(message: message)
         let record = CKRecord(recordType: recordType)
         record["badgeName"]  = badgeName
         record["badgeEmoji"] = badgeEmoji

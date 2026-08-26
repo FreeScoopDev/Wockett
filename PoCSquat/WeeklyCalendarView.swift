@@ -320,8 +320,8 @@ private struct DayCell: View {
                     .background(color.opacity(0.18))
                     .cornerRadius(4)
                     .frame(height: 15)
-            } else if day.tag != nil {
-                Text(day.tag!)
+            } else if let tag = day.tag {
+                Text(tag)
                     .font(.system(size: 7, weight: .bold))
                     .lineLimit(1)
                     .padding(.horizontal, 5).padding(.vertical, 2)

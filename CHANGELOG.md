@@ -5,9 +5,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+- Content moderation: lightweight profanity/length filter applied before any CloudKit `db.save()` that stores user text (route names ≤ 60 chars, messages ≤ 200 chars)
+- Report action on community route cards, achievement feed posts, and challenge cards — flags the item locally and hides it immediately
+- Block user feature — stores blocked author names locally (UserDefaults) and filters them from all three public CloudKit fetches (routes, feed, challenges)
+
 ### Fixed
 - CloudKit push notification mode: added `remote-notification` to `UIBackgroundModes` — resolves "BUG IN CLIENT OF CLOUDKIT" warning and enables proper CloudKit sync via push
 - Widget control center intent now writes to shared App Group UserDefaults so the main app can receive the start-walk signal
+- Force-unwrap crashes removed: `waypoints.last!`/`waypoints.first!` in `CustomRouteBuilderCore`, `day.tag!` in `WeeklyCalendarView`, four `year!`/`month!` force-unwraps in `MonthCalendarView`, `cal.date(byAdding:)!` in `ChallengeService`
 
 ### Changed
 - Weather temperatures now display as whole numbers (no decimal places) in home chip and route weather widget

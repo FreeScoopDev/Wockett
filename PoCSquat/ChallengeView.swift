@@ -67,7 +67,8 @@ struct ChallengesView: View {
                         ForEach(challenges) { challenge in
                             ChallengeCard(
                                 challenge: challenge,
-                                isJoined: ChallengeService.shared.hasJoined(challenge)
+                                isJoined: ChallengeService.shared.hasJoined(challenge),
+                                onHide: { challenges.removeAll { $0.id == challenge.id } }
                             )
                             .onTapGesture { selectedChallenge = challenge }
                         }
@@ -183,6 +184,7 @@ struct ChallengesView: View {
 private struct ChallengeCard: View {
     let challenge: WalkChallenge
     let isJoined:  Bool
+    var onHide: (() -> Void)? = nil
 
     var body: some View {
         HStack(spacing: 14) {
@@ -235,6 +237,22 @@ private struct ChallengeCard: View {
             RoundedRectangle(cornerRadius: 16)
                 .stroke(isJoined ? Color.earthGreen.opacity(0.3) : Color.clear, lineWidth: 1)
         )
+        .contextMenu {
+            if let onHide {
+                Button(role: .destructive) {
+                    CommunityModerationStore.shared.report(challenge.id)
+                    onHide()
+                } label: {
+                    Label("Report Challenge", systemImage: "flag")
+                }
+                Button(role: .destructive) {
+                    CommunityModerationStore.shared.block(author: challenge.authorName)
+                    onHide()
+                } label: {
+                    Label("Block \(challenge.authorName)", systemImage: "nosign")
+                }
+            }
+        }
     }
 }
 

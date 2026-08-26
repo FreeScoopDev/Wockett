@@ -26,7 +26,7 @@ struct AchievementFeedView: View {
                     ScrollView {
                         LazyVStack(spacing: 12) {
                             ForEach($posts) { $post in
-                                AchievementPostCard(post: $post)
+                                AchievementPostCard(post: $post, onHide: { posts.removeAll { $0.id == post.id } })
                                     .padding(.horizontal)
                             }
                         }
@@ -115,6 +115,7 @@ struct AchievementFeedView: View {
 
 private struct AchievementPostCard: View {
     @Binding var post: AchievementPost
+    var onHide: (() -> Void)? = nil
     @State private var hasLiked = false
 
     private let green = Color.earthGreen
@@ -185,6 +186,22 @@ private struct AchievementPostCard: View {
         .background(Color.earthCard)
         .cornerRadius(16)
         .onAppear { hasLiked = AchievementFeedService.shared.hasLiked(id: post.id) }
+        .contextMenu {
+            if let onHide {
+                Button(role: .destructive) {
+                    CommunityModerationStore.shared.report(post.id)
+                    onHide()
+                } label: {
+                    Label("Report Post", systemImage: "flag")
+                }
+                Button(role: .destructive) {
+                    CommunityModerationStore.shared.block(author: post.authorName)
+                    onHide()
+                } label: {
+                    Label("Block \(post.authorName)", systemImage: "nosign")
+                }
+            }
+        }
     }
 
     private func timeAgo(_ date: Date) -> String {

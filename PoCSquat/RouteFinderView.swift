@@ -502,7 +502,8 @@ struct RouteFinderView: View {
                                 ))
                                 savedCommunityIds.insert(route.id.recordName)
                             },
-                            onStart: { navigatingRoute = route.toNavigableRoute() }
+                            onStart: { navigatingRoute = route.toNavigableRoute() },
+                            onHide: { communityRoutes.removeAll { $0.id == route.id } }
                         )
                         .padding(.horizontal, 20)
                     }

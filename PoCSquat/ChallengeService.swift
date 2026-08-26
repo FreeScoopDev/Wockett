@@ -127,6 +127,7 @@ final class ChallengeService {
             guard let rec = try? r.get() else { return nil }
             return WalkChallenge(record: rec)
         }
+        .filter { !CommunityModerationStore.shared.shouldHide(id: $0.id, author: $0.authorName) }
     }
 
     func fetchLeaderboard(for challenge: WalkChallenge) async throws -> [ChallengeParticipant] {
@@ -144,10 +145,10 @@ final class ChallengeService {
     // MARK: - Create
 
     func createChallenge(title: String, emoji: String, goalSteps: Int, durationDays: Int) async throws {
+        try ContentFilter.validate(name: title)
         let cal   = Calendar.current
         let start = cal.startOfDay(for: Date())
-        let end   = cal.date(byAdding: .day, value: durationDays, to: start)!
-
+        guard let end = cal.date(byAdding: .day, value: durationDays, to: start) else { return }
         let record            = CKRecord(recordType: challengeType)
         record["title"]       = title
         record["emoji"]       = emoji

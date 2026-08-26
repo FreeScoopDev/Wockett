@@ -16,6 +16,7 @@
 		60AFBC65301DB0D000647902 /* CustomRouteBuilderCore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60AFBC64301DB0D000647902 /* CustomRouteBuilderCore.swift */; };
 		60D6DE3330150BF50032FC50 /* CommunityRouteService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60D6DE3230150BF50032FC50 /* CommunityRouteService.swift */; };
 		60DBB4E630127E3000CB62E2 /* RouteIntelligenceService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60DBB4E530127E3000CB62E2 /* RouteIntelligenceService.swift */; };
+		60F5E98C303E9C2D00454573 /* CommunityModeration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60F5E98B303E9C2D00454573 /* CommunityModeration.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -54,6 +55,7 @@
 		60AFBC64301DB0D000647902 /* CustomRouteBuilderCore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustomRouteBuilderCore.swift; sourceTree = "<group>"; };
 		60D6DE3230150BF50032FC50 /* CommunityRouteService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommunityRouteService.swift; sourceTree = "<group>"; };
 		60DBB4E530127E3000CB62E2 /* RouteIntelligenceService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouteIntelligenceService.swift; sourceTree = "<group>"; };
+		60F5E98B303E9C2D00454573 /* CommunityModeration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommunityModeration.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -134,6 +136,7 @@
 				60AFBC64301DB0D000647902 /* CustomRouteBuilderCore.swift */,
 				608392B3302523AE006100EE /* CustomRouteBuilderView.swift */,
 				608392B5302523E9006100EE /* CustomRoutesListView.swift */,
+				60F5E98B303E9C2D00454573 /* CommunityModeration.swift */,
 			);
 			sourceTree = "<group>";
 		};
@@ -275,6 +278,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				60D6DE3330150BF50032FC50 /* CommunityRouteService.swift in Sources */,
+				60F5E98C303E9C2D00454573 /* CommunityModeration.swift in Sources */,
 				60DBB4E630127E3000CB62E2 /* RouteIntelligenceService.swift in Sources */,
 				60AFBC65301DB0D000647902 /* CustomRouteBuilderCore.swift in Sources */,
 				608392B4302523AE006100EE /* CustomRouteBuilderView.swift in Sources */,

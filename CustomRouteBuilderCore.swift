@@ -72,7 +72,8 @@ final class CustomRouteBuilder: ObservableObject {
                 routeLegs.append(leg)
             }
         }
-        if closedLoop, let leg = await routeLeg(from: waypoints.last!, to: waypoints.first!) {
+        if closedLoop, waypoints.count >= 2,
+           let leg = await routeLeg(from: waypoints[waypoints.count - 1], to: waypoints[0]) {
             loopLeg      = leg
             isLoopClosed = true
         }

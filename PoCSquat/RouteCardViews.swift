@@ -118,6 +118,7 @@ struct CommunityRouteCard: View {
     let onWockett: () -> Void
     var onSave: (() -> Void)? = nil
     let onStart: () -> Void
+    var onHide: (() -> Void)? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -181,6 +182,22 @@ struct CommunityRouteCard: View {
         .padding(16)
         .background(Color.earthCard)
         .cornerRadius(14)
+        .contextMenu {
+            if let onHide {
+                Button(role: .destructive) {
+                    CommunityModerationStore.shared.report(route.id)
+                    onHide()
+                } label: {
+                    Label("Report Route", systemImage: "flag")
+                }
+                Button(role: .destructive) {
+                    CommunityModerationStore.shared.block(author: route.authorName)
+                    onHide()
+                } label: {
+                    Label("Block \(route.authorName)", systemImage: "nosign")
+                }
+            }
+        }
     }
 }
 
