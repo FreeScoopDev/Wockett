@@ -1,21 +1,89 @@
+# ===========================
 # Xcode
+# ===========================
+
+# User-specific Xcode settings — machine-specific, not project state
+*.xcuserstate
 xcuserdata/
+
+# Xcode source control / backup files
 *.xcscmblueprint
 *.xccheckout
-DerivedData/
+*.xcbkptlist
+
+# Build artifacts — never commit compiled output
 build/
+DerivedData/
+*.moved-aside
+*.pbxuser
+!default.pbxuser
+
+# Xcode profiling
+*.hmap
 *.ipa
 *.dSYM.zip
 *.dSYM
 
-# macOS
-.DS_Store
-.AppleDouble
-.LSOverride
+# Playgrounds
+playground.xcworkspace
+timeline.xctimeline
 
+# ===========================
 # Swift Package Manager
+# ===========================
 .build/
 .swiftpm/
 
+# ===========================
+# CocoaPods (not used, but safe to include)
+# ===========================
+Pods/
+*.xcworkspace
+!*.xcodeproj/*.xcworkspace
+Podfile.lock
+
+# ===========================
+# Carthage (not used, but safe)
+# ===========================
+Carthage/Build/
+
+# ===========================
+# Environment & secrets
+# ===========================
+# NEVER commit secrets, keys, or credentials
+*.env
+.env.*
+Config.xcconfig
+Secrets.swift
+secrets.swift
+APIKeys.swift
+apikeys.swift
 # Firebase — contains API keys, do not commit
 GoogleService-Info.plist
+
+# ===========================
+# macOS
+# ===========================
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.Spotlight-V100
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+# ===========================
+# IDE / Editor
+# ===========================
+.idea/
+*.swp
+*.swo
+*~
+.vscode/
