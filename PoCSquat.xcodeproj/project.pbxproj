@@ -10,13 +10,6 @@
 		60062A7F303AA71A002D5E94 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 60062A7E303AA71A002D5E94 /* WidgetKit.framework */; };
 		60062A81303AA71A002D5E94 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 60062A80303AA71A002D5E94 /* SwiftUI.framework */; };
 		60062A92303AA71B002D5E94 /* WocketWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 60062A7D303AA71A002D5E94 /* WocketWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
-		608392B4302523AE006100EE /* CustomRouteBuilderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 608392B3302523AE006100EE /* CustomRouteBuilderView.swift */; };
-		608392B6302523E9006100EE /* CustomRoutesListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 608392B5302523E9006100EE /* CustomRoutesListView.swift */; };
-		60AFBC63301DB0AE00647902 /* CustomRouteModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60AFBC62301DB0AE00647902 /* CustomRouteModels.swift */; };
-		60AFBC65301DB0D000647902 /* CustomRouteBuilderCore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60AFBC64301DB0D000647902 /* CustomRouteBuilderCore.swift */; };
-		60D6DE3330150BF50032FC50 /* CommunityRouteService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60D6DE3230150BF50032FC50 /* CommunityRouteService.swift */; };
-		60DBB4E630127E3000CB62E2 /* RouteIntelligenceService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60DBB4E530127E3000CB62E2 /* RouteIntelligenceService.swift */; };
-		60F5E98C303E9C2D00454573 /* CommunityModeration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60F5E98B303E9C2D00454573 /* CommunityModeration.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -48,14 +41,7 @@
 		60062A7E303AA71A002D5E94 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
 		60062A80303AA71A002D5E94 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
 		60062A9F303AAAA3002D5E94 /* WocketWidgetExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = WocketWidgetExtension.entitlements; sourceTree = "<group>"; };
-		608392B3302523AE006100EE /* CustomRouteBuilderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustomRouteBuilderView.swift; sourceTree = "<group>"; };
-		608392B5302523E9006100EE /* CustomRoutesListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustomRoutesListView.swift; sourceTree = "<group>"; };
 		6093BCDE3011AB1C00AD5E15 /* PoCSquat.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PoCSquat.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		60AFBC62301DB0AE00647902 /* CustomRouteModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustomRouteModels.swift; sourceTree = "<group>"; };
-		60AFBC64301DB0D000647902 /* CustomRouteBuilderCore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustomRouteBuilderCore.swift; sourceTree = "<group>"; };
-		60D6DE3230150BF50032FC50 /* CommunityRouteService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommunityRouteService.swift; sourceTree = "<group>"; };
-		60DBB4E530127E3000CB62E2 /* RouteIntelligenceService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouteIntelligenceService.swift; sourceTree = "<group>"; };
-		60F5E98B303E9C2D00454573 /* CommunityModeration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommunityModeration.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -129,14 +115,7 @@
 				6093BCE03011AB1C00AD5E15 /* PoCSquat */,
 				60062A82303AA71A002D5E94 /* WocketWidget */,
 				6093BCDF3011AB1C00AD5E15 /* Products */,
-				60DBB4E530127E3000CB62E2 /* RouteIntelligenceService.swift */,
 				60D6DE2C3013CAC20032FC50 /* Frameworks */,
-				60D6DE3230150BF50032FC50 /* CommunityRouteService.swift */,
-				60AFBC62301DB0AE00647902 /* CustomRouteModels.swift */,
-				60AFBC64301DB0D000647902 /* CustomRouteBuilderCore.swift */,
-				608392B3302523AE006100EE /* CustomRouteBuilderView.swift */,
-				608392B5302523E9006100EE /* CustomRoutesListView.swift */,
-				60F5E98B303E9C2D00454573 /* CommunityModeration.swift */,
 			);
 			sourceTree = "<group>";
 		};
@@ -191,6 +170,7 @@
 				6093BCDB3011AB1C00AD5E15 /* Frameworks */,
 				6093BCDC3011AB1C00AD5E15 /* Resources */,
 				60062A97303AA71B002D5E94 /* Embed Foundation Extensions */,
+				C03847458347B7446CD97E72 /* ShellScript */,
 			);
 			buildRules = (
 			);
@@ -265,6 +245,23 @@
 		};
 /* End PBXResourcesBuildPhase section */
 
+/* Begin PBXShellScriptBuildPhase section */
+		C03847458347B7446CD97E72 /* ShellScript */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 1;
+			shellPath = /bin/sh;
+			shellScript = "#!/bin/sh\n# Auto-increment build number on Archive, and stamp it into the built Info.plist directly.\nset -e\ncd \"$PROJECT_DIR\"\n/usr/bin/xcrun agvtool next-version -all > /dev/null\nNEW_BUILD=$(/usr/bin/xcrun agvtool what-version -terse)\nINFOPLIST=\"$TARGET_BUILD_DIR/$INFOPLIST_PATH\"\nif [ -f \"$INFOPLIST\" ]; then\n  /usr/libexec/PlistBuddy -c \"Set :CFBundleVersion $NEW_BUILD\" \"$INFOPLIST\"\nfi\necho \"Build number set to $NEW_BUILD\"\n";
+			showEnvVarsInLog = 0;
+		};
+/* End PBXShellScriptBuildPhase section */
+
 /* Begin PBXSourcesBuildPhase section */
 		60062A79303AA71A002D5E94 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
@@ -277,13 +274,6 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				60D6DE3330150BF50032FC50 /* CommunityRouteService.swift in Sources */,
-				60F5E98C303E9C2D00454573 /* CommunityModeration.swift in Sources */,
-				60DBB4E630127E3000CB62E2 /* RouteIntelligenceService.swift in Sources */,
-				60AFBC65301DB0D000647902 /* CustomRouteBuilderCore.swift in Sources */,
-				608392B4302523AE006100EE /* CustomRouteBuilderView.swift in Sources */,
-				608392B6302523E9006100EE /* CustomRoutesListView.swift in Sources */,
-				60AFBC63301DB0AE00647902 /* CustomRouteModels.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -305,7 +295,6 @@
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
 				CODE_SIGN_ENTITLEMENTS = WocketWidgetExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 7U83DJ2F97;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = WocketWidget/Info.plist;
@@ -316,7 +305,6 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = Scoops.PoCSquat.WocketWidget;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -326,6 +314,7 @@
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
+				VERSIONING_SYSTEM = "apple-generic";
 			};
 			name = Debug;
 		};
@@ -336,7 +325,6 @@
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
 				CODE_SIGN_ENTITLEMENTS = WocketWidgetExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 7U83DJ2F97;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = WocketWidget/Info.plist;
@@ -347,7 +335,6 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = Scoops.PoCSquat.WocketWidget;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -357,6 +344,7 @@
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
+				VERSIONING_SYSTEM = "apple-generic";
 			};
 			name = Release;
 		};
@@ -394,6 +382,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 14;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = 7U83DJ2F97;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -415,12 +404,14 @@
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.5;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MARKETING_VERSION = 1.8.1;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
 				SDKROOT = iphoneos;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				VERSIONING_SYSTEM = "apple-generic";
 			};
 			name = Debug;
 		};
@@ -458,6 +449,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 14;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = 7U83DJ2F97;
 				ENABLE_NS_ASSERTIONS = NO;
@@ -473,11 +465,13 @@
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.5;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MARKETING_VERSION = 1.8.1;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				SDKROOT = iphoneos;
 				SWIFT_COMPILATION_MODE = wholemodule;
 				VALIDATE_PRODUCT = YES;
+				VERSIONING_SYSTEM = "apple-generic";
 			};
 			name = Release;
 		};
@@ -489,7 +483,6 @@
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = PoCSquat/PoCSquat.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 14;
 				DEVELOPMENT_ASSET_PATHS = PoCSquat/Assets.xcassets;
 				DEVELOPMENT_TEAM = 7U83DJ2F97;
 				ENABLE_PREVIEWS = YES;
@@ -512,7 +505,6 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.8.1;
 				PRODUCT_BUNDLE_IDENTIFIER = Scoops.PoCSquat;
 				PRODUCT_NAME = PoCSquat;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -524,6 +516,7 @@
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
+				VERSIONING_SYSTEM = "apple-generic";
 			};
 			name = Debug;
 		};
@@ -535,7 +528,6 @@
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = PoCSquat/PoCSquat.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 14;
 				DEVELOPMENT_ASSET_PATHS = PoCSquat/Assets.xcassets;
 				DEVELOPMENT_TEAM = 7U83DJ2F97;
 				ENABLE_PREVIEWS = YES;
@@ -558,7 +550,6 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.8.1;
 				PRODUCT_BUNDLE_IDENTIFIER = Scoops.PoCSquat;
 				PRODUCT_NAME = PoCSquat;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -569,6 +560,7 @@
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
+				VERSIONING_SYSTEM = "apple-generic";
 			};
 			name = Release;
 		};
