@@ -66,7 +66,7 @@ final class ActivityDetectionService {
         // Only suggest tracking if: user is walking/cycling, high confidence,
         // and not within the cooldown window
         guard activity.confidence == .high,
-              (activity.walking || activity.cycling) else { return }
+              (activity.walking || activity.cycling || activity.running) else { return }
 
         if let dismissed = suggestionDismissedAt,
            Date().timeIntervalSince(dismissed) < suggestionCooldown { return }

@@ -61,8 +61,8 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
         UIApplication.shared.isIdleTimerDisabled = true
         locationManager.startUpdatingLocation()
         startTimer()
-        // Real-time step count + cadence from the motion coprocessor (walking only).
-        if route.activityMode == .walking && CMPedometer.isStepCountingAvailable() {
+        // Real-time step count + cadence from the motion coprocessor (walking and running).
+        if (route.activityMode == .walking || route.activityMode == .running) && CMPedometer.isStepCountingAvailable() {
             let from = startTime
             pedometer.startUpdates(from: from) { [weak self] data, error in
                 guard let self, let data, error == nil else { return }

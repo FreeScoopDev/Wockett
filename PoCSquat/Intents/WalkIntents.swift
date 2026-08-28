@@ -49,11 +49,12 @@ struct GetStepsIntent: AppIntent {
 // MARK: - WalkModeAppEnum
 
 enum WalkModeAppEnum: String, AppEnum {
-    case walking, cycling, indoor
+    case walking, running, cycling, indoor
 
     static var typeDisplayRepresentation = TypeDisplayRepresentation(name: "Walk Mode")
     static var caseDisplayRepresentations: [WalkModeAppEnum: DisplayRepresentation] = [
         .walking: .init(title: "Walking"),
+        .running: .init(title: "Running"),
         .cycling: .init(title: "Cycling"),
         .indoor:  .init(title: "Indoor")
     ]

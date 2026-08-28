@@ -35,7 +35,7 @@ struct CustomRouteBuilderView: View {
                         .font(.system(size: 34)).foregroundColor(.earthGreen)
                     Text("Tap the map to add waypoints")
                         .font(.headline).foregroundColor(.earthCream)
-                    Text("MapKit finds \(builder.activityMode == .cycling ? "cycling" : "walking") routes between each point")
+                    Text("MapKit finds \(builder.activityMode == .cycling ? "cycling" : "walking/running") routes between each point")
                         .font(.subheadline).foregroundColor(.earthMuted)
                         .multilineTextAlignment(.center)
                 }
@@ -50,6 +50,7 @@ struct CustomRouteBuilderView: View {
                 // Activity mode toggle chips
                 HStack(spacing: 8) {
                     modeChip(.walking)
+                    modeChip(.running)
                     modeChip(.cycling)
                 }
                 .padding(.horizontal)
@@ -142,7 +143,7 @@ struct CustomRouteBuilderView: View {
             HStack(spacing: 6) {
                 Image(systemName: mode.icon)
                     .font(.system(size: 13, weight: .semibold))
-                Text(mode == .cycling ? "Cycling" : "Walking")
+                Text(mode.sessionLabel)
                     .font(.subheadline.bold())
             }
             .padding(.horizontal, 16).padding(.vertical, 9)

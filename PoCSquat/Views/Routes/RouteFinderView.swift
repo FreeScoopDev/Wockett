@@ -180,6 +180,7 @@ struct RouteFinderView: View {
             VStack(spacing: 18) {
                 HStack(spacing: 8) {
                     activityModeChip(.walking)
+                    activityModeChip(.running)
                     activityModeChip(.cycling)
                 }
                 .padding(.horizontal, 20)

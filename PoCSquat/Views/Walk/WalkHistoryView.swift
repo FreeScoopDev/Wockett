@@ -130,6 +130,7 @@ struct WalkSessionDetailSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var notes: String = ""
+    @State private var selectedActivityType: String = ""
 
     private static let dateFmt: DateFormatter = {
         let f = DateFormatter(); f.dateStyle = .long; f.timeStyle = .short; return f
@@ -151,6 +152,20 @@ struct WalkSessionDetailSheet: View {
                             detailTile("\(session.estimatedSteps.formatted())", "Steps", "figure.walk")
                         }
                         .padding(.horizontal)
+
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Activity Type")
+                                .font(.caption.bold()).foregroundColor(.earthMuted)
+                                .padding(.horizontal)
+                            Picker("Activity Type", selection: $selectedActivityType) {
+                                Text("Walk").tag("walking")
+                                Text("Run").tag("running")
+                                Text("Bike").tag("cycling")
+                                Text("Indoor").tag("stationary")
+                            }
+                            .pickerStyle(.segmented)
+                            .padding(.horizontal)
+                        }
 
                         VStack(alignment: .leading, spacing: 8) {
                             Text("Notes")
@@ -198,6 +213,7 @@ struct WalkSessionDetailSheet: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") {
                         store.updateNotes(id: session.id, notes: notes)
+                        store.updateActivityType(id: session.id, activityType: selectedActivityType)
                         dismiss()
                     }
                     .foregroundColor(.earthGreen)
@@ -212,11 +228,20 @@ struct WalkSessionDetailSheet: View {
             }
         }
         .presentationDetents([.medium, .large])
-        .onAppear { notes = session.notes }
+        .onAppear {
+            notes = session.notes
+            selectedActivityType = session.activityType
+        }
     }
 
     private var shareText: String {
-        var text = "Just \(session.activityType == "cycling" ? "rode" : "walked") \(session.distanceText) in \(session.timeText) on Wockett 🚶"
+        let verb: String
+        switch session.activityType {
+        case "cycling":    verb = "rode"
+        case "running":    verb = "ran"
+        default:           verb = "walked"
+        }
+        var text = "Just \(verb) \(session.distanceText) in \(session.timeText) on Wockett 🚶"
         if !notes.isEmpty { text += "\n\n\"\(notes)\"" }
         return text
     }
@@ -389,6 +414,7 @@ struct WalkHistoryRow: View {
 
     private var rowIcon: String {
         switch session.activityType {
+        case "running":    return "figure.run"
         case "cycling":    return "bicycle"
         case "stationary": return "figure.walk.motion"
         default:           return "figure.walk"
@@ -397,6 +423,7 @@ struct WalkHistoryRow: View {
 
     private var rowColor: Color {
         switch session.activityType {
+        case "running":    return Color(red: 0.92, green: 0.46, blue: 0.14)
         case "cycling":    return Color(red: 0.13, green: 0.57, blue: 0.64)
         case "stationary": return Color(red: 0.42, green: 0.32, blue: 0.76)
         default:           return .earthGreen

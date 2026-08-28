@@ -152,8 +152,8 @@ final class FreeWalkManager: NSObject, ObservableObject, CLLocationManagerDelega
             guard let self else { return }
             DispatchQueue.main.async { self.elapsedSeconds = Int(Date().timeIntervalSince(self.startDate)) }
         }
-        // Real-time step count + cadence from the motion coprocessor (walking only).
-        if activityMode == .walking && CMPedometer.isStepCountingAvailable() {
+        // Real-time step count + cadence from the motion coprocessor (walking and running).
+        if (activityMode == .walking || activityMode == .running) && CMPedometer.isStepCountingAvailable() {
             let from = startDate
             pedometer.startUpdates(from: from) { [weak self] data, error in
                 guard let self, let data, error == nil else { return }
@@ -803,7 +803,7 @@ struct FreeWalkSummarySheet: View {
         guard !savedToHistory else { return }
         let session = WalkSession(
             id: UUID(),
-            routeName: walkManager.activityMode == .cycling ? "Free Ride" : "Free Walk",
+            routeName: walkManager.activityMode == .cycling ? "Free Ride" : walkManager.activityMode == .running ? "Free Run" : "Free Walk",
             date: walkManager.startDate,
             elapsedTime: TimeInterval(walkManager.elapsedSeconds),
             totalDistance: walkManager.totalDistance,

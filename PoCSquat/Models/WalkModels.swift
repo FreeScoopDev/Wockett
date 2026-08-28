@@ -31,11 +31,12 @@ enum WalkIntent: Equatable {
 // MARK: - Activity Mode
 
 enum ActivityMode: String {
-    case walking, cycling, stationary
+    case walking, running, cycling, stationary
 
     var icon: String {
         switch self {
         case .walking:    return "figure.walk"
+        case .running:    return "figure.run"
         case .cycling:    return "bicycle"
         case .stationary: return "figure.walk.motion"
         }
@@ -44,6 +45,7 @@ enum ActivityMode: String {
     var sessionLabel: String {
         switch self {
         case .walking:    return "Walk"
+        case .running:    return "Run"
         case .cycling:    return "Ride"
         case .stationary: return "Indoor"
         }
@@ -54,14 +56,19 @@ enum ActivityMode: String {
     }
 
     var hkActivityType: HKWorkoutActivityType {
-        self == .cycling ? .cycling : .walking
+        switch self {
+        case .cycling:    return .cycling
+        case .running:    return .running
+        default:          return .walking
+        }
     }
 
     var isIndoor: Bool { self == .stationary }
 
     var next: ActivityMode {
         switch self {
-        case .walking:    return .cycling
+        case .walking:    return .running
+        case .running:    return .cycling
         case .cycling:    return .stationary
         case .stationary: return .walking
         }
@@ -70,6 +77,7 @@ enum ActivityMode: String {
     var tileColor: Color {
         switch self {
         case .walking:    return Color.earthGreen
+        case .running:    return Color(red: 0.92, green: 0.46, blue: 0.14)
         case .cycling:    return Color(red: 0.13, green: 0.57, blue: 0.64)
         case .stationary: return Color(red: 0.42, green: 0.32, blue: 0.76)
         }
@@ -78,6 +86,7 @@ enum ActivityMode: String {
     var tileLabel: String {
         switch self {
         case .walking:    return "Start Walking"
+        case .running:    return "Start Running"
         case .cycling:    return "Start Biking"
         case .stationary: return "Start Indoor"
         }
@@ -345,6 +354,15 @@ final class WalkHistoryStore: ObservableObject {
         sessions[idx].notes = notes
         if let record = fetchRecord(id: id) {
             record.notes = notes
+            save()
+        }
+    }
+
+    func updateActivityType(id: UUID, activityType: String) {
+        guard let idx = sessions.firstIndex(where: { $0.id == id }) else { return }
+        sessions[idx].activityType = activityType
+        if let record = fetchRecord(id: id) {
+            record.activityType = activityType
             save()
         }
     }

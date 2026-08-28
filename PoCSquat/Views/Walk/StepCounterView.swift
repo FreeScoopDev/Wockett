@@ -203,7 +203,12 @@ struct StepCounterView: View {
                     ActivitySuggestionBanner(
                         activity: ActivityDetectionService.shared.detectedActivity,
                         onStart: {
-                            let mode: ActivityMode = ActivityDetectionService.shared.detectedActivity == .cycling ? .cycling : .walking
+                            let mode: ActivityMode
+                        switch ActivityDetectionService.shared.detectedActivity {
+                        case .cycling: mode = .cycling
+                        case .running: mode = .running
+                        default:       mode = .walking
+                        }
                             withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
                                 ActivityDetectionService.shared.dismissSuggestion()
                             }
@@ -957,8 +962,20 @@ private struct ActivitySuggestionBanner: View {
     let onStart: () -> Void
     let onDismiss: () -> Void
 
-    private var icon: String { activity == .cycling ? "bicycle" : "figure.walk" }
-    private var label: String { activity == .cycling ? "cycling" : "walking" }
+    private var icon: String {
+        switch activity {
+        case .cycling: return "bicycle"
+        case .running: return "figure.run"
+        default:       return "figure.walk"
+        }
+    }
+    private var label: String {
+        switch activity {
+        case .cycling: return "cycling"
+        case .running: return "running"
+        default:       return "walking"
+        }
+    }
 
     var body: some View {
         HStack(spacing: 12) {
