@@ -60,13 +60,6 @@
 			);
 			target = 60062A7C303AA71A002D5E94 /* WocketWidgetExtension */;
 		};
-		60062A9E303AA909002D5E94 /* Exceptions for "WocketWidget" folder in "PoCSquat" target */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			membershipExceptions = (
-				WalkActivityAttributes.swift,
-			);
-			target = 6093BCDD3011AB1C00AD5E15 /* PoCSquat */;
-		};
 		6093BD043011D61A00AD5E15 /* Exceptions for "PoCSquat" folder in "PoCSquat" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
@@ -74,13 +67,19 @@
 			);
 			target = 6093BCDD3011AB1C00AD5E15 /* PoCSquat */;
 		};
+		609DC7C83041346200FAF783 /* Exceptions for "PoCSquat" folder in "WocketWidgetExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Activity/WalkActivityAttributes.swift,
+			);
+			target = 60062A7C303AA71A002D5E94 /* WocketWidgetExtension */;
+		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		60062A82303AA71A002D5E94 /* WocketWidget */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
-				60062A9E303AA909002D5E94 /* Exceptions for "WocketWidget" folder in "PoCSquat" target */,
 				60062A96303AA71B002D5E94 /* Exceptions for "WocketWidget" folder in "WocketWidgetExtension" target */,
 			);
 			path = WocketWidget;
@@ -95,6 +94,7 @@
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
 				6093BD043011D61A00AD5E15 /* Exceptions for "PoCSquat" folder in "PoCSquat" target */,
+				609DC7C83041346200FAF783 /* Exceptions for "PoCSquat" folder in "WocketWidgetExtension" target */,
 			);
 			path = PoCSquat;
 			sourceTree = "<group>";
