@@ -215,7 +215,6 @@
 				6093BCDB3011AB1C00AD5E15 /* Frameworks */,
 				6093BCDC3011AB1C00AD5E15 /* Resources */,
 				60062A97303AA71B002D5E94 /* Embed Foundation Extensions */,
-				C03847458347B7446CD97E72 /* ShellScript */,
 			);
 			buildRules = (
 			);
@@ -301,27 +300,6 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
-
-/* Begin PBXShellScriptBuildPhase section */
-		C03847458347B7446CD97E72 /* ShellScript */ = {
-			isa = PBXShellScriptBuildPhase;
-			alwaysOutOfDate = 1;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputPaths = (
-				"$(PROJECT_DIR)/PoCSquat.xcodeproj/project.pbxproj",
-			);
-			outputPaths = (
-				"$(PROJECT_DIR)/PoCSquat.xcodeproj/project.pbxproj",
-				"$(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)",
-			);
-			runOnlyForDeploymentPostprocessing = 1;
-			shellPath = /bin/sh;
-			shellScript = "#!/bin/sh\n# Auto-increment build number on Archive, and stamp it into the built Info.plist directly.\nset -e\ncd \"$PROJECT_DIR\"\n/usr/bin/xcrun agvtool next-version -all > /dev/null\nNEW_BUILD=$(/usr/bin/xcrun agvtool what-version -terse)\nINFOPLIST=\"$TARGET_BUILD_DIR/$INFOPLIST_PATH\"\nif [ -f \"$INFOPLIST\" ]; then\n  /usr/libexec/PlistBuddy -c \"Set :CFBundleVersion $NEW_BUILD\" \"$INFOPLIST\"\nfi\necho \"Build number set to $NEW_BUILD\"\n";
-			showEnvVarsInLog = 0;
-		};
-/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		60062A79303AA71A002D5E94 /* Sources */ = {

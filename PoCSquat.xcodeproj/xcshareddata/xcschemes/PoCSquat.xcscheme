@@ -88,5 +88,23 @@
    <ArchiveAction
       buildConfiguration = "Release"
       revealArchiveInOrganizer = "YES">
+      <PreActions>
+         <ExecutionAction
+            ActionType = "Xcode.IDEStandardExecutionActionsCore.ExecutionActionType.ShellScriptAction">
+            <ActionContent
+               title = "Bump build number (agvtool)"
+               scriptText = "cd &quot;${PROJECT_DIR}&quot;&#10;/usr/bin/xcrun agvtool next-version -all &gt; /dev/null&#10;NEW_BUILD=$(/usr/bin/xcrun agvtool what-version -terse)&#10;echo &quot;Build number set to ${NEW_BUILD}&quot;&#10;">
+               <EnvironmentBuildable>
+                  <BuildableReference
+                     BuildableIdentifier = "primary"
+                     BlueprintIdentifier = "6093BCDD3011AB1C00AD5E15"
+                     BuildableName = "PoCSquat.app"
+                     BlueprintName = "PoCSquat"
+                     ReferencedContainer = "container:PoCSquat.xcodeproj">
+                  </BuildableReference>
+               </EnvironmentBuildable>
+            </ActionContent>
+         </ExecutionAction>
+      </PreActions>
    </ArchiveAction>
 </Scheme>
