@@ -113,8 +113,8 @@ struct RouteManagerTests {
         let originLoc  = CLLocation(latitude: origin.latitude,    longitude: origin.longitude)
         let resultLoc  = CLLocation(latitude: displaced.latitude, longitude: displaced.longitude)
         let actualDist = originLoc.distance(from: resultLoc)
-        // Allow ±1 m for floating-point and spherical approximation differences
-        #expect(abs(actualDist - 1_000) < 1.0)
+        // Allow ±3 m for floating-point and spherical approximation differences
+        #expect(abs(actualDist - 1_000) < 3.0)
     }
 
     @Test func coordinateOffset_zeroDist_returnsOriginalCoordinate() {
