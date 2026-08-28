@@ -4,14 +4,15 @@ import CloudKit
 // MARK: - Challenges View
 
 struct ChallengesView: View {
-    @ObservedObject var stepManager: StepManager
+    @ObservedObject var stepManager:  StepManager
+    @ObservedObject var historyStore: WalkHistoryStore
     @Environment(\.dismiss) private var dismiss
 
-    @State private var challenges:    [WalkChallenge] = []
-    @State private var isLoading      = false
-    @State private var loadError:     String?         = nil
-    @State private var selectedChallenge: WalkChallenge? = nil
-    @State private var showCreate     = false
+    @State private var challenges:        [WalkChallenge] = []
+    @State private var isLoading         = false
+    @State private var loadError:        String?          = nil
+    @State private var selectedChallenge: WalkChallenge?  = nil
+    @State private var showCreate        = false
 
     var body: some View {
         NavigationStack {
@@ -36,11 +37,8 @@ struct ChallengesView: View {
                     Button("Done") { dismiss() }.foregroundColor(.earthGreen)
                 }
                 ToolbarItem(placement: .primaryAction) {
-                    Button {
-                        showCreate = true
-                    } label: {
-                        Image(systemName: "plus")
-                            .foregroundColor(.earthGreen)
+                    Button { showCreate = true } label: {
+                        Image(systemName: "plus").foregroundColor(.earthGreen)
                     }
                 }
             }
@@ -49,7 +47,7 @@ struct ChallengesView: View {
                 CreateChallengeView()
             }
             .sheet(item: $selectedChallenge) { challenge in
-                ChallengeDetailView(challenge: challenge, stepManager: stepManager)
+                ChallengeDetailView(challenge: challenge, stepManager: stepManager, historyStore: historyStore)
             }
         }
     }
@@ -57,9 +55,7 @@ struct ChallengesView: View {
     private var challengeList: some View {
         ScrollView {
             VStack(spacing: 0) {
-                headerBanner
-                    .padding(.bottom, 16)
-
+                headerBanner.padding(.bottom, 16)
                 if challenges.isEmpty && !isLoading {
                     emptyState
                 } else {
@@ -75,7 +71,6 @@ struct ChallengesView: View {
                     }
                     .padding(.horizontal, 20)
                 }
-
                 if let err = loadError {
                     Text(err)
                         .font(.caption).foregroundColor(.earthOrange)
@@ -111,8 +106,7 @@ struct ChallengesView: View {
 
     private var emptyState: some View {
         VStack(spacing: 16) {
-            Text("🏁")
-                .font(.system(size: 48))
+            Text("🏁").font(.system(size: 48))
             Text("No active challenges yet")
                 .font(.headline).foregroundColor(.earthCream)
             Text("Tap + to create the first community challenge and invite others to join.")
@@ -126,15 +120,12 @@ struct ChallengesView: View {
     private func errorView(_ message: String) -> some View {
         VStack(spacing: 16) {
             Image(systemName: "exclamationmark.icloud")
-                .font(.system(size: 40))
-                .foregroundColor(.earthMuted)
+                .font(.system(size: 40)).foregroundColor(.earthMuted)
             Text(message)
                 .font(.subheadline).foregroundColor(.earthMuted)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 32)
-            Button {
-                Task { await load() }
-            } label: {
+            Button { Task { await load() } } label: {
                 Label("Retry", systemImage: "arrow.clockwise")
                     .font(.subheadline.bold())
                     .foregroundColor(.earthGreen)
@@ -192,8 +183,7 @@ private struct ChallengeCard: View {
                 RoundedRectangle(cornerRadius: 12)
                     .fill(Color.earthGreen.opacity(0.1))
                     .frame(width: 50, height: 50)
-                Text(challenge.emoji)
-                    .font(.system(size: 26))
+                Text(challenge.emoji).font(.system(size: 26))
             }
 
             VStack(alignment: .leading, spacing: 4) {
@@ -214,8 +204,7 @@ private struct ChallengeCard: View {
                 HStack(spacing: 8) {
                     Text(challenge.goalText)
                         .font(.caption).foregroundColor(.earthMuted)
-                    Text("·")
-                        .font(.caption).foregroundColor(.earthMuted.opacity(0.4))
+                    Text("·").font(.caption).foregroundColor(.earthMuted.opacity(0.4))
                     Text(challenge.timeRemainingText)
                         .font(.caption)
                         .foregroundColor(challenge.daysRemaining(from: Date()) <= 1 ? .earthOrange : .earthMuted)
@@ -260,20 +249,21 @@ private struct ChallengeCard: View {
 
 struct ChallengeDetailView: View {
     let challenge:    WalkChallenge
-    @ObservedObject var stepManager: StepManager
+    @ObservedObject var stepManager:  StepManager
+    @ObservedObject var historyStore: WalkHistoryStore
     @Environment(\.dismiss) private var dismiss
 
-    @State private var participants: [ChallengeParticipant] = []
-    @State private var mySteps:      Int  = 0
-    @State private var isLoading     = false
-    @State private var isSyncing     = false
-    @State private var loadError:    String? = nil
-    @State private var syncMessage:  String? = nil
+    @State private var participants:    [ChallengeParticipant] = []
+    @State private var myProgressValue: Int    = 0
+    @State private var isLoading              = false
+    @State private var isSyncing              = false
+    @State private var loadError:       String? = nil
+    @State private var syncMessage:     String? = nil
 
     private var isJoined: Bool { ChallengeService.shared.hasJoined(challenge) }
     private var myRank: Int? {
         guard isJoined else { return nil }
-        return (participants.firstIndex { $0.isCurrentDevice }.map { $0 + 1 })
+        return participants.firstIndex { $0.isCurrentDevice }.map { $0 + 1 }
     }
 
     var body: some View {
@@ -298,7 +288,7 @@ struct ChallengeDetailView: View {
             }
             .task {
                 await loadLeaderboard()
-                mySteps = await ChallengeService.shared.fetchSteps(for: challenge)
+                await loadMyProgress()
             }
         }
         .presentationDetents([.large])
@@ -323,7 +313,7 @@ struct ChallengeDetailView: View {
                     Text(challenge.timeRemainingText)
                         .font(.subheadline)
                         .foregroundColor(challenge.daysRemaining(from: Date()) <= 1 ? .earthOrange : .earthMuted)
-                    Text("\(challenge.durationDays)-day challenge · by \(challenge.authorName)")
+                    Text(detailSubtitle)
                         .font(.caption).foregroundColor(.earthMuted.opacity(0.65))
                 }
                 Spacer()
@@ -331,7 +321,7 @@ struct ChallengeDetailView: View {
             .padding(.horizontal, 20)
             .padding(.top, 8)
 
-            if isJoined || mySteps > 0 {
+            if isJoined || myProgressValue > 0 {
                 VStack(spacing: 8) {
                     HStack {
                         Text("Your Progress")
@@ -339,17 +329,16 @@ struct ChallengeDetailView: View {
                         Spacer()
                         if let rank = myRank {
                             Text("Rank #\(rank)")
-                                .font(.caption.bold())
-                                .foregroundColor(.earthGreen)
+                                .font(.caption.bold()).foregroundColor(.earthGreen)
                         }
-                        Text("\(mySteps.formatted()) / \(challenge.goalSteps.formatted()) steps")
+                        Text(challenge.progressDisplay(for: myProgressValue))
                             .font(.system(size: 11, weight: .bold, design: .rounded).monospacedDigit())
                             .foregroundColor(.earthCream)
                     }
                     .padding(.horizontal, 20)
 
                     GeometryReader { geo in
-                        let prog = challenge.progress(for: mySteps)
+                        let prog = challenge.progress(for: myProgressValue)
                         ZStack(alignment: .leading) {
                             Capsule().fill(Color.earthMuted.opacity(0.12))
                             Capsule()
@@ -361,19 +350,29 @@ struct ChallengeDetailView: View {
                     }
                     .frame(height: 8)
                     .padding(.horizontal, 20)
+
+                    if challenge.goalType == .pace {
+                        Text("Qualifying sessions beat \(challengeFormattedPace(challenge.goalPaceSecsPerKm)) · \(challenge.activityFilterLabel)")
+                            .font(.system(size: 10)).foregroundColor(.earthMuted.opacity(0.7))
+                            .padding(.horizontal, 20)
+                    }
                 }
             }
         }
         .padding(.vertical, 4)
     }
 
+    private var detailSubtitle: String {
+        let base = "\(challenge.durationDays)-day challenge"
+        let filter = challenge.activityFilter != nil ? " · \(challenge.activityFilterLabel)" : ""
+        return "\(base)\(filter) · by \(challenge.authorName)"
+    }
+
     // MARK: - Sync
 
     private var syncSection: some View {
         VStack(spacing: 10) {
-            Button {
-                Task { await syncProgress() }
-            } label: {
+            Button { Task { await syncProgress() } } label: {
                 Group {
                     if isSyncing {
                         HStack(spacing: 8) {
@@ -381,8 +380,7 @@ struct ChallengeDetailView: View {
                             Text("Syncing…")
                         }
                     } else {
-                        Label(isJoined ? "Sync My Steps" : "Join & Sync Steps",
-                              systemImage: isJoined ? "arrow.triangle.2.circlepath" : "person.badge.plus")
+                        Label(syncButtonLabel, systemImage: isJoined ? "arrow.triangle.2.circlepath" : "person.badge.plus")
                     }
                 }
                 .font(.subheadline.bold())
@@ -404,6 +402,14 @@ struct ChallengeDetailView: View {
         .animation(.easeInOut(duration: 0.2), value: syncMessage)
     }
 
+    private var syncButtonLabel: String {
+        switch challenge.goalType {
+        case .steps:    return isJoined ? "Sync My Steps"    : "Join & Sync Steps"
+        case .distance: return isJoined ? "Sync My Distance" : "Join & Sync Distance"
+        case .pace:     return isJoined ? "Sync My Runs"     : "Join & Sync Runs"
+        }
+    }
+
     // MARK: - Leaderboard
 
     @ViewBuilder
@@ -416,7 +422,7 @@ struct ChallengeDetailView: View {
                 if isLoading {
                     ProgressView().scaleEffect(0.7).tint(.earthGreen)
                 } else {
-                    Text("\(participants.count) walker\(participants.count == 1 ? "" : "s")")
+                    Text("\(participants.count) participant\(participants.count == 1 ? "" : "s")")
                         .font(.caption).foregroundColor(.earthMuted)
                 }
             }
@@ -432,12 +438,8 @@ struct ChallengeDetailView: View {
                     .padding(.horizontal, 20)
             } else {
                 ForEach(participants.indices, id: \.self) { i in
-                    LeaderboardRow(
-                        rank: i + 1,
-                        participant: participants[i],
-                        goalSteps: challenge.goalSteps
-                    )
-                    .padding(.horizontal, 20)
+                    LeaderboardRow(rank: i + 1, participant: participants[i], challenge: challenge)
+                        .padding(.horizontal, 20)
                     if i < participants.count - 1 {
                         Divider()
                             .background(Color.earthMuted.opacity(0.1))
@@ -454,6 +456,15 @@ struct ChallengeDetailView: View {
 
     // MARK: - Actions
 
+    private func loadMyProgress() async {
+        switch challenge.goalType {
+        case .steps:
+            myProgressValue = await ChallengeService.shared.fetchSteps(for: challenge)
+        case .distance, .pace:
+            myProgressValue = challenge.localProgressValue(from: historyStore.sessions)
+        }
+    }
+
     private func loadLeaderboard() async {
         isLoading = true; loadError = nil
         do {
@@ -466,11 +477,17 @@ struct ChallengeDetailView: View {
 
     private func syncProgress() async {
         isSyncing = true; syncMessage = nil
-        let steps = await ChallengeService.shared.fetchSteps(for: challenge)
-        mySteps = steps
+        let value: Int
+        switch challenge.goalType {
+        case .steps:
+            value = await ChallengeService.shared.fetchSteps(for: challenge)
+        case .distance, .pace:
+            value = challenge.localProgressValue(from: historyStore.sessions)
+        }
+        myProgressValue = value
         do {
-            try await ChallengeService.shared.joinOrUpdate(challenge, steps: steps)
-            syncMessage = "Synced \(steps.formatted()) steps ✓"
+            try await ChallengeService.shared.joinOrUpdate(challenge, steps: value)
+            syncMessage = "Synced \(challenge.leaderboardDisplay(for: value)) ✓"
             await loadLeaderboard()
         } catch {
             syncMessage = "Sync failed — check your connection."
@@ -484,9 +501,9 @@ struct ChallengeDetailView: View {
 private struct LeaderboardRow: View {
     let rank:        Int
     let participant: ChallengeParticipant
-    let goalSteps:   Int
+    let challenge:   WalkChallenge
 
-    private var progress: Double { min(1.0, Double(participant.steps) / Double(max(1, goalSteps))) }
+    private var progress: Double { challenge.progress(for: participant.steps) }
     private var medalEmoji: String? {
         switch rank {
         case 1: return "🥇"
@@ -498,7 +515,6 @@ private struct LeaderboardRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            // Rank
             Group {
                 if let medal = medalEmoji {
                     Text(medal).font(.title3)
@@ -518,9 +534,7 @@ private struct LeaderboardRow: View {
                         .foregroundColor(participant.isCurrentDevice ? .earthGreen : .earthCream)
                         .lineLimit(1)
                     if participant.isCurrentDevice {
-                        Circle()
-                            .fill(Color.earthGreen)
-                            .frame(width: 5, height: 5)
+                        Circle().fill(Color.earthGreen).frame(width: 5, height: 5)
                     }
                 }
 
@@ -538,7 +552,7 @@ private struct LeaderboardRow: View {
                 .frame(height: 4)
             }
 
-            Text("\(participant.steps.formatted())")
+            Text(challenge.leaderboardDisplay(for: participant.steps))
                 .font(.system(size: 13, weight: .semibold, design: .rounded).monospacedDigit())
                 .foregroundColor(.earthCream)
                 .frame(minWidth: 60, alignment: .trailing)
@@ -552,16 +566,53 @@ private struct LeaderboardRow: View {
 struct CreateChallengeView: View {
     @Environment(\.dismiss) private var dismiss
 
-    @State private var title      = ""
-    @State private var emoji      = "🏆"
-    @State private var goalSteps  = 50_000
-    @State private var duration   = 7
-    @State private var isSaving   = false
+    @State private var title    = ""
+    @State private var emoji    = "🏆"
+    @State private var duration = 7
+    @State private var isSaving  = false
     @State private var saveError: String? = nil
 
-    private let emojiOptions  = ["🏆", "🔥", "⚡️", "🌿", "🦅", "💪", "🌍", "🏃", "🎯", "🌟"]
-    private let goalOptions   = [10_000, 25_000, 50_000, 75_000, 100_000, 150_000, 200_000]
+    // Goal type
+    @State private var goalType:      ChallengeGoalType = .steps
+    @State private var activityFilter: String? = nil  // nil = any
+
+    // Steps
+    @State private var goalSteps = 50_000
+
+    // Distance
+    @State private var goalDistanceMeters = 10_000.0
+
+    // Pace
+    @State private var goalPaceSecsPerKm = 480.0  // 8:00/km
+    @State private var goalSessionCount  = 3
+
+    private let emojiOptions    = ["🏆", "🔥", "⚡️", "🌿", "🦅", "💪", "🌍", "🏃", "🎯", "🌟"]
+    private let stepOptions     = [10_000, 25_000, 50_000, 75_000, 100_000, 150_000, 200_000]
     private let durationOptions = [3, 7, 14, 30]
+    private let sessionCountOptions = [1, 3, 5, 7, 10]
+
+    private var distanceOptions: [(meters: Double, label: String)] {
+        let useMetric = Locale.current.measurementSystem != .us
+        return useMetric
+            ? [(5_000, "5 km"), (10_000, "10 km"), (20_000, "20 km"), (50_000, "50 km"), (100_000, "100 km")]
+            : [(4_828, "3 mi"), (9_656, "6 mi"), (20_921, "13 mi"), (41_843, "26 mi"), (99_779, "62 mi")]
+    }
+
+    private let paceOptions: [(secsPerKm: Double, hint: String)] = [
+        (300, "blazing 🔥"),
+        (360, "race pace"),
+        (420, "strong"),
+        (480, "solid"),
+        (540, "comfy"),
+        (600, "any pace wins"),
+    ]
+
+    private let activityOptions: [(filter: String?, label: String, icon: String)] = [
+        (nil,       "Any",   "sparkles"),
+        ("walking", "Walk",  "figure.walk"),
+        ("running", "Run",   "figure.run"),
+        ("cycling", "Bike",  "figure.outdoor.cycle"),
+    ]
 
     var body: some View {
         NavigationStack {
@@ -569,112 +620,19 @@ struct CreateChallengeView: View {
                 Color.earthBg.ignoresSafeArea()
                 ScrollView {
                     VStack(spacing: 24) {
-                        // Title
-                        formSection(title: "Challenge Name") {
-                            TextField("e.g. 100K Weekend Blast", text: $title)
-                                .foregroundColor(.earthCream)
-                                .padding(.horizontal, 14).padding(.vertical, 12)
-                                .background(Color.earthCard)
-                                .cornerRadius(12)
-                        }
-
-                        // Emoji
-                        formSection(title: "Icon") {
-                            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 5), spacing: 10) {
-                                ForEach(emojiOptions, id: \.self) { e in
-                                    Button {
-                                        emoji = e
-                                    } label: {
-                                        Text(e)
-                                            .font(.system(size: 28))
-                                            .frame(maxWidth: .infinity)
-                                            .padding(.vertical, 10)
-                                            .background(emoji == e
-                                                ? Color.earthGreen.opacity(0.2)
-                                                : Color.earthCard)
-                                            .cornerRadius(10)
-                                            .overlay(
-                                                RoundedRectangle(cornerRadius: 10)
-                                                    .stroke(emoji == e ? Color.earthGreen.opacity(0.5) : Color.clear, lineWidth: 1.5)
-                                            )
-                                    }
-                                }
-                            }
-                        }
-
-                        // Goal
-                        formSection(title: "Step Goal") {
-                            VStack(spacing: 8) {
-                                ForEach(goalOptions, id: \.self) { g in
-                                    Button {
-                                        goalSteps = g
-                                    } label: {
-                                        HStack {
-                                            Text(formatK(g))
-                                                .font(.subheadline.bold())
-                                                .foregroundColor(goalSteps == g ? .white : .earthCream)
-                                            Spacer()
-                                            Text(approxTime(steps: g))
-                                                .font(.caption)
-                                                .foregroundColor(goalSteps == g ? .white.opacity(0.8) : .earthMuted)
-                                        }
-                                        .padding(.horizontal, 14).padding(.vertical, 11)
-                                        .background(goalSteps == g ? Color.earthGreen : Color.earthCard)
-                                        .cornerRadius(10)
-                                    }
-                                }
-                            }
-                        }
-
-                        // Duration
-                        formSection(title: "Duration") {
-                            HStack(spacing: 8) {
-                                ForEach(durationOptions, id: \.self) { d in
-                                    Button {
-                                        duration = d
-                                    } label: {
-                                        Text("\(d)d")
-                                            .font(.caption.bold())
-                                            .frame(maxWidth: .infinity)
-                                            .padding(.vertical, 11)
-                                            .background(duration == d ? Color.earthGreen : Color.earthCard)
-                                            .foregroundColor(duration == d ? .white : .earthCream)
-                                            .cornerRadius(10)
-                                    }
-                                }
-                            }
-                        }
-
+                        titleSection
+                        emojiSection
+                        goalTypeSection
+                        if goalType != .steps { activitySection }
+                        goalValueSection
+                        durationSection
                         if let err = saveError {
                             Text(err)
                                 .font(.caption).foregroundColor(.earthOrange)
                                 .multilineTextAlignment(.center)
                                 .padding(.horizontal, 16)
                         }
-
-                        Button {
-                            Task { await save() }
-                        } label: {
-                            Group {
-                                if isSaving {
-                                    HStack(spacing: 8) {
-                                        ProgressView().tint(.white).scaleEffect(0.85)
-                                        Text("Creating…")
-                                    }
-                                } else {
-                                    Label("Create Challenge", systemImage: "trophy.fill")
-                                }
-                            }
-                            .font(.headline)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 18)
-                            .background(title.trimmingCharacters(in: .whitespaces).isEmpty
-                                ? Color.earthGreen.opacity(0.45)
-                                : Color.earthGreen)
-                            .foregroundColor(.white)
-                            .cornerRadius(14)
-                        }
-                        .disabled(title.trimmingCharacters(in: .whitespaces).isEmpty || isSaving)
+                        createButton
                     }
                     .padding(.horizontal, 20)
                     .padding(.top, 16)
@@ -693,6 +651,222 @@ struct CreateChallengeView: View {
         .presentationDragIndicator(.visible)
     }
 
+    // MARK: - Sections
+
+    private var titleSection: some View {
+        formSection(title: "Challenge Name") {
+            TextField("e.g. Weekend Runfest", text: $title)
+                .foregroundColor(.earthCream)
+                .padding(.horizontal, 14).padding(.vertical, 12)
+                .background(Color.earthCard)
+                .cornerRadius(12)
+        }
+    }
+
+    private var emojiSection: some View {
+        formSection(title: "Icon") {
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 5), spacing: 10) {
+                ForEach(emojiOptions, id: \.self) { e in
+                    Button { emoji = e } label: {
+                        Text(e)
+                            .font(.system(size: 28))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 10)
+                            .background(emoji == e ? Color.earthGreen.opacity(0.2) : Color.earthCard)
+                            .cornerRadius(10)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 10)
+                                    .stroke(emoji == e ? Color.earthGreen.opacity(0.5) : Color.clear, lineWidth: 1.5)
+                            )
+                    }
+                }
+            }
+        }
+    }
+
+    private var goalTypeSection: some View {
+        formSection(title: "Goal Type") {
+            HStack(spacing: 8) {
+                ForEach(ChallengeGoalType.allCases, id: \.self) { type in
+                    let selected = goalType == type
+                    Button { goalType = type } label: {
+                        VStack(spacing: 4) {
+                            Text(goalTypeEmoji(type)).font(.system(size: 22))
+                            Text(goalTypeLabel(type))
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(selected ? .white : .earthCream)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(selected ? Color.earthGreen : Color.earthCard)
+                        .cornerRadius(12)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(selected ? Color.earthGreen.opacity(0.5) : Color.clear, lineWidth: 1.5)
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    private var activitySection: some View {
+        formSection(title: "Activity") {
+            HStack(spacing: 8) {
+                ForEach(activityOptions, id: \.label) { opt in
+                    let selected = activityFilter == opt.filter
+                    Button { activityFilter = opt.filter } label: {
+                        VStack(spacing: 4) {
+                            Image(systemName: opt.icon).font(.system(size: 18))
+                            Text(opt.label)
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(selected ? .white : .earthCream)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(selected ? Color.earthGreen : Color.earthCard)
+                        .foregroundColor(selected ? .white : .earthMuted)
+                        .cornerRadius(12)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(selected ? Color.earthGreen.opacity(0.5) : Color.clear, lineWidth: 1.5)
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var goalValueSection: some View {
+        switch goalType {
+        case .steps:
+            formSection(title: "Step Goal") {
+                VStack(spacing: 8) {
+                    ForEach(stepOptions, id: \.self) { g in
+                        Button { goalSteps = g } label: {
+                            HStack {
+                                Text(formatK(g))
+                                    .font(.subheadline.bold())
+                                    .foregroundColor(goalSteps == g ? .white : .earthCream)
+                                Spacer()
+                                Text(approxStepTime(steps: g))
+                                    .font(.caption)
+                                    .foregroundColor(goalSteps == g ? .white.opacity(0.8) : .earthMuted)
+                            }
+                            .padding(.horizontal, 14).padding(.vertical, 11)
+                            .background(goalSteps == g ? Color.earthGreen : Color.earthCard)
+                            .cornerRadius(10)
+                        }
+                    }
+                }
+            }
+        case .distance:
+            formSection(title: "Distance Goal") {
+                VStack(spacing: 8) {
+                    ForEach(distanceOptions, id: \.meters) { opt in
+                        Button { goalDistanceMeters = opt.meters } label: {
+                            HStack {
+                                Text(opt.label)
+                                    .font(.subheadline.bold())
+                                    .foregroundColor(goalDistanceMeters == opt.meters ? .white : .earthCream)
+                                Spacer()
+                                Text(distanceHint(meters: opt.meters))
+                                    .font(.caption)
+                                    .foregroundColor(goalDistanceMeters == opt.meters ? .white.opacity(0.8) : .earthMuted)
+                            }
+                            .padding(.horizontal, 14).padding(.vertical, 11)
+                            .background(goalDistanceMeters == opt.meters ? Color.earthGreen : Color.earthCard)
+                            .cornerRadius(10)
+                        }
+                    }
+                }
+            }
+        case .pace:
+            VStack(spacing: 24) {
+                formSection(title: "Target Pace") {
+                    VStack(spacing: 8) {
+                        ForEach(paceOptions, id: \.secsPerKm) { opt in
+                            Button { goalPaceSecsPerKm = opt.secsPerKm } label: {
+                                HStack {
+                                    Text(challengeFormattedPace(opt.secsPerKm))
+                                        .font(.subheadline.bold())
+                                        .foregroundColor(goalPaceSecsPerKm == opt.secsPerKm ? .white : .earthCream)
+                                    Spacer()
+                                    Text(opt.hint)
+                                        .font(.caption)
+                                        .foregroundColor(goalPaceSecsPerKm == opt.secsPerKm ? .white.opacity(0.8) : .earthMuted)
+                                }
+                                .padding(.horizontal, 14).padding(.vertical, 11)
+                                .background(goalPaceSecsPerKm == opt.secsPerKm ? Color.earthGreen : Color.earthCard)
+                                .cornerRadius(10)
+                            }
+                        }
+                    }
+                }
+                formSection(title: "Sessions Needed") {
+                    HStack(spacing: 8) {
+                        ForEach(sessionCountOptions, id: \.self) { n in
+                            Button { goalSessionCount = n } label: {
+                                Text("\(n)")
+                                    .font(.subheadline.bold())
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 12)
+                                    .background(goalSessionCount == n ? Color.earthGreen : Color.earthCard)
+                                    .foregroundColor(goalSessionCount == n ? .white : .earthCream)
+                                    .cornerRadius(10)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private var durationSection: some View {
+        formSection(title: "Duration") {
+            HStack(spacing: 8) {
+                ForEach(durationOptions, id: \.self) { d in
+                    Button { duration = d } label: {
+                        Text("\(d)d")
+                            .font(.caption.bold())
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 11)
+                            .background(duration == d ? Color.earthGreen : Color.earthCard)
+                            .foregroundColor(duration == d ? .white : .earthCream)
+                            .cornerRadius(10)
+                    }
+                }
+            }
+        }
+    }
+
+    private var createButton: some View {
+        Button { Task { await save() } } label: {
+            Group {
+                if isSaving {
+                    HStack(spacing: 8) {
+                        ProgressView().tint(.white).scaleEffect(0.85)
+                        Text("Creating…")
+                    }
+                } else {
+                    Label("Create Challenge", systemImage: "trophy.fill")
+                }
+            }
+            .font(.headline)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 18)
+            .background(title.trimmingCharacters(in: .whitespaces).isEmpty
+                ? Color.earthGreen.opacity(0.45)
+                : Color.earthGreen)
+            .foregroundColor(.white)
+            .cornerRadius(14)
+        }
+        .disabled(title.trimmingCharacters(in: .whitespaces).isEmpty || isSaving)
+    }
+
+    // MARK: - Helpers
+
     private func formSection<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(title)
@@ -707,10 +881,15 @@ struct CreateChallengeView: View {
         isSaving = true; saveError = nil
         do {
             try await ChallengeService.shared.createChallenge(
-                title:       title.trimmingCharacters(in: .whitespaces),
-                emoji:       emoji,
-                goalSteps:   goalSteps,
-                durationDays: duration
+                title:              title.trimmingCharacters(in: .whitespaces),
+                emoji:              emoji,
+                goalType:           goalType,
+                activityFilter:     activityFilter,
+                goalSteps:          goalSteps,
+                goalDistanceMeters: goalDistanceMeters,
+                goalPaceSecsPerKm:  goalPaceSecsPerKm,
+                goalSessionCount:   goalSessionCount,
+                durationDays:       duration
             )
             dismiss()
         } catch {
@@ -719,14 +898,43 @@ struct CreateChallengeView: View {
         isSaving = false
     }
 
+    private func goalTypeLabel(_ type: ChallengeGoalType) -> String {
+        switch type {
+        case .steps:    return "Steps"
+        case .distance: return "Distance"
+        case .pace:     return "Pace"
+        }
+    }
+
+    private func goalTypeEmoji(_ type: ChallengeGoalType) -> String {
+        switch type {
+        case .steps:    return "🦶"
+        case .distance: return "📏"
+        case .pace:     return "⚡️"
+        }
+    }
+
     private func formatK(_ n: Int) -> String {
         n >= 1_000 ? "\(n / 1_000)K steps" : "\(n) steps"
     }
 
-    private func approxTime(steps: Int) -> String {
+    private func approxStepTime(steps: Int) -> String {
         let mins = steps / 100
         if mins < 60 { return "~\(mins) min" }
         return "~\(mins / 60)h \(mins % 60)m"
+    }
+
+    private func distanceHint(meters: Double) -> String {
+        let secsPerKm: Double
+        switch activityFilter {
+        case "running": secsPerKm = 360
+        case "cycling": secsPerKm = 180
+        default:        secsPerKm = 720
+        }
+        let totalMins = Int((meters / 1000) * secsPerKm) / 60
+        if totalMins < 60 { return "~\(totalMins) min" }
+        let h = totalMins / 60; let m = totalMins % 60
+        return m == 0 ? "~\(h)h" : "~\(h)h \(m)m"
     }
 }
 

@@ -94,7 +94,7 @@ struct StepCounterView: View {
                 AchievementFeedView()
             }
             .sheet(isPresented: $showChallenges) {
-                ChallengesView(stepManager: stepManager)
+                ChallengesView(stepManager: stepManager, historyStore: historyStore)
             }
     }
 
