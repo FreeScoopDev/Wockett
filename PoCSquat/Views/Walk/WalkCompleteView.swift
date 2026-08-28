@@ -12,7 +12,9 @@ struct WalkCompleteView: View {
     var splits: [(label: String, elapsed: TimeInterval)] = []
     var newPRs: [PRType] = []
     let onDismiss: () -> Void
+    var onExcludeFromRouteStats: (() -> Void)? = nil
     @State private var showSchedule        = false
+    @State private var excludedFromStats   = false
     @State private var ringProgress: [UUID: Double] = [:]
     @State private var shareItems: [Any]   = []
     @State private var showShareSheet      = false
@@ -64,6 +66,9 @@ struct WalkCompleteView: View {
                 }
                 if !splits.isEmpty {
                     splitsSection
+                }
+                if session.customRouteId != nil {
+                    routeStatsPrompt
                 }
                 Spacer()
                 VStack(spacing: 12) {
@@ -160,6 +165,36 @@ struct WalkCompleteView: View {
             .padding(.horizontal)
         }
         .padding(.vertical, 8)
+    }
+
+    private var routeStatsPrompt: some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                if excludedFromStats {
+                    Text("Excluded from route history")
+                        .font(.subheadline.bold()).foregroundColor(.earthMuted)
+                } else {
+                    Text("Counting toward \"\(session.routeName)\"")
+                        .font(.subheadline.bold()).foregroundColor(.earthCream)
+                }
+                Text(excludedFromStats ? "This session won't appear in route runs" : "Tap exclude to skip route stats for this session")
+                    .font(.caption).foregroundColor(.earthMuted)
+            }
+            Spacer()
+            if !excludedFromStats {
+                Button("Exclude") {
+                    excludedFromStats = true
+                    onExcludeFromRouteStats?()
+                }
+                .font(.caption.bold())
+                .foregroundColor(.earthMuted)
+            }
+        }
+        .padding(14)
+        .background(Color.earthCard)
+        .cornerRadius(12)
+        .padding(.horizontal)
+        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: excludedFromStats)
     }
 
     private func splitTimeText(_ t: TimeInterval) -> String {

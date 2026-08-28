@@ -109,7 +109,10 @@ struct WalkNavigationView: View {
                     petCompletions: petCompletions,
                     splits: session.splitTimes,
                     newPRs: completedPRs,
-                    onDismiss: { showComplete = false }
+                    onDismiss: { showComplete = false },
+                    onExcludeFromRouteStats: s.customRouteId != nil ? {
+                        historyStore.updateCountsTowardRouteStats(id: s.id, counts: false)
+                    } : nil
                 )
             }
         }

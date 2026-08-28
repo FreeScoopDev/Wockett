@@ -181,7 +181,8 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
             lapCount: route.lapCount,
             isLoop: route.isLoop,
             activityType: route.activityMode.rawValue,
-            steps: liveSteps
+            steps: liveSteps,
+            customRouteId: route.customRouteId
         )
     }
 

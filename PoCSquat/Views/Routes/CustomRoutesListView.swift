@@ -246,7 +246,8 @@ struct CustomRouteDetailView: View {
                                 lapCount:      1,
                                 isLoop:        route.isLoop,
                                 totalDistance: route.totalDistance,
-                                isCustomRoute: true
+                                isCustomRoute: true,
+                                customRouteId: route.id
                             )
                         } label: {
                             Label("Start Walk", systemImage: "figure.walk")
@@ -255,6 +256,19 @@ struct CustomRouteDetailView: View {
                                 .background(Color.earthGreen).foregroundColor(.white)
                                 .fontWeight(.semibold).cornerRadius(14)
                         }
+
+                        NavigationLink {
+                            RouteSessionHistoryView(route: route, historyStore: historyStore)
+                        } label: {
+                            Label("View Run History", systemImage: "clock.arrow.circlepath")
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 14)
+                                .background(Color.earthCard)
+                                .foregroundColor(.earthCream)
+                                .fontWeight(.semibold)
+                                .cornerRadius(12)
+                        }
+                        .buttonStyle(.plain)
 
                         VStack(spacing: 4) {
                             Button {
