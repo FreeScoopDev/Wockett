@@ -13,6 +13,7 @@ struct WalkCompleteView: View {
     var newPRs: [PRType] = []
     let onDismiss: () -> Void
     var onExcludeFromRouteStats: (() -> Void)? = nil
+    var historyStore: WalkHistoryStore? = nil
     @State private var showSchedule        = false
     @State private var excludedFromStats   = false
     @State private var ringProgress: [UUID: Double] = [:]
@@ -60,6 +61,13 @@ struct WalkCompleteView: View {
                 .padding(.horizontal)
                 if !newPRs.isEmpty {
                     prBanner
+                }
+                if let line = stopEncouragement {
+                    Text(line)
+                        .font(.subheadline.bold())
+                        .foregroundColor(.earthGreen)
+                        .padding(.horizontal)
+                        .transition(.opacity)
                 }
                 if !petCompletions.isEmpty {
                     petRingsSection
@@ -165,6 +173,29 @@ struct WalkCompleteView: View {
             .padding(.horizontal)
         }
         .padding(.vertical, 8)
+    }
+
+    // Returns "Fewer stops than last time!" when stops improved but pace didn't,
+    // giving a positive signal even when the overall time didn't beat the last run.
+    private var stopEncouragement: String? {
+        guard let routeId = session.customRouteId,
+              let currentStops = session.stopCount,
+              let store = historyStore else { return nil }
+        let prev = store.sessions
+            .filter { $0.customRouteId == routeId && $0.countsTowardRouteStats && $0.id != session.id }
+            .sorted { $0.date > $1.date }
+            .first
+        guard let prev, let prevStops = prev.stopCount, currentStops < prevStops else { return nil }
+        let paceImproved: Bool
+        if session.totalDistance > 200, session.elapsedTime > 0,
+           prev.totalDistance > 200, prev.elapsedTime > 0 {
+            let currPace = session.elapsedTime / (session.totalDistance / 1000)
+            let prevPace = prev.elapsedTime / (prev.totalDistance / 1000)
+            paceImproved = currPace < prevPace
+        } else {
+            paceImproved = false
+        }
+        return paceImproved ? nil : "Fewer stops than last time!"
     }
 
     private var routeStatsPrompt: some View {

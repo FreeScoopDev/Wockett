@@ -30,6 +30,7 @@ final class WalkSessionRecord {
     var isCommunityRoute: Bool = false
     var customRouteIdString: String? = nil
     var countsTowardRouteStats: Bool = true
+    var stopCount: Int = -1    // -1 encodes nil (no data); ≥0 is a real stop count
 
     init(from session: WalkSession) {
         id               = session.id
@@ -45,6 +46,7 @@ final class WalkSessionRecord {
         isCommunityRoute = session.isCommunityRoute
         customRouteIdString     = session.customRouteId?.uuidString
         countsTowardRouteStats  = session.countsTowardRouteStats
+        stopCount               = session.stopCount ?? -1
         activePetIdsData  = (try? JSONEncoder().encode(session.activePetIds.map(\.uuidString))) ?? Data()
         waypointsData     = (try? JSONEncoder().encode(session.waypoints)) ?? Data()
         let distStrings   = Dictionary(uniqueKeysWithValues: session.petDistances.map { (k, v) in (k.uuidString, v) })
@@ -75,7 +77,8 @@ final class WalkSessionRecord {
             steps:                 steps,
             isCommunityRoute:      isCommunityRoute,
             customRouteId:         customRouteIdString.flatMap { UUID(uuidString: $0) },
-            countsTowardRouteStats: countsTowardRouteStats
+            countsTowardRouteStats: countsTowardRouteStats,
+            stopCount:             stopCount >= 0 ? stopCount : nil
         )
     }
 }

@@ -16,6 +16,7 @@ struct SettingsView: View {
     @AppStorage("notif_weeklySummary")     private var weeklySummaryEnabled = true
     @AppStorage("notif_hydration")         private var hydrationEnabled = true
     @AppStorage("notif_streakProtection")  private var streakProtectionEnabled = true
+    @AppStorage("walk_breakPromptMinutes") private var breakPromptMinutes = 3
     @State private var notifAuthorized = false
     @State private var showScheduleSheet = false
 
@@ -58,6 +59,19 @@ struct SettingsView: View {
                         .listRowBackground(Color.earthCard)
                     }
                 }
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        Stepper(
+                            "Break prompt after \(breakPromptMinutes) min",
+                            value: $breakPromptMinutes,
+                            in: 1...15
+                        )
+                        .foregroundColor(.earthCream)
+                        Text("Shows a \"Still walking?\" prompt when no movement is detected for this long during an active walk.")
+                            .font(.caption).foregroundColor(.earthMuted)
+                    }
+                    .padding(.vertical, 4)
+                    .listRowBackground(Color.earthCard)
 
                 // ── Notifications ─────────────────────────────────
                 Section("Notifications") {

@@ -30,6 +30,7 @@ struct WalkNavigationView: View {
     @State private var petAccumulatedDistances: [UUID: Double] = [:]
     @State private var allWalkPetIds: Set<UUID> = []
     @State private var walkStartDate: Date = Date()
+    @State private var showBreakPromptAlert = false
 
     init(route: NavigableRoute, historyStore: WalkHistoryStore) {
         self.route = route
@@ -73,6 +74,25 @@ struct WalkNavigationView: View {
                 }
             }
             .onChange(of: petStore.activePets.count) { _, count in handlePetCountChange(count) }
+            .onChange(of: session.showBreakPrompt) { _, show in
+                if show { showBreakPromptAlert = true }
+            }
+            .alert("Still walking?", isPresented: $showBreakPromptAlert) {
+                Button("End Walk", role: .destructive) {
+                    session.dismissBreakPrompt()
+                    session.stop()
+                    Task { await WalkLiveActivityManager.shared.end(
+                        distanceCovered: session.totalDistanceCovered,
+                        elapsedSeconds:  Int(session.elapsedTime)
+                    )}
+                    dismiss()
+                }
+                Button("Keep Tracking", role: .cancel) {
+                    session.dismissBreakPrompt()
+                }
+            } message: {
+                Text("You haven't moved in a few minutes. End the walk or keep tracking?")
+            }
             .onChange(of: waterBreakEnabled) { _, enabled in
                 guard enabled else { return }
                 Task { await scheduleWaterBreakReminders() }
@@ -112,7 +132,8 @@ struct WalkNavigationView: View {
                     onDismiss: { showComplete = false },
                     onExcludeFromRouteStats: s.customRouteId != nil ? {
                         historyStore.updateCountsTowardRouteStats(id: s.id, counts: false)
-                    } : nil
+                    } : nil,
+                    historyStore: historyStore
                 )
             }
         }

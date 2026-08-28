@@ -12,6 +12,58 @@ final class NavCheckpointCircle: MKCircle {
     var isFinish = false
 }
 
+// MARK: - Stop Tracker
+//
+// Shared helper that drives both the 15-second stop-count tally and the
+// configurable break prompt. Feed `tick()` once per second; it manages its
+// own internal time-keeping so the caller needs no extra state.
+
+private struct StopTracker {
+    private(set) var stopCount: Int = 0
+
+    private var stoppedSince:     Date? = nil
+    private var stopCountRecorded       = false
+    private var breakPromptFired        = false
+
+    let stopCountThreshold: TimeInterval = 15   // seconds before counting a stop
+    let breakThreshold: TimeInterval            // configurable; default 180 s
+
+    enum Event { case showBreakPrompt }
+
+    init(breakThresholdSeconds: TimeInterval) {
+        self.breakThreshold = breakThresholdSeconds
+    }
+
+    // Call once per second. Returns an event if one fires; nil otherwise.
+    mutating func tick(isMoving: Bool, now: Date = Date()) -> Event? {
+        guard !isMoving else {
+            stoppedSince      = nil
+            stopCountRecorded = false
+            breakPromptFired  = false
+            return nil
+        }
+        if stoppedSince == nil { stoppedSince = now }
+        let elapsed = now.timeIntervalSince(stoppedSince!)
+
+        if elapsed >= breakThreshold && !breakPromptFired {
+            breakPromptFired = true
+            return .showBreakPrompt
+        }
+        if elapsed >= stopCountThreshold && !stopCountRecorded {
+            stopCountRecorded = true
+            stopCount += 1
+        }
+        return nil
+    }
+
+    // Call when the user dismisses the break prompt to restart fresh tracking.
+    mutating func reset() {
+        stoppedSince      = nil
+        stopCountRecorded = false
+        breakPromptFired  = false
+    }
+}
+
 // MARK: - Navigation Session Manager
 
 // waypoints[0] is the user's starting position.
@@ -45,6 +97,12 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
     private var pausedDuration: TimeInterval = 0
     private var pauseStart: Date?
 
+    // Stop detection — shared between the stop-count tally and break prompt.
+    private var stopTracker = StopTracker(breakThresholdSeconds: 180)
+    private var lastMovementTime: Date = Date()
+    private let movementWindow: TimeInterval = 8  // seconds; no GPS update in this window → considered stopped
+    var showBreakPrompt: Bool = false
+
     init(route: NavigableRoute) {
         self.route = route
         super.init()
@@ -60,6 +118,10 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
         startTime = Date()
         UIApplication.shared.isIdleTimerDisabled = true
         locationManager.startUpdatingLocation()
+        let storedMins = UserDefaults.standard.integer(forKey: "walk_breakPromptMinutes")
+        let breakMins = storedMins > 0 ? storedMins : 3
+        stopTracker = StopTracker(breakThresholdSeconds: TimeInterval(breakMins * 60))
+        lastMovementTime = Date()
         startTimer()
         // Real-time step count + cadence from the motion coprocessor (walking and running).
         if (route.activityMode == .walking || route.activityMode == .running) && CMPedometer.isStepCountingAvailable() {
@@ -90,6 +152,12 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 self.elapsedTime = Date().timeIntervalSince(self.startTime) - self.pausedDuration
+                guard !self.isPaused else { return }
+                let now = Date()
+                let isMoving = now.timeIntervalSince(self.lastMovementTime) < self.movementWindow
+                if self.stopTracker.tick(isMoving: isMoving, now: now) != nil {
+                    self.showBreakPrompt = true
+                }
             }
         }
     }
@@ -112,6 +180,7 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
         }
         isPaused = false
         UIApplication.shared.isIdleTimerDisabled = true
+        lastMovementTime = Date()   // prevent a phantom stop on the first ticks after resuming
         locationManager.startUpdatingLocation()
         startTimer()
     }
@@ -122,6 +191,11 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
         timer?.invalidate()
         timer = nil
         UIApplication.shared.isIdleTimerDisabled = false
+    }
+
+    func dismissBreakPrompt() {
+        stopTracker.reset()
+        showBreakPrompt = false
     }
 
     // Finalises the HealthKit workout after the session is saved to local history.
@@ -163,6 +237,7 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
     }
 
     var estimatedSteps: Int { liveSteps > 0 ? liveSteps : Int(totalDistanceCovered / 0.762) }
+    var stopCount: Int { stopTracker.stopCount }
 
     var estimatedSecondsRemaining: Double? {
         guard totalDistanceCovered > 100, elapsedTime > 10, remainingDistance > 10 else { return nil }
@@ -182,7 +257,8 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
             isLoop: route.isLoop,
             activityType: route.activityMode.rawValue,
             steps: liveSteps,
-            customRouteId: route.customRouteId
+            customRouteId: route.customRouteId,
+            stopCount: stopTracker.stopCount
         )
     }
 
@@ -196,6 +272,7 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
                 if delta < 100 { self.totalDistanceCovered += delta }
             }
             self.lastLocation = loc
+            self.lastMovementTime = Date()
             self.workoutWriter?.addLocations(locations)
             self.checkArrival(at: loc)
             if !self.route.isCustomRoute { self.checkDistanceCheckpoints() }

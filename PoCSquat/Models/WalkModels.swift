@@ -248,13 +248,14 @@ struct WalkSession: Identifiable, Codable {
     var isCommunityRoute: Bool // true when session originated from a community route card
     var customRouteId: UUID?  // set when walk was started from a saved CustomRoute; nil = free walk
     var countsTowardRouteStats: Bool // user can exclude a session from route history; default true
+    var stopCount: Int?       // stops detected during guided session; nil for pre-existing or free walks
 
     init(id: UUID, routeName: String, date: Date, elapsedTime: TimeInterval,
          totalDistance: Double, waypoints: [WaypointCoord], lapCount: Int,
          isLoop: Bool, activePetIds: [UUID] = [], activityType: String = "walking",
          notes: String = "", petDistances: [UUID: Double] = [:], steps: Int = 0,
          isCommunityRoute: Bool = false, customRouteId: UUID? = nil,
-         countsTowardRouteStats: Bool = true) {
+         countsTowardRouteStats: Bool = true, stopCount: Int? = nil) {
         self.id = id; self.routeName = routeName; self.date = date
         self.elapsedTime = elapsedTime; self.totalDistance = totalDistance
         self.waypoints = waypoints; self.lapCount = lapCount
@@ -264,6 +265,7 @@ struct WalkSession: Identifiable, Codable {
         self.isCommunityRoute = isCommunityRoute
         self.customRouteId = customRouteId
         self.countsTowardRouteStats = countsTowardRouteStats
+        self.stopCount = stopCount
     }
 
     init(from decoder: Decoder) throws {
@@ -282,12 +284,13 @@ struct WalkSession: Identifiable, Codable {
         petDistances          = (try? c.decode([UUID: Double].self, forKey: .petDistances))          ?? [:]
         steps                 = (try? c.decode(Int.self,            forKey: .steps))                 ?? 0
         isCommunityRoute      = (try? c.decode(Bool.self,           forKey: .isCommunityRoute))      ?? false
-        customRouteId         = try? c.decode(UUID.self,            forKey: .customRouteId)
+        customRouteId          = try? c.decode(UUID.self,            forKey: .customRouteId)
         countsTowardRouteStats = (try? c.decode(Bool.self,          forKey: .countsTowardRouteStats)) ?? true
+        stopCount              = try? c.decode(Int.self,             forKey: .stopCount)
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, routeName, date, elapsedTime, totalDistance, waypoints, lapCount, isLoop, activePetIds, activityType, notes, petDistances, steps, isCommunityRoute, customRouteId, countsTowardRouteStats
+        case id, routeName, date, elapsedTime, totalDistance, waypoints, lapCount, isLoop, activePetIds, activityType, notes, petDistances, steps, isCommunityRoute, customRouteId, countsTowardRouteStats, stopCount
     }
 
     // Returns actual pedometer steps when available, otherwise estimates from GPS distance.
