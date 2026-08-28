@@ -91,6 +91,16 @@ enum ActivityMode: String {
         case .stationary: return "Start Indoor"
         }
     }
+
+    // Maximum plausible speed (m/s) for this mode; used by DrivingDetector.
+    var drivingSpeedCeiling: Double {
+        switch self {
+        case .walking:    return 3.5   // ~12.6 km/h
+        case .running:    return 7.0   // ~25.2 km/h
+        case .cycling:    return 15.0  // ~54 km/h
+        case .stationary: return 3.5
+        }
+    }
 }
 
 // MARK: - Suggested Route Model
@@ -249,13 +259,15 @@ struct WalkSession: Identifiable, Codable {
     var customRouteId: UUID?  // set when walk was started from a saved CustomRoute; nil = free walk
     var countsTowardRouteStats: Bool // user can exclude a session from route history; default true
     var stopCount: Int?       // stops detected during guided session; nil for pre-existing or free walks
+    var flaggedPossibleVehicle: Bool // driving was suspected and user didn't affirm; default false
 
     init(id: UUID, routeName: String, date: Date, elapsedTime: TimeInterval,
          totalDistance: Double, waypoints: [WaypointCoord], lapCount: Int,
          isLoop: Bool, activePetIds: [UUID] = [], activityType: String = "walking",
          notes: String = "", petDistances: [UUID: Double] = [:], steps: Int = 0,
          isCommunityRoute: Bool = false, customRouteId: UUID? = nil,
-         countsTowardRouteStats: Bool = true, stopCount: Int? = nil) {
+         countsTowardRouteStats: Bool = true, stopCount: Int? = nil,
+         flaggedPossibleVehicle: Bool = false) {
         self.id = id; self.routeName = routeName; self.date = date
         self.elapsedTime = elapsedTime; self.totalDistance = totalDistance
         self.waypoints = waypoints; self.lapCount = lapCount
@@ -266,6 +278,7 @@ struct WalkSession: Identifiable, Codable {
         self.customRouteId = customRouteId
         self.countsTowardRouteStats = countsTowardRouteStats
         self.stopCount = stopCount
+        self.flaggedPossibleVehicle = flaggedPossibleVehicle
     }
 
     init(from decoder: Decoder) throws {
@@ -284,13 +297,14 @@ struct WalkSession: Identifiable, Codable {
         petDistances          = (try? c.decode([UUID: Double].self, forKey: .petDistances))          ?? [:]
         steps                 = (try? c.decode(Int.self,            forKey: .steps))                 ?? 0
         isCommunityRoute      = (try? c.decode(Bool.self,           forKey: .isCommunityRoute))      ?? false
-        customRouteId          = try? c.decode(UUID.self,            forKey: .customRouteId)
-        countsTowardRouteStats = (try? c.decode(Bool.self,          forKey: .countsTowardRouteStats)) ?? true
-        stopCount              = try? c.decode(Int.self,             forKey: .stopCount)
+        customRouteId           = try? c.decode(UUID.self,            forKey: .customRouteId)
+        countsTowardRouteStats  = (try? c.decode(Bool.self,          forKey: .countsTowardRouteStats)) ?? true
+        stopCount               = try? c.decode(Int.self,             forKey: .stopCount)
+        flaggedPossibleVehicle  = (try? c.decode(Bool.self,          forKey: .flaggedPossibleVehicle)) ?? false
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, routeName, date, elapsedTime, totalDistance, waypoints, lapCount, isLoop, activePetIds, activityType, notes, petDistances, steps, isCommunityRoute, customRouteId, countsTowardRouteStats, stopCount
+        case id, routeName, date, elapsedTime, totalDistance, waypoints, lapCount, isLoop, activePetIds, activityType, notes, petDistances, steps, isCommunityRoute, customRouteId, countsTowardRouteStats, stopCount, flaggedPossibleVehicle
     }
 
     // Returns actual pedometer steps when available, otherwise estimates from GPS distance.
@@ -458,8 +472,9 @@ enum PRType: Identifiable {
 // Returns any PRs the new session sets against the previous session list.
 // Call BEFORE adding the new session to the store.
 func checkNewPRs(newSession: WalkSession, against previousSessions: [WalkSession]) -> [PRType] {
-    guard newSession.totalDistance > 200, newSession.activePetIds.isEmpty else { return [] }
-    let prev = previousSessions.filter { $0.totalDistance > 200 }
+    guard newSession.totalDistance > 200, newSession.activePetIds.isEmpty,
+          !newSession.flaggedPossibleVehicle else { return [] }
+    let prev = previousSessions.filter { $0.totalDistance > 200 && !$0.flaggedPossibleVehicle }
     var records: [PRType] = []
 
     let prevLongest = prev.map(\.totalDistance).max() ?? 0

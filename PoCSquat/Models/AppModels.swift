@@ -31,6 +31,7 @@ final class WalkSessionRecord {
     var customRouteIdString: String? = nil
     var countsTowardRouteStats: Bool = true
     var stopCount: Int = -1    // -1 encodes nil (no data); ≥0 is a real stop count
+    var flaggedPossibleVehicle: Bool = false
 
     init(from session: WalkSession) {
         id               = session.id
@@ -47,6 +48,7 @@ final class WalkSessionRecord {
         customRouteIdString     = session.customRouteId?.uuidString
         countsTowardRouteStats  = session.countsTowardRouteStats
         stopCount               = session.stopCount ?? -1
+        flaggedPossibleVehicle  = session.flaggedPossibleVehicle
         activePetIdsData  = (try? JSONEncoder().encode(session.activePetIds.map(\.uuidString))) ?? Data()
         waypointsData     = (try? JSONEncoder().encode(session.waypoints)) ?? Data()
         let distStrings   = Dictionary(uniqueKeysWithValues: session.petDistances.map { (k, v) in (k.uuidString, v) })
@@ -76,9 +78,10 @@ final class WalkSessionRecord {
             petDistances:          distances,
             steps:                 steps,
             isCommunityRoute:      isCommunityRoute,
-            customRouteId:         customRouteIdString.flatMap { UUID(uuidString: $0) },
+            customRouteId:          customRouteIdString.flatMap { UUID(uuidString: $0) },
             countsTowardRouteStats: countsTowardRouteStats,
-            stopCount:             stopCount >= 0 ? stopCount : nil
+            stopCount:              stopCount >= 0 ? stopCount : nil,
+            flaggedPossibleVehicle: flaggedPossibleVehicle
         )
     }
 }

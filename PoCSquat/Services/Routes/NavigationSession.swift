@@ -64,6 +64,43 @@ private struct StopTracker {
     }
 }
 
+// MARK: - Driving Detector
+//
+// Flags likely vehicle use via two independent triggers:
+// 1. Speed above the mode ceiling or automotive-high CoreMotion confidence
+//    sustained continuously for ~25 seconds.
+// 2. A second separate detection episode (catches stop-and-go driving that a
+//    single sustained window would miss).
+//
+// Feed tick() once per second; returns .drivingSuspected when triggered.
+
+private struct DrivingDetector {
+    private var episodeStart: Date? = nil
+    private var episodeCount: Int = 0
+    private let sustainedThreshold: TimeInterval = 25
+    private let minEpisodeDuration: TimeInterval = 4   // sub-4 s blips are noise
+
+    let speedCeiling: Double  // m/s; set from ActivityMode.drivingSpeedCeiling
+
+    fileprivate init(speedCeiling: Double) { self.speedCeiling = speedCeiling }
+
+    enum Event { case drivingSuspected }
+
+    mutating func tick(speed: Double, isAutomotiveHigh: Bool, now: Date = Date()) -> Event? {
+        let overThreshold = (speed >= 0 && speed > speedCeiling) || isAutomotiveHigh
+        if overThreshold {
+            if episodeStart == nil { episodeStart = now }
+            let elapsed = now.timeIntervalSince(episodeStart!)
+            if episodeCount >= 1 { return .drivingSuspected }          // second episode
+            if elapsed >= sustainedThreshold { return .drivingSuspected } // sustained first
+        } else if let start = episodeStart {
+            if now.timeIntervalSince(start) >= minEpisodeDuration { episodeCount += 1 }
+            episodeStart = nil
+        }
+        return nil
+    }
+}
+
 // MARK: - Navigation Session Manager
 
 // waypoints[0] is the user's starting position.
@@ -103,9 +140,17 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
     private let movementWindow: TimeInterval = 8  // seconds; no GPS update in this window → considered stopped
     var showBreakPrompt: Bool = false
 
+    // Driving detection — compares GPS speed and CoreMotion automotive classification.
+    private var drivingDetector = DrivingDetector(speedCeiling: 3.5)
+    private var lastKnownSpeed: Double = -1   // -1 until first GPS fix
+    var drivingSuspected: Bool = false
+    private(set) var drivingEverDetected: Bool = false
+    private(set) var drivingAffirmedByUser: Bool = false
+
     init(route: NavigableRoute) {
         self.route = route
         super.init()
+        drivingDetector = DrivingDetector(speedCeiling: route.activityMode.drivingSpeedCeiling)
         locationManager.delegate = self
         locationManager.desiredAccuracy = kCLLocationAccuracyBestForNavigation
         locationManager.distanceFilter = 5
@@ -158,6 +203,13 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
                 if self.stopTracker.tick(isMoving: isMoving, now: now) != nil {
                     self.showBreakPrompt = true
                 }
+                if !self.drivingAffirmedByUser, !self.drivingSuspected {
+                    let isAutomotive = ActivityDetectionService.shared.isAutomotiveHighConfidence
+                    if self.drivingDetector.tick(speed: self.lastKnownSpeed, isAutomotiveHigh: isAutomotive, now: now) != nil {
+                        self.drivingEverDetected = true
+                        self.drivingSuspected = true
+                    }
+                }
             }
         }
     }
@@ -196,6 +248,11 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
     func dismissBreakPrompt() {
         stopTracker.reset()
         showBreakPrompt = false
+    }
+
+    func clearDrivingSuspicion() {
+        drivingAffirmedByUser = true
+        drivingSuspected = false
     }
 
     // Finalises the HealthKit workout after the session is saved to local history.
@@ -258,7 +315,8 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
             activityType: route.activityMode.rawValue,
             steps: liveSteps,
             customRouteId: route.customRouteId,
-            stopCount: stopTracker.stopCount
+            stopCount: stopTracker.stopCount,
+            flaggedPossibleVehicle: drivingEverDetected && !drivingAffirmedByUser
         )
     }
 
@@ -273,6 +331,7 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
             }
             self.lastLocation = loc
             self.lastMovementTime = Date()
+            self.lastKnownSpeed = loc.speed
             self.workoutWriter?.addLocations(locations)
             self.checkArrival(at: loc)
             if !self.route.isCustomRoute { self.checkDistanceCheckpoints() }

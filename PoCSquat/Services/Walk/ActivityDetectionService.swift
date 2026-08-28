@@ -22,6 +22,7 @@ final class ActivityDetectionService {
 
     var detectedActivity: DetectedActivity = .unknown
     var showWalkSuggestion: Bool = false
+    var isAutomotiveHighConfidence: Bool = false
 
     private let motionManager = CMMotionActivityManager()
     private var suggestionDismissedAt: Date?
@@ -62,6 +63,8 @@ final class ActivityDetectionService {
         } else {
             detectedActivity = .unknown
         }
+
+        isAutomotiveHighConfidence = activity.automotive && activity.confidence == .high
 
         // Only suggest tracking if: user is walking/cycling, high confidence,
         // and not within the cooldown window

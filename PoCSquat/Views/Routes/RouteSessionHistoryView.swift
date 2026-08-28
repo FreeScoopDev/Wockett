@@ -12,7 +12,7 @@ struct RouteSessionHistoryView: View {
 
     private var sessions: [WalkSession] {
         historyStore.sessions
-            .filter { $0.customRouteId == route.id && $0.countsTowardRouteStats }
+            .filter { $0.customRouteId == route.id && $0.countsTowardRouteStats && !$0.flaggedPossibleVehicle }
             .sorted { $0.date > $1.date }
     }
 

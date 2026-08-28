@@ -12,7 +12,8 @@ struct BadgesView: View {
 
     var streakStore: StreakStore = .shared
 
-    private var totalKm:       Double { streakStore.totalKm(from: sessions) }
+    private var cleanSessions: [WalkSession] { sessions.filter { !$0.flaggedPossibleVehicle } }
+    private var totalKm:       Double { streakStore.totalKm(from: cleanSessions) }
     private var currentStreak: Int    { streakStore.currentStreak }
     private var appleADayStreak: Int  { streakStore.appleADayStreak }
     private var longestStreak: Int    { streakStore.longestStreak }
@@ -205,7 +206,7 @@ struct BadgesView: View {
 
         // Best single day (aggregate session steps by calendar day)
         var stepsByDay: [Date: Int] = [:]
-        for s in sessions {
+        for s in cleanSessions {
             let day = cal.startOfDay(for: s.date)
             stepsByDay[day, default: 0] += s.estimatedSteps
         }
@@ -219,7 +220,7 @@ struct BadgesView: View {
         }
 
         // Longest single walk by distance
-        if let longest = sessions.max(by: { $0.totalDistance < $1.totalDistance }) {
+        if let longest = cleanSessions.max(by: { $0.totalDistance < $1.totalDistance }) {
             records.append(PersonalRecord(
                 emoji: "📏",
                 label: "Longest Walk",
@@ -229,7 +230,7 @@ struct BadgesView: View {
         }
 
         // Best pace — walking only, min 500 m
-        let walkSessions = sessions.filter {
+        let walkSessions = cleanSessions.filter {
             $0.totalDistance >= 500 && $0.elapsedTime > 60 && $0.activityType != "cycling"
         }
         if let fastest = walkSessions.min(by: {
@@ -269,8 +270,8 @@ struct BadgesView: View {
     }
 
     private func badgeTile(_ badge: WalkBadge) -> some View {
-        let earned   = badge.isEarned(sessions: sessions, currentStreak: currentStreak)
-        let progress = badge.progress(sessions: sessions, currentStreak: currentStreak)
+        let earned   = badge.isEarned(sessions: cleanSessions, currentStreak: currentStreak)
+        let progress = badge.progress(sessions: cleanSessions, currentStreak: currentStreak)
         let isPinned = pinnedIds.contains(badge.id)
         return VStack(spacing: 6) {
             ZStack {
