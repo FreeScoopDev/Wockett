@@ -43,7 +43,7 @@
 		<string>remote-notification</string>
 	</array>
 	<key>NSMotionUsageDescription</key>
-	<string>Wockett counts your steps during walks using the device motion sensor, giving you an accurate step count alongside GPS distance tracking.</string>
+	<string>Wockett counts your steps using the device motion sensor for an accurate step count, and also uses motion data during a walk to check that you're still on foot rather than in a vehicle.</string>
 	<key>NSCalendarsUsageDescription</key>
 	<string>Wockett can add recurring walk reminders to your calendar so you never miss a walk.</string>
 	<key>NSCalendarsWriteOnlyAccessUsageDescription</key>
