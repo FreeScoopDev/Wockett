@@ -14,14 +14,15 @@ struct WalkCompleteView: View {
     let onDismiss: () -> Void
     var onExcludeFromRouteStats: (() -> Void)? = nil
     var historyStore: WalkHistoryStore? = nil
-    @State private var showSchedule        = false
-    @State private var excludedFromStats   = false
+    @State private var showSchedule          = false
+    @State private var excludedFromStats     = false
     @State private var ringProgress: [UUID: Double] = [:]
-    @State private var shareItems: [Any]   = []
-    @State private var showShareSheet      = false
+    @State private var shareItems: [Any]     = []
+    @State private var showShareSheet        = false
+    @State private var showActivityShare     = false
     @State private var messageRecipient: String? = nil
-    @State private var messageBody         = ""
-    @State private var showMessageSheet    = false
+    @State private var messageBody           = ""
+    @State private var showMessageSheet      = false
 
     private var completionMessage: String {
         switch activePetNames.count {
@@ -87,6 +88,16 @@ struct WalkCompleteView: View {
                             .background(Color.earthGreen).foregroundColor(.white)
                             .fontWeight(.semibold).cornerRadius(14)
                     }
+                    Button { showActivityShare = true } label: {
+                        Label("Share this Walk", systemImage: "square.and.arrow.up")
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 18).padding(.horizontal, 20)
+                            .background(Color.earthCard)
+                            .foregroundColor(.earthCream)
+                            .fontWeight(.semibold)
+                            .cornerRadius(14)
+                            .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.earthGreen.opacity(0.4), lineWidth: 1.5))
+                    }
                     Button { onDismiss() } label: {
                         Text("Done")
                             .frame(maxWidth: .infinity)
@@ -104,6 +115,9 @@ struct WalkCompleteView: View {
         }
         .sheet(isPresented: $showShareSheet) {
             ActivityShareSheet(activityItems: shareItems)
+        }
+        .sheet(isPresented: $showActivityShare) {
+            ActivitySummaryShareSheet(session: session, historyStore: historyStore)
         }
         .sheet(isPresented: $showMessageSheet) {
             if let phone = messageRecipient {

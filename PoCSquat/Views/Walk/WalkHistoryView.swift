@@ -131,6 +131,7 @@ struct WalkSessionDetailSheet: View {
 
     @State private var notes: String = ""
     @State private var selectedActivityType: String = ""
+    @State private var showActivityShare = false
 
     private static let dateFmt: DateFormatter = {
         let f = DateFormatter(); f.dateStyle = .long; f.timeStyle = .short; return f
@@ -190,7 +191,7 @@ struct WalkSessionDetailSheet: View {
                             .padding(.horizontal)
                         }
 
-                        ShareLink(item: shareText) {
+                        Button { showActivityShare = true } label: {
                             Label("Share this Walk", systemImage: "square.and.arrow.up")
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 14)
@@ -227,23 +228,14 @@ struct WalkSessionDetailSheet: View {
                 }
             }
         }
+        .sheet(isPresented: $showActivityShare) {
+            ActivitySummaryShareSheet(session: session, historyStore: store)
+        }
         .presentationDetents([.medium, .large])
         .onAppear {
             notes = session.notes
             selectedActivityType = session.activityType
         }
-    }
-
-    private var shareText: String {
-        let verb: String
-        switch session.activityType {
-        case "cycling":    verb = "rode"
-        case "running":    verb = "ran"
-        default:           verb = "walked"
-        }
-        var text = "Just \(verb) \(session.distanceText) in \(session.timeText) on Wockett 🚶"
-        if !notes.isEmpty { text += "\n\n\"\(notes)\"" }
-        return text
     }
 
     private func detailTile(_ value: String, _ label: String, _ icon: String) -> some View {
