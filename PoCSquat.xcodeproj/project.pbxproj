@@ -305,12 +305,16 @@
 /* Begin PBXShellScriptBuildPhase section */
 		C03847458347B7446CD97E72 /* ShellScript */ = {
 			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
 			buildActionMask = 2147483647;
 			files = (
 			);
 			inputPaths = (
+				"$(PROJECT_DIR)/PoCSquat.xcodeproj/project.pbxproj",
 			);
 			outputPaths = (
+				"$(PROJECT_DIR)/PoCSquat.xcodeproj/project.pbxproj",
+				"$(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)",
 			);
 			runOnlyForDeploymentPostprocessing = 1;
 			shellPath = /bin/sh;
