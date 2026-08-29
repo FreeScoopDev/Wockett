@@ -35,6 +35,10 @@ private func fmtPace(_ secsPerKm: Double?) -> String {
     return String(format: "%d:%02d%@", mins, secs, unit)
 }
 
+private func adjustedStart(_ attrs: WalkActivityAttributes, _ state: WalkActivityAttributes.ContentState) -> Date {
+    attrs.startDate.addingTimeInterval(state.pausedDuration)
+}
+
 private func activityIcon(_ mode: String) -> String {
     switch mode {
     case "cycling":    return "bicycle"
@@ -108,11 +112,7 @@ private struct WalkLockScreenView: View {
                     icon: "location.fill"
                 )
                 Divider().frame(height: 30).overlay(Color.white.opacity(0.15))
-                statCell(
-                    value: fmtTime(state.elapsedSeconds),
-                    label: "elapsed",
-                    icon: "clock.fill"
-                )
+                timerStatCell(label: "elapsed", icon: "clock.fill")
                 Divider().frame(height: 30).overlay(Color.white.opacity(0.15))
                 statCell(
                     value: fmtDistance(max(0, attrs.totalDistanceMeters - state.distanceCoveredMeters)),
@@ -151,6 +151,23 @@ private struct WalkLockScreenView: View {
         .background(Color.wktBg)
     }
 
+    private func timerStatCell(label: String, icon: String) -> some View {
+        VStack(spacing: 3) {
+            Image(systemName: icon)
+                .font(.system(size: 10))
+                .foregroundColor(.wktGreen)
+            Text(timerInterval: adjustedStart(attrs, state)...Date.distantFuture, pauseTime: state.pauseTime, countsDown: false)
+                .font(.system(size: 13, weight: .bold, design: .rounded).monospacedDigit())
+                .foregroundColor(.wktCream)
+                .minimumScaleFactor(0.6)
+                .lineLimit(1)
+            Text(label)
+                .font(.system(size: 9))
+                .foregroundColor(.wktMuted)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
     private func statCell(value: String, label: String, icon: String) -> some View {
         VStack(spacing: 3) {
             Image(systemName: icon)
@@ -186,7 +203,7 @@ struct WocketWalkLiveActivity: Widget {
                         Image(systemName: activityIcon(context.attributes.activityMode))
                             .font(.caption.weight(.semibold))
                             .foregroundColor(.wktGreen)
-                        Text(fmtTime(context.state.elapsedSeconds))
+                        Text(timerInterval: adjustedStart(context.attributes, context.state)...Date.distantFuture, pauseTime: context.state.pauseTime, countsDown: false)
                             .font(.system(size: 16, weight: .bold, design: .rounded).monospacedDigit())
                             .foregroundColor(.wktCream)
                         Text("elapsed")

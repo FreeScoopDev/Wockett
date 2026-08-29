@@ -13,23 +13,30 @@ public struct WalkActivityAttributes: ActivityAttributes {
         public var elapsedSeconds: Int
         public var isPaused: Bool
         public var paceSecsPerKm: Double?
+        public var pausedDuration: Double   // cumulative seconds paused so far, as of this push
+        public var pauseTime: Date?         // wall-clock moment this paused state was captured; nil while running
 
         public init(distanceCoveredMeters: Double, elapsedSeconds: Int,
-                    isPaused: Bool, paceSecsPerKm: Double?) {
+                    isPaused: Bool, paceSecsPerKm: Double?,
+                    pausedDuration: Double, pauseTime: Date?) {
             self.distanceCoveredMeters = distanceCoveredMeters
             self.elapsedSeconds        = elapsedSeconds
             self.isPaused              = isPaused
             self.paceSecsPerKm         = paceSecsPerKm
+            self.pausedDuration        = pausedDuration
+            self.pauseTime             = pauseTime
         }
     }
 
     public let routeName: String
     public let totalDistanceMeters: Double
     public let activityMode: String   // "walking", "cycling", "stationary"
+    public let startDate: Date        // fixed reference point for the live-ticking timer
 
-    public init(routeName: String, totalDistanceMeters: Double, activityMode: String) {
+    public init(routeName: String, totalDistanceMeters: Double, activityMode: String, startDate: Date) {
         self.routeName            = routeName
         self.totalDistanceMeters  = totalDistanceMeters
         self.activityMode         = activityMode
+        self.startDate            = startDate
     }
 }

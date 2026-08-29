@@ -16,45 +16,53 @@ final class WalkLiveActivityManager {
 
     // MARK: - Lifecycle
 
-    func start(routeName: String, totalDistanceMeters: Double, activityMode: String) {
+    func start(routeName: String, totalDistanceMeters: Double, activityMode: String, startDate: Date) {
         guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
         guard activity == nil else { return }
 
         let attributes = WalkActivityAttributes(
             routeName: routeName,
             totalDistanceMeters: totalDistanceMeters,
-            activityMode: activityMode
+            activityMode: activityMode,
+            startDate: startDate
         )
         let initialState = WalkActivityAttributes.ContentState(
             distanceCoveredMeters: 0,
             elapsedSeconds: 0,
             isPaused: false,
-            paceSecsPerKm: nil
+            paceSecsPerKm: nil,
+            pausedDuration: 0,
+            pauseTime: nil
         )
         let content = ActivityContent(state: initialState, staleDate: nil)
         activity = try? Activity.request(attributes: attributes, content: content)
     }
 
     func update(distanceCovered: Double, elapsedSeconds: Int,
-                isPaused: Bool, paceSecsPerKm: Double?) async {
+                isPaused: Bool, paceSecsPerKm: Double?,
+                pausedDuration: Double, pauseTime: Date?) async {
         guard let activity else { return }
         let state = WalkActivityAttributes.ContentState(
             distanceCoveredMeters: distanceCovered,
             elapsedSeconds: elapsedSeconds,
             isPaused: isPaused,
-            paceSecsPerKm: paceSecsPerKm
+            paceSecsPerKm: paceSecsPerKm,
+            pausedDuration: pausedDuration,
+            pauseTime: pauseTime
         )
         let content = ActivityContent(state: state, staleDate: nil)
         await activity.update(content)
     }
 
-    func end(distanceCovered: Double, elapsedSeconds: Int) async {
+    func end(distanceCovered: Double, elapsedSeconds: Int, pausedDuration: Double) async {
         guard let activity else { return }
         let finalState = WalkActivityAttributes.ContentState(
             distanceCoveredMeters: distanceCovered,
             elapsedSeconds: elapsedSeconds,
             isPaused: false,
-            paceSecsPerKm: nil
+            paceSecsPerKm: nil,
+            pausedDuration: pausedDuration,
+            pauseTime: Date()   // freeze the display — a finished walk's summary shouldn't keep ticking
         )
         let content = ActivityContent(state: finalState, staleDate: .now)
         await activity.end(content, dismissalPolicy: .after(.now.addingTimeInterval(10)))
