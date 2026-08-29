@@ -60,13 +60,19 @@ struct StopTrackerTests {
     }
 
     @Test func resetAllowsBreakPromptToFireAgain() {
+        // Note: stopped(seconds:) ticks start one second after `from`, so the
+        // tracker's internal `elapsed` after N ticks is N-1 -- these use 185s
+        // (not exactly 180) so the 180s threshold is comfortably crossed rather
+        // than landing exactly on the boundary.
         var tracker = StopTracker(breakThresholdSeconds: 180)
-        _ = stopped(&tracker, seconds: 180, from: start)
-        #expect(tracker.tick(isMoving: false, now: start.addingTimeInterval(181)) == nil) // already fired once
+
+        let firstStop = stopped(&tracker, seconds: 185, from: start)
+        #expect(firstStop.filter { $0 == .showBreakPrompt }.count == 1)
 
         tracker.reset()
-        let events = stopped(&tracker, seconds: 180, from: start.addingTimeInterval(200))
-        #expect(events.contains(.showBreakPrompt))
+
+        let secondStop = stopped(&tracker, seconds: 185, from: start.addingTimeInterval(300))
+        #expect(secondStop.filter { $0 == .showBreakPrompt }.count == 1)
     }
 
     @Test func respectsConfigurableThreshold() {
