@@ -33,7 +33,6 @@ struct RouteFinderView: View {
     @State private var communityLoadError: String? = nil
 
     // Navigation & sheets
-    @State private var navigatingRoute: NavigableRoute?
     @State private var showNearbySheet = false
     @State private var showDestSearch = false
     @State private var showActiveSessionAlert = false
@@ -104,9 +103,6 @@ struct RouteFinderView: View {
         .onChange(of: activityMode) { _, v in
             UserDefaults.standard.set(v.rawValue, forKey: "wkt_lastActivityMode_v1")
             clearRoutes()
-        }
-        .fullScreenCover(item: $navigatingRoute) { route in
-            WalkNavigationView(route: route, historyStore: historyStore)
         }
         .alert("Walk Already Active", isPresented: $showActiveSessionAlert) {
             Button("OK", role: .cancel) {}
@@ -385,7 +381,9 @@ struct RouteFinderView: View {
                 showActiveSessionAlert = true
                 return
             }
-            navigatingRoute = nav
+            // Dismiss RouteFinderView — StepCounterView will auto-present WalkNavigationView.
+            // Using dismiss() here avoids a nested fullScreenCover that can silently fail.
+            dismiss()
         } label: {
             Label("Start \(activityMode.sessionLabel)", systemImage: activityMode.icon)
                 .font(.headline)
@@ -527,7 +525,7 @@ struct RouteFinderView: View {
                                     showActiveSessionAlert = true
                                     return
                                 }
-                                navigatingRoute = nav
+                                dismiss()
                             },
                             onHide: { communityRoutes.removeAll { $0.id == route.id } }
                         )

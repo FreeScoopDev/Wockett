@@ -80,6 +80,8 @@ struct StepCounterView: View {
             }
             .onChange(of: showRouteFinder) { _, isShowing in
                 if !isShowing { routeFinderShowsNearby = false }
+                // When RouteFinderView closes with an active session, jump straight to the walk.
+                if !isShowing && walkStore.isActive { showResumeWalk = true }
             }
             .sheet(isPresented: $showBadges) {
                 BadgesView(
