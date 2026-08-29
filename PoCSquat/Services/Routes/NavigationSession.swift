@@ -18,7 +18,7 @@ final class NavCheckpointCircle: MKCircle {
 // configurable break prompt. Feed `tick()` once per second; it manages its
 // own internal time-keeping so the caller needs no extra state.
 
-private struct StopTracker {
+struct StopTracker {
     private(set) var stopCount: Int = 0
 
     private var stoppedSince:     Date? = nil
@@ -74,7 +74,7 @@ private struct StopTracker {
 //
 // Feed tick() once per second; returns .drivingSuspected when triggered.
 
-private struct DrivingDetector {
+struct DrivingDetector {
     private var episodeStart: Date? = nil
     private var episodeCount: Int = 0
     private let sustainedThreshold: TimeInterval = 25
@@ -82,7 +82,7 @@ private struct DrivingDetector {
 
     let speedCeiling: Double  // m/s; set from ActivityMode.drivingSpeedCeiling
 
-    fileprivate init(speedCeiling: Double) { self.speedCeiling = speedCeiling }
+    init(speedCeiling: Double) { self.speedCeiling = speedCeiling }
 
     enum Event { case drivingSuspected }
 
