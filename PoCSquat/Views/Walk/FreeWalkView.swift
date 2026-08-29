@@ -131,6 +131,7 @@ struct FreeWalkView: View {
     @State private var ownerUpdateBody        = ""
     @State private var ownerUpdatePickerPets: [PetProfile] = []
     @State private var endSessionOnDismiss    = false
+    @State private var hasAttemptedStart      = false
 
     private var isCycling: Bool { activityMode == .cycling }
     private var session: NavigationSessionManager { walkStore.session! }
@@ -433,35 +434,37 @@ struct FreeWalkView: View {
         } else {
             Color.clear
                 .task {
-                    if walkStore.isStarted {
-                        // Session was ended externally (e.g. Live Activity End Walk button)
+                    if hasAttemptedStart {
+                        // We already started a walk in this view instance and it's since been
+                        // cleared externally (e.g. Live Activity End Walk) — dismiss instead
+                        // of silently starting a new one.
                         dismiss()
-                    } else {
-                        // First launch: create an empty-waypoint route and start the session
-                        let route = NavigableRoute(
-                            name: freeWalkRouteName,
-                            waypoints: [],
-                            lapCount: 1,
-                            isLoop: false,
-                            totalDistance: 0,
-                            isCustomRoute: true,
-                            isCommunityRoute: false,
-                            activityMode: activityMode,
-                            customRouteId: nil
-                        )
-                        guard walkStore.beginSession(route: route) != nil else { return }
-                        walkStore.markStarted()
-                        session.start()
-                        for pet in petStore.activePets {
-                            petActiveSinceDistance[pet.id] = 0
-                        }
-                        WalkLiveActivityManager.shared.start(
-                            routeName: route.name,
-                            totalDistanceMeters: 0,
-                            activityMode: activityMode.rawValue,
-                            startDate: session.startTime
-                        )
+                        return
                     }
+                    hasAttemptedStart = true
+                    let route = NavigableRoute(
+                        name: freeWalkRouteName,
+                        waypoints: [],
+                        lapCount: 1,
+                        isLoop: false,
+                        totalDistance: 0,
+                        isCustomRoute: true,
+                        isCommunityRoute: false,
+                        activityMode: activityMode,
+                        customRouteId: nil
+                    )
+                    guard walkStore.beginSession(route: route) != nil else { dismiss(); return }
+                    walkStore.markStarted()
+                    session.start()
+                    for pet in petStore.activePets {
+                        petActiveSinceDistance[pet.id] = 0
+                    }
+                    WalkLiveActivityManager.shared.start(
+                        routeName: route.name,
+                        totalDistanceMeters: 0,
+                        activityMode: activityMode.rawValue,
+                        startDate: session.startTime
+                    )
                 }
         }
     }
