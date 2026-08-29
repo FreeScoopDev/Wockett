@@ -25,6 +25,9 @@ struct SquatCounterApp: App {
                 NavigationStack {
                     StepCounterView()
                 }
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    ActiveMiniTileContainer()
+                }
                 // Splash renders on top from the very first frame — no system presentation
                 // delay, so the dashboard is never visible before it. showSplash starts true
                 // on cold launch; @State persists across background/foreground, so the splash

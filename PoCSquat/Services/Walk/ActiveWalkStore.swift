@@ -32,4 +32,12 @@ final class ActiveWalkStore {
         activeRoute = nil
         isStarted = false
     }
+
+    // MARK: - Reopen signal
+
+    /// Set by the mini tile when the user taps "return to walk". Consumed by StepCounterView.
+    private(set) var reopenRequested: Bool = false
+
+    func requestReopen() { reopenRequested = true }
+    func consumeReopenRequest() { reopenRequested = false }
 }

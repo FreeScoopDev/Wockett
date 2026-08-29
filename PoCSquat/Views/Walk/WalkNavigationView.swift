@@ -38,6 +38,8 @@ struct WalkNavigationView: View {
     var body: some View {
         mapContent
             .toolbar(.hidden, for: .navigationBar)
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
             .task { await startWalk() }
             .onDisappear {
                 if endSessionOnDismiss { walkStore.endSession() }
@@ -133,6 +135,18 @@ struct WalkNavigationView: View {
                 .ignoresSafeArea()
             hudPanel
         }
+        .overlay(alignment: .topLeading) {
+            Button { dismiss() } label: {
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundColor(.earthCream)
+                    .padding(10)
+                    .background(.ultraThinMaterial)
+                    .clipShape(Circle())
+            }
+            .padding(.top, 60)
+            .padding(.leading, 16)
+        }
         .fullScreenCover(isPresented: $showComplete, onDismiss: {
             cancelWaterBreakReminders()
             endSessionOnDismiss = true
@@ -167,6 +181,10 @@ struct WalkNavigationView: View {
                 walkWeather = await RouteWeatherService.shared.fetchWeather(for: firstWaypoint)
             }
             session.onCheckpointReached = checkpointsEnabled ? { [self] lbl in self.handleCheckpoint(lbl) } : nil
+            // Resync flags that onChange only fires on transitions — if these were set before
+            // the user minimized, they must be re-applied when the map is reopened.
+            showBreakPromptAlert = session.showBreakPrompt
+            showDrivingBanner = session.drivingSuspected
             return
         }
         walkStore.markStarted()
