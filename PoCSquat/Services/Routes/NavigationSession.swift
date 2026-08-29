@@ -133,6 +133,7 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
     var isPaused = false
     private var pausedDuration: TimeInterval = 0
     private var pauseStart: Date?
+    private var snapshotTickCounter = 0
 
     // Stop detection — shared between the stop-count tally and break prompt.
     private var stopTracker = StopTracker(breakThresholdSeconds: 180)
@@ -161,6 +162,38 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
 
     func start() {
         startTime = Date()
+        beginTracking()
+        writeSnapshot()
+    }
+
+    /// Reconstructs an in-progress walk from a checkpoint after the app process
+    /// died unexpectedly. Always comes back active (not paused) — the caller only
+    /// invokes this once the user has confirmed they want to continue. The entire
+    /// gap between the checkpoint and now is folded into pausedDuration so elapsed
+    /// time and pace stay honest instead of jumping forward by however long the
+    /// app was closed.
+    func restore(from snapshot: ActiveWalkSnapshot) {
+        startTime            = snapshot.startTime
+        totalDistanceCovered = snapshot.totalDistanceCovered
+        currentWaypointIndex = snapshot.currentWaypointIndex
+        currentLap           = snapshot.currentLap
+        triggeredCheckpoints = snapshot.triggeredCheckpoints
+        splitTimes           = snapshot.splitTimes.map { (label: $0.label, elapsed: $0.elapsed) }
+        liveSteps            = snapshot.liveSteps
+
+        let referenceDate = snapshot.isPaused
+            ? (snapshot.pauseStartDate ?? snapshot.checkpointDate)
+            : snapshot.checkpointDate
+        pausedDuration = snapshot.pausedDuration + Date().timeIntervalSince(referenceDate)
+        isPaused   = false
+        pauseStart = nil
+        elapsedTime = Date().timeIntervalSince(startTime) - pausedDuration
+
+        beginTracking()
+        writeSnapshot()
+    }
+
+    private func beginTracking() {
         UIApplication.shared.isIdleTimerDisabled = true
         locationManager.startUpdatingLocation()
         let storedMins = UserDefaults.standard.integer(forKey: "walk_breakPromptMinutes")
@@ -169,6 +202,8 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
         lastMovementTime = Date()
         startTimer()
         // Real-time step count + cadence from the motion coprocessor (walking and running).
+        // pedometer.startUpdates(from: startTime) works for restored sessions too —
+        // CMPedometer reports historical steps, so step count recovers across the gap.
         if (route.activityMode == .walking || route.activityMode == .running) && CMPedometer.isStepCountingAvailable() {
             let from = startTime
             pedometer.startUpdates(from: from) { [weak self] data, error in
@@ -198,6 +233,11 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
                 guard let self else { return }
                 self.elapsedTime = Date().timeIntervalSince(self.startTime) - self.pausedDuration
                 guard !self.isPaused else { return }
+                self.snapshotTickCounter += 1
+                if self.snapshotTickCounter >= 15 {
+                    self.snapshotTickCounter = 0
+                    self.writeSnapshot()
+                }
                 let now = Date()
                 let isMoving = now.timeIntervalSince(self.lastMovementTime) < self.movementWindow
                 if self.stopTracker.tick(isMoving: isMoving, now: now) != nil {
@@ -222,6 +262,7 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
         timer = nil
         locationManager.stopUpdatingLocation()
         UIApplication.shared.isIdleTimerDisabled = false
+        writeSnapshot()
     }
 
     func resume() {
@@ -235,9 +276,11 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
         lastMovementTime = Date()   // prevent a phantom stop on the first ticks after resuming
         locationManager.startUpdatingLocation()
         startTimer()
+        writeSnapshot()
     }
 
     func stop() {
+        ActiveWalkSnapshotStore.clear()
         locationManager.stopUpdatingLocation()
         pedometer.stopUpdates()
         timer?.invalidate()
@@ -249,6 +292,24 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
     /// used to keep the Live Activity's live-ticking timer correctly offset.
     var totalPausedDuration: TimeInterval {
         pausedDuration + (pauseStart.map { Date().timeIntervalSince($0) } ?? 0)
+    }
+
+    private func writeSnapshot() {
+        let snapshot = ActiveWalkSnapshot(
+            route: .init(route),
+            startTime: startTime,
+            totalDistanceCovered: totalDistanceCovered,
+            pausedDuration: pausedDuration,
+            isPaused: isPaused,
+            pauseStartDate: pauseStart,
+            currentWaypointIndex: currentWaypointIndex,
+            currentLap: currentLap,
+            triggeredCheckpoints: triggeredCheckpoints,
+            splitTimes: splitTimes.map { .init(label: $0.label, elapsed: $0.elapsed) },
+            liveSteps: liveSteps,
+            checkpointDate: Date()
+        )
+        ActiveWalkSnapshotStore.save(snapshot)
     }
 
     func dismissBreakPrompt() {
@@ -425,6 +486,7 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
                 body: left == 1 ? "Almost there — final stretch!" : "\(left) waypoints to go"
             )
         }
+        writeSnapshot()
     }
 
     private func finish() {

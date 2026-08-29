@@ -18,6 +18,7 @@ struct StepCounterView: View {
 
     @State private var showBadges               = false
     @State private var showResumeWalk           = false
+    @State private var showRestoreWalkPrompt    = false
     @State private var earnedBadge: WalkBadge?  = nil
     @State private var showGoalSheet            = false
     @State private var showMyRoutes             = false
@@ -110,6 +111,18 @@ struct StepCounterView: View {
                 if let route = walkStore.activeRoute {
                     WalkNavigationView(route: route, historyStore: historyStore)
                 }
+            }
+            .alert("Resume Your Walk?", isPresented: $showRestoreWalkPrompt) {
+                Button("Resume") {
+                    if walkStore.restoreIfNeeded() != nil {
+                        showResumeWalk = true
+                    }
+                }
+                Button("Discard", role: .destructive) {
+                    walkStore.declineRestore()
+                }
+            } message: {
+                Text("Wockett closed unexpectedly during an active walk. Your progress up to the last checkpoint was saved.")
             }
             .onChange(of: walkStore.reopenRequested) { _, requested in
                 guard requested else { return }
@@ -283,6 +296,9 @@ struct StepCounterView: View {
 
     private func handleAppear() {
         walkStore.configure(historyStore: historyStore)
+        if walkStore.hasRestorableWalk {
+            showRestoreWalkPrompt = true
+        }
         if calendarWeekOffset != 0 {
             calendarWeekOffset = 0
             Task { await stepManager.refreshWeeklyCalendar(sessions: historyStore.sessions, weekOffset: 0) }

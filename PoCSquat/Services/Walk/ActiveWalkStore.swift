@@ -57,6 +57,29 @@ final class ActiveWalkStore {
         return saved
     }
 
+    /// Reconstructs the last checkpointed walk if one exists and nothing is
+    /// currently active. Returns the restored route on success.
+    @discardableResult
+    func restoreIfNeeded() -> NavigableRoute? {
+        guard session == nil, let snapshot = ActiveWalkSnapshotStore.load() else { return nil }
+        let route = snapshot.route.navigableRoute
+        let mgr = NavigationSessionManager(route: route)
+        mgr.restore(from: snapshot)
+        session = mgr
+        activeRoute = route
+        isStarted = true
+        return route
+    }
+
+    /// Called when the user declines to resume a recovered walk.
+    func declineRestore() {
+        ActiveWalkSnapshotStore.clear()
+    }
+
+    var hasRestorableWalk: Bool {
+        session == nil && ActiveWalkSnapshotStore.hasPending
+    }
+
     /// Creates a session for `route` and returns it. Returns nil without side effects if a session is already active.
     @discardableResult
     func beginSession(route: NavigableRoute) -> NavigationSessionManager? {
