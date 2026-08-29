@@ -109,7 +109,11 @@ struct StepCounterView: View {
             }
             .sheet(isPresented: $showResumeWalk) {
                 if let route = walkStore.activeRoute {
-                    WalkNavigationView(route: route, historyStore: historyStore)
+                    if route.waypoints.isEmpty {
+                        FreeWalkView(historyStore: historyStore, routeStore: routeStore, activityMode: route.activityMode)
+                    } else {
+                        WalkNavigationView(route: route, historyStore: historyStore)
+                    }
                 }
             }
             .alert("Resume Your Walk?", isPresented: $showRestoreWalkPrompt) {

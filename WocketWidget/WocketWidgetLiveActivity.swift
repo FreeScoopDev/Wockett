@@ -113,12 +113,14 @@ private struct WalkLockScreenView: View {
                 )
                 Divider().frame(height: 30).overlay(Color.white.opacity(0.15))
                 timerStatCell(label: "elapsed", icon: "clock.fill")
-                Divider().frame(height: 30).overlay(Color.white.opacity(0.15))
-                statCell(
-                    value: fmtDistance(max(0, attrs.totalDistanceMeters - state.distanceCoveredMeters)),
-                    label: "remaining",
-                    icon: "flag.fill"
-                )
+                if attrs.totalDistanceMeters > 0 {
+                    Divider().frame(height: 30).overlay(Color.white.opacity(0.15))
+                    statCell(
+                        value: fmtDistance(max(0, attrs.totalDistanceMeters - state.distanceCoveredMeters)),
+                        label: "remaining",
+                        icon: "flag.fill"
+                    )
+                }
                 Divider().frame(height: 30).overlay(Color.white.opacity(0.15))
                 statCell(
                     value: fmtPace(state.paceSecsPerKm),
@@ -219,16 +221,28 @@ struct WocketWalkLiveActivity: Widget {
 
                 DynamicIslandExpandedRegion(.trailing) {
                     VStack(alignment: .trailing, spacing: 2) {
-                        Image(systemName: "flag.fill")
-                            .font(.caption.weight(.semibold))
-                            .foregroundColor(.wktGreen)
-                        let remaining = max(0, context.attributes.totalDistanceMeters - context.state.distanceCoveredMeters)
-                        Text(fmtDistance(remaining))
-                            .font(.system(size: 16, weight: .bold, design: .rounded).monospacedDigit())
-                            .foregroundColor(.wktCream)
-                        Text("remaining")
-                            .font(.system(size: 9))
-                            .foregroundColor(.wktMuted)
+                        if context.attributes.totalDistanceMeters > 0 {
+                            Image(systemName: "flag.fill")
+                                .font(.caption.weight(.semibold))
+                                .foregroundColor(.wktGreen)
+                            let remaining = max(0, context.attributes.totalDistanceMeters - context.state.distanceCoveredMeters)
+                            Text(fmtDistance(remaining))
+                                .font(.system(size: 16, weight: .bold, design: .rounded).monospacedDigit())
+                                .foregroundColor(.wktCream)
+                            Text("remaining")
+                                .font(.system(size: 9))
+                                .foregroundColor(.wktMuted)
+                        } else {
+                            Image(systemName: "speedometer")
+                                .font(.caption.weight(.semibold))
+                                .foregroundColor(.wktGreen)
+                            Text(fmtPace(context.state.paceSecsPerKm))
+                                .font(.system(size: 16, weight: .bold, design: .rounded).monospacedDigit())
+                                .foregroundColor(.wktCream)
+                            Text("pace")
+                                .font(.system(size: 9))
+                                .foregroundColor(.wktMuted)
+                        }
                     }
                     .padding(.trailing, 4)
                 }

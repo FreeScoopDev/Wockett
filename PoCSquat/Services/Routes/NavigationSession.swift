@@ -117,6 +117,7 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
     var splitTimes: [(label: String, elapsed: TimeInterval)] = []
     var liveSteps: Int = 0
     var cadence: Double? = nil  // steps/min; nil until pedometer warms up
+    var trackPoints: [CLLocationCoordinate2D] = []
 
     var onCheckpointReached: ((String) -> Void)?
 
@@ -376,7 +377,9 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
             date: startTime,
             elapsedTime: elapsedTime,
             totalDistance: totalDistanceCovered,
-            waypoints: route.waypoints.map { WaypointCoord($0) },
+            waypoints: route.waypoints.isEmpty
+                ? trackPoints.map { WaypointCoord($0) }
+                : route.waypoints.map { WaypointCoord($0) },
             lapCount: route.lapCount,
             isLoop: route.isLoop,
             activityType: route.activityMode.rawValue,
@@ -397,6 +400,7 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
                 if delta < 100 { self.totalDistanceCovered += delta }
             }
             self.lastLocation = loc
+            self.trackPoints.append(loc.coordinate)
             self.lastMovementTime = Date()
             self.lastKnownSpeed = loc.speed
             self.workoutWriter?.addLocations(locations)
