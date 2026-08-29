@@ -421,7 +421,8 @@ struct FreeWalkView: View {
                     flushActivePetDistances()
                     Task { await WalkLiveActivityManager.shared.end(
                         distanceCovered: walkManager.totalDistance,
-                        elapsedSeconds: walkManager.elapsedSeconds
+                        elapsedSeconds: walkManager.elapsedSeconds,
+                        pausedDuration: 0
                     )}
                     walkManager.stop()
                     showSummary = true
@@ -448,14 +449,16 @@ struct FreeWalkView: View {
             WalkLiveActivityManager.shared.start(
                 routeName: isCycling ? "Free Ride" : "Free Walk",
                 totalDistanceMeters: 0,
-                activityMode: activityMode.rawValue
+                activityMode: activityMode.rawValue,
+                startDate: walkManager.startDate
             )
         }
         .onDisappear {
             walkManager.stop()
             Task { await WalkLiveActivityManager.shared.end(
                 distanceCovered: walkManager.totalDistance,
-                elapsedSeconds: walkManager.elapsedSeconds
+                elapsedSeconds: walkManager.elapsedSeconds,
+                pausedDuration: 0
             )}
         }
         .onChange(of: walkManager.elapsedSeconds) { _, elapsed in
@@ -467,7 +470,9 @@ struct FreeWalkView: View {
                 distanceCovered: walkManager.totalDistance,
                 elapsedSeconds: elapsed,
                 isPaused: false,
-                paceSecsPerKm: pace
+                paceSecsPerKm: pace,
+                pausedDuration: 0,
+                pauseTime: nil
             )}
         }
         .onChange(of: walkManager.trackPoints.count) { _, _ in

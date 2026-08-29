@@ -61,7 +61,9 @@ struct ToggleWalkPauseLiveActivityIntent: LiveActivityIntent {
             distanceCovered: dist,
             elapsedSeconds: Int(elapsed),
             isPaused: paused,
-            paceSecsPerKm: pace
+            paceSecsPerKm: pace,
+            pausedDuration: session.totalPausedDuration,
+            pauseTime: paused ? Date() : nil
         )
         #else
         print("🔴 [LiveActivityIntent] TogglePause — WOCKET_WIDGET IS defined, this is the WIDGET EXTENSION compilation — logic body skipped by design")

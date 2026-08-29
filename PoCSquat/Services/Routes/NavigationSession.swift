@@ -123,7 +123,7 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
     private let route: NavigableRoute
     private let locationManager = CLLocationManager()
     private let pedometer = CMPedometer()
-    private var startTime = Date()
+    private(set) var startTime = Date()
     private var timer: Timer?
     private var lastLocation: CLLocation?
     private let arrivalRadius = 30.0
@@ -245,6 +245,12 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
         UIApplication.shared.isIdleTimerDisabled = false
     }
 
+    /// Total time paused so far, including a pause currently in progress —
+    /// used to keep the Live Activity's live-ticking timer correctly offset.
+    var totalPausedDuration: TimeInterval {
+        pausedDuration + (pauseStart.map { Date().timeIntervalSince($0) } ?? 0)
+    }
+
     func dismissBreakPrompt() {
         stopTracker.reset()
         showBreakPrompt = false
@@ -355,7 +361,9 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
                 distanceCovered: self.totalDistanceCovered,
                 elapsedSeconds: Int(self.elapsedTime),
                 isPaused: false,
-                paceSecsPerKm: paceSecsPerKm
+                paceSecsPerKm: paceSecsPerKm,
+                pausedDuration: self.totalPausedDuration,
+                pauseTime: nil
             )
         }
     }

@@ -44,15 +44,16 @@ final class ActiveWalkStore {
     @discardableResult
     func saveAndEndActiveSession() -> WalkSession? {
         guard let session, let route = activeRoute else { return nil }
-        let dist    = session.totalDistanceCovered
-        let elapsed = Int(session.elapsedTime)
-        let saved   = buildAndSaveSession(isCommunityRoute: route.isCommunityRoute)
+        let dist          = session.totalDistanceCovered
+        let elapsed       = Int(session.elapsedTime)
+        let pausedDuration = session.totalPausedDuration
+        let saved         = buildAndSaveSession(isCommunityRoute: route.isCommunityRoute)
         session.stop()
         endSession()
         UNUserNotificationCenter.current().removePendingNotificationRequests(
             withIdentifiers: (1...12).map { "waterBreak-\($0)" }
         )
-        Task { await WalkLiveActivityManager.shared.end(distanceCovered: dist, elapsedSeconds: elapsed) }
+        Task { await WalkLiveActivityManager.shared.end(distanceCovered: dist, elapsedSeconds: elapsed, pausedDuration: pausedDuration) }
         return saved
     }
 

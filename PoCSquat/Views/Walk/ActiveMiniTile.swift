@@ -33,14 +33,15 @@ struct ActiveMiniTileContainer: View {
             }
             Button("Discard Walk", role: .destructive) {
                 guard let session = walkStore.session else { return }
-                let dist    = session.totalDistanceCovered
-                let elapsed = Int(session.elapsedTime)
+                let dist          = session.totalDistanceCovered
+                let elapsed       = Int(session.elapsedTime)
+                let pausedDuration = session.totalPausedDuration
                 session.stop()
                 walkStore.endSession()
                 UNUserNotificationCenter.current().removePendingNotificationRequests(
                     withIdentifiers: (1...12).map { "waterBreak-\($0)" }
                 )
-                Task { await WalkLiveActivityManager.shared.end(distanceCovered: dist, elapsedSeconds: elapsed) }
+                Task { await WalkLiveActivityManager.shared.end(distanceCovered: dist, elapsedSeconds: elapsed, pausedDuration: pausedDuration) }
             }
             Button("Cancel", role: .cancel) {}
         } message: {
