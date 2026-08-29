@@ -64,6 +64,7 @@ final class ActiveWalkStore {
         session = mgr
         activeRoute = route
         isStarted = false
+        print("🟣 [ActiveWalkStore] beginSession — pid \(ProcessInfo.processInfo.processIdentifier), route=\(route.name)")
         return mgr
     }
 
@@ -72,6 +73,7 @@ final class ActiveWalkStore {
     }
 
     func endSession() {
+        print("🟣 [ActiveWalkStore] endSession — pid \(ProcessInfo.processInfo.processIdentifier), was active=\(session != nil)")
         session = nil
         activeRoute = nil
         isStarted = false
