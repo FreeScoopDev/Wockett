@@ -13,9 +13,11 @@ struct StepCounterView: View {
 
     @EnvironmentObject private var petStore: PetStore
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(ActiveWalkStore.self) private var walkStore
     var streakStore: StreakStore = .shared
 
     @State private var showBadges               = false
+    @State private var showResumeWalk           = false
     @State private var earnedBadge: WalkBadge?  = nil
     @State private var showGoalSheet            = false
     @State private var showMyRoutes             = false
@@ -95,6 +97,11 @@ struct StepCounterView: View {
             }
             .sheet(isPresented: $showChallenges) {
                 ChallengesView(stepManager: stepManager, historyStore: historyStore)
+            }
+            .fullScreenCover(isPresented: $showResumeWalk) {
+                if let route = walkStore.activeRoute {
+                    WalkNavigationView(route: route, historyStore: historyStore)
+                }
             }
     }
 
@@ -176,6 +183,12 @@ struct StepCounterView: View {
     private func mainScrollView(proxy: ScrollViewProxy) -> some View {
         ScrollView {
             VStack(spacing: 24) {
+                if walkStore.isActive {
+                    ActiveWalkBanner { showResumeWalk = true }
+                        .padding(.horizontal, 20)
+                        .padding(.top, 4)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                }
                 progressSection.padding(.top, 8)
                 JourneyTrackView(
                     progress:    stepManager.progress,
@@ -1012,5 +1025,42 @@ private struct ActivitySuggestionBanner: View {
         .background(Color.earthCard)
         .cornerRadius(16)
         .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.earthGreen.opacity(0.25), lineWidth: 1))
+    }
+}
+
+// MARK: - Active Walk Banner
+
+private struct ActiveWalkBanner: View {
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack(spacing: 12) {
+                Circle()
+                    .fill(Color.earthGreen)
+                    .frame(width: 10, height: 10)
+                    .overlay(
+                        Circle()
+                            .stroke(Color.earthGreen.opacity(0.4), lineWidth: 4)
+                    )
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Walk in Progress")
+                        .font(.subheadline.bold())
+                        .foregroundColor(.earthCream)
+                    Text("Tap to return to your walk")
+                        .font(.caption)
+                        .foregroundColor(.earthMuted)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.caption.bold())
+                    .foregroundColor(.earthGreen)
+            }
+            .padding(14)
+            .background(Color.earthGreen.opacity(0.08))
+            .cornerRadius(14)
+            .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.earthGreen.opacity(0.3), lineWidth: 1))
+        }
+        .buttonStyle(.plain)
     }
 }

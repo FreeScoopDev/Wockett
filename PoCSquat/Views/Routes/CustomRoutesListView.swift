@@ -159,9 +159,10 @@ struct CustomRouteDetailView: View {
     @State private var elevationProfile:  ElevationProfile?
     @State private var isLoadingElevation = false
     @State private var showMapsAlert      = false
-    @State private var navigatingRoute:   NavigableRoute?
-    @State private var isEditing          = false
-    @State private var shareState: ShareState = .idle
+    @State private var navigatingRoute:        NavigableRoute?
+    @State private var isEditing               = false
+    @State private var shareState: ShareState  = .idle
+    @State private var showActiveSessionAlert  = false
 
     private enum ShareState { case idle, sharing, shared, failed }
     private var shareButtonColor: Color {
@@ -240,7 +241,7 @@ struct CustomRouteDetailView: View {
                         }
 
                         Button {
-                            navigatingRoute = NavigableRoute(
+                            let nav = NavigableRoute(
                                 name:          route.name,
                                 waypoints:     route.waypoints.map { $0.clCoordinate },
                                 lapCount:      1,
@@ -249,6 +250,11 @@ struct CustomRouteDetailView: View {
                                 isCustomRoute: true,
                                 customRouteId: route.id
                             )
+                            guard ActiveWalkStore.shared.beginSession(route: nav) != nil else {
+                                showActiveSessionAlert = true
+                                return
+                            }
+                            navigatingRoute = nav
                         } label: {
                             Label("Start Walk", systemImage: "figure.walk")
                                 .frame(maxWidth: .infinity)
@@ -361,6 +367,11 @@ struct CustomRouteDetailView: View {
         }
         .navigationDestination(item: $navigatingRoute) { r in
             WalkNavigationView(route: r, historyStore: historyStore)
+        }
+        .alert("Walk Already Active", isPresented: $showActiveSessionAlert) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("You have a walk in progress. Return to the home screen to resume or end it first.")
         }
         .navigationDestination(isPresented: $isEditing) {
             CustomRouteBuilderView(

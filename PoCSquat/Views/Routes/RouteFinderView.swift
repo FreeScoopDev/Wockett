@@ -36,6 +36,7 @@ struct RouteFinderView: View {
     @State private var navigatingRoute: NavigableRoute?
     @State private var showNearbySheet = false
     @State private var showDestSearch = false
+    @State private var showActiveSessionAlert = false
 
     // Active search task — stored so it can be cancelled on retry or dismissal
     @State private var activeTask: Task<Void, Never>?
@@ -106,6 +107,11 @@ struct RouteFinderView: View {
         }
         .fullScreenCover(item: $navigatingRoute) { route in
             WalkNavigationView(route: route, historyStore: historyStore)
+        }
+        .alert("Walk Already Active", isPresented: $showActiveSessionAlert) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("You have a walk in progress. Return to the home screen to resume or end it first.")
         }
         .sheet(item: $routeForPosting) { route in
             PostToCommunitySheet(route: route, routeStore: routeStore) {
@@ -373,7 +379,14 @@ struct RouteFinderView: View {
     }
 
     private func startWalkButton(for route: SuggestedRoute) -> some View {
-        Button { navigatingRoute = route.toNavigableRoute(activityMode: activityMode) } label: {
+        Button {
+            let nav = route.toNavigableRoute(activityMode: activityMode)
+            guard ActiveWalkStore.shared.beginSession(route: nav) != nil else {
+                showActiveSessionAlert = true
+                return
+            }
+            navigatingRoute = nav
+        } label: {
             Label("Start \(activityMode.sessionLabel)", systemImage: activityMode.icon)
                 .font(.headline)
                 .frame(maxWidth: .infinity)
@@ -510,6 +523,10 @@ struct RouteFinderView: View {
                             onStart: {
                                 var nav = route.toNavigableRoute()
                                 nav.isCommunityRoute = true
+                                guard ActiveWalkStore.shared.beginSession(route: nav) != nil else {
+                                    showActiveSessionAlert = true
+                                    return
+                                }
                                 navigatingRoute = nav
                             },
                             onHide: { communityRoutes.removeAll { $0.id == route.id } }

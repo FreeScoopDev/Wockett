@@ -11,8 +11,10 @@ struct WalkNavigationView: View {
     @ObservedObject var historyStore: WalkHistoryStore
     @EnvironmentObject var petStore: PetStore
     @Environment(\.dismiss) private var dismiss
+    @Environment(ActiveWalkStore.self) private var walkStore
 
-    @State private var session: NavigationSessionManager
+    private var session: NavigationSessionManager { walkStore.session! }
+    @State private var endSessionOnDismiss = false
     @StateObject private var localRouteStore = CustomRouteStore()
     @State private var showComplete            = false
     @State private var showStopAlert           = false
@@ -33,42 +35,39 @@ struct WalkNavigationView: View {
     @State private var showBreakPromptAlert = false
     @State private var showDrivingBanner = false
 
-    init(route: NavigableRoute, historyStore: WalkHistoryStore) {
-        self.route = route
-        self.historyStore = historyStore
-        _session = State(initialValue: NavigationSessionManager(route: route))
-    }
-
     var body: some View {
         mapContent
             .toolbar(.hidden, for: .navigationBar)
             .task { await startWalk() }
-            .onDisappear { session.stop(); cancelWaterBreakReminders() }
+            .onDisappear {
+                if endSessionOnDismiss { walkStore.endSession() }
+            }
             .onChange(of: checkpointsEnabled) { _, enabled in handleCheckpointToggle(enabled) }
             .onChange(of: session.isCompleted) { _, completed in
                 guard completed else { return }
                 handleWalkComplete()
             }
             .onChange(of: session.totalDistanceCovered) { _, dist in
+                let elapsed = session.elapsedTime
+                let isPaused = session.isPaused
+                let pace = dist > 100 && elapsed > 10 ? elapsed / (dist / 1000) : nil
                 Task {
-                    let pace = dist > 100 && session.elapsedTime > 10
-                        ? session.elapsedTime / (dist / 1000) : nil
                     await WalkLiveActivityManager.shared.update(
                         distanceCovered: dist,
-                        elapsedSeconds: Int(session.elapsedTime),
-                        isPaused: session.isPaused,
+                        elapsedSeconds: Int(elapsed),
+                        isPaused: isPaused,
                         paceSecsPerKm: pace
                     )
                 }
             }
             .onChange(of: session.isPaused) { _, paused in
+                let dist = session.totalDistanceCovered
+                let elapsed = session.elapsedTime
+                let pace = dist > 100 && elapsed > 10 ? elapsed / (dist / 1000) : nil
                 Task {
-                    let dist = session.totalDistanceCovered
-                    let pace = dist > 100 && session.elapsedTime > 10
-                        ? session.elapsedTime / (dist / 1000) : nil
                     await WalkLiveActivityManager.shared.update(
                         distanceCovered: dist,
-                        elapsedSeconds: Int(session.elapsedTime),
+                        elapsedSeconds: Int(elapsed),
                         isPaused: paused,
                         paceSecsPerKm: pace
                     )
@@ -84,11 +83,12 @@ struct WalkNavigationView: View {
             .alert("Still walking?", isPresented: $showBreakPromptAlert) {
                 Button("End Walk", role: .destructive) {
                     session.dismissBreakPrompt()
+                    let dist = session.totalDistanceCovered
+                    let elapsed = Int(session.elapsedTime)
                     session.stop()
-                    Task { await WalkLiveActivityManager.shared.end(
-                        distanceCovered: session.totalDistanceCovered,
-                        elapsedSeconds:  Int(session.elapsedTime)
-                    )}
+                    cancelWaterBreakReminders()
+                    endSessionOnDismiss = true
+                    Task { await WalkLiveActivityManager.shared.end(distanceCovered: dist, elapsedSeconds: elapsed) }
                     dismiss()
                 }
                 Button("Keep Tracking", role: .cancel) {
@@ -104,13 +104,21 @@ struct WalkNavigationView: View {
             .alert("End Walk?", isPresented: $showStopAlert) {
                 Button("Save Route & Exit") {
                     saveCurrentRoute()
+                    let dist = session.totalDistanceCovered
+                    let elapsed = Int(session.elapsedTime)
                     session.stop()
-                    Task { await WalkLiveActivityManager.shared.end(distanceCovered: session.totalDistanceCovered, elapsedSeconds: Int(session.elapsedTime)) }
+                    cancelWaterBreakReminders()
+                    endSessionOnDismiss = true
+                    Task { await WalkLiveActivityManager.shared.end(distanceCovered: dist, elapsedSeconds: elapsed) }
                     dismiss()
                 }
                 Button("Exit", role: .destructive) {
+                    let dist = session.totalDistanceCovered
+                    let elapsed = Int(session.elapsedTime)
                     session.stop()
-                    Task { await WalkLiveActivityManager.shared.end(distanceCovered: session.totalDistanceCovered, elapsedSeconds: Int(session.elapsedTime)) }
+                    cancelWaterBreakReminders()
+                    endSessionOnDismiss = true
+                    Task { await WalkLiveActivityManager.shared.end(distanceCovered: dist, elapsedSeconds: elapsed) }
                     dismiss()
                 }
                 Button("Keep Walking", role: .cancel) {}
@@ -125,7 +133,11 @@ struct WalkNavigationView: View {
                 .ignoresSafeArea()
             hudPanel
         }
-        .fullScreenCover(isPresented: $showComplete, onDismiss: { dismiss() }) {
+        .fullScreenCover(isPresented: $showComplete, onDismiss: {
+            cancelWaterBreakReminders()
+            endSessionOnDismiss = true
+            dismiss()
+        }) {
             if let s = completedSession {
                 WalkCompleteView(
                     session: s,
@@ -148,6 +160,16 @@ struct WalkNavigationView: View {
     }
 
     private func startWalk() async {
+        guard !walkStore.isStarted else {
+            // Re-presenting after navigating away — recompute display data without restarting
+            computedLegs = await computeWalkingLegs()
+            if let firstWaypoint = route.waypoints.first {
+                walkWeather = await RouteWeatherService.shared.fetchWeather(for: firstWaypoint)
+            }
+            session.onCheckpointReached = checkpointsEnabled ? { [self] lbl in self.handleCheckpoint(lbl) } : nil
+            return
+        }
+        walkStore.markStarted()
         let center = UNUserNotificationCenter.current()
         if await center.notificationSettings().authorizationStatus == .notDetermined {
             try? await center.requestAuthorization(options: [.alert, .sound])
@@ -182,6 +204,7 @@ struct WalkNavigationView: View {
         petActiveSinceDistance.removeAll()
 
         var s = session.completedSession
+        let capturedSession = session
         s.activePetIds = Array(petAccumulatedDistances.keys)
         s.petDistances = petAccumulatedDistances
         s.isCommunityRoute = route.isCommunityRoute
@@ -198,7 +221,7 @@ struct WalkNavigationView: View {
                 distanceCovered: s.totalDistance,
                 elapsedSeconds: Int(s.elapsedTime)
             )
-            await session.finishWorkoutSession()
+            await capturedSession.finishWorkoutSession()
         }
         completedSession = s
         completedPetNames = petNamesFor(ids: Array(allWalkPetIds))
@@ -261,10 +284,11 @@ struct WalkNavigationView: View {
                     },
                     onEndWalk: {
                         showDrivingBanner = false
-                        session.stop()
+                        let capturedSession = session
+                        capturedSession.stop()
                         Task { await WalkLiveActivityManager.shared.end(
-                            distanceCovered: session.totalDistanceCovered,
-                            elapsedSeconds:  Int(session.elapsedTime)
+                            distanceCovered: capturedSession.totalDistanceCovered,
+                            elapsedSeconds:  Int(capturedSession.elapsedTime)
                         )}
                         handleWalkComplete()
                     }

@@ -10,6 +10,7 @@ struct WalkHistoryView: View {
     @State private var navigatingRoute: NavigableRoute?
     @State private var showManualEntry = false
     @State private var selectedSession: WalkSession?
+    @State private var showActiveSessionAlert = false
 
     private var totalWalks: Int { store.sessions.count }
 
@@ -52,6 +53,11 @@ struct WalkHistoryView: View {
         }
         .navigationDestination(item: $navigatingRoute) { route in
             WalkNavigationView(route: route, historyStore: store)
+        }
+        .alert("Walk Already Active", isPresented: $showActiveSessionAlert) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("You have a walk in progress. Return to the home screen to resume or end it first.")
         }
         .sheet(isPresented: $showManualEntry) {
             ManualWalkEntrySheet { session in store.add(session) }
@@ -109,7 +115,12 @@ struct WalkHistoryView: View {
             }
             ForEach(store.sessions) { session in
                 WalkHistoryRow(session: session) {
-                    navigatingRoute = session.toNavigableRoute()
+                    let nav = session.toNavigableRoute()
+                    guard ActiveWalkStore.shared.beginSession(route: nav) != nil else {
+                        showActiveSessionAlert = true
+                        return
+                    }
+                    navigatingRoute = nav
                 } onInfo: {
                     selectedSession = session
                 }

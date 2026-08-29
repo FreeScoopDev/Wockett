@@ -35,6 +35,7 @@ struct SquatCounterApp: App {
                         .zIndex(1)
                 }
             }
+            .environment(ActiveWalkStore.shared)
             .environmentObject(petStore)
             .modelContainer(container)
         }
