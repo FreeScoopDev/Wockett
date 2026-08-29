@@ -282,7 +282,6 @@ struct StepCounterView: View {
     }
 
     private func handleAppear() {
-        print("🟡 [StepCounterView] handleAppear — pid \(ProcessInfo.processInfo.processIdentifier), bundle \(Bundle.main.bundleIdentifier ?? "?")")
         walkStore.configure(historyStore: historyStore)
         if calendarWeekOffset != 0 {
             calendarWeekOffset = 0

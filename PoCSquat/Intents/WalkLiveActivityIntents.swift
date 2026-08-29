@@ -13,18 +13,8 @@ struct EndWalkLiveActivityIntent: LiveActivityIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult {
-        print("🔵 [LiveActivityIntent] EndWalk perform() ENTERED — pid \(ProcessInfo.processInfo.processIdentifier), bundle \(Bundle.main.bundleIdentifier ?? "?")")
         #if !WOCKET_WIDGET
-        print("🔵 [LiveActivityIntent] EndWalk — WOCKET_WIDGET not defined, this is the app-target compilation")
-        if let _ = ActiveWalkStore.shared.session {
-            print("🔵 [LiveActivityIntent] EndWalk — session found, isActive=\(ActiveWalkStore.shared.isActive), calling saveAndEndActiveSession()")
-        } else {
-            print("🔴 [LiveActivityIntent] EndWalk — ActiveWalkStore.shared.session is NIL in this process")
-        }
         ActiveWalkStore.shared.saveAndEndActiveSession()
-        print("🔵 [LiveActivityIntent] EndWalk — saveAndEndActiveSession() returned, isActive now=\(ActiveWalkStore.shared.isActive)")
-        #else
-        print("🔴 [LiveActivityIntent] EndWalk — WOCKET_WIDGET IS defined, this is the WIDGET EXTENSION compilation — logic body skipped by design")
         #endif
         return .result()
     }
@@ -39,15 +29,9 @@ struct ToggleWalkPauseLiveActivityIntent: LiveActivityIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult {
-        print("🟢 [LiveActivityIntent] TogglePause perform() ENTERED — pid \(ProcessInfo.processInfo.processIdentifier), bundle \(Bundle.main.bundleIdentifier ?? "?")")
         #if !WOCKET_WIDGET
-        guard let session = ActiveWalkStore.shared.session else {
-            print("🔴 [LiveActivityIntent] TogglePause — ActiveWalkStore.shared.session is NIL in this process")
-            return .result()
-        }
-        print("🟢 [LiveActivityIntent] TogglePause — session found, isPaused before=\(session.isPaused)")
+        guard let session = ActiveWalkStore.shared.session else { return .result() }
         if session.isPaused { session.resume() } else { session.pause() }
-        print("🟢 [LiveActivityIntent] TogglePause — isPaused after=\(session.isPaused)")
 
         // Push the Live Activity update directly — don't rely on WalkNavigationView's
         // onChange, which only fires while SwiftUI is actively rendering. With
@@ -65,8 +49,6 @@ struct ToggleWalkPauseLiveActivityIntent: LiveActivityIntent {
             pausedDuration: session.totalPausedDuration,
             pauseTime: paused ? Date() : nil
         )
-        #else
-        print("🔴 [LiveActivityIntent] TogglePause — WOCKET_WIDGET IS defined, this is the WIDGET EXTENSION compilation — logic body skipped by design")
         #endif
         return .result()
     }
