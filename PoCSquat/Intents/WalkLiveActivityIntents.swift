@@ -9,7 +9,7 @@ import ActivityKit
 struct EndWalkLiveActivityIntent: LiveActivityIntent {
     static var title: LocalizedStringResource = "End Walk"
     static var description = IntentDescription("Saves and ends the active Wockett walk from the Live Activity.")
-    static var openAppWhenRun: Bool = true   // TEMP DIAGNOSTIC — remove after testing
+    static var openAppWhenRun: Bool = false
 
     @MainActor
     func perform() async throws -> some IntentResult {
@@ -35,7 +35,7 @@ struct EndWalkLiveActivityIntent: LiveActivityIntent {
 struct ToggleWalkPauseLiveActivityIntent: LiveActivityIntent {
     static var title: LocalizedStringResource = "Pause or Resume Walk"
     static var description = IntentDescription("Pauses or resumes the active Wockett walk from the Live Activity.")
-    static var openAppWhenRun: Bool = true   // TEMP DIAGNOSTIC — remove after testing
+    static var openAppWhenRun: Bool = false
 
     @MainActor
     func perform() async throws -> some IntentResult {

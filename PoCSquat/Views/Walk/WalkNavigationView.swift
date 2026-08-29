@@ -36,112 +36,120 @@ struct WalkNavigationView: View {
     @State private var showDrivingBanner = false
 
     var body: some View {
-        mapContent
-            .toolbar(.hidden, for: .navigationBar)
-            .presentationDetents([.large])
-            .presentationDragIndicator(.visible)
-            .task { await startWalk() }
-            .onDisappear {
-                if endSessionOnDismiss { walkStore.endSession() }
-            }
-            .onChange(of: checkpointsEnabled) { _, enabled in handleCheckpointToggle(enabled) }
-            .onChange(of: session.isCompleted) { _, completed in
-                guard completed else { return }
-                handleWalkComplete()
-            }
-            .onChange(of: session.totalDistanceCovered) { _, dist in
-                let elapsed = session.elapsedTime
-                let isPaused = session.isPaused
-                let pace = dist > 100 && elapsed > 10 ? elapsed / (dist / 1000) : nil
-                Task {
-                    await WalkLiveActivityManager.shared.update(
-                        distanceCovered: dist,
-                        elapsedSeconds: Int(elapsed),
-                        isPaused: isPaused,
-                        paceSecsPerKm: pace
-                    )
+        if walkStore.session != nil {
+            mapContent
+                .toolbar(.hidden, for: .navigationBar)
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+                .task { await startWalk() }
+                .onDisappear {
+                    if endSessionOnDismiss { walkStore.endSession() }
                 }
-            }
-            .onChange(of: session.isPaused) { _, paused in
-                let dist = session.totalDistanceCovered
-                let elapsed = session.elapsedTime
-                let pace = dist > 100 && elapsed > 10 ? elapsed / (dist / 1000) : nil
-                Task {
-                    await WalkLiveActivityManager.shared.update(
-                        distanceCovered: dist,
-                        elapsedSeconds: Int(elapsed),
-                        isPaused: paused,
-                        paceSecsPerKm: pace
-                    )
+                .onChange(of: checkpointsEnabled) { _, enabled in handleCheckpointToggle(enabled) }
+                .onChange(of: session.isCompleted) { _, completed in
+                    guard completed else { return }
+                    handleWalkComplete()
                 }
-            }
-            .onChange(of: petStore.activePets.count) { _, count in handlePetCountChange(count) }
-            .onChange(of: session.showBreakPrompt) { _, show in
-                if show { showBreakPromptAlert = true }
-            }
-            .onChange(of: session.drivingSuspected) { _, suspected in
-                if suspected { showDrivingBanner = true }
-            }
-            .alert("Still walking?", isPresented: $showBreakPromptAlert) {
-                Button("End Walk") {
-                    session.dismissBreakPrompt()
+                .onChange(of: session.totalDistanceCovered) { _, dist in
+                    let elapsed = session.elapsedTime
+                    let isPaused = session.isPaused
+                    let pace = dist > 100 && elapsed > 10 ? elapsed / (dist / 1000) : nil
+                    Task {
+                        await WalkLiveActivityManager.shared.update(
+                            distanceCovered: dist,
+                            elapsedSeconds: Int(elapsed),
+                            isPaused: isPaused,
+                            paceSecsPerKm: pace
+                        )
+                    }
+                }
+                .onChange(of: session.isPaused) { _, paused in
                     let dist = session.totalDistanceCovered
-                    let elapsed = Int(session.elapsedTime)
-                    let pets = finalizePetDistances()
-                    walkStore.buildAndSaveSession(petDistances: pets.distances, activePetIds: pets.activePetIds, isCommunityRoute: route.isCommunityRoute)
-                    session.stop()
-                    cancelWaterBreakReminders()
-                    endSessionOnDismiss = true
-                    Task { await WalkLiveActivityManager.shared.end(distanceCovered: dist, elapsedSeconds: elapsed) }
-                    dismiss()
+                    let elapsed = session.elapsedTime
+                    let pace = dist > 100 && elapsed > 10 ? elapsed / (dist / 1000) : nil
+                    Task {
+                        await WalkLiveActivityManager.shared.update(
+                            distanceCovered: dist,
+                            elapsedSeconds: Int(elapsed),
+                            isPaused: paused,
+                            paceSecsPerKm: pace
+                        )
+                    }
                 }
-                Button("Keep Tracking", role: .cancel) {
-                    session.dismissBreakPrompt()
+                .onChange(of: petStore.activePets.count) { _, count in handlePetCountChange(count) }
+                .onChange(of: session.showBreakPrompt) { _, show in
+                    if show { showBreakPromptAlert = true }
                 }
-            } message: {
-                Text("You haven't moved in a few minutes. End the walk or keep tracking?")
-            }
-            .onChange(of: waterBreakEnabled) { _, enabled in
-                guard enabled else { return }
-                Task { await scheduleWaterBreakReminders() }
-            }
-            .alert("End Walk?", isPresented: $showStopAlert) {
-                Button("Save Route & End Walk") {
-                    saveCurrentRoute()
-                    let dist = session.totalDistanceCovered
-                    let elapsed = Int(session.elapsedTime)
-                    let pets = finalizePetDistances()
-                    walkStore.buildAndSaveSession(petDistances: pets.distances, activePetIds: pets.activePetIds, isCommunityRoute: route.isCommunityRoute)
-                    session.stop()
-                    cancelWaterBreakReminders()
-                    endSessionOnDismiss = true
-                    Task { await WalkLiveActivityManager.shared.end(distanceCovered: dist, elapsedSeconds: elapsed) }
-                    dismiss()
+                .onChange(of: session.drivingSuspected) { _, suspected in
+                    if suspected { showDrivingBanner = true }
                 }
-                Button("End Walk") {
-                    let dist = session.totalDistanceCovered
-                    let elapsed = Int(session.elapsedTime)
-                    let pets = finalizePetDistances()
-                    walkStore.buildAndSaveSession(petDistances: pets.distances, activePetIds: pets.activePetIds, isCommunityRoute: route.isCommunityRoute)
-                    session.stop()
-                    cancelWaterBreakReminders()
-                    endSessionOnDismiss = true
-                    Task { await WalkLiveActivityManager.shared.end(distanceCovered: dist, elapsedSeconds: elapsed) }
-                    dismiss()
+                .alert("Still walking?", isPresented: $showBreakPromptAlert) {
+                    Button("End Walk") {
+                        session.dismissBreakPrompt()
+                        let dist = session.totalDistanceCovered
+                        let elapsed = Int(session.elapsedTime)
+                        let pets = finalizePetDistances()
+                        walkStore.buildAndSaveSession(petDistances: pets.distances, activePetIds: pets.activePetIds, isCommunityRoute: route.isCommunityRoute)
+                        session.stop()
+                        cancelWaterBreakReminders()
+                        endSessionOnDismiss = true
+                        Task { await WalkLiveActivityManager.shared.end(distanceCovered: dist, elapsedSeconds: elapsed) }
+                        dismiss()
+                    }
+                    Button("Keep Tracking", role: .cancel) {
+                        session.dismissBreakPrompt()
+                    }
+                } message: {
+                    Text("You haven't moved in a few minutes. End the walk or keep tracking?")
                 }
-                Button("Discard Walk", role: .destructive) {
-                    let dist = session.totalDistanceCovered
-                    let elapsed = Int(session.elapsedTime)
-                    session.stop()
-                    cancelWaterBreakReminders()
-                    endSessionOnDismiss = true
-                    Task { await WalkLiveActivityManager.shared.end(distanceCovered: dist, elapsedSeconds: elapsed) }
-                    dismiss()
+                .onChange(of: waterBreakEnabled) { _, enabled in
+                    guard enabled else { return }
+                    Task { await scheduleWaterBreakReminders() }
                 }
-                Button("Keep Walking", role: .cancel) {}
-            } message: {
-                Text("Save this walk to your history? You can also save the route to My Routes so you can walk it again.")
-            }
+                .alert("End Walk?", isPresented: $showStopAlert) {
+                    Button("Save Route & End Walk") {
+                        saveCurrentRoute()
+                        let dist = session.totalDistanceCovered
+                        let elapsed = Int(session.elapsedTime)
+                        let pets = finalizePetDistances()
+                        walkStore.buildAndSaveSession(petDistances: pets.distances, activePetIds: pets.activePetIds, isCommunityRoute: route.isCommunityRoute)
+                        session.stop()
+                        cancelWaterBreakReminders()
+                        endSessionOnDismiss = true
+                        Task { await WalkLiveActivityManager.shared.end(distanceCovered: dist, elapsedSeconds: elapsed) }
+                        dismiss()
+                    }
+                    Button("End Walk") {
+                        let dist = session.totalDistanceCovered
+                        let elapsed = Int(session.elapsedTime)
+                        let pets = finalizePetDistances()
+                        walkStore.buildAndSaveSession(petDistances: pets.distances, activePetIds: pets.activePetIds, isCommunityRoute: route.isCommunityRoute)
+                        session.stop()
+                        cancelWaterBreakReminders()
+                        endSessionOnDismiss = true
+                        Task { await WalkLiveActivityManager.shared.end(distanceCovered: dist, elapsedSeconds: elapsed) }
+                        dismiss()
+                    }
+                    Button("Discard Walk", role: .destructive) {
+                        let dist = session.totalDistanceCovered
+                        let elapsed = Int(session.elapsedTime)
+                        session.stop()
+                        cancelWaterBreakReminders()
+                        endSessionOnDismiss = true
+                        Task { await WalkLiveActivityManager.shared.end(distanceCovered: dist, elapsedSeconds: elapsed) }
+                        dismiss()
+                    }
+                    Button("Keep Walking", role: .cancel) {}
+                } message: {
+                    Text("Save this walk to your history? You can also save the route to My Routes so you can walk it again.")
+                }
+        } else {
+            // Session was ended from outside this view (e.g. the Live Activity's
+            // End Walk button while this sheet was still open, not minimized).
+            // Dismiss instead of crashing on the force-unwrapped `session` above.
+            Color.clear
+                .onAppear { dismiss() }
+        }
     }
 
     @ViewBuilder private var mapContent: some View {
