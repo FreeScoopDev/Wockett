@@ -83,10 +83,12 @@ struct WalkNavigationView: View {
                 if suspected { showDrivingBanner = true }
             }
             .alert("Still walking?", isPresented: $showBreakPromptAlert) {
-                Button("End Walk", role: .destructive) {
+                Button("End Walk") {
                     session.dismissBreakPrompt()
                     let dist = session.totalDistanceCovered
                     let elapsed = Int(session.elapsedTime)
+                    let pets = finalizePetDistances()
+                    walkStore.buildAndSaveSession(petDistances: pets.distances, activePetIds: pets.activePetIds, isCommunityRoute: route.isCommunityRoute)
                     session.stop()
                     cancelWaterBreakReminders()
                     endSessionOnDismiss = true
@@ -104,17 +106,30 @@ struct WalkNavigationView: View {
                 Task { await scheduleWaterBreakReminders() }
             }
             .alert("End Walk?", isPresented: $showStopAlert) {
-                Button("Save Route & Exit") {
+                Button("Save Route & End Walk") {
                     saveCurrentRoute()
                     let dist = session.totalDistanceCovered
                     let elapsed = Int(session.elapsedTime)
+                    let pets = finalizePetDistances()
+                    walkStore.buildAndSaveSession(petDistances: pets.distances, activePetIds: pets.activePetIds, isCommunityRoute: route.isCommunityRoute)
                     session.stop()
                     cancelWaterBreakReminders()
                     endSessionOnDismiss = true
                     Task { await WalkLiveActivityManager.shared.end(distanceCovered: dist, elapsedSeconds: elapsed) }
                     dismiss()
                 }
-                Button("Exit", role: .destructive) {
+                Button("End Walk") {
+                    let dist = session.totalDistanceCovered
+                    let elapsed = Int(session.elapsedTime)
+                    let pets = finalizePetDistances()
+                    walkStore.buildAndSaveSession(petDistances: pets.distances, activePetIds: pets.activePetIds, isCommunityRoute: route.isCommunityRoute)
+                    session.stop()
+                    cancelWaterBreakReminders()
+                    endSessionOnDismiss = true
+                    Task { await WalkLiveActivityManager.shared.end(distanceCovered: dist, elapsedSeconds: elapsed) }
+                    dismiss()
+                }
+                Button("Discard Walk", role: .destructive) {
                     let dist = session.totalDistanceCovered
                     let elapsed = Int(session.elapsedTime)
                     session.stop()
@@ -125,7 +140,7 @@ struct WalkNavigationView: View {
                 }
                 Button("Keep Walking", role: .cancel) {}
             } message: {
-                Text("Save this route to My Routes so you can walk it again later?")
+                Text("Save this walk to your history? You can also save the route to My Routes so you can walk it again.")
             }
     }
 
@@ -214,17 +229,22 @@ struct WalkNavigationView: View {
         }
     }
 
-    private func handleWalkComplete() {
+    private func finalizePetDistances() -> (activePetIds: [UUID], distances: [UUID: Double]) {
         let finalWalked = route.totalDistance - session.remainingDistance
         for (petId, sinceDistance) in petActiveSinceDistance {
             petAccumulatedDistances[petId, default: 0] += max(0, finalWalked - sinceDistance)
         }
         petActiveSinceDistance.removeAll()
+        return (Array(petAccumulatedDistances.keys), petAccumulatedDistances)
+    }
+
+    private func handleWalkComplete() {
+        let pets = finalizePetDistances()
 
         var s = session.completedSession
         let capturedSession = session
-        s.activePetIds = Array(petAccumulatedDistances.keys)
-        s.petDistances = petAccumulatedDistances
+        s.activePetIds = pets.activePetIds
+        s.petDistances = pets.distances
         s.isCommunityRoute = route.isCommunityRoute
         let previousSessions = historyStore.sessions
         completedPRs = checkNewPRs(newSession: s, against: previousSessions)

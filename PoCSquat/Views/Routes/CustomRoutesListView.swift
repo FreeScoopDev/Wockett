@@ -153,13 +153,13 @@ struct CustomRouteDetailView: View {
     let route:  CustomRoute
     @ObservedObject var historyStore: WalkHistoryStore
     @ObservedObject var routeStore:   CustomRouteStore
+    @Environment(\.dismiss) private var dismiss
     @State private var routeLegs:         [MKRoute] = []
     @State private var isLoading          = false
     @State private var routeWeather:      RouteWeather?
     @State private var elevationProfile:  ElevationProfile?
     @State private var isLoadingElevation = false
     @State private var showMapsAlert      = false
-    @State private var navigatingRoute:        NavigableRoute?
     @State private var isEditing               = false
     @State private var shareState: ShareState  = .idle
     @State private var showActiveSessionAlert  = false
@@ -254,7 +254,7 @@ struct CustomRouteDetailView: View {
                                 showActiveSessionAlert = true
                                 return
                             }
-                            navigatingRoute = nav
+                            dismiss()
                         } label: {
                             Label("Start Walk", systemImage: "figure.walk")
                                 .frame(maxWidth: .infinity)
@@ -364,9 +364,6 @@ struct CustomRouteDetailView: View {
                     Image(systemName: "pencil").foregroundColor(.earthGreen)
                 }
             }
-        }
-        .navigationDestination(item: $navigatingRoute) { r in
-            WalkNavigationView(route: r, historyStore: historyStore)
         }
         .alert("Walk Already Active", isPresented: $showActiveSessionAlert) {
             Button("OK", role: .cancel) {}

@@ -7,8 +7,32 @@ final class ActiveWalkStore {
     private(set) var session: NavigationSessionManager?
     private(set) var activeRoute: NavigableRoute?
     private(set) var isStarted: Bool = false
+    private(set) var historyStore: WalkHistoryStore?
 
     private init() {}
+
+    func configure(historyStore: WalkHistoryStore) {
+        self.historyStore = historyStore
+    }
+
+    /// Snapshots the current session into Walk History. Does NOT stop the session or
+    /// clear the store — callers are responsible for that ordering. Safe to call with
+    /// default args when per-pet distance data isn't available (e.g. from the mini tile).
+    @discardableResult
+    func buildAndSaveSession(
+        petDistances: [UUID: Double] = [:],
+        activePetIds: [UUID] = [],
+        isCommunityRoute: Bool = false
+    ) -> WalkSession? {
+        guard let session, let historyStore else { return nil }
+        var s = session.completedSession
+        s.activePetIds = activePetIds
+        s.petDistances = petDistances
+        s.isCommunityRoute = isCommunityRoute
+        historyStore.add(s)
+        BackgroundTaskManager.shared.scheduleCloudKitSync()
+        return s
+    }
 
     var isActive: Bool { session != nil }
 

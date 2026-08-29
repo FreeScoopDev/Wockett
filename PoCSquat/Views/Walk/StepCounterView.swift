@@ -83,6 +83,12 @@ struct StepCounterView: View {
                 // When RouteFinderView closes with an active session, jump straight to the walk.
                 if !isShowing && walkStore.isActive { showResumeWalk = true }
             }
+            .onChange(of: showMyRoutes) { _, isShowing in
+                if !isShowing && walkStore.isActive { showResumeWalk = true }
+            }
+            .onChange(of: showWalkHistory) { _, isShowing in
+                if !isShowing && walkStore.isActive { showResumeWalk = true }
+            }
             .sheet(isPresented: $showBadges) {
                 BadgesView(
                     sessions: historyStore.sessions,
@@ -276,6 +282,7 @@ struct StepCounterView: View {
     }
 
     private func handleAppear() {
+        walkStore.configure(historyStore: historyStore)
         if calendarWeekOffset != 0 {
             calendarWeekOffset = 0
             Task { await stepManager.refreshWeeklyCalendar(sessions: historyStore.sessions, weekOffset: 0) }

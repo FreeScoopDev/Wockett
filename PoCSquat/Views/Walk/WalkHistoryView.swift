@@ -7,7 +7,7 @@ import UIKit
 struct WalkHistoryView: View {
     @ObservedObject var store: WalkHistoryStore
     @EnvironmentObject var petStore: PetStore
-    @State private var navigatingRoute: NavigableRoute?
+    @Environment(\.dismiss) private var dismiss
     @State private var showManualEntry = false
     @State private var selectedSession: WalkSession?
     @State private var showActiveSessionAlert = false
@@ -50,9 +50,6 @@ struct WalkHistoryView: View {
                     Image(systemName: "plus").foregroundColor(.earthGreen)
                 }
             }
-        }
-        .navigationDestination(item: $navigatingRoute) { route in
-            WalkNavigationView(route: route, historyStore: store)
         }
         .alert("Walk Already Active", isPresented: $showActiveSessionAlert) {
             Button("OK", role: .cancel) {}
@@ -120,7 +117,7 @@ struct WalkHistoryView: View {
                         showActiveSessionAlert = true
                         return
                     }
-                    navigatingRoute = nav
+                    dismiss()
                 } onInfo: {
                     selectedSession = session
                 }
