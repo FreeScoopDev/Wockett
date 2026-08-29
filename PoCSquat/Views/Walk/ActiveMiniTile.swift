@@ -28,18 +28,8 @@ struct ActiveMiniTileContainer: View {
         .animation(.spring(response: 0.4, dampingFraction: 0.82), value: walkStore.isActive)
         .confirmationDialog("End Walk?", isPresented: $showEndConfirmation, titleVisibility: .visible) {
             Button("Save & End Walk") {
-                guard let session = walkStore.session, let route = walkStore.activeRoute else { return }
-                let dist    = session.totalDistanceCovered
-                let elapsed = Int(session.elapsedTime)
-                // No per-pet distance data here — WalkNavigationView tracks that while mounted.
-                // The walk is still saved; pets just won't get distance credit for this session.
-                walkStore.buildAndSaveSession(isCommunityRoute: route.isCommunityRoute)
-                session.stop()
-                walkStore.endSession()
-                UNUserNotificationCenter.current().removePendingNotificationRequests(
-                    withIdentifiers: (1...12).map { "waterBreak-\($0)" }
-                )
-                Task { await WalkLiveActivityManager.shared.end(distanceCovered: dist, elapsedSeconds: elapsed) }
+                guard walkStore.session != nil else { return }
+                walkStore.saveAndEndActiveSession()
             }
             Button("Discard Walk", role: .destructive) {
                 guard let session = walkStore.session else { return }

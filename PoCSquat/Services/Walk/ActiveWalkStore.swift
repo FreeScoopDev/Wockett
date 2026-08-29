@@ -1,4 +1,5 @@
 import Foundation
+import UserNotifications
 
 @Observable @MainActor
 final class ActiveWalkStore {
@@ -35,6 +36,25 @@ final class ActiveWalkStore {
     }
 
     var isActive: Bool { session != nil }
+
+    /// Saves the active walk and tears down the session in one call.
+    /// For exit points that have no access to per-pet distance accrual
+    /// (mini tile, Live Activity button) — the walk is saved but pets
+    /// won't get distance credit for this session.
+    @discardableResult
+    func saveAndEndActiveSession() -> WalkSession? {
+        guard let session, let route = activeRoute else { return nil }
+        let dist    = session.totalDistanceCovered
+        let elapsed = Int(session.elapsedTime)
+        let saved   = buildAndSaveSession(isCommunityRoute: route.isCommunityRoute)
+        session.stop()
+        endSession()
+        UNUserNotificationCenter.current().removePendingNotificationRequests(
+            withIdentifiers: (1...12).map { "waterBreak-\($0)" }
+        )
+        Task { await WalkLiveActivityManager.shared.end(distanceCovered: dist, elapsedSeconds: elapsed) }
+        return saved
+    }
 
     /// Creates a session for `route` and returns it. Returns nil without side effects if a session is already active.
     @discardableResult

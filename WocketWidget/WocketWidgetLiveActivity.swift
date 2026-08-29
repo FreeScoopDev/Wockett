@@ -1,6 +1,23 @@
 import ActivityKit
 import WidgetKit
 import SwiftUI
+import AppIntents
+
+// MARK: - Live Activity Intent stubs (widget extension side)
+//
+// The real perform() implementations are in WalkLiveActivityIntents.swift
+// in the main app target. AppIntents matches these by struct name and routes
+// button taps to the main app process — no UserDefaults round-trip needed.
+
+private struct EndWalkLiveActivityIntent: LiveActivityIntent {
+    static var title: LocalizedStringResource = "End Walk"
+    func perform() async throws -> some IntentResult { .result() }
+}
+
+private struct ToggleWalkPauseLiveActivityIntent: LiveActivityIntent {
+    static var title: LocalizedStringResource = "Pause or Resume Walk"
+    func perform() async throws -> some IntentResult { .result() }
+}
 
 // MARK: - Formatting helpers (widget-local, no access to main app)
 
@@ -125,6 +142,25 @@ private struct WalkLockScreenView: View {
                     icon: "speedometer"
                 )
             }
+
+            // Interactive buttons
+            HStack(spacing: 10) {
+                Button(intent: ToggleWalkPauseLiveActivityIntent()) {
+                    Label(state.isPaused ? "Resume" : "Pause",
+                          systemImage: state.isPaused ? "play.fill" : "pause.fill")
+                        .font(.caption.bold())
+                }
+                .tint(.wktOrange)
+
+                Button(intent: EndWalkLiveActivityIntent()) {
+                    Label("End Walk", systemImage: "stop.fill")
+                        .font(.caption.bold())
+                }
+                .tint(.wktGreen)
+            }
+            .buttonStyle(.borderedProminent)
+            .buttonBorderShape(.capsule)
+            .controlSize(.small)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
@@ -200,18 +236,38 @@ struct WocketWalkLiveActivity: Widget {
                 }
 
                 DynamicIslandExpandedRegion(.bottom) {
-                    HStack(spacing: 20) {
-                        Label(fmtDistance(context.state.distanceCoveredMeters), systemImage: "location.fill")
-                            .font(.system(size: 13, weight: .semibold).monospacedDigit())
-                            .foregroundColor(.wktCream)
-                        Label(fmtPace(context.state.paceSecsPerKm), systemImage: "speedometer")
-                            .font(.system(size: 13, weight: .semibold).monospacedDigit())
-                            .foregroundColor(context.state.isPaused ? .wktOrange : .wktCream)
-                        if context.state.isPaused {
-                            Label("Paused", systemImage: "pause.circle.fill")
-                                .font(.caption.bold())
-                                .foregroundColor(.wktOrange)
+                    VStack(spacing: 8) {
+                        HStack(spacing: 20) {
+                            Label(fmtDistance(context.state.distanceCoveredMeters), systemImage: "location.fill")
+                                .font(.system(size: 13, weight: .semibold).monospacedDigit())
+                                .foregroundColor(.wktCream)
+                            Label(fmtPace(context.state.paceSecsPerKm), systemImage: "speedometer")
+                                .font(.system(size: 13, weight: .semibold).monospacedDigit())
+                                .foregroundColor(context.state.isPaused ? .wktOrange : .wktCream)
+                            if context.state.isPaused {
+                                Label("Paused", systemImage: "pause.circle.fill")
+                                    .font(.caption.bold())
+                                    .foregroundColor(.wktOrange)
+                            }
                         }
+
+                        HStack(spacing: 10) {
+                            Button(intent: ToggleWalkPauseLiveActivityIntent()) {
+                                Label(context.state.isPaused ? "Resume" : "Pause",
+                                      systemImage: context.state.isPaused ? "play.fill" : "pause.fill")
+                                    .font(.caption.bold())
+                            }
+                            .tint(.wktOrange)
+
+                            Button(intent: EndWalkLiveActivityIntent()) {
+                                Label("End Walk", systemImage: "stop.fill")
+                                    .font(.caption.bold())
+                            }
+                            .tint(.wktGreen)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .buttonBorderShape(.capsule)
+                        .controlSize(.small)
                     }
                     .padding(.bottom, 6)
                 }
