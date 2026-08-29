@@ -48,6 +48,21 @@ struct ToggleWalkPauseLiveActivityIntent: LiveActivityIntent {
         print("🟢 [LiveActivityIntent] TogglePause — session found, isPaused before=\(session.isPaused)")
         if session.isPaused { session.resume() } else { session.pause() }
         print("🟢 [LiveActivityIntent] TogglePause — isPaused after=\(session.isPaused)")
+
+        // Push the Live Activity update directly — don't rely on WalkNavigationView's
+        // onChange, which only fires while SwiftUI is actively rendering. With
+        // openAppWhenRun = false the app never comes to the foreground, so that
+        // handler may not run for a while (or until the user opens the app).
+        let dist = session.totalDistanceCovered
+        let elapsed = session.elapsedTime
+        let paused = session.isPaused
+        let pace = dist > 100 && elapsed > 10 ? elapsed / (dist / 1000) : nil
+        await WalkLiveActivityManager.shared.update(
+            distanceCovered: dist,
+            elapsedSeconds: Int(elapsed),
+            isPaused: paused,
+            paceSecsPerKm: pace
+        )
         #else
         print("🔴 [LiveActivityIntent] TogglePause — WOCKET_WIDGET IS defined, this is the WIDGET EXTENSION compilation — logic body skipped by design")
         #endif
