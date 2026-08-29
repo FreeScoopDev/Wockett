@@ -5,6 +5,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+- Active walk sessions now persist across the whole app instead of being tied to the map view — minimize any walk (swipe down or tap the chevron) and keep tracking from a persistent mini tile visible on every screen, with tap-to-reopen and a stop control
+- All four ways to start a walk (Route Finder, the dashboard "Start Walking" tile, My Routes, Walk History) now present the same sheet-based walk screen with native swipe-to-minimize, instead of two of the four using a different, non-minimizable presentation
+- Live Activity / lock screen now has interactive Pause, Resume, and End Walk buttons — **not yet functional, see Known Issues**
+
+### Fixed
+- **[Fix]** Walks ended manually (rather than by reaching the route's actual endpoint) were silently discarded instead of saved to Walk History
+  - What was broken: every manual "end this walk early" path — the map's own "End Walk?" dialog, the "Still walking?" inactivity prompt, and the mini tile's stop button — called `session.stop()` without ever writing the walk to history. Only completing a route to its literal endpoint saved anything. The map dialog's "Save Route & Exit" button was also misleading — it only saved the route definition to My Routes, never the walk itself.
+  - What changed: every manual exit now saves the walk by default, through one shared method on `ActiveWalkStore`, with an explicit "Discard Walk" as the only way to lose data on purpose. The map's dialog is now 4 buttons (Save Route & End Walk / End Walk / Discard Walk / Keep Walking); the mini tile is now Save & End Walk / Discard Walk / Cancel.
+  - Affected versions: present since guided walks were introduced; not previously reported — found during this session's code review of the walk-session architecture work.
+
+### Known Issues
+- Live Activity's Pause / Resume / End Walk buttons (Lock Screen banner, Dynamic Island, and the Notification Center pull-down card) do not work on a physical device — tapping does nothing, no crash, no console output. Confirmed after a clean build, full app delete, and reinstall, so this is not a stale-build/metadata-caching issue — root cause still open. Use the mini tile or in-map controls instead, which are confirmed working.
+
 ---
 
 ## [1.9] - 2026-08-28
