@@ -3,22 +3,6 @@ import WidgetKit
 import SwiftUI
 import AppIntents
 
-// MARK: - Live Activity Intent stubs (widget extension side)
-//
-// The real perform() implementations are in WalkLiveActivityIntents.swift
-// in the main app target. AppIntents matches these by struct name and routes
-// button taps to the main app process — no UserDefaults round-trip needed.
-
-private struct EndWalkLiveActivityIntent: LiveActivityIntent {
-    static var title: LocalizedStringResource = "End Walk"
-    func perform() async throws -> some IntentResult { .result() }
-}
-
-private struct ToggleWalkPauseLiveActivityIntent: LiveActivityIntent {
-    static var title: LocalizedStringResource = "Pause or Resume Walk"
-    func perform() async throws -> some IntentResult { .result() }
-}
-
 // MARK: - Formatting helpers (widget-local, no access to main app)
 
 private func fmtDistance(_ meters: Double) -> String {

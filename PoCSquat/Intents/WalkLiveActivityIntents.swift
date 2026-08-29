@@ -3,11 +3,11 @@ import ActivityKit
 
 // MARK: - End Walk Live Activity Intent
 //
-// Tapping "End Walk" on the lock-screen Live Activity or Dynamic Island
-// calls this intent in the main app process (not the extension process),
-// so it can reach ActiveWalkStore.shared directly. The widget extension
-// sees a matching stub declaration in WocketWidgetLiveActivity.swift that
-// carries the same struct name so AppIntents routes the perform() here.
+// This file is compiled into both PoCSquat (main app) and WocketWidgetExtension.
+// WOCKET_WIDGET is set in the widget extension's Swift Active Compilation Conditions,
+// so the perform() bodies — which reference main-app-only ActiveWalkStore — are only
+// compiled in the main app. iOS routes Live Activity button taps to the main app
+// process at runtime, so the widget extension never needs to execute perform().
 
 struct EndWalkLiveActivityIntent: LiveActivityIntent {
     static var title: LocalizedStringResource = "End Walk"
@@ -15,7 +15,9 @@ struct EndWalkLiveActivityIntent: LiveActivityIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult {
+        #if !WOCKET_WIDGET
         ActiveWalkStore.shared.saveAndEndActiveSession()
+        #endif
         return .result()
     }
 }
@@ -28,8 +30,10 @@ struct ToggleWalkPauseLiveActivityIntent: LiveActivityIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult {
+        #if !WOCKET_WIDGET
         guard let session = ActiveWalkStore.shared.session else { return .result() }
         if session.isPaused { session.resume() } else { session.pause() }
+        #endif
         return .result()
     }
 }
