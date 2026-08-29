@@ -343,6 +343,20 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
                 paceSecsPerKm: paceSecsPerKm,
                 activityMode: self.route.activityMode
             )
+            // Push the Live Activity directly from here too — don't rely on
+            // WalkNavigationView's onChange, which only fires while the view is
+            // actively rendering. This is what keeps the lock screen's distance/
+            // pace/timer moving during a normal backgrounded walk, not just when
+            // Pause/Resume happens to push an update.
+            // isPaused: false is intentional — didUpdateLocations only fires while
+            // location updates are flowing; pause() stops them, so we can't arrive
+            // here while actually paused.
+            await WalkLiveActivityManager.shared.update(
+                distanceCovered: self.totalDistanceCovered,
+                elapsedSeconds: Int(self.elapsedTime),
+                isPaused: false,
+                paceSecsPerKm: paceSecsPerKm
+            )
         }
     }
 
