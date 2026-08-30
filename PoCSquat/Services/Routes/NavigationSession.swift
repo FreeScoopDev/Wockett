@@ -416,6 +416,15 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
 
     var paceLabel: String { route.activityMode == .cycling ? "speed" : "pace" }
 
+    var elapsedText: String {
+        let s = Int(elapsedTime); let m = s / 60
+        return m < 60 ? "\(m)m \(s % 60)s" : "\(m / 60)h \(m % 60)m"
+    }
+
+    func distanceText(_ meters: Double) -> String {
+        MKDistanceFormatter.abbreviated.string(fromDistance: max(0, meters))
+    }
+
     var estimatedSteps: Int { liveSteps > 0 ? liveSteps : Int(totalDistanceCovered / 0.762) }
     var stopCount: Int { stopTracker.stopCount }
 

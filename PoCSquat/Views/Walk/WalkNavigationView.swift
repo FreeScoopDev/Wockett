@@ -87,8 +87,10 @@ struct WalkNavigationView: View {
                 .onChange(of: session.drivingSuspected) { _, suspected in
                     if suspected { showDrivingBanner = true }
                 }
-                .alert("Still \(route.activityMode.gerund.capitalized)?", isPresented: $showBreakPromptAlert) {
-                    Button("End \(route.activityMode.sessionLabel)") {
+                .modifier(BreakPromptAlert(
+                    isPresented: $showBreakPromptAlert,
+                    activityMode: route.activityMode,
+                    onEnd: {
                         session.dismissBreakPrompt()
                         let dist = session.totalDistanceCovered
                         let elapsed = Int(session.elapsedTime)
@@ -104,20 +106,20 @@ struct WalkNavigationView: View {
                             await capturedSession.finishWorkoutSession()
                         }
                         dismiss()
-                    }
-                    Button("Keep Tracking", role: .cancel) {
+                    },
+                    onKeepTracking: {
                         session.dismissBreakPrompt()
                         if session.autoPausedForInactivity { session.resume() }
                     }
-                } message: {
-                    Text("You haven't moved in a few minutes. End the \(route.activityMode.noun) or keep tracking?")
-                }
+                ))
                 .onChange(of: waterBreakEnabled) { _, enabled in
                     guard enabled else { return }
                     Task { await scheduleWaterBreakReminders() }
                 }
-                .alert("End \(route.activityMode.sessionLabel)?", isPresented: $showStopAlert) {
-                    Button("Save Route & End \(route.activityMode.sessionLabel)") {
+                .modifier(SessionEndDialog(
+                    isPresented: $showStopAlert,
+                    activityMode: route.activityMode,
+                    onSaveAndEnd: {
                         saveCurrentRoute()
                         let dist = session.totalDistanceCovered
                         let elapsed = Int(session.elapsedTime)
@@ -133,8 +135,8 @@ struct WalkNavigationView: View {
                             await capturedSession.finishWorkoutSession()
                         }
                         dismiss()
-                    }
-                    Button("End \(route.activityMode.sessionLabel)") {
+                    },
+                    onEnd: {
                         let dist = session.totalDistanceCovered
                         let elapsed = Int(session.elapsedTime)
                         let pausedDuration = session.totalPausedDuration
@@ -149,8 +151,8 @@ struct WalkNavigationView: View {
                             await capturedSession.finishWorkoutSession()
                         }
                         dismiss()
-                    }
-                    Button("Discard \(route.activityMode.sessionLabel)", role: .destructive) {
+                    },
+                    onDiscard: {
                         let dist = session.totalDistanceCovered
                         let elapsed = Int(session.elapsedTime)
                         let pausedDuration = session.totalPausedDuration
@@ -162,10 +164,7 @@ struct WalkNavigationView: View {
                         Task { await WalkLiveActivityManager.shared.end(distanceCovered: dist, elapsedSeconds: elapsed, pausedDuration: pausedDuration) }
                         dismiss()
                     }
-                    Button("Keep \(route.activityMode.gerund.capitalized)", role: .cancel) {}
-                } message: {
-                    Text("Save this \(route.activityMode.noun) to your history? You can also save the route to My Routes so you can \(route.activityMode.noun) it again.")
-                }
+                ))
         } else {
             // Session was ended from outside this view (e.g. the Live Activity's
             // End Walk button while this sheet was still open, not minimized).
@@ -485,26 +484,7 @@ struct WalkNavigationView: View {
             .padding(.horizontal, 20).padding(.top, 20)
 
             if session.isPaused {
-                HStack(spacing: 10) {
-                    Image(systemName: "pause.circle.fill")
-                        .foregroundColor(.earthOrange)
-                    Text("\(route.activityMode.sessionLabel) Paused")
-                        .font(.caption.bold())
-                        .foregroundColor(.earthOrange)
-                    Spacer()
-                    Button {
-                        session.resume()
-                    } label: {
-                        Label("Resume", systemImage: "play.fill")
-                            .font(.caption.bold())
-                            .padding(.horizontal, 12).padding(.vertical, 6)
-                            .background(Color.earthGreen.opacity(0.9))
-                            .foregroundColor(.white).cornerRadius(8)
-                    }
-                }
-                .padding(.horizontal, 16).padding(.vertical, 10)
-                .background(Color.earthOrange.opacity(0.1))
-                .transition(.move(edge: .top).combined(with: .opacity))
+                PauseResumeControl(sessionLabel: route.activityMode.sessionLabel, onResume: { session.resume() })
             }
 
             Rectangle()
@@ -512,40 +492,7 @@ struct WalkNavigationView: View {
                 .foregroundColor(Color.earthMuted.opacity(0.25))
                 .padding(.top, session.isPaused ? 0 : 14)
 
-            HStack(spacing: 0) {
-                hudStat(value: distText(session.distanceToNextWaypoint), label: "to next",  icon: "location.fill")
-                Rectangle().frame(width: 0.5, height: 36).foregroundColor(Color.earthMuted.opacity(0.25))
-                hudStat(value: distText(session.remainingDistance),      label: "remaining", icon: "flag.fill")
-                Rectangle().frame(width: 0.5, height: 36).foregroundColor(Color.earthMuted.opacity(0.25))
-                hudStat(value: timeText(session.elapsedTime),            label: "elapsed",  icon: "clock.fill")
-                Rectangle().frame(width: 0.5, height: 36).foregroundColor(Color.earthMuted.opacity(0.25))
-                hudStat(value: session.paceText,                         label: session.paceLabel, icon: "speedometer")
-            }
-            .padding(.vertical, 14)
-
-            if session.estimatedSteps > 0 {
-                Rectangle()
-                    .frame(height: 0.5)
-                    .foregroundColor(Color.earthMuted.opacity(0.25))
-                HStack(spacing: 0) {
-                    VStack(spacing: 5) {
-                        Image(systemName: route.activityMode.icon).font(.caption).foregroundColor(.earthGreen)
-                        Text(session.estimatedSteps.formatted()).font(.subheadline.bold()).foregroundColor(.earthCream)
-                        Text("steps").font(.caption2).foregroundColor(.earthMuted)
-                        if let cad = session.cadence, cad > 0 {
-                            Text("\(Int(cad))/min")
-                                .font(.system(size: 10, weight: .semibold))
-                                .foregroundColor(.earthGreen)
-                        }
-                    }
-                    .frame(maxWidth: .infinity)
-                    if let eta = session.estimatedSecondsRemaining {
-                        Rectangle().frame(width: 0.5, height: 36).foregroundColor(Color.earthMuted.opacity(0.25))
-                        hudStat(value: etaText(eta), label: "est. left", icon: "timer")
-                    }
-                }
-                .padding(.vertical, 14)
-            }
+            SessionStatsBar(session: session, activityIcon: route.activityMode.icon, showsRemaining: true)
         }
         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: showDrivingBanner)
         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: showHeatBanner)
@@ -554,31 +501,8 @@ struct WalkNavigationView: View {
         .background(.ultraThinMaterial)
     }
 
-    private func hudStat(value: String, label: String, icon: String) -> some View {
-        VStack(spacing: 5) {
-            Image(systemName: icon).font(.caption).foregroundColor(.earthGreen)
-            Text(value).font(.subheadline.bold()).foregroundColor(.earthCream)
-            Text(label).font(.caption2).foregroundColor(.earthMuted)
-        }
-        .frame(maxWidth: .infinity)
-    }
-
     private func petNamesFor(ids: [UUID]) -> [String] {
         ids.compactMap { id in petStore.pets.first { $0.id == id }?.name }
-    }
-
-    private func distText(_ m: Double) -> String {
-        MKDistanceFormatter.abbreviated.string(fromDistance: max(0, m))
-    }
-
-    private func timeText(_ t: TimeInterval) -> String {
-        let s = Int(t); let m = s / 60
-        return m < 60 ? "\(m)m \(s % 60)s" : "\(m / 60)h \(m % 60)m"
-    }
-
-    private func etaText(_ seconds: Double) -> String {
-        let s = Int(seconds); let m = s / 60
-        return m < 60 ? "\(m)m \(s % 60)s" : "\(m / 60)h \(m % 60)m"
     }
 
     private func saveCurrentRoute() {
@@ -652,42 +576,6 @@ struct WalkNavigationView: View {
 }
 
 // MARK: - Heat Advisory Banner
-
-private struct DrivingSuspectedBanner: View {
-    let activityMode: ActivityMode
-    let onStillWalking: () -> Void
-    let onEndWalk: () -> Void
-
-    var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "car.fill")
-                .font(.title3).foregroundColor(.red.opacity(0.85))
-            VStack(alignment: .leading, spacing: 2) {
-                Text("This looks faster than a \(activityMode.noun)")
-                    .font(.caption.bold()).foregroundColor(.earthCream)
-                Text("Still \(activityMode.gerund), or are you driving?")
-                    .font(.caption2).foregroundColor(.earthMuted)
-            }
-            Spacer()
-            Button { onStillWalking() } label: {
-                Text("Still \(activityMode.gerund)")
-                    .font(.caption.bold())
-                    .padding(.horizontal, 10).padding(.vertical, 6)
-                    .background(Color.earthGreen.opacity(0.85))
-                    .foregroundColor(.white).cornerRadius(8)
-            }
-            Button { onEndWalk() } label: {
-                Text("End \(activityMode.noun)")
-                    .font(.caption.bold())
-                    .padding(.horizontal, 10).padding(.vertical, 6)
-                    .background(Color.red.opacity(0.75))
-                    .foregroundColor(.white).cornerRadius(8)
-            }
-        }
-        .padding(.horizontal, 16).padding(.vertical, 10)
-        .background(Color.red.opacity(0.1))
-    }
-}
 
 private struct HeatAdvisoryBanner: View {
     let intervalMinutes: Int
