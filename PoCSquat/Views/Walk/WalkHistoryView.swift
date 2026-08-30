@@ -40,7 +40,7 @@ struct WalkHistoryView: View {
                 if store.sessions.isEmpty { emptyState } else { historyList }
             }
         }
-        .navigationTitle("Walk History")
+        .navigationTitle("Activity History")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {

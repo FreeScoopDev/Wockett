@@ -67,7 +67,7 @@ struct SettingsView: View {
                             in: 1...15
                         )
                         .foregroundColor(.earthCream)
-                        Text("Shows a \"Still walking?\" prompt when no movement is detected for this long during an active walk.")
+                        Text("Shows a \"still moving?\" check-in when no movement is detected for this long during an active session.")
                             .font(.caption).foregroundColor(.earthMuted)
                     }
                     .padding(.vertical, 4)
