@@ -65,6 +65,22 @@ struct ActiveWalkSnapshot: Codable {
     let splitTimes: [SplitTimeRecord]
     let liveSteps: Int
     let checkpointDate: Date           // when this snapshot was written
+    let trackPoints: [WaypointCoord]?  // GPS breadcrumbs; optional so pre-existing checkpoint files still decode
+
+    init(route: RouteData, startTime: Date, totalDistanceCovered: Double,
+         pausedDuration: TimeInterval, isPaused: Bool, pauseStartDate: Date?,
+         currentWaypointIndex: Int, currentLap: Int, triggeredCheckpoints: Set<Int>,
+         splitTimes: [SplitTimeRecord], liveSteps: Int, checkpointDate: Date,
+         trackPoints: [WaypointCoord]? = nil) {
+        self.route = route; self.startTime = startTime
+        self.totalDistanceCovered = totalDistanceCovered
+        self.pausedDuration = pausedDuration; self.isPaused = isPaused
+        self.pauseStartDate = pauseStartDate
+        self.currentWaypointIndex = currentWaypointIndex; self.currentLap = currentLap
+        self.triggeredCheckpoints = triggeredCheckpoints; self.splitTimes = splitTimes
+        self.liveSteps = liveSteps; self.checkpointDate = checkpointDate
+        self.trackPoints = trackPoints
+    }
 }
 
 // MARK: - Active Walk Snapshot Store
@@ -86,15 +102,20 @@ enum ActiveWalkSnapshotStore {
         try? data.write(to: fileURL, options: .atomic)
     }
 
+    /// Returns the checkpoint only if it's fresh enough to offer for resume.
+    /// A stale file is left in place — ActiveWalkStore decides its fate
+    /// (salvage to history); nothing here silently deletes a user's walk.
     static func load() -> ActiveWalkSnapshot? {
-        guard let data = try? Data(contentsOf: fileURL),
-              let snapshot = try? JSONDecoder().decode(ActiveWalkSnapshot.self, from: data)
+        guard let snapshot = loadAnyAge(),
+              Date().timeIntervalSince(snapshot.checkpointDate) <= maxSnapshotAge
         else { return nil }
-        guard Date().timeIntervalSince(snapshot.checkpointDate) <= maxSnapshotAge else {
-            clear()
-            return nil
-        }
         return snapshot
+    }
+
+    /// Raw read with no age check — for the salvage path.
+    static func loadAnyAge() -> ActiveWalkSnapshot? {
+        guard let data = try? Data(contentsOf: fileURL) else { return nil }
+        return try? JSONDecoder().decode(ActiveWalkSnapshot.self, from: data)
     }
 
     static func clear() {
@@ -103,5 +124,15 @@ enum ActiveWalkSnapshotStore {
 
     static var hasPending: Bool {
         load() != nil
+    }
+
+    /// Elapsed time a salvaged walk should record: the walk effectively
+    /// ended at the last checkpoint (or at pause start, if it died while
+    /// paused) — dead time after that never counts.
+    static func salvagedElapsed(for snapshot: ActiveWalkSnapshot) -> TimeInterval {
+        let endDate = snapshot.isPaused
+            ? (snapshot.pauseStartDate ?? snapshot.checkpointDate)
+            : snapshot.checkpointDate
+        return max(0, endDate.timeIntervalSince(snapshot.startTime) - snapshot.pausedDuration)
     }
 }

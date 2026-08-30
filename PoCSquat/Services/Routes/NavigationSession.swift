@@ -198,6 +198,8 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
         pauseStart = nil
         elapsedTime = Date().timeIntervalSince(startTime) - pausedDuration
 
+        trackPoints = (snapshot.trackPoints ?? []).map { $0.clCoordinate }
+
         beginTracking()
         writeSnapshot()
     }
@@ -304,6 +306,17 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
     }
 
     private func writeSnapshot() {
+        // Thin the breadcrumb trail so very long walks keep the checkpoint
+        // file small — cap ~2000 points, evenly strided.
+        let maxPoints = 2000
+        let thinned: [CLLocationCoordinate2D]
+        if trackPoints.count > maxPoints {
+            let stride = Double(trackPoints.count) / Double(maxPoints)
+            thinned = (0..<maxPoints).map { trackPoints[Int(Double($0) * stride)] }
+        } else {
+            thinned = trackPoints
+        }
+
         let snapshot = ActiveWalkSnapshot(
             route: .init(route),
             startTime: startTime,
@@ -316,7 +329,8 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
             triggeredCheckpoints: triggeredCheckpoints,
             splitTimes: splitTimes.map { .init(label: $0.label, elapsed: $0.elapsed) },
             liveSteps: liveSteps,
-            checkpointDate: Date()
+            checkpointDate: Date(),
+            trackPoints: thinned.map { WaypointCoord($0) }
         )
         ActiveWalkSnapshotStore.save(snapshot)
     }

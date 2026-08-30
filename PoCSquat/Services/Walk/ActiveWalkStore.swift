@@ -71,6 +71,41 @@ final class ActiveWalkStore {
         return route
     }
 
+    /// If a checkpoint exists but is too old to offer for resume, convert it
+    /// into a Walk History entry and clear the checkpoint. Silent — no PR
+    /// fanfare, no completion UI. Must be called after configure(historyStore:).
+    func salvageStaleWalkIfNeeded() {
+        guard session == nil,
+              let historyStore,
+              let snapshot = ActiveWalkSnapshotStore.loadAnyAge(),
+              Date().timeIntervalSince(snapshot.checkpointDate) > ActiveWalkSnapshotStore.maxSnapshotAge
+        else { return }
+        defer { ActiveWalkSnapshotStore.clear() }
+
+        // Ignore trivial walks — same 50m threshold used by the Free Walk summary auto-save.
+        guard snapshot.totalDistanceCovered >= 50 else { return }
+
+        let route = snapshot.route.navigableRoute
+        let path: [WaypointCoord] = route.waypoints.isEmpty
+            ? (snapshot.trackPoints ?? [])
+            : snapshot.route.waypoints
+
+        let salvaged = WalkSession(
+            id: UUID(),
+            routeName: snapshot.route.name,
+            date: snapshot.startTime,
+            elapsedTime: ActiveWalkSnapshotStore.salvagedElapsed(for: snapshot),
+            totalDistance: snapshot.totalDistanceCovered,
+            waypoints: path,
+            lapCount: snapshot.route.lapCount,
+            isLoop: snapshot.route.isLoop,
+            activityType: snapshot.route.activityMode,
+            steps: snapshot.liveSteps,
+            customRouteId: snapshot.route.customRouteId
+        )
+        historyStore.add(salvaged)
+    }
+
     /// Called when the user declines to resume a recovered walk.
     func declineRestore() {
         ActiveWalkSnapshotStore.clear()

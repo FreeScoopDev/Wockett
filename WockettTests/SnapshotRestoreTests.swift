@@ -218,13 +218,18 @@ struct SnapshotRestoreTests {
         #expect(ActiveWalkSnapshotStore.load() != nil)
     }
 
-    @Test func store_staleSnapshot_selfDeletes() {
+    @Test func store_staleSnapshot_notResumableButPreserved() {
+        defer { ActiveWalkSnapshotStore.clear() }
+
         // checkpointDate 5 hours ago — beyond the 4-hour window
         let snapshot = makeSnapshot(checkpointDate: Date().addingTimeInterval(-5 * 3600))
         ActiveWalkSnapshotStore.save(snapshot)
 
+        // Not offered for resume
         #expect(ActiveWalkSnapshotStore.load() == nil)
         #expect(ActiveWalkSnapshotStore.hasPending == false)
+        // But file is still present for the salvage path
+        #expect(ActiveWalkSnapshotStore.loadAnyAge() != nil)
     }
 
     // MARK: - restoredPausedDuration
@@ -304,5 +309,97 @@ struct SnapshotRestoreTests {
 
         let elapsedAtCheckpoint = checkpoint.timeIntervalSince(startTime) - 60.0  // 940s
         #expect(abs(restoredElapsed - elapsedAtCheckpoint) < 0.001)
+    }
+
+    // MARK: - salvagedElapsed
+
+    @Test func salvagedElapsed_activeDeath() {
+        // Died while active: elapsed measured from startTime to checkpointDate, minus prior pauses.
+        // 1000s walk - 60s pauses = 940s
+        let now        = Date()
+        let checkpoint = now.addingTimeInterval(-300)
+        let startTime  = checkpoint.addingTimeInterval(-1000)
+        let snapshot = makeSnapshot(isPaused: false, pausedDuration: 60, checkpointDate: checkpoint)
+        // Override startTime via a fresh snapshot so the math uses our values.
+        let s = ActiveWalkSnapshot(
+            route: .init(makeRoute()),
+            startTime: startTime,
+            totalDistanceCovered: 500,
+            pausedDuration: 60,
+            isPaused: false,
+            pauseStartDate: nil,
+            currentWaypointIndex: 0,
+            currentLap: 1,
+            triggeredCheckpoints: [],
+            splitTimes: [],
+            liveSteps: 0,
+            checkpointDate: checkpoint
+        )
+        let result = ActiveWalkSnapshotStore.salvagedElapsed(for: s)
+        #expect(abs(result - 940) < 0.001)
+    }
+
+    @Test func salvagedElapsed_pausedDeath() {
+        // Died while paused: elapsed freezes at pause start (not checkpoint).
+        // startTime 1000s before checkpoint; pauseStart 200s before checkpoint; 60s prior pauses
+        // elapsed = (1000-200) - 60 = 740s
+        let now        = Date()
+        let checkpoint = now.addingTimeInterval(-300)
+        let pauseStart = checkpoint.addingTimeInterval(-200)
+        let startTime  = checkpoint.addingTimeInterval(-1000)
+        let s = ActiveWalkSnapshot(
+            route: .init(makeRoute()),
+            startTime: startTime,
+            totalDistanceCovered: 500,
+            pausedDuration: 60,
+            isPaused: true,
+            pauseStartDate: pauseStart,
+            currentWaypointIndex: 0,
+            currentLap: 1,
+            triggeredCheckpoints: [],
+            splitTimes: [],
+            liveSteps: 0,
+            checkpointDate: checkpoint
+        )
+        let result = ActiveWalkSnapshotStore.salvagedElapsed(for: s)
+        #expect(abs(result - 740) < 0.001)
+    }
+
+    // MARK: - trackPoints round-trip
+
+    @Test func snapshot_trackPointsRoundTrip() throws {
+        let coordA = CLLocationCoordinate2D(latitude: 37.77, longitude: -122.43)
+        let coordB = CLLocationCoordinate2D(latitude: 37.78, longitude: -122.44)
+        let coordC = CLLocationCoordinate2D(latitude: 37.79, longitude: -122.45)
+
+        let snapshot = ActiveWalkSnapshot(
+            route: .init(makeRoute()),
+            startTime: Date().addingTimeInterval(-500),
+            totalDistanceCovered: 300,
+            pausedDuration: 0,
+            isPaused: false,
+            pauseStartDate: nil,
+            currentWaypointIndex: 0,
+            currentLap: 1,
+            triggeredCheckpoints: [],
+            splitTimes: [],
+            liveSteps: 400,
+            checkpointDate: Date(),
+            trackPoints: [WaypointCoord(coordA), WaypointCoord(coordB), WaypointCoord(coordC)]
+        )
+
+        // Round-trip with trackPoints present
+        let data    = try JSONEncoder().encode(snapshot)
+        let decoded = try JSONDecoder().decode(ActiveWalkSnapshot.self, from: data)
+        #expect(decoded.trackPoints?.count == 3)
+        #expect(abs(decoded.trackPoints![0].latitude  - 37.77) < 0.0001)
+        #expect(abs(decoded.trackPoints![2].longitude - (-122.45)) < 0.0001)
+
+        // Decoding old JSON with no trackPoints key → nil (backward compatible)
+        var json = try JSONSerialization.jsonObject(with: data) as! [String: Any]
+        json.removeValue(forKey: "trackPoints")
+        let patched = try JSONSerialization.data(withJSONObject: json)
+        let legacy  = try JSONDecoder().decode(ActiveWalkSnapshot.self, from: patched)
+        #expect(legacy.trackPoints == nil)
     }
 }

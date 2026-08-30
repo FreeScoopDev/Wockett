@@ -300,6 +300,7 @@ struct StepCounterView: View {
 
     private func handleAppear() {
         walkStore.configure(historyStore: historyStore)
+        walkStore.salvageStaleWalkIfNeeded()
         if walkStore.hasRestorableWalk {
             showRestoreWalkPrompt = true
         }
