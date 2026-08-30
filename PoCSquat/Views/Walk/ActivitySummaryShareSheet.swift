@@ -414,6 +414,7 @@ struct ActivitySummaryShareSheet: View {
             Group {
                 if isRendering {
                     ProgressView().tint(.white)
+                        .accessibilityLabel("Preparing share image")
                 } else {
                     Label("Share", systemImage: "square.and.arrow.up")
                         .fontWeight(.semibold)
