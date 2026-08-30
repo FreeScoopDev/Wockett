@@ -1,6 +1,7 @@
 import CoreLocation
 import MapKit
 import SwiftUI
+import UIKit
 
 // MARK: - Activity Share Style
 
@@ -495,4 +496,16 @@ struct ActivitySummaryShareSheet: View {
 
         return nil
     }
+}
+
+// MARK: - Activity Share Sheet
+
+struct ActivityShareSheet: UIViewControllerRepresentable {
+    let activityItems: [Any]
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }

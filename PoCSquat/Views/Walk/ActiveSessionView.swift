@@ -27,8 +27,10 @@ struct ActiveSessionView: View {
     // Shared state
     @State private var endSessionOnDismiss    = false
     @StateObject private var localRouteStore  = CustomRouteStore()
-    @State private var showComplete           = false   // guided route completion
-    @State private var showSummary            = false   // free session end
+    @State private var showActivitySummary    = false
+    @State private var summarySession: WalkSession?
+    @State private var summaryPRs: [PRType]   = []
+    @State private var summarySplits: [(label: String, elapsed: TimeInterval)] = []
     @State private var showStopAlert          = false
     @State private var waterBreakEnabled      = false
     @State private var checkpointsEnabled     = false
@@ -36,9 +38,7 @@ struct ActiveSessionView: View {
     @State private var showHeatBanner         = false
     @State private var walkWeather: RouteWeather? = nil
     @State private var petCompletions: [PetCompletion] = []
-    @State private var completedSession: WalkSession?
     @State private var completedPetNames: [String] = []
-    @State private var completedPRs: [PRType] = []
     @State private var computedLegs: [MKRoute] = []
     @State private var petActiveSinceDistance: [UUID: Double] = [:]
     @State private var petAccumulatedDistances: [UUID: Double] = [:]
@@ -139,7 +139,8 @@ struct ActiveSessionView: View {
                         if session.autoPausedForInactivity { session.resume() }
                         if isGuided {
                             let pets = finalizePetDistances()
-                            walkStore.buildAndSaveSession(
+                            let prev = historyStore.sessions
+                            let saved = walkStore.buildAndSaveSession(
                                 petDistances: pets.distances,
                                 activePetIds: pets.activePetIds,
                                 isCommunityRoute: route.isCommunityRoute
@@ -148,14 +149,12 @@ struct ActiveSessionView: View {
                             let dist = cap.totalDistanceCovered
                             let elapsed = Int(cap.elapsedTime)
                             let paused = cap.totalPausedDuration
-                            cap.stop()
-                            cancelWaterBreakReminders()
-                            endSessionOnDismiss = true
                             Task {
                                 await WalkLiveActivityManager.shared.end(distanceCovered: dist, elapsedSeconds: elapsed, pausedDuration: paused)
                                 await cap.finishWorkoutSession()
                             }
-                            dismiss()
+                            let prs = saved.map { checkNewPRs(newSession: $0, against: prev) } ?? []
+                            finishAndShowSummary(saved: saved, prList: prs)
                         } else {
                             endFreeSession()
                         }
@@ -171,7 +170,8 @@ struct ActiveSessionView: View {
                     onSaveAndEnd: {
                         saveCurrentRoute()
                         let pets = finalizePetDistances()
-                        walkStore.buildAndSaveSession(
+                        let prev = historyStore.sessions
+                        let saved = walkStore.buildAndSaveSession(
                             petDistances: pets.distances,
                             activePetIds: pets.activePetIds,
                             isCommunityRoute: route.isCommunityRoute
@@ -180,18 +180,17 @@ struct ActiveSessionView: View {
                         let dist = cap.totalDistanceCovered
                         let elapsed = Int(cap.elapsedTime)
                         let paused = cap.totalPausedDuration
-                        cap.stop()
-                        cancelWaterBreakReminders()
-                        endSessionOnDismiss = true
                         Task {
                             await WalkLiveActivityManager.shared.end(distanceCovered: dist, elapsedSeconds: elapsed, pausedDuration: paused)
                             await cap.finishWorkoutSession()
                         }
-                        dismiss()
+                        let prs = saved.map { checkNewPRs(newSession: $0, against: prev) } ?? []
+                        finishAndShowSummary(saved: saved, prList: prs)
                     },
                     onEnd: {
                         let pets = finalizePetDistances()
-                        walkStore.buildAndSaveSession(
+                        let prev = historyStore.sessions
+                        let saved = walkStore.buildAndSaveSession(
                             petDistances: pets.distances,
                             activePetIds: pets.activePetIds,
                             isCommunityRoute: route.isCommunityRoute
@@ -200,14 +199,12 @@ struct ActiveSessionView: View {
                         let dist = cap.totalDistanceCovered
                         let elapsed = Int(cap.elapsedTime)
                         let paused = cap.totalPausedDuration
-                        cap.stop()
-                        cancelWaterBreakReminders()
-                        endSessionOnDismiss = true
                         Task {
                             await WalkLiveActivityManager.shared.end(distanceCovered: dist, elapsedSeconds: elapsed, pausedDuration: paused)
                             await cap.finishWorkoutSession()
                         }
-                        dismiss()
+                        let prs = saved.map { checkNewPRs(newSession: $0, against: prev) } ?? []
+                        finishAndShowSummary(saved: saved, prList: prs)
                     },
                     onDiscard: {
                         let cap = session
@@ -292,36 +289,24 @@ struct ActiveSessionView: View {
                 poiChipsRow.padding(.top, 56)
             }
         }
-        .fullScreenCover(isPresented: $showComplete, onDismiss: {
+        .fullScreenCover(isPresented: $showActivitySummary, onDismiss: {
             cancelWaterBreakReminders()
             endSessionOnDismiss = true
             dismiss()
         }) {
-            if let s = completedSession {
-                WalkCompleteView(
+            if let s = summarySession {
+                ActivitySummaryView(
                     session: s,
-                    activePetNames: completedPetNames,
+                    newPRs: summaryPRs,
+                    splits: summarySplits,
                     petCompletions: petCompletions,
-                    splits: session.splitTimes,
-                    newPRs: completedPRs,
-                    onDismiss: { showComplete = false },
+                    petNames: completedPetNames,
                     onExcludeFromRouteStats: s.customRouteId != nil ? {
                         historyStore.updateCountsTowardRouteStats(id: s.id, counts: false)
                     } : nil,
-                    historyStore: historyStore
+                    historyStore: historyStore,
+                    routeStore: routeStore
                 )
-            }
-        }
-        .sheet(isPresented: $showSummary) {
-            FreeWalkSummarySheet(
-                session: session,
-                historyStore: historyStore,
-                routeStore: routeStore,
-                petDistances: petAccumulatedDistances,
-                activityMode: route.activityMode
-            ) {
-                endSessionOnDismiss = true
-                dismiss()
             }
         }
         .sheet(isPresented: $showOwnerUpdateSheet) {
@@ -711,17 +696,22 @@ struct ActiveSessionView: View {
     // MARK: - End Helpers
 
     private func endFreeSession() {
-        _ = finalizePetDistances()
+        let pets = finalizePetDistances()
+        let prev = historyStore.sessions
+        let saved = walkStore.buildAndSaveSession(
+            petDistances: pets.distances,
+            activePetIds: pets.activePetIds,
+            isCommunityRoute: false
+        )
         let cap = session
         let dist = cap.totalDistanceCovered
         let elapsed = Int(cap.elapsedTime)
         let paused = cap.totalPausedDuration
-        cap.stop()
-        endSessionOnDismiss = true
         Task {
             await WalkLiveActivityManager.shared.end(distanceCovered: dist, elapsedSeconds: elapsed, pausedDuration: paused)
         }
-        showSummary = true
+        let prs = saved.map { checkNewPRs(newSession: $0, against: prev) } ?? []
+        finishAndShowSummary(saved: saved, prList: prs)
     }
 
     @discardableResult
@@ -742,10 +732,10 @@ struct ActiveSessionView: View {
         s.petDistances = pets.distances
         s.isCommunityRoute = route.isCommunityRoute
         let previousSessions = historyStore.sessions
-        completedPRs = checkNewPRs(newSession: s, against: previousSessions)
-        if !completedPRs.isEmpty {
+        let prs = checkNewPRs(newSession: s, against: previousSessions)
+        if !prs.isEmpty {
             WalkAudioCueService.shared.announce(
-                "Personal record! New \(completedPRs.map(\.title).joined(separator: " and "))!")
+                "Personal record! New \(prs.map(\.title).joined(separator: " and "))!")
         }
         historyStore.add(s)
         BackgroundTaskManager.shared.scheduleCloudKitSync()
@@ -757,15 +747,32 @@ struct ActiveSessionView: View {
             )
             await cap.finishWorkoutSession()
         }
-        completedSession = s
+        scheduleHydrationNudge(distanceMeters: s.totalDistance)
+        finishAndShowSummary(saved: s, prList: prs, stopSession: false)
+    }
+
+    private func finishAndShowSummary(
+        saved: WalkSession?,
+        prList: [PRType],
+        stopSession: Bool = true
+    ) {
+        // Capture split data before stop() clears live session state.
+        summarySplits = session.splitTimes
+        if stopSession { session.stop() }
+        summaryPRs = prList
         completedPetNames = petNamesFor(ids: Array(allSessionPetIds))
         let walkPets = petStore.pets.filter { allSessionPetIds.contains($0.id) }
         petCompletions = walkPets.map { pet in
             let todaySteps = petStore.todaySteps(for: pet, in: historyStore.sessions)
             return PetCompletion(pet: pet, progress: min(1.0, Double(todaySteps) / Double(max(1, pet.goalSteps))))
         }
-        scheduleHydrationNudge(distanceMeters: s.totalDistance)
-        showComplete = true
+        summarySession = saved
+        endSessionOnDismiss = true
+        if saved != nil {
+            showActivitySummary = true
+        } else {
+            dismiss()
+        }
     }
 
     // MARK: - Checkpoint

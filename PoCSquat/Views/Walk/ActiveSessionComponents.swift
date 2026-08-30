@@ -1,3 +1,4 @@
+import MessageUI
 import SwiftUI
 
 // MARK: - Session Stat Cell
@@ -177,5 +178,33 @@ struct DrivingSuspectedBanner: View {
         }
         .padding(.horizontal, 16).padding(.vertical, 10)
         .background(Color.red.opacity(0.1))
+    }
+}
+
+// MARK: - Message Compose Sheet
+
+struct MessageComposeSheet: UIViewControllerRepresentable {
+    let recipients: [String]
+    let body: String
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    func makeUIViewController(context: Context) -> MFMessageComposeViewController {
+        let vc = MFMessageComposeViewController()
+        vc.recipients = recipients
+        vc.body = body
+        vc.messageComposeDelegate = context.coordinator
+        return vc
+    }
+
+    func updateUIViewController(_ uiViewController: MFMessageComposeViewController, context: Context) {}
+
+    final class Coordinator: NSObject, MFMessageComposeViewControllerDelegate {
+        func messageComposeViewController(
+            _ controller: MFMessageComposeViewController,
+            didFinishWith result: MessageComposeResult
+        ) {
+            controller.dismiss(animated: true)
+        }
     }
 }
