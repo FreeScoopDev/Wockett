@@ -54,6 +54,13 @@ final class HealthWorkoutWriter {
         routeBuilder.insertRouteData(accurate) { _, _ in }
     }
 
+    // Throws away the in-progress workout without saving anything to Health.
+    func discard() {
+        builder?.discardWorkout()
+        builder = nil
+        routeBuilder = nil
+    }
+
     // Finishes the workout and attaches the GPS route.
     // Returns the saved HKWorkout on success, nil if HealthKit wasn't available.
     @discardableResult

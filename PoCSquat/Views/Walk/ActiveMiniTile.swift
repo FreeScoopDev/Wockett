@@ -36,6 +36,7 @@ struct ActiveMiniTileContainer: View {
                 let dist          = session.totalDistanceCovered
                 let elapsed       = Int(session.elapsedTime)
                 let pausedDuration = session.totalPausedDuration
+                session.discardWorkoutSession()
                 session.stop()
                 walkStore.endSession()
                 UNUserNotificationCenter.current().removePendingNotificationRequests(

@@ -352,6 +352,13 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
         await writer.finish(totalDistanceMeters: totalDistanceCovered, endDate: Date())
     }
 
+    // Discards the in-progress HealthKit workout without writing anything to Health.
+    func discardWorkoutSession() {
+        guard let writer = workoutWriter else { return }
+        workoutWriter = nil
+        writer.discard()
+    }
+
     var nextWaypoint: CLLocationCoordinate2D? {
         guard !route.waypoints.isEmpty else { return nil }
         if route.isLoop {

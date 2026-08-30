@@ -154,13 +154,11 @@ struct WalkNavigationView: View {
                         let elapsed = Int(session.elapsedTime)
                         let pausedDuration = session.totalPausedDuration
                         let capturedSession = session
+                        capturedSession.discardWorkoutSession()
                         session.stop()
                         cancelWaterBreakReminders()
                         endSessionOnDismiss = true
-                        Task {
-                            await WalkLiveActivityManager.shared.end(distanceCovered: dist, elapsedSeconds: elapsed, pausedDuration: pausedDuration)
-                            await capturedSession.finishWorkoutSession()
-                        }
+                        Task { await WalkLiveActivityManager.shared.end(distanceCovered: dist, elapsedSeconds: elapsed, pausedDuration: pausedDuration) }
                         dismiss()
                     }
                     Button("Keep Walking", role: .cancel) {}
