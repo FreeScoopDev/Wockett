@@ -65,17 +65,6 @@ struct RouteSessionRow: View {
         return f
     }()
 
-    private var paceText: String {
-        guard session.totalDistance > 100, session.elapsedTime > 0 else { return "—" }
-        let useMetric = Locale.current.measurementSystem != .us
-        let divisor = useMetric ? 1000.0 : 1609.34
-        let unit = useMetric ? "/km" : "/mi"
-        let secsPerUnit = session.elapsedTime / (session.totalDistance / divisor)
-        let mins = Int(secsPerUnit) / 60
-        let secs = Int(secsPerUnit) % 60
-        return String(format: "%d:%02d%@", mins, secs, unit)
-    }
-
     var body: some View {
         HStack(spacing: 14) {
             ZStack {
@@ -90,9 +79,9 @@ struct RouteSessionRow: View {
                 Text(Self.dateFmt.string(from: session.date))
                     .font(.subheadline.bold()).foregroundColor(.earthCream)
                 HStack(spacing: 10) {
-                    Label(session.distanceText, systemImage: "ruler")
-                    Label(session.timeText,     systemImage: "clock")
-                    Label(paceText,             systemImage: "speedometer")
+                    Label(session.distanceText,      systemImage: "ruler")
+                    Label(session.timeText,          systemImage: "clock")
+                    Label(session.paceOrSpeedText,   systemImage: "speedometer")
                 }
                 .font(.footnote).foregroundColor(.earthMuted)
             }

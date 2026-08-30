@@ -157,17 +157,6 @@ struct ActivitySummaryCard: View {
         ActivityMode(rawValue: session.activityType) ?? .walking
     }
 
-    private var paceText: String {
-        guard session.totalDistance > 100, session.elapsedTime > 0 else { return "—" }
-        let useMetric  = Locale.current.measurementSystem != .us
-        let divisor    = useMetric ? 1000.0 : 1609.34
-        let unit       = useMetric ? "/km"  : "/mi"
-        let mpu        = (session.elapsedTime / 60.0) / (session.totalDistance / divisor)
-        let mins       = Int(mpu)
-        let secs       = Int((mpu - Double(mins)) * 60)
-        return String(format: "%d:%02d%@", mins, secs, unit)
-    }
-
     private var dateText: String {
         let f = DateFormatter(); f.dateStyle = .medium
         return f.string(from: session.date)
@@ -230,11 +219,11 @@ struct ActivitySummaryCard: View {
                 }
 
                 HStack(spacing: 0) {
-                    statCol(value: session.distanceText, label: "Distance")
+                    statCol(value: session.distanceText,      label: "Distance")
                     separator
-                    statCol(value: session.timeText,     label: "Time")
+                    statCol(value: session.timeText,          label: "Time")
                     separator
-                    statCol(value: paceText,             label: "Pace")
+                    statCol(value: session.paceOrSpeedText,   label: session.paceOrSpeedLabel)
                 }
 
                 if let comparison = routeComparison {

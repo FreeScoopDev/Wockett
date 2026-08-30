@@ -319,6 +319,24 @@ struct WalkSession: Identifiable, Codable {
         return m < 60 ? "\(m)m \(s % 60)s" : "\(m / 60)h \(m % 60)m"
     }
 
+    var paceOrSpeedText: String {
+        guard totalDistance > 100, elapsedTime > 0 else { return "—" }
+        let useMetric = Locale.current.measurementSystem != .us
+        if activityType == "cycling" {
+            let speed = (totalDistance / elapsedTime) * 3.6
+            let value = useMetric ? speed : speed / 1.609344
+            return String(format: "%.1f %@", value, useMetric ? "km/h" : "mph")
+        }
+        let divisor = useMetric ? 1000.0 : 1609.34
+        let unit = useMetric ? "/km" : "/mi"
+        let mpu = (elapsedTime / 60.0) / (totalDistance / divisor)
+        let mins = Int(mpu)
+        let secs = Int((mpu - Double(mins)) * 60)
+        return String(format: "%d:%02d%@", mins, secs, unit)
+    }
+
+    var paceOrSpeedLabel: String { activityType == "cycling" ? "Speed" : "Pace" }
+
     var formattedDate: String {
         let f = DateFormatter(); f.dateStyle = .medium; f.timeStyle = .short
         return f.string(from: date)

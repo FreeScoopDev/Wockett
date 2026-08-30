@@ -26,10 +26,15 @@ private func fmtTime(_ seconds: Int) -> String {
         : String(format: "%d:%02d", m, s)
 }
 
-private func fmtPace(_ secsPerKm: Double?) -> String {
-    guard let p = secsPerKm, p > 0 else { return "--:--" }
+private func fmtPace(_ secsPerKm: Double?, mode: String) -> String {
+    guard let p = secsPerKm, p > 0 else { return mode == "cycling" ? "--" : "--:--" }
     let useMetric = Locale.current.measurementSystem != .us
-    let adjusted  = useMetric ? p : p * 1.60934
+    if mode == "cycling" {
+        let kmh = 3600.0 / p
+        let value = useMetric ? kmh : kmh / 1.609344
+        return String(format: "%.1f %@", value, useMetric ? "km/h" : "mph")
+    }
+    let adjusted = useMetric ? p : p * 1.60934
     let mins = Int(adjusted) / 60; let secs = Int(adjusted) % 60
     let unit = useMetric ? "/km" : "/mi"
     return String(format: "%d:%02d%@", mins, secs, unit)
@@ -123,8 +128,8 @@ private struct WalkLockScreenView: View {
                 }
                 Divider().frame(height: 30).overlay(Color.white.opacity(0.15))
                 statCell(
-                    value: fmtPace(state.paceSecsPerKm),
-                    label: "pace",
+                    value: fmtPace(state.paceSecsPerKm, mode: attrs.activityMode),
+                    label: attrs.activityMode == "cycling" ? "speed" : "pace",
                     icon: "speedometer"
                 )
             }
@@ -236,10 +241,10 @@ struct WocketWalkLiveActivity: Widget {
                             Image(systemName: "speedometer")
                                 .font(.caption.weight(.semibold))
                                 .foregroundColor(.wktGreen)
-                            Text(fmtPace(context.state.paceSecsPerKm))
+                            Text(fmtPace(context.state.paceSecsPerKm, mode: context.attributes.activityMode))
                                 .font(.system(size: 16, weight: .bold, design: .rounded).monospacedDigit())
                                 .foregroundColor(.wktCream)
-                            Text("pace")
+                            Text(context.attributes.activityMode == "cycling" ? "speed" : "pace")
                                 .font(.system(size: 9))
                                 .foregroundColor(.wktMuted)
                         }
@@ -260,7 +265,7 @@ struct WocketWalkLiveActivity: Widget {
                             Label(fmtDistance(context.state.distanceCoveredMeters), systemImage: "location.fill")
                                 .font(.system(size: 13, weight: .semibold).monospacedDigit())
                                 .foregroundColor(.wktCream)
-                            Label(fmtPace(context.state.paceSecsPerKm), systemImage: "speedometer")
+                            Label(fmtPace(context.state.paceSecsPerKm, mode: context.attributes.activityMode), systemImage: "speedometer")
                                 .font(.system(size: 13, weight: .semibold).monospacedDigit())
                                 .foregroundColor(context.state.isPaused ? .wktOrange : .wktCream)
                             if context.state.isPaused {
