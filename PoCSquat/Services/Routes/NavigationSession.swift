@@ -167,6 +167,17 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
         writeSnapshot()
     }
 
+    /// Pure helper: how much pausedDuration a restored session should carry —
+    /// snapshot's completed pauses plus the dead-time gap from the reference point
+    /// (pause start if the app died while paused, otherwise the checkpoint) to `now`.
+    /// Kept nonisolated static so it's directly unit-testable without main-actor dispatch.
+    nonisolated static func restoredPausedDuration(for snapshot: ActiveWalkSnapshot, now: Date) -> TimeInterval {
+        let referenceDate = snapshot.isPaused
+            ? (snapshot.pauseStartDate ?? snapshot.checkpointDate)
+            : snapshot.checkpointDate
+        return snapshot.pausedDuration + now.timeIntervalSince(referenceDate)
+    }
+
     /// Reconstructs an in-progress walk from a checkpoint after the app process
     /// died unexpectedly. Always comes back active (not paused) — the caller only
     /// invokes this once the user has confirmed they want to continue. The entire
@@ -182,10 +193,7 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
         splitTimes           = snapshot.splitTimes.map { (label: $0.label, elapsed: $0.elapsed) }
         liveSteps            = snapshot.liveSteps
 
-        let referenceDate = snapshot.isPaused
-            ? (snapshot.pauseStartDate ?? snapshot.checkpointDate)
-            : snapshot.checkpointDate
-        pausedDuration = snapshot.pausedDuration + Date().timeIntervalSince(referenceDate)
+        pausedDuration = Self.restoredPausedDuration(for: snapshot, now: Date())
         isPaused   = false
         pauseStart = nil
         elapsedTime = Date().timeIntervalSince(startTime) - pausedDuration
