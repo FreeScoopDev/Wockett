@@ -87,8 +87,8 @@ struct WalkNavigationView: View {
                 .onChange(of: session.drivingSuspected) { _, suspected in
                     if suspected { showDrivingBanner = true }
                 }
-                .alert("Still walking?", isPresented: $showBreakPromptAlert) {
-                    Button("End Walk") {
+                .alert("Still \(route.activityMode.gerund.capitalized)?", isPresented: $showBreakPromptAlert) {
+                    Button("End \(route.activityMode.sessionLabel)") {
                         session.dismissBreakPrompt()
                         let dist = session.totalDistanceCovered
                         let elapsed = Int(session.elapsedTime)
@@ -110,14 +110,14 @@ struct WalkNavigationView: View {
                         if session.autoPausedForInactivity { session.resume() }
                     }
                 } message: {
-                    Text("You haven't moved in a few minutes. End the walk or keep tracking?")
+                    Text("You haven't moved in a few minutes. End the \(route.activityMode.noun) or keep tracking?")
                 }
                 .onChange(of: waterBreakEnabled) { _, enabled in
                     guard enabled else { return }
                     Task { await scheduleWaterBreakReminders() }
                 }
-                .alert("End Walk?", isPresented: $showStopAlert) {
-                    Button("Save Route & End Walk") {
+                .alert("End \(route.activityMode.sessionLabel)?", isPresented: $showStopAlert) {
+                    Button("Save Route & End \(route.activityMode.sessionLabel)") {
                         saveCurrentRoute()
                         let dist = session.totalDistanceCovered
                         let elapsed = Int(session.elapsedTime)
@@ -134,7 +134,7 @@ struct WalkNavigationView: View {
                         }
                         dismiss()
                     }
-                    Button("End Walk") {
+                    Button("End \(route.activityMode.sessionLabel)") {
                         let dist = session.totalDistanceCovered
                         let elapsed = Int(session.elapsedTime)
                         let pausedDuration = session.totalPausedDuration
@@ -150,7 +150,7 @@ struct WalkNavigationView: View {
                         }
                         dismiss()
                     }
-                    Button("Discard Walk", role: .destructive) {
+                    Button("Discard \(route.activityMode.sessionLabel)", role: .destructive) {
                         let dist = session.totalDistanceCovered
                         let elapsed = Int(session.elapsedTime)
                         let pausedDuration = session.totalPausedDuration
@@ -162,9 +162,9 @@ struct WalkNavigationView: View {
                         Task { await WalkLiveActivityManager.shared.end(distanceCovered: dist, elapsedSeconds: elapsed, pausedDuration: pausedDuration) }
                         dismiss()
                     }
-                    Button("Keep Walking", role: .cancel) {}
+                    Button("Keep \(route.activityMode.gerund.capitalized)", role: .cancel) {}
                 } message: {
-                    Text("Save this walk to your history? You can also save the route to My Routes so you can walk it again.")
+                    Text("Save this \(route.activityMode.noun) to your history? You can also save the route to My Routes so you can \(route.activityMode.noun) it again.")
                 }
         } else {
             // Session was ended from outside this view (e.g. the Live Activity's
@@ -312,9 +312,9 @@ struct WalkNavigationView: View {
         content.title = "Time to rehydrate! 💧"
         let distKm = distanceMeters / 1000
         if distKm >= 5 {
-            content.body = "Great \(String(format: "%.1f", distKm))km walk — drink at least 500ml of water to recover well."
+            content.body = "Great \(String(format: "%.1f", distKm))km \(route.activityMode.noun) — drink at least 500ml of water to recover well."
         } else {
-            content.body = "Good walk — remember to drink some water to keep your energy up."
+            content.body = "Good \(route.activityMode.noun) — remember to drink some water to keep your energy up."
         }
         content.sound = .default
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 300, repeats: false)
@@ -349,6 +349,7 @@ struct WalkNavigationView: View {
         VStack(spacing: 0) {
             if showDrivingBanner {
                 DrivingSuspectedBanner(
+                    activityMode: route.activityMode,
                     onStillWalking: {
                         session.clearDrivingSuspicion()
                         showDrivingBanner = false
@@ -487,7 +488,7 @@ struct WalkNavigationView: View {
                 HStack(spacing: 10) {
                     Image(systemName: "pause.circle.fill")
                         .foregroundColor(.earthOrange)
-                    Text("Walk Paused")
+                    Text("\(route.activityMode.sessionLabel) Paused")
                         .font(.caption.bold())
                         .foregroundColor(.earthOrange)
                     Spacer()
@@ -528,7 +529,7 @@ struct WalkNavigationView: View {
                     .foregroundColor(Color.earthMuted.opacity(0.25))
                 HStack(spacing: 0) {
                     VStack(spacing: 5) {
-                        Image(systemName: "figure.walk").font(.caption).foregroundColor(.earthGreen)
+                        Image(systemName: route.activityMode.icon).font(.caption).foregroundColor(.earthGreen)
                         Text(session.estimatedSteps.formatted()).font(.subheadline.bold()).foregroundColor(.earthCream)
                         Text("steps").font(.caption2).foregroundColor(.earthMuted)
                         if let cad = session.cadence, cad > 0 {
@@ -653,6 +654,7 @@ struct WalkNavigationView: View {
 // MARK: - Heat Advisory Banner
 
 private struct DrivingSuspectedBanner: View {
+    let activityMode: ActivityMode
     let onStillWalking: () -> Void
     let onEndWalk: () -> Void
 
@@ -661,21 +663,21 @@ private struct DrivingSuspectedBanner: View {
             Image(systemName: "car.fill")
                 .font(.title3).foregroundColor(.red.opacity(0.85))
             VStack(alignment: .leading, spacing: 2) {
-                Text("This looks faster than a walk")
+                Text("This looks faster than a \(activityMode.noun)")
                     .font(.caption.bold()).foregroundColor(.earthCream)
-                Text("Still walking, or are you driving?")
+                Text("Still \(activityMode.gerund), or are you driving?")
                     .font(.caption2).foregroundColor(.earthMuted)
             }
             Spacer()
             Button { onStillWalking() } label: {
-                Text("Still walking")
+                Text("Still \(activityMode.gerund)")
                     .font(.caption.bold())
                     .padding(.horizontal, 10).padding(.vertical, 6)
                     .background(Color.earthGreen.opacity(0.85))
                     .foregroundColor(.white).cornerRadius(8)
             }
             Button { onEndWalk() } label: {
-                Text("End walk")
+                Text("End \(activityMode.noun)")
                     .font(.caption.bold())
                     .padding(.horizontal, 10).padding(.vertical, 6)
                     .background(Color.red.opacity(0.75))

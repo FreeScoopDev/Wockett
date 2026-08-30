@@ -332,7 +332,7 @@ struct FreeWalkView: View {
                     .padding(.bottom, 4)
 
                     if session.isPaused {
-                        Text("Walk Paused")
+                        Text("\(activityMode.sessionLabel) Paused")
                             .font(.caption.bold())
                             .foregroundColor(.earthOrange)
                             .padding(.horizontal, 14).padding(.vertical, 6)
@@ -355,7 +355,7 @@ struct FreeWalkView: View {
                         endSessionOnDismiss = true
                         showSummary = true
                     } label: {
-                        Label(isCycling ? "Finish Ride" : "Finish Walk", systemImage: "checkmark.circle.fill")
+                        Label("Finish \(activityMode.sessionLabel)", systemImage: "checkmark.circle.fill")
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 18)
                             .background(isCycling ? Color(red: 0.13, green: 0.57, blue: 0.64) : Color.earthGreen)
@@ -411,8 +411,8 @@ struct FreeWalkView: View {
             .onChange(of: session.showBreakPrompt) { _, show in
                 if show { showBreakPromptAlert = true }
             }
-            .alert("Still walking?", isPresented: $showBreakPromptAlert) {
-                Button(isCycling ? "Finish Ride" : "End Walk") {
+            .alert("Still \(activityMode.gerund.capitalized)?", isPresented: $showBreakPromptAlert) {
+                Button("End \(activityMode.sessionLabel)") {
                     session.dismissBreakPrompt()
                     flushActivePetDistances()
                     let dist = session.totalDistanceCovered
@@ -440,7 +440,8 @@ struct FreeWalkView: View {
                     session: session,
                     historyStore: historyStore,
                     routeStore: routeStore,
-                    petDistances: petDistances
+                    petDistances: petDistances,
+                    activityMode: activityMode
                 ) {
                     endSessionOnDismiss = true
                     dismiss()
@@ -582,6 +583,7 @@ struct FreeWalkSummarySheet: View {
     @EnvironmentObject var petStore: PetStore
     @Environment(ActiveWalkStore.self) private var walkStore
     let petDistances: [UUID: Double]
+    var activityMode: ActivityMode = .walking
     let onDone: () -> Void
 
     @Environment(\.dismiss) private var dismiss
@@ -619,7 +621,7 @@ struct FreeWalkSummarySheet: View {
                     VStack(spacing: 24) {
                         VStack(spacing: 8) {
                             Text("🎉").font(.system(size: 52))
-                            Text("Walk Complete!")
+                            Text("\(activityMode.sessionLabel) Complete!")
                                 .font(.title2.bold()).foregroundColor(.earthCream)
                         }
                         .padding(.top, 8)
@@ -627,7 +629,7 @@ struct FreeWalkSummarySheet: View {
                         HStack(spacing: 12) {
                             statTile(value: distanceText(session.totalDistanceCovered), label: "Distance", icon: "ruler")
                             statTile(value: elapsedText(session.elapsedTime),           label: "Time",     icon: "clock")
-                            statTile(value: (session.liveSteps > 0 ? session.liveSteps : session.estimatedSteps).formatted(), label: "Steps", icon: "figure.walk")
+                            statTile(value: (session.liveSteps > 0 ? session.liveSteps : session.estimatedSteps).formatted(), label: "Steps", icon: activityMode.icon)
                         }
                         .padding(.horizontal)
 
@@ -669,7 +671,7 @@ struct FreeWalkSummarySheet: View {
 
                         Button { saveToHistory() } label: {
                             Label(
-                                savedToHistory ? "Saved to History" : "Save to Walk History",
+                                savedToHistory ? "Saved to History" : "Save to Activity History",
                                 systemImage: savedToHistory ? "checkmark.circle.fill" : "clock.arrow.circlepath"
                             )
                             .frame(maxWidth: .infinity)
@@ -719,7 +721,7 @@ struct FreeWalkSummarySheet: View {
                     .padding(.vertical, 24)
                 }
             }
-            .navigationTitle("Walk Summary")
+            .navigationTitle("\(activityMode.sessionLabel) Summary")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
@@ -829,7 +831,7 @@ struct FreeWalkSummarySheet: View {
     }
 
     private func saveAsRoute() {
-        let name = routeName.trimmingCharacters(in: .whitespaces).isEmpty ? "My Walk" : routeName
+        let name = routeName.trimmingCharacters(in: .whitespaces).isEmpty ? "My \(activityMode.sessionLabel)" : routeName
         routeStore.save(CustomRoute(
             id: UUID(),
             name: name,

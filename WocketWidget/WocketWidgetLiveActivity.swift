@@ -46,10 +46,15 @@ private func adjustedStart(_ attrs: WalkActivityAttributes, _ state: WalkActivit
 
 private func activityIcon(_ mode: String) -> String {
     switch mode {
+    case "running":    return "figure.run"
     case "cycling":    return "bicycle"
     case "stationary": return "figure.walk.motion"
     default:           return "figure.walk"
     }
+}
+
+private func activityNoun(_ mode: String) -> String {
+    mode == "running" ? "Run" : mode == "cycling" ? "Ride" : "Walk"
 }
 
 // MARK: - Color palette (mirrors main app earth palette)
@@ -144,7 +149,7 @@ private struct WalkLockScreenView: View {
                 .tint(.wktOrange)
 
                 Button(intent: EndWalkLiveActivityIntent()) {
-                    Label("End Walk", systemImage: "stop.fill")
+                    Label("End \(activityNoun(attrs.activityMode))", systemImage: "stop.fill")
                         .font(.caption.bold())
                 }
                 .tint(.wktGreen)
@@ -284,7 +289,7 @@ struct WocketWalkLiveActivity: Widget {
                             .tint(.wktOrange)
 
                             Button(intent: EndWalkLiveActivityIntent()) {
-                                Label("End Walk", systemImage: "stop.fill")
+                                Label("End \(activityNoun(context.attributes.activityMode))", systemImage: "stop.fill")
                                     .font(.caption.bold())
                             }
                             .tint(.wktGreen)

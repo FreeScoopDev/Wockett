@@ -24,6 +24,8 @@ struct WalkCompleteView: View {
     @State private var messageBody           = ""
     @State private var showMessageSheet      = false
 
+    private var mode: ActivityMode { ActivityMode(rawValue: session.activityType) ?? .walking }
+
     private var completionMessage: String {
         switch activePetNames.count {
         case 0: return "Nice work on \(session.routeName). Keep the momentum going!"
@@ -40,11 +42,11 @@ struct WalkCompleteView: View {
             VStack(spacing: 0) {
                 Spacer()
                 VStack(spacing: 20) {
-                    Image(systemName: "figure.walk.circle.fill")
+                    Image(systemName: mode.icon)
                         .font(.system(size: 80))
                         .foregroundStyle(Color.earthGreen)
                         .padding(.bottom, 8)
-                    Text("Walk Complete!")
+                    Text("\(mode.sessionLabel) Complete!")
                         .font(.system(size: 34, weight: .bold, design: .rounded))
                         .foregroundColor(.earthCream)
                     Text(completionMessage)
@@ -57,7 +59,7 @@ struct WalkCompleteView: View {
                 HStack(spacing: 10) {
                     statTile(value: session.distanceText, label: "Distance", icon: "ruler", color: .earthGreen)
                     statTile(value: session.timeText, label: "Time", icon: "clock", color: .earthOrange)
-                    statTile(value: session.estimatedSteps.formatted(), label: "Steps", icon: "figure.walk", color: .earthCream)
+                    statTile(value: session.estimatedSteps.formatted(), label: "Steps", icon: mode.icon, color: .earthCream)
                 }
                 .padding(.horizontal)
                 if !newPRs.isEmpty {
@@ -82,14 +84,14 @@ struct WalkCompleteView: View {
                 Spacer()
                 VStack(spacing: 12) {
                     Button { showSchedule = true } label: {
-                        Label("Schedule This Walk Again", systemImage: "calendar.badge.plus")
+                        Label("Schedule This \(mode.sessionLabel) Again", systemImage: "calendar.badge.plus")
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 18).padding(.horizontal, 20)
                             .background(Color.earthGreen).foregroundColor(.white)
                             .fontWeight(.semibold).cornerRadius(14)
                     }
                     Button { showActivityShare = true } label: {
-                        Label("Share this Walk", systemImage: "square.and.arrow.up")
+                        Label("Share this \(mode.sessionLabel)", systemImage: "square.and.arrow.up")
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 18).padding(.horizontal, 20)
                             .background(Color.earthCard)

@@ -456,9 +456,10 @@ struct ActivitySummaryShareSheet: View {
         var items: [Any] = [image]
         if includeAppLink {
             let verb: String
-            switch session.activityType {
-            case "cycling": verb = "rode"
-            case "running": verb = "ran"
+            let mode = ActivityMode(rawValue: session.activityType) ?? .walking
+            switch mode {
+            case .cycling:  verb = "rode"
+            case .running:  verb = "ran"
             default:        verb = "walked"
             }
             items.append(

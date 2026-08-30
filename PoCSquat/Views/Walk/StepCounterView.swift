@@ -116,7 +116,7 @@ struct StepCounterView: View {
                     }
                 }
             }
-            .alert("Resume Your Walk?", isPresented: $showRestoreWalkPrompt) {
+            .alert("Resume Your Activity?", isPresented: $showRestoreWalkPrompt) {
                 Button("Resume") {
                     if walkStore.restoreIfNeeded() != nil {
                         showResumeWalk = true
@@ -126,7 +126,7 @@ struct StepCounterView: View {
                     walkStore.declineRestore()
                 }
             } message: {
-                Text("Wockett closed unexpectedly during an active walk. Your progress up to the last checkpoint was saved.")
+                Text("Wockett closed unexpectedly during an active session. Your progress up to the last checkpoint was saved.")
             }
             .onChange(of: walkStore.reopenRequested) { _, requested in
                 guard requested else { return }
@@ -646,8 +646,8 @@ struct StepCounterView: View {
                          detail: routeStore.routes.isEmpty ? "No routes saved" : "\(routeStore.routes.count) route\(routeStore.routes.count == 1 ? "" : "s")",
                          color: Color(red: 0.28, green: 0.49, blue: 0.84)) { showMyRoutes = true }
 
-            settingsTile(icon: "clock.arrow.circlepath", label: "Walk History",
-                         detail: historyStore.sessions.isEmpty ? "No walks yet" : "\(historyStore.sessions.count) walk\(historyStore.sessions.count == 1 ? "" : "s")",
+            settingsTile(icon: "clock.arrow.circlepath", label: "Activity History",
+                         detail: historyStore.sessions.isEmpty ? "No activities yet" : "\(historyStore.sessions.count) activit\(historyStore.sessions.count == 1 ? "y" : "ies")",
                          color: .earthOrange) { showWalkHistory = true }
 
             settingsTile(icon: petStore.activePets.isEmpty ? "pawprint" : "pawprint.fill",
@@ -747,7 +747,7 @@ struct StepCounterView: View {
                     Text("Community Routes")
                         .font(.subheadline.bold())
                         .foregroundColor(.earthCream)
-                    Text("Discover walks shared by other users")
+                    Text("Discover routes shared by other users")
                         .font(.caption)
                         .foregroundColor(.earthMuted)
                 }
@@ -944,7 +944,7 @@ private struct FunStatsCard: View {
         if bridges >= 1 {
             result.append(Fact(emoji: "🌉",
                 headline: "\(bridges) Golden Gate crossing\(bridges == 1 ? "" : "s")",
-                detail: "Total distance walked"))
+                detail: "Total distance covered"))
         }
         // Marathons (42.195 km)
         let marathons = Int(totalKm / 42.195)

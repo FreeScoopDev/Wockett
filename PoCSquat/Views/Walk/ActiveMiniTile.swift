@@ -26,12 +26,12 @@ struct ActiveMiniTileContainer: View {
             }
         }
         .animation(.spring(response: 0.4, dampingFraction: 0.82), value: walkStore.isActive)
-        .confirmationDialog("End Walk?", isPresented: $showEndConfirmation, titleVisibility: .visible) {
-            Button("Save & End Walk") {
+        .confirmationDialog("End \(walkStore.activeRoute?.activityMode.sessionLabel ?? "Walk")?", isPresented: $showEndConfirmation, titleVisibility: .visible) {
+            Button("Save & End \(walkStore.activeRoute?.activityMode.sessionLabel ?? "Walk")") {
                 guard walkStore.session != nil else { return }
                 walkStore.saveAndEndActiveSession()
             }
-            Button("Discard Walk", role: .destructive) {
+            Button("Discard \(walkStore.activeRoute?.activityMode.sessionLabel ?? "Walk")", role: .destructive) {
                 guard let session = walkStore.session else { return }
                 let dist          = session.totalDistanceCovered
                 let elapsed       = Int(session.elapsedTime)
@@ -46,7 +46,7 @@ struct ActiveMiniTileContainer: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Save this walk to your history, or discard it?")
+            Text("Save this \(walkStore.activeRoute?.activityMode.noun ?? "walk") to your history, or discard it?")
         }
     }
 }

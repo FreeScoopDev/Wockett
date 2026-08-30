@@ -51,6 +51,24 @@ enum ActivityMode: String {
         }
     }
 
+    /// Lowercase noun for this activity: "walk", "run", "ride".
+    var noun: String {
+        switch self {
+        case .running:    return "run"
+        case .cycling:    return "ride"
+        default:          return "walk"
+        }
+    }
+
+    /// Gerund for this activity: "walking", "running", "riding".
+    var gerund: String {
+        switch self {
+        case .running:    return "running"
+        case .cycling:    return "riding"
+        default:          return "walking"
+        }
+    }
+
     var transportType: MKDirectionsTransportType {
         self == .cycling ? .cycling : .walking
     }
