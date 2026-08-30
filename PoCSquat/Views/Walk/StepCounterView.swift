@@ -65,7 +65,7 @@ struct StepCounterView: View {
             }
             .sheet(isPresented: $showGoalSheet) { GoalEditorSheet(stepManager: stepManager) }
             .fullScreenCover(isPresented: $showFreeWalk) {
-                FreeWalkView(historyStore: historyStore, routeStore: routeStore, activityMode: freeWalkMode)
+                ActiveSessionView(activityMode: freeWalkMode, historyStore: historyStore, routeStore: routeStore)
             }
             .fullScreenCover(isPresented: $showStationary) {
                 StationaryWalkView(historyStore: historyStore, dailyGoal: stepManager.currentGoal)
@@ -109,11 +109,7 @@ struct StepCounterView: View {
             }
             .sheet(isPresented: $showResumeWalk) {
                 if let route = walkStore.activeRoute {
-                    if route.waypoints.isEmpty {
-                        FreeWalkView(historyStore: historyStore, routeStore: routeStore, activityMode: route.activityMode)
-                    } else {
-                        WalkNavigationView(route: route, historyStore: historyStore)
-                    }
+                    ActiveSessionView(activityMode: route.activityMode, historyStore: historyStore, routeStore: routeStore)
                 }
             }
             .alert("Resume Your Activity?", isPresented: $showRestoreWalkPrompt) {
