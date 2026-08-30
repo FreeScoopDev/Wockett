@@ -301,6 +301,12 @@ struct StepCounterView: View {
     private func handleAppear() {
         walkStore.configure(historyStore: historyStore)
         walkStore.salvageStaleWalkIfNeeded()
+        // Reap any phantom Live Activity left over from a force-quit when there is no
+        // active walk to attach to. Must come after salvageStaleWalkIfNeeded() so we
+        // don't kill the activity of a walk that's about to be offered for resume.
+        if walkStore.session == nil {
+            Task { await WalkLiveActivityManager.shared.endAllActivities() }
+        }
         if walkStore.hasRestorableWalk {
             showRestoreWalkPrompt = true
         }

@@ -95,10 +95,14 @@ struct WalkNavigationView: View {
                         let pausedDuration = session.totalPausedDuration
                         let pets = finalizePetDistances()
                         walkStore.buildAndSaveSession(petDistances: pets.distances, activePetIds: pets.activePetIds, isCommunityRoute: route.isCommunityRoute)
+                        let capturedSession = session
                         session.stop()
                         cancelWaterBreakReminders()
                         endSessionOnDismiss = true
-                        Task { await WalkLiveActivityManager.shared.end(distanceCovered: dist, elapsedSeconds: elapsed, pausedDuration: pausedDuration) }
+                        Task {
+                            await WalkLiveActivityManager.shared.end(distanceCovered: dist, elapsedSeconds: elapsed, pausedDuration: pausedDuration)
+                            await capturedSession.finishWorkoutSession()
+                        }
                         dismiss()
                     }
                     Button("Keep Tracking", role: .cancel) {
@@ -119,10 +123,14 @@ struct WalkNavigationView: View {
                         let pausedDuration = session.totalPausedDuration
                         let pets = finalizePetDistances()
                         walkStore.buildAndSaveSession(petDistances: pets.distances, activePetIds: pets.activePetIds, isCommunityRoute: route.isCommunityRoute)
+                        let capturedSession = session
                         session.stop()
                         cancelWaterBreakReminders()
                         endSessionOnDismiss = true
-                        Task { await WalkLiveActivityManager.shared.end(distanceCovered: dist, elapsedSeconds: elapsed, pausedDuration: pausedDuration) }
+                        Task {
+                            await WalkLiveActivityManager.shared.end(distanceCovered: dist, elapsedSeconds: elapsed, pausedDuration: pausedDuration)
+                            await capturedSession.finishWorkoutSession()
+                        }
                         dismiss()
                     }
                     Button("End Walk") {
@@ -131,20 +139,28 @@ struct WalkNavigationView: View {
                         let pausedDuration = session.totalPausedDuration
                         let pets = finalizePetDistances()
                         walkStore.buildAndSaveSession(petDistances: pets.distances, activePetIds: pets.activePetIds, isCommunityRoute: route.isCommunityRoute)
+                        let capturedSession = session
                         session.stop()
                         cancelWaterBreakReminders()
                         endSessionOnDismiss = true
-                        Task { await WalkLiveActivityManager.shared.end(distanceCovered: dist, elapsedSeconds: elapsed, pausedDuration: pausedDuration) }
+                        Task {
+                            await WalkLiveActivityManager.shared.end(distanceCovered: dist, elapsedSeconds: elapsed, pausedDuration: pausedDuration)
+                            await capturedSession.finishWorkoutSession()
+                        }
                         dismiss()
                     }
                     Button("Discard Walk", role: .destructive) {
                         let dist = session.totalDistanceCovered
                         let elapsed = Int(session.elapsedTime)
                         let pausedDuration = session.totalPausedDuration
+                        let capturedSession = session
                         session.stop()
                         cancelWaterBreakReminders()
                         endSessionOnDismiss = true
-                        Task { await WalkLiveActivityManager.shared.end(distanceCovered: dist, elapsedSeconds: elapsed, pausedDuration: pausedDuration) }
+                        Task {
+                            await WalkLiveActivityManager.shared.end(distanceCovered: dist, elapsedSeconds: elapsed, pausedDuration: pausedDuration)
+                            await capturedSession.finishWorkoutSession()
+                        }
                         dismiss()
                     }
                     Button("Keep Walking", role: .cancel) {}
@@ -231,7 +247,7 @@ struct WalkNavigationView: View {
         WalkAudioCueService.shared.reset()
         session.start()
         session.onCheckpointReached = checkpointsEnabled ? { [self] lbl in self.handleCheckpoint(lbl) } : nil
-        WalkLiveActivityManager.shared.start(
+        await WalkLiveActivityManager.shared.start(
             routeName: route.name,
             totalDistanceMeters: route.totalDistance,
             activityMode: route.activityMode.rawValue,

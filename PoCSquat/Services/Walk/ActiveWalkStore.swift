@@ -44,16 +44,20 @@ final class ActiveWalkStore {
     @discardableResult
     func saveAndEndActiveSession() -> WalkSession? {
         guard let session, let route = activeRoute else { return nil }
-        let dist          = session.totalDistanceCovered
-        let elapsed       = Int(session.elapsedTime)
+        let dist           = session.totalDistanceCovered
+        let elapsed        = Int(session.elapsedTime)
         let pausedDuration = session.totalPausedDuration
-        let saved         = buildAndSaveSession(isCommunityRoute: route.isCommunityRoute)
+        let capturedSession = session
+        let saved          = buildAndSaveSession(isCommunityRoute: route.isCommunityRoute)
         session.stop()
         endSession()
         UNUserNotificationCenter.current().removePendingNotificationRequests(
             withIdentifiers: (1...12).map { "waterBreak-\($0)" }
         )
-        Task { await WalkLiveActivityManager.shared.end(distanceCovered: dist, elapsedSeconds: elapsed, pausedDuration: pausedDuration) }
+        Task {
+            await WalkLiveActivityManager.shared.end(distanceCovered: dist, elapsedSeconds: elapsed, pausedDuration: pausedDuration)
+            await capturedSession.finishWorkoutSession()
+        }
         return saved
     }
 
@@ -68,6 +72,25 @@ final class ActiveWalkStore {
         session = mgr
         activeRoute = route
         isStarted = true
+        // Start a fresh Live Activity for the restored session and push an immediate
+        // state update so the banner shows current distance/elapsed rather than zeros.
+        let capturedMgr = mgr
+        Task {
+            await WalkLiveActivityManager.shared.start(
+                routeName: route.name,
+                totalDistanceMeters: route.totalDistance,
+                activityMode: route.activityMode.rawValue,
+                startDate: snapshot.startTime
+            )
+            await WalkLiveActivityManager.shared.update(
+                distanceCovered: capturedMgr.totalDistanceCovered,
+                elapsedSeconds: Int(capturedMgr.elapsedTime),
+                isPaused: capturedMgr.isPaused,
+                paceSecsPerKm: nil,
+                pausedDuration: capturedMgr.totalPausedDuration,
+                pauseTime: capturedMgr.isPaused ? Date() : nil
+            )
+        }
         return route
     }
 

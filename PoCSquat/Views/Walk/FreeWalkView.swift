@@ -459,7 +459,7 @@ struct FreeWalkView: View {
                     for pet in petStore.activePets {
                         petActiveSinceDistance[pet.id] = 0
                     }
-                    WalkLiveActivityManager.shared.start(
+                    await WalkLiveActivityManager.shared.start(
                         routeName: route.name,
                         totalDistanceMeters: 0,
                         activityMode: activityMode.rawValue,
