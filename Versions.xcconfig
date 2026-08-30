@@ -1,0 +1,4 @@
+// Single source of truth for app + widget version numbers.
+// Bump these here, never in target build settings.
+MARKETING_VERSION = 1.9
+CURRENT_PROJECT_VERSION = 16
