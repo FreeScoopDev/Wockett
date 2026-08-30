@@ -132,6 +132,7 @@ struct FreeWalkView: View {
     @State private var ownerUpdatePickerPets: [PetProfile] = []
     @State private var endSessionOnDismiss    = false
     @State private var hasAttemptedStart      = false
+    @State private var showBreakPromptAlert   = false
 
     private var isCycling: Bool { activityMode == .cycling }
     private var session: NavigationSessionManager { walkStore.session! }
@@ -406,6 +407,33 @@ struct FreeWalkView: View {
                     pausedDuration: session.totalPausedDuration,
                     pauseTime: paused ? Date() : nil
                 )}
+            }
+            .onChange(of: session.showBreakPrompt) { _, show in
+                if show { showBreakPromptAlert = true }
+            }
+            .alert("Still walking?", isPresented: $showBreakPromptAlert) {
+                Button(isCycling ? "Finish Ride" : "End Walk") {
+                    session.dismissBreakPrompt()
+                    flushActivePetDistances()
+                    let dist = session.totalDistanceCovered
+                    let elapsed = Int(session.elapsedTime)
+                    let pausedDuration = session.totalPausedDuration
+                    if session.autoPausedForInactivity { session.resume() }
+                    Task { await WalkLiveActivityManager.shared.end(
+                        distanceCovered: dist,
+                        elapsedSeconds: elapsed,
+                        pausedDuration: pausedDuration
+                    )}
+                    session.stop()
+                    endSessionOnDismiss = true
+                    showSummary = true
+                }
+                Button("Keep Tracking", role: .cancel) {
+                    session.dismissBreakPrompt()
+                    if session.autoPausedForInactivity { session.resume() }
+                }
+            } message: {
+                Text("You haven't moved in a few minutes. End or keep tracking?")
             }
             .sheet(isPresented: $showSummary) {
                 FreeWalkSummarySheet(

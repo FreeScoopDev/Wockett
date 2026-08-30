@@ -141,6 +141,8 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
     private var lastMovementTime: Date = Date()
     private let movementWindow: TimeInterval = 8  // seconds; no GPS update in this window → considered stopped
     var showBreakPrompt: Bool = false
+    private var breakPromptShownAt: Date?
+    var autoPausedForInactivity = false
 
     // Driving detection — compares GPS speed and CoreMotion automotive classification.
     private var drivingDetector = DrivingDetector(speedCeiling: 3.5)
@@ -252,7 +254,18 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
                 let now = Date()
                 let isMoving = now.timeIntervalSince(self.lastMovementTime) < self.movementWindow
                 if self.stopTracker.tick(isMoving: isMoving, now: now) != nil {
-                    self.showBreakPrompt = true
+                    if !self.showBreakPrompt {
+                        self.showBreakPrompt = true
+                        self.breakPromptShownAt = now
+                    }
+                }
+                // If the prompt has been ignored for 5+ minutes, auto-pause to keep stats honest.
+                if self.showBreakPrompt, !self.isPaused,
+                   let shownAt = self.breakPromptShownAt,
+                   now.timeIntervalSince(shownAt) >= 300 {
+                    self.autoPausedForInactivity = true
+                    self.pause()
+                    self.postAutoPauseNotification()
                 }
                 if !self.drivingAffirmedByUser, !self.drivingSuspected {
                     let isAutomotive = ActivityDetectionService.shared.isAutomotiveHighConfidence
@@ -282,6 +295,8 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
             pausedDuration += Date().timeIntervalSince(ps)
             pauseStart = nil
         }
+        autoPausedForInactivity = false
+        breakPromptShownAt = nil
         isPaused = false
         UIApplication.shared.isIdleTimerDisabled = true
         lastMovementTime = Date()   // prevent a phantom stop on the first ticks after resuming
@@ -291,6 +306,7 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
     }
 
     func stop() {
+        autoPausedForInactivity = false
         ActiveWalkSnapshotStore.clear()
         locationManager.stopUpdatingLocation()
         pedometer.stopUpdates()
@@ -338,6 +354,7 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
     func dismissBreakPrompt() {
         stopTracker.reset()
         showBreakPrompt = false
+        breakPromptShownAt = nil
     }
 
     func clearDrivingSuspicion() {
@@ -378,8 +395,15 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
         max(0, route.totalDistance - totalDistanceCovered)
     }
 
-    // Average pace in min/km — shown as "--:--" until enough distance is covered.
+    // Pace (walking/running) or speed (cycling) — shown as "--" until enough data.
     var paceText: String {
+        if route.activityMode == .cycling {
+            guard totalDistanceCovered > 50, elapsedTime > 5 else { return "--" }
+            let useMetric = Locale.current.measurementSystem != .us
+            let speed = (totalDistanceCovered / elapsedTime) * 3.6   // km/h
+            let value = useMetric ? speed : speed / 1.609344
+            return String(format: "%.1f %@", value, useMetric ? "km/h" : "mph")
+        }
         guard totalDistanceCovered > 50, elapsedTime > 5 else { return "--:--" }
         let useMetric = Locale.current.measurementSystem != .us
         let divisor   = useMetric ? 1000.0 : 1609.34
@@ -389,6 +413,8 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
         let secs      = Int((minPerUnit - Double(mins)) * 60)
         return String(format: "%d:%02d%@", mins, secs, unit)
     }
+
+    var paceLabel: String { route.activityMode == .cycling ? "speed" : "pace" }
 
     var estimatedSteps: Int { liveSteps > 0 ? liveSteps : Int(totalDistanceCovered / 0.762) }
     var stopCount: Int { stopTracker.stopCount }
@@ -527,6 +553,15 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
         stop()
         fireBackgroundNotification(title: "Walk complete! 🎉", body: "Great work on \(route.name)")
         WalkAudioCueService.shared.announce("Walk complete! Great job on \(route.name).")
+    }
+
+    private func postAutoPauseNotification() {
+        let content = UNMutableNotificationContent()
+        content.title = "Session paused"
+        content.body = "You've been stopped for a while, so we paused your session to keep your stats honest. Resume anytime."
+        content.sound = .default
+        let request = UNNotificationRequest(identifier: "autoPause", content: content, trigger: nil)
+        UNUserNotificationCenter.current().add(request)
     }
 
     private func fireBackgroundNotification(title: String, body: String) {

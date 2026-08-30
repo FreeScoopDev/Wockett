@@ -107,6 +107,7 @@ struct WalkNavigationView: View {
                     }
                     Button("Keep Tracking", role: .cancel) {
                         session.dismissBreakPrompt()
+                        if session.autoPausedForInactivity { session.resume() }
                     }
                 } message: {
                     Text("You haven't moved in a few minutes. End the walk or keep tracking?")
@@ -517,7 +518,7 @@ struct WalkNavigationView: View {
                 Rectangle().frame(width: 0.5, height: 36).foregroundColor(Color.earthMuted.opacity(0.25))
                 hudStat(value: timeText(session.elapsedTime),            label: "elapsed",  icon: "clock.fill")
                 Rectangle().frame(width: 0.5, height: 36).foregroundColor(Color.earthMuted.opacity(0.25))
-                hudStat(value: session.paceText,                         label: "pace",     icon: "speedometer")
+                hudStat(value: session.paceText,                         label: session.paceLabel, icon: "speedometer")
             }
             .padding(.vertical, 14)
 
