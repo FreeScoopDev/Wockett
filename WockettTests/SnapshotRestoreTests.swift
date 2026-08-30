@@ -3,6 +3,9 @@ import Foundation
 import CoreLocation
 @testable import PoCSquat
 
+// Serialized because several tests write to the same shared file and would race
+// under Swift Testing's default parallel execution.
+@Suite(.serialized)
 struct SnapshotRestoreTests {
 
     // Clear any leftover snapshot before each test (Swift Testing instantiates a new
@@ -200,6 +203,28 @@ struct SnapshotRestoreTests {
         ActiveWalkSnapshotStore.clear()
         #expect(ActiveWalkSnapshotStore.hasPending == false)
         #expect(ActiveWalkSnapshotStore.load()     == nil)
+    }
+
+    // MARK: - Expiry
+
+    @Test func store_freshSnapshot_survives() {
+        defer { ActiveWalkSnapshotStore.clear() }
+
+        // checkpointDate 1 hour ago — well within the 4-hour window
+        let snapshot = makeSnapshot(checkpointDate: Date().addingTimeInterval(-3600))
+        ActiveWalkSnapshotStore.save(snapshot)
+
+        #expect(ActiveWalkSnapshotStore.hasPending == true)
+        #expect(ActiveWalkSnapshotStore.load() != nil)
+    }
+
+    @Test func store_staleSnapshot_selfDeletes() {
+        // checkpointDate 5 hours ago — beyond the 4-hour window
+        let snapshot = makeSnapshot(checkpointDate: Date().addingTimeInterval(-5 * 3600))
+        ActiveWalkSnapshotStore.save(snapshot)
+
+        #expect(ActiveWalkSnapshotStore.load() == nil)
+        #expect(ActiveWalkSnapshotStore.hasPending == false)
     }
 
     // MARK: - restoredPausedDuration

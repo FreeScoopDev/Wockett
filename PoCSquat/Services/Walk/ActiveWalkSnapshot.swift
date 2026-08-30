@@ -70,6 +70,11 @@ struct ActiveWalkSnapshot: Codable {
 // MARK: - Active Walk Snapshot Store
 
 enum ActiveWalkSnapshotStore {
+    /// Checkpoints older than this are considered stale and are deleted on
+    /// read instead of offered for resume. Matches the privacy policy's
+    /// "saved for up to 4 hours, then automatically deleted."
+    static let maxSnapshotAge: TimeInterval = 4 * 60 * 60
+
     private static var fileURL: URL {
         let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -82,8 +87,14 @@ enum ActiveWalkSnapshotStore {
     }
 
     static func load() -> ActiveWalkSnapshot? {
-        guard let data = try? Data(contentsOf: fileURL) else { return nil }
-        return try? JSONDecoder().decode(ActiveWalkSnapshot.self, from: data)
+        guard let data = try? Data(contentsOf: fileURL),
+              let snapshot = try? JSONDecoder().decode(ActiveWalkSnapshot.self, from: data)
+        else { return nil }
+        guard Date().timeIntervalSince(snapshot.checkpointDate) <= maxSnapshotAge else {
+            clear()
+            return nil
+        }
+        return snapshot
     }
 
     static func clear() {
@@ -91,6 +102,6 @@ enum ActiveWalkSnapshotStore {
     }
 
     static var hasPending: Bool {
-        FileManager.default.fileExists(atPath: fileURL.path)
+        load() != nil
     }
 }
