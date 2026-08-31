@@ -15,6 +15,8 @@ struct SessionStatCell: View {
             Text(label).font(.caption2).foregroundColor(.earthMuted)
         }
         .frame(maxWidth: .infinity)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(value) \(label)")
     }
 }
 
@@ -45,6 +47,11 @@ struct SessionStatsBar: View {
                     .frame(height: 0.5)
                     .foregroundColor(Color.earthMuted.opacity(0.25))
                 HStack(spacing: 0) {
+                    let stepsLabel: String = {
+                        let base = "\(session.estimatedSteps.formatted()) steps"
+                        if let cad = session.cadence, cad > 0 { return "\(base), \(Int(cad)) per minute" }
+                        return base
+                    }()
                     VStack(spacing: 5) {
                         Image(systemName: activityIcon).font(.caption).foregroundColor(.earthGreen)
                         Text(session.estimatedSteps.formatted()).font(.subheadline.bold()).foregroundColor(.earthCream)
@@ -56,6 +63,8 @@ struct SessionStatsBar: View {
                         }
                     }
                     .frame(maxWidth: .infinity)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(stepsLabel)
                     if let eta = session.estimatedSecondsRemaining {
                         Rectangle().frame(width: 0.5, height: 36).foregroundColor(Color.earthMuted.opacity(0.25))
                         SessionStatCell(value: fmtDuration(eta), label: "est. left", icon: "timer")
@@ -168,6 +177,7 @@ struct DrivingSuspectedBanner: View {
                     .background(Color.earthGreen.opacity(0.85))
                     .foregroundColor(.white).cornerRadius(8)
             }
+            .accessibilityHint("Dismisses the alert and continues your session")
             Button { onEndWalk() } label: {
                 Text("End \(activityMode.noun)")
                     .font(.caption.bold())
@@ -175,6 +185,7 @@ struct DrivingSuspectedBanner: View {
                     .background(Color.red.opacity(0.75))
                     .foregroundColor(.white).cornerRadius(8)
             }
+            .accessibilityHint("Stops and saves this session")
         }
         .padding(.horizontal, 16).padding(.vertical, 10)
         .background(Color.red.opacity(0.1))

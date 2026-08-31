@@ -282,6 +282,7 @@ struct ActiveSessionView: View {
                     .background(.ultraThinMaterial)
                     .clipShape(Circle())
             }
+            .accessibilityLabel("Minimize session")
             .padding(.top, 60).padding(.leading, 16)
         }
         .overlay(alignment: .top) {
@@ -365,7 +366,10 @@ struct ActiveSessionView: View {
                                 Circle().stroke(Color.white,
                                     lineWidth: poiManager.selectedPOI?.id == poi.id ? 2.5 : 0)
                             )
+                            .frame(width: 44, height: 44)
+                            .contentShape(Circle())
                         }
+                        .accessibilityLabel("\(poi.category.label): \(poi.name)")
                     }
                 }
             }
@@ -480,6 +484,9 @@ struct ActiveSessionView: View {
                                     .scaleEffect(pet.isActiveOnWalk ? 1.0 : 0.85)
                                     .animation(.spring(duration: 0.2), value: pet.isActiveOnWalk)
                             }
+                            .accessibilityLabel(pet.isActiveOnWalk
+                                ? "Remove \(pet.name) from \(route.activityMode.noun)"
+                                : "Add \(pet.name) to \(route.activityMode.noun)")
                         }
                     }
                     .padding(.trailing, 6)
@@ -507,6 +514,7 @@ struct ActiveSessionView: View {
                         .font(.title2)
                         .foregroundColor(WalkAudioCueService.shared.isEnabled ? .earthGreen : .earthMuted)
                 }
+                .accessibilityLabel(WalkAudioCueService.shared.isEnabled ? "Mute audio cues" : "Enable audio cues")
                 .padding(.trailing, 10)
                 Button {
                     waterBreakEnabled.toggle()
@@ -525,6 +533,7 @@ struct ActiveSessionView: View {
                     }
                     .animation(.spring(duration: 0.2), value: waterBreakEnabled)
                 }
+                .accessibilityLabel("Toggle water break reminders")
                 .padding(.trailing, 10)
                 if isGuided {
                     Button { checkpointsEnabled.toggle() } label: {
@@ -541,6 +550,7 @@ struct ActiveSessionView: View {
                         }
                         .animation(.spring(duration: 0.2), value: checkpointsEnabled)
                     }
+                    .accessibilityLabel("Toggle checkpoint markers")
                     .padding(.trailing, 10)
                 }
                 Button {
@@ -550,6 +560,9 @@ struct ActiveSessionView: View {
                         .font(.title)
                         .foregroundColor(session.isPaused ? .earthGreen : .earthMuted)
                 }
+                .accessibilityLabel(session.isPaused
+                    ? "Resume \(route.activityMode.noun)"
+                    : "Pause \(route.activityMode.noun)")
                 .padding(.trailing, 10)
                 Button {
                     if isGuided { showStopAlert = true } else { endFreeSession() }
@@ -558,6 +571,7 @@ struct ActiveSessionView: View {
                         .font(.title)
                         .foregroundColor(.red.opacity(0.85))
                 }
+                .accessibilityLabel("End \(route.activityMode.noun)")
             }
             .padding(.horizontal, 20).padding(.top, 20)
 
@@ -614,6 +628,7 @@ struct ActiveSessionView: View {
                                 .foregroundColor(.earthMuted)
                                 .clipShape(Circle())
                         }
+                        .accessibilityLabel("Close \(poi.name) details")
                     }
                     .padding(14)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -936,6 +951,8 @@ struct ActiveSessionView: View {
         .foregroundColor(active ? .white : .secondary)
         .clipShape(Capsule())
         .animation(.spring(response: 0.25), value: active)
+        .frame(minHeight: 44)
+        .contentShape(Rectangle())
     }
 }
 
@@ -967,6 +984,7 @@ private struct HeatAdvisoryBanner: View {
             Button { onDismiss() } label: {
                 Image(systemName: "xmark").font(.caption).foregroundColor(.earthMuted)
             }
+            .accessibilityLabel("Dismiss heat advisory")
         }
         .padding(.horizontal, 16).padding(.vertical, 10)
         .background(Color.orange.opacity(0.12))

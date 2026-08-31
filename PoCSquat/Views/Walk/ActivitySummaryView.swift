@@ -153,6 +153,8 @@ struct ActivitySummaryView: View {
         }
         .frame(maxWidth: .infinity).padding(.vertical, 20)
         .background(Color.earthCard).cornerRadius(14)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(value) \(label)")
     }
 
     private var prBanner: some View {
@@ -173,6 +175,8 @@ struct ActivitySummaryView: View {
                     .background(Color.earthOrange.opacity(0.1)).cornerRadius(12)
                     .overlay(RoundedRectangle(cornerRadius: 12)
                         .stroke(Color.earthOrange.opacity(0.3), lineWidth: 1))
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("\(pr.title): \(pr.valueText)")
                 }
             }
         }
@@ -202,6 +206,9 @@ struct ActivitySummaryView: View {
                         Text(c.pet.name).font(.caption2).foregroundColor(.earthMuted)
                         Text("\(Int(progress * 100))%").font(.caption.bold()).foregroundColor(c.pet.accentColor)
                     }
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(c.pet.name)
+                    .accessibilityValue("\(Int(progress * 100))% of daily step goal")
                 }
             }
         }

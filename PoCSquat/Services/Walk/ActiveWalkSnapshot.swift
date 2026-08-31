@@ -1,5 +1,6 @@
 import Foundation
 import CoreLocation
+import OSLog
 
 // MARK: - Active Walk Snapshot
 //
@@ -86,6 +87,7 @@ struct ActiveWalkSnapshot: Codable {
 // MARK: - Active Walk Snapshot Store
 
 enum ActiveWalkSnapshotStore {
+    private static let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "Wockett", category: "ActiveWalkSnapshot")
     /// Checkpoints older than this are considered stale and are deleted on
     /// read instead of offered for resume. Matches the privacy policy's
     /// "saved for up to 4 hours, then automatically deleted."
@@ -99,7 +101,18 @@ enum ActiveWalkSnapshotStore {
 
     static func save(_ snapshot: ActiveWalkSnapshot) {
         guard let data = try? JSONEncoder().encode(snapshot) else { return }
-        try? data.write(to: fileURL, options: .atomic)
+        // File protection: .completeUntilFirstUserAuthentication (default) — required because
+        // checkpoints are written in the background mid-walk.
+        var url = fileURL
+        do {
+            try data.write(to: url, options: .atomic)
+            // This file holds GPS breadcrumbs and must never leave the device.
+            var resourceValues = URLResourceValues()
+            resourceValues.isExcludedFromBackup = true
+            try? url.setResourceValues(resourceValues)
+        } catch {
+            log.error("Snapshot write failed")
+        }
     }
 
     /// Returns the checkpoint only if it's fresh enough to offer for resume.

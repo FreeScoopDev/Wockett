@@ -99,6 +99,8 @@ struct ActiveMiniTile: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("Return to \(route.name)")
+            .accessibilityHint("Opens the active session")
 
             // Stop button — separate hit target
             Button(action: onEnd) {
@@ -108,6 +110,7 @@ struct ActiveMiniTile: View {
             }
             .buttonStyle(.plain)
             .padding(.horizontal, 14)
+            .accessibilityLabel("End \(route.activityMode.noun)")
         }
         .background(.ultraThinMaterial)
         .cornerRadius(16)
