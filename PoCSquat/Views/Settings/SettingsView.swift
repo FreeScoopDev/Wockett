@@ -20,6 +20,13 @@ struct SettingsView: View {
     @State private var notifAuthorized = false
     @State private var showScheduleSheet = false
 
+    #if DEBUG
+    @EnvironmentObject private var petStore: PetStore
+    @StateObject private var devHistoryStore = WalkHistoryStore()
+    @StateObject private var devRouteStore   = CustomRouteStore()
+    @State private var devSeedMessage: String? = nil
+    #endif
+
     private var appVersion: String {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "—"
     }
@@ -243,6 +250,58 @@ struct SettingsView: View {
                     .listRowBackground(Color.earthCard)
                 }
 
+
+
+                #if DEBUG
+                // ── Developer ─────────────────────────────────────
+                Section("Developer") {
+                    Button {
+                        DevSeedStore.seedScreenshotDemo(
+                            history: devHistoryStore, pets: petStore, routes: devRouteStore)
+                        devSeedMessage = "Seeded! Relaunch to see history & badges."
+                    } label: {
+                        Label("Seed Screenshot Demo", systemImage: "camera")
+                            .foregroundColor(.earthGreen)
+                    }
+                    .listRowBackground(Color.earthCard)
+
+                    Button {
+                        DevSeedStore.clearScreenshotDemo(
+                            history: devHistoryStore, pets: petStore, routes: devRouteStore)
+                        devSeedMessage = "Demo data cleared."
+                    } label: {
+                        Label("Clear Demo Data", systemImage: "trash")
+                            .foregroundColor(.red.opacity(0.75))
+                    }
+                    .listRowBackground(Color.earthCard)
+
+                    Button {
+                        DevSeedStore.seedWalkSessions(into: devHistoryStore)
+                        devSeedMessage = "Seeded [TEST] streak data."
+                    } label: {
+                        Label("Seed [TEST] Streak Data", systemImage: "flame")
+                            .foregroundColor(.earthMuted)
+                    }
+                    .listRowBackground(Color.earthCard)
+
+                    Button {
+                        DevSeedStore.clearTestSessions(from: devHistoryStore)
+                        DevSeedStore.clearTestRoutes(from: devRouteStore)
+                        devSeedMessage = "Cleared [TEST] data."
+                    } label: {
+                        Label("Clear [TEST] Data", systemImage: "trash")
+                            .foregroundColor(.red.opacity(0.55))
+                    }
+                    .listRowBackground(Color.earthCard)
+
+                    if let msg = devSeedMessage {
+                        Text(msg)
+                            .font(.caption)
+                            .foregroundColor(.earthMuted)
+                            .listRowBackground(Color.earthCard)
+                    }
+                }
+                #endif
 
             }
             .listStyle(.insetGrouped)
