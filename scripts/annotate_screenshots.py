@@ -5,7 +5,18 @@ captioned App Store screenshots in the Wockett palette."""
 from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageOps
 import os
 
-W, H = 1320, 2868
+import sys
+PROFILE = sys.argv[1] if len(sys.argv) > 1 else "iphone"
+if PROFILE == "ipad":
+    W, H = 2064, 2752          # iPad Pro 13" portrait slot
+    DEVICE_W = 1440            # framed device width on canvas
+    CAP_SIZE, CAP_Y, DEV_Y = 110, 170, 520
+    SRC_MATCH = "iPad"         # capture filenames must contain this
+else:
+    W, H = 1320, 2868
+    DEVICE_W = 1000
+    CAP_SIZE, CAP_Y, DEV_Y = 96, 150, 470
+    SRC_MATCH = "iPhone"
 CREAM_BG   = (245, 244, 242)   # earthBg light
 GREEN      = (46, 120, 51)     # earthGreen light
 DARK_GREEN = (26, 77, 33)
@@ -45,14 +56,14 @@ def compose(src_path, caption, out_path):
     d = ImageDraw.Draw(canvas)
     # caption — auto-fit: shrink until the widest line fits inside margins
     lines = caption.split("\n")
-    size = 96
+    size = CAP_SIZE
     while size > 56:
         font = ImageFont.truetype(FONT_BOLD, size)
         widest = max(d.textbbox((0, 0), l, font=font)[2] for l in lines)
         if widest <= W - 180:
             break
         size -= 4
-    y = 150
+    y = CAP_Y
     for line in lines:
         bbox = d.textbbox((0, 0), line, font=font)
         d.text(((W - (bbox[2] - bbox[0])) / 2, y), line, font=font, fill=DARK_GREEN)
@@ -62,7 +73,7 @@ def compose(src_path, caption, out_path):
 
     # device image
     shot = Image.open(src_path).convert("RGB")
-    target_w = 1000
+    target_w = DEVICE_W
     shot = shot.resize((target_w, int(shot.height * target_w / shot.width)), Image.LANCZOS)
     rad = 118
     framed = rounded(shot, rad)
@@ -78,7 +89,7 @@ def compose(src_path, caption, out_path):
     ds.rounded_rectangle([80, 96, 80 + bezel.width, 96 + bezel.height], rad + bez, fill=(20, 40, 22, 90))
     sh = sh.filter(ImageFilter.GaussianBlur(34))
     px = (W - sh.width) // 2
-    py = 470
+    py = DEV_Y
     canvas.paste(sh, (px, py), sh)
     canvas.paste(bezel, (px + 80, py + 80), bezel)
     canvas.save(out_path, "PNG")
@@ -109,9 +120,20 @@ def privacy_slide(out_path):
     d.line([(cx-24, cy-16), (cx-4, cy+6), (cx+30, cy-34)], fill=CREAM_TXT, width=12, joint="curve")
     canvas.save(out_path, "PNG")
 
+# In iPad mode, resolve each shot to the iPad capture taken closest in
+# sequence: filenames differ, so match by index over the sorted iPad
+# captures in SRC instead of the hardcoded iPhone names.
+if PROFILE == "ipad":
+    import glob
+    ipad_files = sorted(glob.glob(os.path.join(SRC, "*iPad*.png")))
+    if len(ipad_files) < len(SHOTS):
+        print(f"Need {len(SHOTS)} iPad captures in {SRC}, found {len(ipad_files)} — capture in the shot-list order, then rerun.")
+        raise SystemExit(1)
+    SHOTS = [(os.path.basename(f), cap) for f, (_, cap) in zip(ipad_files, SHOTS)]
+
 os.makedirs("out", exist_ok=True)
 for i, (fname, caption) in enumerate(SHOTS, 1):
-    compose(os.path.join(SRC, fname), caption, f"out/{i:02d}-wockett.png")
+    compose(os.path.join(SRC, fname), caption, f"out/{i:02d}-wockett-{PROFILE}.png")
     print(f"{i:02d} done: {caption.splitlines()[0]}")
-privacy_slide("out/10-wockett.png")
+privacy_slide(f"out/10-wockett-{PROFILE}.png")
 print("10 done: privacy slide")
