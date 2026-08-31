@@ -23,6 +23,7 @@ struct ActivitySummaryView: View {
     @State private var showRouteNameField = false
     @State private var routeName          = ""
     @State private var showActivityShare  = false
+    @State private var showScheduleSheet  = false
     @State private var ringProgress: [UUID: Double] = [:]
 
     private var mode: ActivityMode { ActivityMode(rawValue: session.activityType) ?? .walking }
@@ -102,6 +103,16 @@ struct ActivitySummaryView: View {
                                     .overlay(RoundedRectangle(cornerRadius: 14)
                                         .stroke(Color.earthGreen.opacity(0.4), lineWidth: 1.5))
                             }
+                            Button { showScheduleSheet = true } label: {
+                                Label("Schedule This \(mode.sessionLabel) Again",
+                                      systemImage: "calendar.badge.plus")
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 18).padding(.horizontal, 20)
+                                    .background(Color.earthCard).foregroundColor(.earthCream)
+                                    .fontWeight(.semibold).cornerRadius(14)
+                                    .overlay(RoundedRectangle(cornerRadius: 14)
+                                        .stroke(Color.earthGreen.opacity(0.4), lineWidth: 1.5))
+                            }
                             Button { dismiss() } label: {
                                 Text("Done")
                                     .frame(maxWidth: .infinity)
@@ -126,6 +137,9 @@ struct ActivitySummaryView: View {
         }
         .sheet(isPresented: $showActivityShare) {
             ActivitySummaryShareSheet(session: session, historyStore: historyStore)
+        }
+        .sheet(isPresented: $showScheduleSheet) {
+            ScheduleWalkSheet(routeName: session.routeName)
         }
     }
 
