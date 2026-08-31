@@ -3,9 +3,15 @@
 All notable changes to Wockett are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## [Unreleased]
+## [1.9] - 2026-08-31
 
 ### Added
+- Running is now a first-class activity mode alongside Walking, Cycling, and Indoor — wired through HealthKit workout logging, the activity tile/picker, and the pre-session "want to track this?" suggestion (which already detected running via Core Motion, just wasn't surfaced yet)
+- Walks and runs started from a saved route are now linked to that route, with a new Route Detail screen showing every past attempt on it, sorted by date
+- Stop-detection during guided sessions: a light "fewer stops than last time" encouragement line, plus a "Still walking?" prompt if you've been stationary for a while (default 3 minutes, adjustable 1–15 min in Settings) so a forgotten walk doesn't keep running in the background
+- Driving-detection: sessions where sustained speed or Core Motion's automotive signal suggest you're in a vehicle now show an in-session "Still walking or driving?" banner; if unresolved, the session is flagged and excluded from personal records, route history, and challenge/badge progress (the walk itself is still saved, just not counted)
+- Unified activity share card replacing the old pet-walk-only share image — choose Silhouette (route line only, default) or Map (real geography, cropped) style, with an optional App Store link toggle
+- Run challenges now support distance and pace goals, not just step counts, with activity-type filtering — existing step-based challenges are unaffected
 - One unified active-session experience for every activity — guided routes, free walks, runs, and rides now share a single session screen built on the guided-walk design (stats bar, pause control, end dialog, map), instead of two visibly different implementations; route guidance appears only when the route has waypoints, POI chips and the breadcrumb trail only on free sessions
 - One end-of-activity summary for every in-app end path — Finish, End, Save Route & End, the inactivity prompt's End, and reaching a route's endpoint all show the same summary (stats, personal records, pet progress, share, Save as Route, Schedule Again); previously guided walks ended manually saved silently with no summary
 - Activity-aware language everywhere — every card, banner, prompt, button, Live Activity label, and icon now speaks the selected activity's language ("Run Complete!", "Still Riding?", "End Run", running/cycling symbols) instead of hardcoded "walk"; "Walk History" is now "Activity History"
@@ -19,6 +25,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Free sessions gained Pause/Resume, working Live Activity buttons, minimize/reopen, resume-after-force-quit, and the "Still walking?" inactivity prompt — all of which previously existed only for guided routes
 
 ### Changed
+- Activity type on a completed session (Walking/Running/Cycling/Indoor) can now be edited after the fact, in case of a mis-tap when starting
 - Version and build numbers now come from a single `Versions.xcconfig` shared by the app, widget extension, and tests (the widget had drifted to reporting 1.0 while the app reported 1.9)
 - Privacy policy updated to accurately describe private-iCloud sync of walk history, community content publishing, and silent sync signals; the walk-resume section now describes the save-to-history behavior
 - Live Activity intents' Shortcuts-facing titles are now "End Activity" / "Pause or Resume Activity"
@@ -32,7 +39,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **[Fix]** Workouts ended from the Live Activity End button or the mini tile never reached Apple Health
   - What was broken: those two end paths stopped the session without finishing the HealthKit workout builder, silently abandoning the workout for every activity type. Only the in-screen Finish button saved to Health.
   - What changed: every save path finishes the workout; every discard path explicitly discards it (a first fix briefly wrote discarded walks to Health — corrected before release).
-  - Affected versions: 1.8.1–1.9 (Unreleased).
+  - Affected versions: 1.8.1–1.9.
 - **[Fix]** Walks ended manually (rather than by reaching the route's actual endpoint) were silently discarded instead of saved to history
   - What was broken: every manual "end early" path called `session.stop()` without writing the session to history; only completing a route saved anything.
   - What changed: every manual exit saves by default through one shared method, with an explicit "Discard" as the only way to lose data on purpose.
@@ -40,7 +47,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **[Fix]** Live Activity Pause, Resume, and End buttons did nothing on a physical device
   - What was broken: `openAppWhenRun` needed to be `false`; a force-unwrap crash surfaced once buttons fired; the banner's state never refreshed outside SwiftUI's foreground render cycle; the elapsed timer briefly showed a year-4001 value (`Text(timerInterval:)` counts down by default) and then hugged the left edge.
   - What changed: intents push `ActivityContent` updates directly; the timer uses SwiftUI's native live-ticking text with `countsDown: false` and explicit centering.
-  - Affected versions: since interactive buttons were added in 1.9 (Unreleased).
+  - Affected versions: since interactive buttons were added in 1.9.
 - The walk-resume checkpoint file (which holds GPS breadcrumbs) is now excluded from iCloud backup, and write failures are logged instead of swallowed
 - The motion-permission description had two conflicting sources (a stale build setting shadowing the correct Info.plist string); the stale copy is removed
 - Live Activity's "remaining distance" stat, which showed a misleading "0 ft" for a free session, is hidden — the Dynamic Island shows live pace (or speed) in that slot instead
@@ -49,21 +56,6 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Internal
 - Test suite grew from ~70 to 123 tests: snapshot/restore math, session logic, activity vocabulary, pace/speed formatting, auto-pause timing, breadcrumb thinning, personal records, and challenge progress/filtering are all unit-tested; CI gained a language-consistency guard and a report-only SwiftLint step
 - Xcode-agent prompts are committed under `prompts/` as an audit trail; the pre-release security and accessibility audit is preserved under `audits/`
-
----
-
-## [1.9] - 2026-08-28
-
-### Added
-- Running is now a first-class activity mode alongside Walking, Cycling, and Indoor — wired through HealthKit workout logging, the activity tile/picker, and the pre-session "want to track this?" suggestion (which already detected running via Core Motion, just wasn't surfaced yet)
-- Walks and runs started from a saved route are now linked to that route, with a new Route Detail screen showing every past attempt on it, sorted by date
-- Stop-detection during guided sessions: a light "fewer stops than last time" encouragement line, plus a "Still walking?" prompt if you've been stationary for a while (default 3 minutes, adjustable 1–15 min in Settings) so a forgotten walk doesn't keep running in the background
-- Driving-detection: sessions where sustained speed or Core Motion's automotive signal suggest you're in a vehicle now show an in-session "Still walking or driving?" banner; if unresolved, the session is flagged and excluded from personal records, route history, and challenge/badge progress (the walk itself is still saved, just not counted)
-- Unified activity share card replacing the old pet-walk-only share image — choose Silhouette (route line only, default) or Map (real geography, cropped) style, with an optional App Store link toggle
-- Run challenges now support distance and pace goals, not just step counts, with activity-type filtering — existing step-based challenges are unaffected
-
-### Changed
-- Activity type on a completed session (Walking/Running/Cycling/Indoor) can now be edited after the fact, in case of a mis-tap when starting
 
 ---
 
