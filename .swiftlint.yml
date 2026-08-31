@@ -1,0 +1,23 @@
+# Wockett SwiftLint config — introduced 2026-08-30 (Pipeline Review follow-up).
+# Runs in CI as a NON-BLOCKING report for now; tighten to blocking once the
+# existing force-unwrap sites are triaged. Only rules we actually care about.
+disabled_rules:
+  - line_length
+  - trailing_whitespace
+  - identifier_name
+  - type_body_length
+  - function_body_length
+  - file_length
+  - cyclomatic_complexity
+  - todo
+opt_in_rules:
+  - force_unwrapping      # the crash class behind this week's Live Activity bug
+  - empty_count
+force_unwrapping:
+  severity: error
+force_cast: error
+force_try: error
+excluded:
+  - WockettTests
+  - prompts
+  - docs

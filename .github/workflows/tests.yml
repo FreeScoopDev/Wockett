@@ -18,6 +18,26 @@ jobs:
       - name: Show Xcode version
         run: xcodebuild -version
 
+      # Guard for the activity-aware language layer (Round C, 2026-08-30):
+      # user-facing copy must read the session's activity, never a hardcoded
+      # "walk". Fails the build if any of these literals reappear.
+      - name: Language-consistency guard
+        run: |
+          if grep -rn '"Still walking\|"Walk Paused"\|"End Walk"\|"Walk Complete\|"Walk History"\|"Finish Walk"\|"Resume Your Walk' \
+               PoCSquat/Views PoCSquat/Intents WocketWidget --include="*.swift"; then
+            echo "::error::Hardcoded walk-specific copy found — use ActivityMode.noun/gerund/sessionLabel instead."
+            exit 1
+          fi
+          echo "Language guard passed."
+
+      # Non-blocking lint report (force_unwrapping / force_try / force_cast).
+      # Flip continue-on-error to false once the existing sites are triaged.
+      - name: SwiftLint (report only)
+        continue-on-error: true
+        run: |
+          brew install swiftlint >/dev/null 2>&1 || true
+          swiftlint lint --config .swiftlint.yml --reporter github-actions-logging || true
+
       - name: Run tests (WockettTests)
         run: |
           xcodebuild test \

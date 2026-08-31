@@ -7,8 +7,8 @@ import ActivityKit
 // WOCKET_WIDGET is set in the widget extension's Swift Active Compilation Conditions.
 
 struct EndWalkLiveActivityIntent: LiveActivityIntent {
-    static var title: LocalizedStringResource = "End Walk"
-    static var description = IntentDescription("Saves and ends the active Wockett walk from the Live Activity.")
+    static var title: LocalizedStringResource = "End Activity"
+    static var description = IntentDescription("Saves and ends the active Wockett activity from the Live Activity.")
     static var openAppWhenRun: Bool = false
 
     @MainActor
@@ -28,8 +28,8 @@ struct EndWalkLiveActivityIntent: LiveActivityIntent {
 // MARK: - Toggle Pause Live Activity Intent
 
 struct ToggleWalkPauseLiveActivityIntent: LiveActivityIntent {
-    static var title: LocalizedStringResource = "Pause or Resume Walk"
-    static var description = IntentDescription("Pauses or resumes the active Wockett walk from the Live Activity.")
+    static var title: LocalizedStringResource = "Pause or Resume Activity"
+    static var description = IntentDescription("Pauses or resumes the active Wockett activity from the Live Activity.")
     static var openAppWhenRun: Bool = false
 
     @MainActor
