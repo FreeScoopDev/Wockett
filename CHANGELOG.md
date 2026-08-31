@@ -6,22 +6,49 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Added
-- Active walk sessions now persist across the whole app instead of being tied to the map view — minimize any walk (swipe down or tap the chevron) and keep tracking from a persistent mini tile visible on every screen, with tap-to-reopen and a stop control
-- All four ways to start a walk (Route Finder, the dashboard "Start Walking" tile, My Routes, Walk History) now present the same sheet-based walk screen with native swipe-to-minimize, instead of two of the four using a different, non-minimizable presentation
-- Live Activity / lock screen now has interactive Pause, Resume, and End Walk buttons, fully working without opening the app
-- Resume-after-force-quit: if the app closes unexpectedly mid-walk (crash, memory pressure, or a manual force-quit), a lightweight checkpoint written every ~15 seconds lets you pick the walk back up on next launch — a "Resume Your Walk?" prompt reconstructs distance, elapsed time, and route progress from the last checkpoint, folding any downtime into paused duration so the numbers stay honest
-- Free Walk now shares the same session architecture as guided walks — Pause/Resume, working Live Activity buttons, minimize/reopen via the mini tile, and resume-after-force-quit all now work for free walks and rides, not just guided routes
+- One unified active-session experience for every activity — guided routes, free walks, runs, and rides now share a single session screen built on the guided-walk design (stats bar, pause control, end dialog, map), instead of two visibly different implementations; route guidance appears only when the route has waypoints, POI chips and the breadcrumb trail only on free sessions
+- One end-of-activity summary for every in-app end path — Finish, End, Save Route & End, the inactivity prompt's End, and reaching a route's endpoint all show the same summary (stats, personal records, pet progress, share, Save as Route, Schedule Again); previously guided walks ended manually saved silently with no summary
+- Activity-aware language everywhere — every card, banner, prompt, button, Live Activity label, and icon now speaks the selected activity's language ("Run Complete!", "Still Riding?", "End Run", running/cycling symbols) instead of hardcoded "walk"; "Walk History" is now "Activity History"
+- Active walk sessions persist across the whole app instead of being tied to the map view — minimize any session (swipe down or tap the chevron) and keep tracking from a persistent mini tile visible on every screen, with tap-to-reopen and a stop control
+- All four ways to start a session (Route Finder, the dashboard tile, My Routes, Activity History) present the same sheet-based screen with native swipe-to-minimize
+- Live Activity / lock screen has interactive Pause, Resume, and End buttons that work without opening the app
+- Resume-after-force-quit: if the app closes unexpectedly mid-session (crash, memory pressure, or a manual force-quit), a lightweight checkpoint written every ~15 seconds — now including the GPS breadcrumb trail — lets you pick the session back up on next launch via a "Resume Your Activity?" prompt, folding any downtime into paused duration so the numbers stay honest
+- Checkpoints not resumed within 4 hours are automatically saved to Activity History as a completed activity (dated by start time, elapsed cut off honestly at the last checkpoint) instead of being discarded — delete it from history if you don't want it; sub-50m accidental starts are dropped
+- Auto-pause: if the "Still walking?" inactivity prompt goes unanswered for ~5 minutes while you're still stationary, the session pauses itself (with a notification if the app is in the background) so a forgotten session doesn't inflate your time and pace; answering "Keep Tracking" resumes it
+- Cycling sessions show speed (mph or km/h) instead of foot pace on the in-session stats, Lock Screen, Dynamic Island, share card, and Route Detail
+- Free sessions gained Pause/Resume, working Live Activity buttons, minimize/reopen, resume-after-force-quit, and the "Still walking?" inactivity prompt — all of which previously existed only for guided routes
+
+### Changed
+- Version and build numbers now come from a single `Versions.xcconfig` shared by the app, widget extension, and tests (the widget had drifted to reporting 1.0 while the app reported 1.9)
+- Privacy policy updated to accurately describe private-iCloud sync of walk history, community content publishing, and silent sync signals; the walk-resume section now describes the save-to-history behavior
+- Live Activity intents' Shortcuts-facing titles are now "End Activity" / "Pause or Resume Activity"
+- Accessibility pass on the rebuilt session and summary screens: every icon-only control (stop, pause/resume, minimize, mini-tile reopen, audio/water/checkpoint toggles, pet and POI buttons, banner dismissals) now has a VoiceOver label; stat cells, summary tiles, pet rings, and PR cards read as single phrases; POI pins and filter chips meet the 44pt tap target
 
 ### Fixed
-- **[Fix]** Walks ended manually (rather than by reaching the route's actual endpoint) were silently discarded instead of saved to Walk History
-  - What was broken: every manual "end this walk early" path — the map's own "End Walk?" dialog, the "Still walking?" inactivity prompt, and the mini tile's stop button — called `session.stop()` without ever writing the walk to history. Only completing a route to its literal endpoint saved anything. The map dialog's "Save Route & Exit" button was also misleading — it only saved the route definition to My Routes, never the walk itself.
-  - What changed: every manual exit now saves the walk by default, through one shared method on `ActiveWalkStore`, with an explicit "Discard Walk" as the only way to lose data on purpose. The map's dialog is now 4 buttons (Save Route & End Walk / End Walk / Discard Walk / Keep Walking); the mini tile is now Save & End Walk / Discard Walk / Cancel.
-  - Affected versions: present since guided walks were introduced; not previously reported — found during this session's code review of the walk-session architecture work.
-- **[Fix]** Live Activity Pause, Resume, and End Walk buttons (Lock Screen, Dynamic Island, Notification Center) now work without opening the app
-  - What was broken: tapping any button did nothing on a physical device, with no crash and no console output. Root cause was layered: `openAppWhenRun` needed to be `false`; a crash in `WalkNavigationView` force-unwrapping a session cleared out from under it surfaced once that was fixed; and even once buttons worked, the Live Activity's on-screen state (pause/resume, distance, pace, and especially the elapsed timer) never refreshed outside of SwiftUI's foreground render cycle, since intents were only mutating in-memory session state without pushing updates back to the Live Activity directly.
-  - What changed: `openAppWhenRun` set to `false` on both intents; `WalkNavigationView` (and now `FreeWalkView`) guard against a nil session instead of force-unwrapping; both Live Activity intents and the location-update callback now push `ActivityContent` updates directly instead of relying on SwiftUI's `.onChange`; the elapsed timer switched from a manually-pushed string to SwiftUI's native `Text(timerInterval:)` so it ticks in real time with no push cadence at all, with two follow-up fixes for a `countsDown` default that briefly showed a ~4001 AD timestamp instead of elapsed time, and a text-alignment quirk.
-  - Affected versions: present since interactive Live Activity buttons were added in 1.9 (Unreleased); this closes it out.
-- Live Activity's "remaining distance" stat, which showed a misleading "0 ft" for a free walk (no target distance to measure against), is now hidden — the Dynamic Island shows live pace in that slot instead when there's no target
+- **[Fix]** Phantom Live Activities survived a force-quit and could not be cleared with the End Walk button
+  - What was broken: the Live Activity manager only tracked its in-memory reference; after a force-quit that reference was gone while the system still showed the banner, so End did nothing and each new session stacked another orphan on the lock screen.
+  - What changed: all end/reap paths now work from the system's own activity list — at launch, in the End intent when no session exists, and before starting a new activity; resuming a checkpointed session starts a fresh, correctly-populated Live Activity.
+  - Affected versions: since Live Activities were introduced (1.8.1); surfaced by the resume-after-force-quit QA pass.
+- **[Fix]** Workouts ended from the Live Activity End button or the mini tile never reached Apple Health
+  - What was broken: those two end paths stopped the session without finishing the HealthKit workout builder, silently abandoning the workout for every activity type. Only the in-screen Finish button saved to Health.
+  - What changed: every save path finishes the workout; every discard path explicitly discards it (a first fix briefly wrote discarded walks to Health — corrected before release).
+  - Affected versions: 1.8.1–1.9 (Unreleased).
+- **[Fix]** Walks ended manually (rather than by reaching the route's actual endpoint) were silently discarded instead of saved to history
+  - What was broken: every manual "end early" path called `session.stop()` without writing the session to history; only completing a route saved anything.
+  - What changed: every manual exit saves by default through one shared method, with an explicit "Discard" as the only way to lose data on purpose.
+  - Affected versions: since guided walks were introduced; found in code review.
+- **[Fix]** Live Activity Pause, Resume, and End buttons did nothing on a physical device
+  - What was broken: `openAppWhenRun` needed to be `false`; a force-unwrap crash surfaced once buttons fired; the banner's state never refreshed outside SwiftUI's foreground render cycle; the elapsed timer briefly showed a year-4001 value (`Text(timerInterval:)` counts down by default) and then hugged the left edge.
+  - What changed: intents push `ActivityContent` updates directly; the timer uses SwiftUI's native live-ticking text with `countsDown: false` and explicit centering.
+  - Affected versions: since interactive buttons were added in 1.9 (Unreleased).
+- The walk-resume checkpoint file (which holds GPS breadcrumbs) is now excluded from iCloud backup, and write failures are logged instead of swallowed
+- The motion-permission description had two conflicting sources (a stale build setting shadowing the correct Info.plist string); the stale copy is removed
+- Live Activity's "remaining distance" stat, which showed a misleading "0 ft" for a free session, is hidden — the Dynamic Island shows live pace (or speed) in that slot instead
+- Share button's loading spinner now has an accessibility label
+
+### Internal
+- Test suite grew from ~70 to 123 tests: snapshot/restore math, session logic, activity vocabulary, pace/speed formatting, auto-pause timing, breadcrumb thinning, personal records, and challenge progress/filtering are all unit-tested; CI gained a language-consistency guard and a report-only SwiftLint step
+- Xcode-agent prompts are committed under `prompts/` as an audit trail; the pre-release security and accessibility audit is preserved under `audits/`
 
 ---
 
