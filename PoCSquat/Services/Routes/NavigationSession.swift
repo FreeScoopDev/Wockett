@@ -173,6 +173,23 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
     /// snapshot's completed pauses plus the dead-time gap from the reference point
     /// (pause start if the app died while paused, otherwise the checkpoint) to `now`.
     /// Kept nonisolated static so it's directly unit-testable without main-actor dispatch.
+    /// True when an ignored break prompt should escalate to auto-pause:
+    /// prompt is showing, session isn't already paused, and it's been up
+    /// for at least `threshold` seconds.
+    nonisolated static func shouldAutoPause(showBreakPrompt: Bool, isPaused: Bool,
+                                            promptShownAt: Date?, now: Date,
+                                            threshold: TimeInterval = 300) -> Bool {
+        guard showBreakPrompt, !isPaused, let shownAt = promptShownAt else { return false }
+        return now.timeIntervalSince(shownAt) >= threshold
+    }
+
+    nonisolated static func thinned(_ points: [CLLocationCoordinate2D],
+                                    maxCount: Int = 2000) -> [CLLocationCoordinate2D] {
+        guard points.count > maxCount else { return points }
+        let stride = Double(points.count) / Double(maxCount)
+        return (0..<maxCount).map { points[Int(Double($0) * stride)] }
+    }
+
     nonisolated static func restoredPausedDuration(for snapshot: ActiveWalkSnapshot, now: Date) -> TimeInterval {
         let referenceDate = snapshot.isPaused
             ? (snapshot.pauseStartDate ?? snapshot.checkpointDate)
@@ -260,9 +277,10 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
                     }
                 }
                 // If the prompt has been ignored for 5+ minutes, auto-pause to keep stats honest.
-                if self.showBreakPrompt, !self.isPaused,
-                   let shownAt = self.breakPromptShownAt,
-                   now.timeIntervalSince(shownAt) >= 300 {
+                if Self.shouldAutoPause(showBreakPrompt: self.showBreakPrompt,
+                                        isPaused: self.isPaused,
+                                        promptShownAt: self.breakPromptShownAt,
+                                        now: now) {
                     self.autoPausedForInactivity = true
                     self.pause()
                     self.postAutoPauseNotification()
@@ -324,14 +342,7 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
     private func writeSnapshot() {
         // Thin the breadcrumb trail so very long walks keep the checkpoint
         // file small — cap ~2000 points, evenly strided.
-        let maxPoints = 2000
-        let thinned: [CLLocationCoordinate2D]
-        if trackPoints.count > maxPoints {
-            let stride = Double(trackPoints.count) / Double(maxPoints)
-            thinned = (0..<maxPoints).map { trackPoints[Int(Double($0) * stride)] }
-        } else {
-            thinned = trackPoints
-        }
+        let thinned = Self.thinned(trackPoints)
 
         let snapshot = ActiveWalkSnapshot(
             route: .init(route),
