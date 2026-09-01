@@ -30,7 +30,7 @@ enum WalkIntent: Equatable {
 
 // MARK: - Activity Mode
 
-enum ActivityMode: String {
+enum ActivityMode: String, Codable {
     case walking, running, cycling, stationary
 
     var icon: String {
