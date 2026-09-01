@@ -321,7 +321,8 @@ struct ActivitySummaryView: View {
             waypoints: session.waypoints,
             totalDistance: session.totalDistance,
             isLoop: false,
-            createdAt: Date()
+            createdAt: Date(),
+            activityMode: mode
         ))
         savedAsRoute = true
         showRouteNameField = false

@@ -512,7 +512,8 @@ struct RouteFinderView: View {
                                     waypoints: route.waypoints,
                                     totalDistance: route.distanceMeters,
                                     isLoop: route.isLoop,
-                                    createdAt: Date()
+                                    createdAt: Date(),
+                                    activityMode: activityMode
                                 ))
                                 savedCommunityIds.insert(route.id.recordName)
                                 let count = UserDefaults.standard.integer(forKey: "wkt_routesBookmarked_count")

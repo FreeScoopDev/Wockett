@@ -29,6 +29,7 @@ struct CustomRoute: Identifiable, Codable {
     var totalDistance: Double        // metres
     var isLoop:        Bool
     let createdAt:     Date
+    var activityMode:  ActivityMode = .walking
 
     var estimatedSteps: Int { Int(totalDistance / 0.762) }
 
@@ -76,6 +77,7 @@ final class CustomRouteStore: ObservableObject {
             record.name          = route.name
             record.totalDistance = route.totalDistance
             record.isLoop        = route.isLoop
+            record.activityMode  = route.activityMode.rawValue
         }
         try? context.save()
     }

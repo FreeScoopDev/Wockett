@@ -139,6 +139,7 @@ final class CustomRouteRecord {
     var totalDistance: Double = 0
     var isLoop: Bool = false
     var createdAt: Date = Date()
+    var activityMode: String = ActivityMode.walking.rawValue
     @Attribute(.externalStorage) var waypointsData: Data = Data()
 
     init(from route: CustomRoute) {
@@ -147,13 +148,15 @@ final class CustomRouteRecord {
         totalDistance = route.totalDistance
         isLoop        = route.isLoop
         createdAt     = route.createdAt
+        activityMode  = route.activityMode.rawValue
         waypointsData = (try? JSONEncoder().encode(route.waypoints)) ?? Data()
     }
 
     func toCustomRoute() -> CustomRoute {
         let waypoints = (try? JSONDecoder().decode([WaypointCoord].self, from: waypointsData)) ?? []
         return CustomRoute(id: id, name: name, waypoints: waypoints,
-                           totalDistance: totalDistance, isLoop: isLoop, createdAt: createdAt)
+                           totalDistance: totalDistance, isLoop: isLoop, createdAt: createdAt,
+                           activityMode: ActivityMode(rawValue: activityMode) ?? .walking)
     }
 }
 

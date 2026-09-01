@@ -14,8 +14,9 @@ final class CustomRouteBuilder: ObservableObject {
     @Published var isLoopClosed  = false
     @Published var activityMode: ActivityMode = .walking
 
-    init(initialWaypoints: [CLLocationCoordinate2D] = []) {
-        self.waypoints = initialWaypoints
+    init(initialWaypoints: [CLLocationCoordinate2D] = [], initialActivityMode: ActivityMode = .walking) {
+        self.waypoints    = initialWaypoints
+        self.activityMode = initialActivityMode
     }
 
     var totalDistance: Double {
@@ -56,7 +57,8 @@ final class CustomRouteBuilder: ObservableObject {
             waypoints:     waypoints.map { WaypointCoord($0) },
             totalDistance: totalDistance,
             isLoop:        isLoopClosed,
-            createdAt:     Date()
+            createdAt:     Date(),
+            activityMode:  activityMode
         )
     }
 

@@ -864,7 +864,8 @@ struct ActiveSessionView: View {
             waypoints: route.waypoints.map { WaypointCoord($0) },
             totalDistance: route.totalDistance,
             isLoop: route.isLoop,
-            createdAt: Date()
+            createdAt: Date(),
+            activityMode: route.activityMode
         ))
     }
 

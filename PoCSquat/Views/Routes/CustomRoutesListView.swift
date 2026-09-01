@@ -154,6 +154,7 @@ struct CustomRouteDetailView: View {
     @ObservedObject var historyStore: WalkHistoryStore
     @ObservedObject var routeStore:   CustomRouteStore
     @Environment(\.dismiss) private var dismiss
+    @State private var activityMode:      ActivityMode
     @State private var routeLegs:         [MKRoute] = []
     @State private var isLoading          = false
     @State private var routeWeather:      RouteWeather?
@@ -163,6 +164,13 @@ struct CustomRouteDetailView: View {
     @State private var isEditing               = false
     @State private var shareState: ShareState  = .idle
     @State private var showActiveSessionAlert  = false
+
+    init(route: CustomRoute, historyStore: WalkHistoryStore, routeStore: CustomRouteStore) {
+        self.route        = route
+        self.historyStore = historyStore
+        self.routeStore   = routeStore
+        _activityMode     = State(initialValue: route.activityMode)
+    }
 
     private enum ShareState { case idle, sharing, shared, failed }
     private var shareButtonColor: Color {
@@ -240,6 +248,12 @@ struct CustomRouteDetailView: View {
                                      label: "est. time")
                         }
 
+                        HStack(spacing: 8) {
+                            modeChip(.walking)
+                            modeChip(.running)
+                            modeChip(.cycling)
+                        }
+
                         Button {
                             let nav = NavigableRoute(
                                 name:          route.name,
@@ -248,6 +262,7 @@ struct CustomRouteDetailView: View {
                                 isLoop:        route.isLoop,
                                 totalDistance: route.totalDistance,
                                 isCustomRoute: true,
+                                activityMode:  activityMode,
                                 customRouteId: route.id
                             )
                             guard ActiveWalkStore.shared.beginSession(route: nav) != nil else {
@@ -256,10 +271,10 @@ struct CustomRouteDetailView: View {
                             }
                             dismiss()
                         } label: {
-                            Label("Start Walk", systemImage: "figure.walk")
+                            Label("Start \(activityMode.sessionLabel)", systemImage: activityMode.icon)
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 18).padding(.horizontal, 20)
-                                .background(Color.earthGreen).foregroundColor(.white)
+                                .background(activityMode.tileColor).foregroundColor(.white)
                                 .fontWeight(.semibold).cornerRadius(14)
                         }
 
@@ -372,9 +387,10 @@ struct CustomRouteDetailView: View {
         }
         .navigationDestination(isPresented: $isEditing) {
             CustomRouteBuilderView(
-                initialWaypoints: route.waypoints.map { $0.clCoordinate },
-                initialIsLoop:    route.isLoop,
-                routeName:        route.name
+                initialWaypoints:    route.waypoints.map { $0.clCoordinate },
+                initialIsLoop:       route.isLoop,
+                initialActivityMode: route.activityMode,
+                routeName:           route.name
             ) { updated in
                 var updatedRoute = updated
                 updatedRoute = CustomRoute(
@@ -383,12 +399,32 @@ struct CustomRouteDetailView: View {
                     waypoints:     updated.waypoints,
                     totalDistance: updated.totalDistance,
                     isLoop:        updated.isLoop,
-                    createdAt:     route.createdAt
+                    createdAt:     route.createdAt,
+                    activityMode:  updated.activityMode
                 )
                 routeStore.update(updatedRoute)
             }
         }
         .task { await loadLegs() }
+    }
+
+    @ViewBuilder
+    private func modeChip(_ mode: ActivityMode) -> some View {
+        let selected = activityMode == mode
+        Button {
+            activityMode = mode
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: mode.icon).font(.system(size: 13, weight: .semibold))
+                Text(mode.sessionLabel).font(.subheadline.bold())
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 9)
+            .background(selected ? mode.tileColor : Color.earthCard)
+            .foregroundColor(selected ? .white : .earthCream)
+            .cornerRadius(20)
+        }
+        .buttonStyle(BounceButtonStyle(scale: 0.95))
     }
 
     @ViewBuilder

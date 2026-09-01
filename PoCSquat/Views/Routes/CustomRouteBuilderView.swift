@@ -12,8 +12,8 @@ struct CustomRouteBuilderView: View {
     let onSave: (CustomRoute) -> Void
     private let initialIsLoop: Bool
 
-    init(initialWaypoints: [CLLocationCoordinate2D] = [], initialIsLoop: Bool = false, routeName: String = "", onSave: @escaping (CustomRoute) -> Void) {
-        _builder = StateObject(wrappedValue: CustomRouteBuilder(initialWaypoints: initialWaypoints))
+    init(initialWaypoints: [CLLocationCoordinate2D] = [], initialIsLoop: Bool = false, initialActivityMode: ActivityMode = .walking, routeName: String = "", onSave: @escaping (CustomRoute) -> Void) {
+        _builder = StateObject(wrappedValue: CustomRouteBuilder(initialWaypoints: initialWaypoints, initialActivityMode: initialActivityMode))
         self.initialIsLoop = initialIsLoop
         self._routeName    = State(initialValue: routeName)
         self.onSave        = onSave
