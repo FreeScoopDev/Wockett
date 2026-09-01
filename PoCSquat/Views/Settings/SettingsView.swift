@@ -112,7 +112,7 @@ struct SettingsView: View {
                                 .font(.caption).foregroundColor(.earthMuted)
                         }
                     }
-                    .tint(.earthGreen)
+                    .tint(.earthGreenFill)
                     .disabled(!notifAuthorized)
                     .listRowBackground(Color.earthCard)
 
@@ -124,7 +124,7 @@ struct SettingsView: View {
                                 .font(.caption).foregroundColor(.earthMuted)
                         }
                     }
-                    .tint(.earthGreen)
+                    .tint(.earthGreenFill)
                     .disabled(!notifAuthorized)
                     .listRowBackground(Color.earthCard)
 
@@ -136,7 +136,7 @@ struct SettingsView: View {
                                 .font(.caption).foregroundColor(.earthMuted)
                         }
                     }
-                    .tint(.earthGreen)
+                    .tint(.earthGreenFill)
                     .disabled(!notifAuthorized)
                     .listRowBackground(Color.earthCard)
                 }

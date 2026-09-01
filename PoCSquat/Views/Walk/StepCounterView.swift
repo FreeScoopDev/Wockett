@@ -855,7 +855,7 @@ struct StepCounterView: View {
             .foregroundColor(isSelected ? .white : mode.tileColor)
             .frame(maxWidth: .infinity)
             .frame(height: 78)
-            .background(isSelected ? mode.tileColor : Color.earthCard)
+            .background(isSelected ? mode.tileFillColor : Color.earthCard)
             .cornerRadius(16)
             .overlay(
                 RoundedRectangle(cornerRadius: 16)

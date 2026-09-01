@@ -661,7 +661,7 @@ struct NavigationMapView: UIViewRepresentable {
                       let pt = ann as? MKPointAnnotation,
                       let title = pt.title else { continue }
                 let idx = title == "Start" ? 0 : (Int(title) ?? 0)
-                marker.markerTintColor = idx < currentWaypointIndex ? .systemGray3 : (title == "Start" ? .brandOrange : route.activityMode.tileUIColor)
+                marker.markerTintColor = idx < currentWaypointIndex ? .systemGray3 : (title == "Start" ? .brandOrangeFill : route.activityMode.tileFillUIColor)
                 marker.alpha = idx < currentWaypointIndex ? 0.45 : 1.0
             }
         }
@@ -744,11 +744,16 @@ struct NavigationMapView: UIViewRepresentable {
     func makeCoordinator() -> Coordinator {
         let c = Coordinator()
         c.activityColor = route.activityMode.tileUIColor
+        c.activityFillColor = route.activityMode.tileFillUIColor
         return c
     }
 
     class Coordinator: NSObject, MKMapViewDelegate {
+        // activityColor (bright) draws the polyline line itself; activityFillColor
+        // (darkened) fills waypoint marker pins, which carry a white glyph on top --
+        // same text-vs-fill split as the rest of the v1.10 design system.
         var activityColor: UIColor = .brandGreen
+        var activityFillColor: UIColor = .brandGreenFill
         var hasAddedLegs = false
         var lastWaypointIndex = 0
         var hasAddedCheckpoints = false
@@ -780,7 +785,7 @@ struct NavigationMapView: UIViewRepresentable {
             if let milestone = annotation as? MilestoneAnnotation {
                 let view = MKMarkerAnnotationView(annotation: milestone, reuseIdentifier: "milestone")
                 view.glyphImage = UIImage(systemName: "flag.fill")
-                view.markerTintColor = .accentRide
+                view.markerTintColor = .accentRideFill
                 view.titleVisibility = .visible
                 view.canShowCallout = false
                 return view
@@ -788,7 +793,7 @@ struct NavigationMapView: UIViewRepresentable {
             guard let ann = annotation as? MKPointAnnotation else { return nil }
             let view = MKMarkerAnnotationView(annotation: ann, reuseIdentifier: "nav")
             view.glyphText = ann.title ?? ""
-            view.markerTintColor = ann.title == "Start" ? .brandOrange : activityColor
+            view.markerTintColor = ann.title == "Start" ? .brandOrangeFill : activityFillColor
             view.canShowCallout = false
             return view
         }

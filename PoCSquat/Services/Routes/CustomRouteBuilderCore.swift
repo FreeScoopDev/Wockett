@@ -228,7 +228,7 @@ struct CustomRouteMapView: UIViewRepresentable {
             guard let ann = annotation as? MKPointAnnotation else { return nil }
             let view = MKMarkerAnnotationView(annotation: ann, reuseIdentifier: "waypoint")
             view.glyphText      = ann.title ?? ""
-            view.markerTintColor = .brandGreen
+            view.markerTintColor = .brandGreenFill
             view.canShowCallout  = false
             return view
         }

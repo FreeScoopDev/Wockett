@@ -22,7 +22,7 @@ struct ScheduleWalkSheet: View {
                         in: Date()...,
                         displayedComponents: [.date, .hourAndMinute]
                     )
-                    .datePickerStyle(.graphical).tint(.earthGreen)
+                    .datePickerStyle(.graphical).tint(.earthGreenFill)
                     .padding(.horizontal)
                     if notifDenied {
                         Label("Enable notifications in iOS Settings to receive reminders", systemImage: "bell.slash")

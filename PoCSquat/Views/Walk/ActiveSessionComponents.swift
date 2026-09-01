@@ -101,7 +101,7 @@ struct PauseResumeControl: View {
                 Label("Resume", systemImage: "play.fill")
                     .font(.wktHeading(12))
                     .padding(.horizontal, 12).padding(.vertical, 6)
-                    .background(Color.earthGreen.opacity(0.9))
+                    .background(Color.earthGreenFill.opacity(0.9))
                     .foregroundColor(.white).cornerRadius(8)
             }
         }
@@ -174,7 +174,7 @@ struct DrivingSuspectedBanner: View {
                 Text("Still \(activityMode.gerund)")
                     .font(.caption.bold())
                     .padding(.horizontal, 10).padding(.vertical, 6)
-                    .background(Color.earthGreen.opacity(0.85))
+                    .background(Color.earthGreenFill.opacity(0.85))
                     .foregroundColor(.white).cornerRadius(8)
             }
             .accessibilityHint("Dismisses the alert and continues your session")

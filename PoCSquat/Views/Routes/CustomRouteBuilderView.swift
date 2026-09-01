@@ -76,7 +76,7 @@ struct CustomRouteBuilderView: View {
                                                  set: { _ in builder.toggleLoop() })) {
                                 Text("Loop").font(.subheadline.bold()).foregroundColor(.earthCream)
                             }
-                            .tint(.earthGreen).fixedSize()
+                            .tint(.earthGreenFill).fixedSize()
                         }
                     }
                     .padding(.horizontal)
@@ -100,7 +100,7 @@ struct CustomRouteBuilderView: View {
                                 .font(.subheadline.bold())
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 18)
-                                .background(Color.earthOrange)
+                                .background(Color.earthOrangeFill)
                                 .foregroundColor(.white)
                                 .cornerRadius(12)
                         }
@@ -147,7 +147,7 @@ struct CustomRouteBuilderView: View {
                     .font(.subheadline.bold())
             }
             .padding(.horizontal, 16).padding(.vertical, 9)
-            .background(selected ? Color.earthGreen : Color.earthCard)
+            .background(selected ? Color.earthGreenFill : Color.earthCard)
             .foregroundColor(selected ? .white : .earthCream)
             .cornerRadius(20)
         }

@@ -386,7 +386,7 @@ struct ChallengeDetailView: View {
                 .font(.subheadline.bold())
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)
-                .background(Color.earthGreen)
+                .background(Color.earthGreenFill)
                 .foregroundColor(.white)
                 .cornerRadius(14)
             }
@@ -698,7 +698,7 @@ struct CreateChallengeView: View {
                         }
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 12)
-                        .background(selected ? Color.earthGreen : Color.earthCard)
+                        .background(selected ? Color.earthGreenFill : Color.earthCard)
                         .cornerRadius(12)
                         .overlay(
                             RoundedRectangle(cornerRadius: 12)
@@ -724,7 +724,7 @@ struct CreateChallengeView: View {
                         }
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 12)
-                        .background(selected ? Color.earthGreen : Color.earthCard)
+                        .background(selected ? Color.earthGreenFill : Color.earthCard)
                         .foregroundColor(selected ? .white : .earthMuted)
                         .cornerRadius(12)
                         .overlay(
@@ -755,7 +755,7 @@ struct CreateChallengeView: View {
                                     .foregroundColor(goalSteps == g ? .white.opacity(0.8) : .earthMuted)
                             }
                             .padding(.horizontal, 14).padding(.vertical, 11)
-                            .background(goalSteps == g ? Color.earthGreen : Color.earthCard)
+                            .background(goalSteps == g ? Color.earthGreenFill : Color.earthCard)
                             .cornerRadius(10)
                         }
                     }
@@ -776,7 +776,7 @@ struct CreateChallengeView: View {
                                     .foregroundColor(goalDistanceMeters == opt.meters ? .white.opacity(0.8) : .earthMuted)
                             }
                             .padding(.horizontal, 14).padding(.vertical, 11)
-                            .background(goalDistanceMeters == opt.meters ? Color.earthGreen : Color.earthCard)
+                            .background(goalDistanceMeters == opt.meters ? Color.earthGreenFill : Color.earthCard)
                             .cornerRadius(10)
                         }
                     }
@@ -798,7 +798,7 @@ struct CreateChallengeView: View {
                                         .foregroundColor(goalPaceSecsPerKm == opt.secsPerKm ? .white.opacity(0.8) : .earthMuted)
                                 }
                                 .padding(.horizontal, 14).padding(.vertical, 11)
-                                .background(goalPaceSecsPerKm == opt.secsPerKm ? Color.earthGreen : Color.earthCard)
+                                .background(goalPaceSecsPerKm == opt.secsPerKm ? Color.earthGreenFill : Color.earthCard)
                                 .cornerRadius(10)
                             }
                         }
@@ -812,7 +812,7 @@ struct CreateChallengeView: View {
                                     .font(.subheadline.bold())
                                     .frame(maxWidth: .infinity)
                                     .padding(.vertical, 12)
-                                    .background(goalSessionCount == n ? Color.earthGreen : Color.earthCard)
+                                    .background(goalSessionCount == n ? Color.earthGreenFill : Color.earthCard)
                                     .foregroundColor(goalSessionCount == n ? .white : .earthCream)
                                     .cornerRadius(10)
                             }
@@ -832,7 +832,7 @@ struct CreateChallengeView: View {
                             .font(.caption.bold())
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 11)
-                            .background(duration == d ? Color.earthGreen : Color.earthCard)
+                            .background(duration == d ? Color.earthGreenFill : Color.earthCard)
                             .foregroundColor(duration == d ? .white : .earthCream)
                             .cornerRadius(10)
                     }
@@ -857,8 +857,8 @@ struct CreateChallengeView: View {
             .frame(maxWidth: .infinity)
             .padding(.vertical, 18)
             .background(title.trimmingCharacters(in: .whitespaces).isEmpty
-                ? Color.earthGreen.opacity(0.45)
-                : Color.earthGreen)
+                ? Color.earthGreenFill.opacity(0.45)
+                : Color.earthGreenFill)
             .foregroundColor(.white)
             .cornerRadius(14)
         }

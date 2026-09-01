@@ -111,6 +111,31 @@ enum ActivityMode: String {
         }
     }
 
+    /// Fill counterpart of `tileColor` -- for a solid/near-solid background
+    /// with white text or icons on top (buttons, selected chips), where the
+    /// plain tileColor values are too bright for white content to read
+    /// against in dark mode. See DesignSystem.swift's Color extension for
+    /// the full rationale.
+    var tileFillColor: Color {
+        switch self {
+        case .walking:    return Color.earthGreenFill
+        case .running:    return Color.accentRunFill
+        case .cycling:    return Color.accentRideFill
+        case .stationary: return Color.accentIndoorFill
+        }
+    }
+
+    /// UIKit counterpart of `tileFillColor`, for MapKit `markerTintColor`
+    /// (a filled pin with a white glyph on top).
+    var tileFillUIColor: UIColor {
+        switch self {
+        case .walking:    return .brandGreenFill
+        case .running:    return .accentRunFill
+        case .cycling:    return .accentRideFill
+        case .stationary: return .accentIndoorFill
+        }
+    }
+
     var tileLabel: String {
         switch self {
         case .walking:    return "Start Walking"

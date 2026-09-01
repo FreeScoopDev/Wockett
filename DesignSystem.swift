@@ -26,26 +26,40 @@ extension Color {
             ? UIColor(red: 0.173, green: 0.173, blue: 0.180, alpha: 1)
             : UIColor(red: 1.000, green: 1.000, blue: 1.000, alpha: 1)
     })
-    // Dark-mode values below were darkened for the v1.10 accessibility audit.
-    // These 6 colors double as solid button fills with white text/icons on
-    // top (nearly every primary CTA in the app) -- the original dark-mode
-    // values were tuned to read well as plain TEXT on the dark background
-    // (5.8-6.9:1), which left white-on-fill at only 2.5-2.9:1, below WCAG's
-    // 3:1 floor. Darkened ~22-29% (uniform RGB scale, same hue/saturation)
-    // to bring white-on-fill up to ~4.5-4.6:1. Trade-off: plain-text contrast
-    // vs. earthBg/earthCard drops from ~5.8-6.9:1 to ~3.0-3.7:1 -- still
-    // clears WCAG's 3:1 large-text/UI floor, but no longer clears the
-    // stricter 4.5:1 normal-text threshold the way the brighter originals
-    // did. Joe's call: darken the palette rather than restyle every button.
+    // These 6 colors serve two different visual roles: TEXT/ICON color (labels,
+    // SF Symbol tints, map polylines, progress-ring strokes -- the color IS
+    // the visible content), and solid BUTTON-FILL background with white
+    // text/icons on top (nearly every primary CTA in the app). A v1.10
+    // accessibility audit found a single value can't serve both roles well in
+    // dark mode: bright enough to read as text on the dark background (5.8-
+    // 6.9:1) leaves white-on-fill at only 2.5-2.9:1, below WCAG's 3:1 floor.
+    // An earlier fix darkened these tokens directly to fix the fill case,
+    // which then broke the text case (dropped below the 4.5:1 normal-text
+    // bar). The complete fix: these stay their original bright values (best
+    // as text/icons), and each has a matching "Fill" token below (e.g.
+    // earthGreenFill) tuned separately for the white-on-fill role. Use the
+    // Fill variant for any solid/near-solid `.background()`, `.tint()` on a
+    // filled control, or MapKit `markerTintColor` with a white glyph on top;
+    // use the plain token for everything else.
     static let earthGreen = Color(UIColor { tc in
         tc.userInterfaceStyle == .dark
-            ? UIColor(red: 0.291, green: 0.514, blue: 0.251, alpha: 1)   // white-fill 4.55:1, text-vs-bg 3.74:1, text-vs-card 3.06:1
+            ? UIColor(red: 0.373, green: 0.659, blue: 0.322, alpha: 1)
             : UIColor(red: 0.180, green: 0.471, blue: 0.200, alpha: 1)
+    })
+    static let earthGreenFill = Color(UIColor { tc in
+        tc.userInterfaceStyle == .dark
+            ? UIColor(red: 0.291, green: 0.514, blue: 0.251, alpha: 1)   // white-fill 4.55:1
+            : UIColor(red: 0.180, green: 0.471, blue: 0.200, alpha: 1)   // light already clears 4.5:1 as-is
     })
     static let earthOrange = Color(UIColor { tc in
         tc.userInterfaceStyle == .dark
-            ? UIColor(red: 0.667, green: 0.397, blue: 0.185, alpha: 1)   // white-fill 4.54:1, text-vs-bg 3.74:1, text-vs-card 3.06:1
+            ? UIColor(red: 0.878, green: 0.522, blue: 0.243, alpha: 1)
             : UIColor(red: 0.769, green: 0.400, blue: 0.114, alpha: 1)
+    })
+    static let earthOrangeFill = Color(UIColor { tc in
+        tc.userInterfaceStyle == .dark
+            ? UIColor(red: 0.667, green: 0.397, blue: 0.185, alpha: 1)   // white-fill 4.54:1
+            : UIColor(red: 0.700, green: 0.364, blue: 0.104, alpha: 1)   // light original was 3.99:1, nudged darker for 4.69:1
     })
     static let earthCream = Color(UIColor { tc in
         tc.userInterfaceStyle == .dark
@@ -66,18 +80,33 @@ extension Color {
     })
     static let accentRun = Color(UIColor { tc in
         tc.userInterfaceStyle == .dark
-            ? UIColor(red: 0.655, green: 0.392, blue: 0.232, alpha: 1)   // white-fill 4.63:1, text-vs-bg 3.67:1, text-vs-card 3.00:1
+            ? UIColor(red: 0.910, green: 0.545, blue: 0.322, alpha: 1)   // #E88B52
             : UIColor(red: 0.769, green: 0.333, blue: 0.102, alpha: 1)   // #C4551A
+    })
+    static let accentRunFill = Color(UIColor { tc in
+        tc.userInterfaceStyle == .dark
+            ? UIColor(red: 0.655, green: 0.392, blue: 0.232, alpha: 1)   // white-fill 4.63:1
+            : UIColor(red: 0.754, green: 0.326, blue: 0.100, alpha: 1)   // light original was a razor-thin 4.51:1, nudged to 4.66:1
     })
     static let accentRide = Color(UIColor { tc in
         tc.userInterfaceStyle == .dark
-            ? UIColor(red: 0.220, green: 0.498, blue: 0.526, alpha: 1)   // white-fill 4.61:1, text-vs-bg 3.69:1, text-vs-card 3.02:1
+            ? UIColor(red: 0.310, green: 0.702, blue: 0.741, alpha: 1)   // #4FB3BD
             : UIColor(red: 0.082, green: 0.478, blue: 0.522, alpha: 1)   // #157A85
+    })
+    static let accentRideFill = Color(UIColor { tc in
+        tc.userInterfaceStyle == .dark
+            ? UIColor(red: 0.220, green: 0.498, blue: 0.526, alpha: 1)   // white-fill 4.61:1
+            : UIColor(red: 0.082, green: 0.478, blue: 0.522, alpha: 1)   // light already clears 4.5:1 as-is
     })
     static let accentIndoor = Color(UIColor { tc in
         tc.userInterfaceStyle == .dark
-            ? UIColor(red: 0.474, green: 0.428, blue: 0.685, alpha: 1)   // white-fill 4.54:1, text-vs-bg 3.74:1, text-vs-card 3.06:1
+            ? UIColor(red: 0.608, green: 0.549, blue: 0.878, alpha: 1)   // #9B8CE0
             : UIColor(red: 0.357, green: 0.294, blue: 0.690, alpha: 1)   // #5B4BB0
+    })
+    static let accentIndoorFill = Color(UIColor { tc in
+        tc.userInterfaceStyle == .dark
+            ? UIColor(red: 0.474, green: 0.428, blue: 0.685, alpha: 1)   // white-fill 4.54:1
+            : UIColor(red: 0.357, green: 0.294, blue: 0.690, alpha: 1)   // light already clears 4.5:1 as-is
     })
 
     // Recurring "utility" colors found duplicated as flat literals across the codebase
@@ -86,8 +115,13 @@ extension Color {
     // adaptive definition instead of copy-pasted, non-adaptive RGB values.
     static let accentInfo = Color(UIColor { tc in
         tc.userInterfaceStyle == .dark
-            ? UIColor(red: 0.333, green: 0.459, blue: 0.681, alpha: 1)   // white-fill 4.63:1, text-vs-bg 3.67:1, text-vs-card 3.01:1
+            ? UIColor(red: 0.45, green: 0.62, blue: 0.92, alpha: 1)
             : UIColor(red: 0.28, green: 0.49, blue: 0.84, alpha: 1)
+    })
+    static let accentInfoFill = Color(UIColor { tc in
+        tc.userInterfaceStyle == .dark
+            ? UIColor(red: 0.333, green: 0.459, blue: 0.681, alpha: 1)   // white-fill 4.63:1
+            : UIColor(red: 0.258, green: 0.451, blue: 0.773, alpha: 1)   // light original was 4.06:1, nudged darker for 4.68:1
     })
     static let accentNotice = Color(UIColor { tc in
         tc.userInterfaceStyle == .dark
@@ -159,12 +193,27 @@ extension View {
 
 
 extension UIColor {
+    // Same TEXT/ICON-vs-FILL split as the Color tokens above: MapKit renderers
+    // (MKPolylineRenderer.strokeColor, a line -- text-like role) and
+    // MKMarkerAnnotationView.markerTintColor (a filled pin with a white glyph
+    // on top -- fill role) both take UIColor, and need different values for
+    // the same reason the SwiftUI buttons do.
     static let brandGreen = UIColor { tc in
+        tc.userInterfaceStyle == .dark
+            ? UIColor(red: 0.373, green: 0.659, blue: 0.322, alpha: 1)
+            : UIColor(red: 0.180, green: 0.471, blue: 0.200, alpha: 1)
+    }
+    static let brandGreenFill = UIColor { tc in
         tc.userInterfaceStyle == .dark
             ? UIColor(red: 0.291, green: 0.514, blue: 0.251, alpha: 1)
             : UIColor(red: 0.180, green: 0.471, blue: 0.200, alpha: 1)
     }
     static let brandOrange = UIColor { tc in
+        tc.userInterfaceStyle == .dark
+            ? UIColor(red: 0.878, green: 0.522, blue: 0.243, alpha: 1)
+            : UIColor(red: 0.769, green: 0.400, blue: 0.114, alpha: 1)
+    }
+    static let brandOrangeFill = UIColor { tc in
         tc.userInterfaceStyle == .dark
             ? UIColor(red: 0.667, green: 0.397, blue: 0.185, alpha: 1)
             : UIColor(red: 0.769, green: 0.400, blue: 0.114, alpha: 1)
@@ -177,15 +226,30 @@ extension UIColor {
     // else (Dashboard tiles, free-walk map polyline).
     static let accentRun = UIColor { tc in
         tc.userInterfaceStyle == .dark
-            ? UIColor(red: 0.655, green: 0.392, blue: 0.232, alpha: 1)
+            ? UIColor(red: 0.910, green: 0.545, blue: 0.322, alpha: 1)
             : UIColor(red: 0.769, green: 0.333, blue: 0.102, alpha: 1)
     }
+    static let accentRunFill = UIColor { tc in
+        tc.userInterfaceStyle == .dark
+            ? UIColor(red: 0.655, green: 0.392, blue: 0.232, alpha: 1)
+            : UIColor(red: 0.754, green: 0.326, blue: 0.100, alpha: 1)
+    }
     static let accentRide = UIColor { tc in
+        tc.userInterfaceStyle == .dark
+            ? UIColor(red: 0.310, green: 0.702, blue: 0.741, alpha: 1)
+            : UIColor(red: 0.082, green: 0.478, blue: 0.522, alpha: 1)
+    }
+    static let accentRideFill = UIColor { tc in
         tc.userInterfaceStyle == .dark
             ? UIColor(red: 0.220, green: 0.498, blue: 0.526, alpha: 1)
             : UIColor(red: 0.082, green: 0.478, blue: 0.522, alpha: 1)
     }
     static let accentIndoor = UIColor { tc in
+        tc.userInterfaceStyle == .dark
+            ? UIColor(red: 0.608, green: 0.549, blue: 0.878, alpha: 1)
+            : UIColor(red: 0.357, green: 0.294, blue: 0.690, alpha: 1)
+    }
+    static let accentIndoorFill = UIColor { tc in
         tc.userInterfaceStyle == .dark
             ? UIColor(red: 0.474, green: 0.428, blue: 0.685, alpha: 1)
             : UIColor(red: 0.357, green: 0.294, blue: 0.690, alpha: 1)

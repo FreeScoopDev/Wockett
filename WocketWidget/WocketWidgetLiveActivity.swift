@@ -141,13 +141,13 @@ private struct WalkLockScreenView: View {
                           systemImage: state.isPaused ? "play.fill" : "pause.fill")
                         .font(Font.wktHeading(12))
                 }
-                .tint(.earthOrange)
+                .tint(.earthOrangeFill)
 
                 Button(intent: EndWalkLiveActivityIntent()) {
                     Label("End \(activityNoun(attrs.activityMode))", systemImage: "stop.fill")
                         .font(Font.wktHeading(12))
                 }
-                .tint(.earthGreen)
+                .tint(.earthGreenFill)
             }
             .buttonStyle(.borderedProminent)
             .buttonBorderShape(.capsule)
@@ -286,13 +286,13 @@ struct WocketWalkLiveActivity: Widget {
                                       systemImage: context.state.isPaused ? "play.fill" : "pause.fill")
                                     .font(Font.wktHeading(12))
                             }
-                            .tint(.earthOrange)
+                            .tint(.earthOrangeFill)
 
                             Button(intent: EndWalkLiveActivityIntent()) {
                                 Label("End \(activityNoun(context.attributes.activityMode))", systemImage: "stop.fill")
                                     .font(Font.wktHeading(12))
                             }
-                            .tint(.earthGreen)
+                            .tint(.earthGreenFill)
                         }
                         .buttonStyle(.borderedProminent)
                         .buttonBorderShape(.capsule)

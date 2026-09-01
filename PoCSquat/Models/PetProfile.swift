@@ -341,7 +341,7 @@ struct PetManagementView: View {
             Button { showAddPet = true } label: {
                 Label("Add a Pet", systemImage: "plus.circle.fill")
                     .padding(.horizontal, 24).padding(.vertical, 14)
-                    .background(Color.earthGreen).foregroundColor(.white)
+                    .background(Color.earthGreenFill).foregroundColor(.white)
                     .fontWeight(.semibold).cornerRadius(12)
             }
         }
@@ -468,7 +468,7 @@ struct PetEditorSheet: View {
                                             Text(s)
                                                 .font(.caption.bold())
                                                 .padding(.horizontal, 14).padding(.vertical, 8)
-                                                .background(species == s ? Color.earthGreen : Color.earthCard)
+                                                .background(species == s ? Color.earthGreenFill : Color.earthCard)
                                                 .foregroundColor(species == s ? .white : .earthCream)
                                                 .cornerRadius(20)
                                         }
@@ -548,7 +548,7 @@ struct PetEditorSheet: View {
                                     .font(.subheadline)
                                     .foregroundColor(.earthCream)
                             }
-                            .tint(.earthGreen)
+                            .tint(.earthGreenFill)
                             .padding(.horizontal, 4)
 
                             if hasOwnerContact {

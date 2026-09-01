@@ -115,7 +115,7 @@ struct DayDetailSheet: View {
                                 )
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 14)
-                                .background(reminderScheduled ? Color.earthCard : Color.earthGreen)
+                                .background(reminderScheduled ? Color.earthCard : Color.earthGreenFill)
                                 .foregroundColor(reminderScheduled ? .earthGreen : .white)
                                 .fontWeight(.semibold)
                                 .cornerRadius(12)

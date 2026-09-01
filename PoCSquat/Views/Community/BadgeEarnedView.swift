@@ -51,7 +51,7 @@ struct BadgeEarnedView: View {
                             .font(.wktHeading(17))
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 16)
-                            .background(Color.earthGreen)
+                            .background(Color.earthGreenFill)
                             .foregroundColor(.white)
                             .cornerRadius(14)
                     }

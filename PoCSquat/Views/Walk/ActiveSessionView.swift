@@ -644,7 +644,7 @@ struct ActiveSessionView: View {
                         } label: {
                             Image(systemName: "map.fill")
                                 .padding(9)
-                                .background(Color.earthGreen.opacity(0.9))
+                                .background(Color.earthGreenFill.opacity(0.9))
                                 .foregroundColor(.white)
                                 .clipShape(Circle())
                         }
@@ -668,9 +668,7 @@ struct ActiveSessionView: View {
                           systemImage: "checkmark.circle.fill")
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 18)
-                        .background(route.activityMode == .cycling
-                            ? Color.accentRide
-                            : Color.earthGreen)
+                        .background(route.activityMode.tileFillColor)
                         .foregroundColor(.white)
                         .font(.headline)
                         .cornerRadius(14)
@@ -994,7 +992,7 @@ private struct HeatAdvisoryBanner: View {
                 Label("Every \(intervalMinutes) min", systemImage: "drop.fill")
                     .font(.caption.bold())
                     .padding(.horizontal, 10).padding(.vertical, 6)
-                    .background(Color.accentInfo.opacity(0.85))
+                    .background(Color.accentInfoFill.opacity(0.85))
                     .foregroundColor(.white).cornerRadius(8)
             }
             Button { onDismiss() } label: {

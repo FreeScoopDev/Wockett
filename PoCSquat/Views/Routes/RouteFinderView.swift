@@ -211,7 +211,7 @@ struct RouteFinderView: View {
                     .font(.headline)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 18)
-                    .background(routeManager.isGenerating ? Color.earthGreen.opacity(0.7) : Color.earthGreen)
+                    .background(routeManager.isGenerating ? Color.earthGreenFill.opacity(0.7) : Color.earthGreenFill)
                     .foregroundColor(.white)
                     .cornerRadius(14)
                 }
@@ -389,7 +389,7 @@ struct RouteFinderView: View {
                 .font(.headline)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 18)
-                .background(Color.earthGreen)
+                .background(Color.earthGreenFill)
                 .foregroundColor(.white)
                 .cornerRadius(14)
         }
@@ -549,7 +549,7 @@ struct RouteFinderView: View {
             Label(mode.sessionLabel, systemImage: mode.icon)
                 .font(.caption.bold())
                 .padding(.horizontal, 14).padding(.vertical, 9)
-                .background(isSelected ? Color.earthGreen : Color.earthCard)
+                .background(isSelected ? Color.earthGreenFill : Color.earthCard)
                 .foregroundColor(isSelected ? .white : .earthCream)
                 .cornerRadius(20)
         }
@@ -567,7 +567,7 @@ struct RouteFinderView: View {
             Text(intent.label)
                 .font(.caption.bold())
                 .padding(.horizontal, 14).padding(.vertical, 9)
-                .background(isSelected ? Color.earthGreen : Color.earthCard)
+                .background(isSelected ? Color.earthGreenFill : Color.earthCard)
                 .foregroundColor(isSelected ? .white : .earthCream)
                 .cornerRadius(20)
         }

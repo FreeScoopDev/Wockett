@@ -75,7 +75,7 @@ struct GoalEditorSheet: View {
                                         Text(p >= 10_000 ? "\(p / 1000)K" : "\(p / 1000).5K")
                                             .font(.caption.bold())
                                             .padding(.horizontal, 14).padding(.vertical, 8)
-                                            .background(stepManager.dailyGoal == p ? Color.earthGreen : Color.earthCard)
+                                            .background(stepManager.dailyGoal == p ? Color.earthGreenFill : Color.earthCard)
                                             .foregroundColor(stepManager.dailyGoal == p ? .white : .earthCream)
                                             .cornerRadius(20)
                                     }
@@ -108,7 +108,7 @@ struct GoalEditorSheet: View {
                                         Text("\(Self.distString(dist)) \(Self.unitLabel)")
                                             .font(.caption.bold())
                                             .padding(.horizontal, 14).padding(.vertical, 8)
-                                            .background(stepManager.dailyGoal == steps ? Color.earthGreen : Color.earthCard)
+                                            .background(stepManager.dailyGoal == steps ? Color.earthGreenFill : Color.earthCard)
                                             .foregroundColor(stepManager.dailyGoal == steps ? .white : .earthCream)
                                             .cornerRadius(20)
                                     }
@@ -129,7 +129,7 @@ struct GoalEditorSheet: View {
                                 }
                                 Spacer()
                                 Toggle("", isOn: $stepManager.useCustomSchedule)
-                                    .labelsHidden().tint(.earthGreen)
+                                    .labelsHidden().tint(.earthGreenFill)
                             }
                             .padding(14)
 

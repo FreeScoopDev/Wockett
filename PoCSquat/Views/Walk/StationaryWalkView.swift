@@ -98,6 +98,7 @@ struct StationaryWalkView: View {
     @State private var petActiveSinceSteps: [UUID: Int] = [:]
 
     private let purple = Color.accentIndoor
+    private let purpleFill = Color.accentIndoorFill
 
     var body: some View {
         ZStack {
@@ -212,7 +213,7 @@ struct StationaryWalkView: View {
                     Label("Finish Workout", systemImage: "checkmark.circle.fill")
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 18)
-                        .background(purple)
+                        .background(purpleFill)
                         .foregroundColor(.white)
                         .font(.headline)
                         .cornerRadius(14)
@@ -280,6 +281,7 @@ private struct StationarySummarySheet: View {
     @State private var saved = false
 
     private let purple = Color.accentIndoor
+    private let purpleFill = Color.accentIndoorFill
 
     var body: some View {
         NavigationStack {
@@ -308,7 +310,7 @@ private struct StationarySummarySheet: View {
                             )
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 16)
-                            .background(saved ? Color.earthCard : purple)
+                            .background(saved ? Color.earthCard : purpleFill)
                             .foregroundColor(saved ? purple : .white)
                             .fontWeight(.semibold)
                             .cornerRadius(12)

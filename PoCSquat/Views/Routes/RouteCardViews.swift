@@ -174,7 +174,7 @@ struct CommunityRouteCard: View {
                     Label("Start Walk", systemImage: "figure.walk")
                         .font(.subheadline.bold())
                         .padding(.horizontal, 16).padding(.vertical, 8)
-                        .background(Color.earthGreen).foregroundColor(.white)
+                        .background(Color.earthGreenFill).foregroundColor(.white)
                         .cornerRadius(10)
                 }
             }
@@ -257,7 +257,7 @@ struct PostToCommunitySheet: View {
                         }
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 16)
-                        .background(didPost ? Color.earthGreen.opacity(0.6) : Color.earthGreen)
+                        .background(didPost ? Color.earthGreenFill.opacity(0.6) : Color.earthGreenFill)
                         .foregroundColor(.white)
                         .font(.headline)
                         .cornerRadius(14)

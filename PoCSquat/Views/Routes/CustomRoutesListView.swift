@@ -46,7 +46,7 @@ struct CustomRoutesListView: View {
             Button { isBuilding = true } label: {
                 Label("Create Route", systemImage: "plus")
                     .padding(.horizontal, 24).padding(.vertical, 16)
-                    .background(Color.earthOrange).foregroundColor(.white).bold()
+                    .background(Color.earthOrangeFill).foregroundColor(.white).bold()
                     .cornerRadius(12)
             }
             .padding(.top, 8)
@@ -175,9 +175,9 @@ struct CustomRouteDetailView: View {
     private enum ShareState { case idle, sharing, shared, failed }
     private var shareButtonColor: Color {
         switch shareState {
-        case .idle:    return Color.accentInfo
-        case .sharing: return Color.accentInfo.opacity(0.6)
-        case .shared:  return .earthGreen
+        case .idle:    return Color.accentInfoFill
+        case .sharing: return Color.accentInfoFill.opacity(0.6)
+        case .shared:  return .earthGreenFill
         case .failed:  return .red.opacity(0.7)
         }
     }
@@ -274,7 +274,7 @@ struct CustomRouteDetailView: View {
                             Label("Start \(activityMode.sessionLabel)", systemImage: activityMode.icon)
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 18).padding(.horizontal, 20)
-                                .background(activityMode.tileColor).foregroundColor(.white)
+                                .background(activityMode.tileFillColor).foregroundColor(.white)
                                 .fontWeight(.semibold).cornerRadius(14)
                         }
 
@@ -420,7 +420,7 @@ struct CustomRouteDetailView: View {
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 9)
-            .background(selected ? mode.tileColor : Color.earthCard)
+            .background(selected ? mode.tileFillColor : Color.earthCard)
             .foregroundColor(selected ? .white : .earthCream)
             .cornerRadius(20)
         }

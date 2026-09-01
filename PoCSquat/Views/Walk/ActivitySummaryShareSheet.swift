@@ -389,7 +389,7 @@ struct ActivitySummaryShareSheet: View {
                     .font(.caption).foregroundColor(.earthMuted)
             }
         }
-        .tint(.earthGreen)
+        .tint(.earthGreenFill)
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
         .background(Color.earthCard)
@@ -412,7 +412,7 @@ struct ActivitySummaryShareSheet: View {
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 16)
-            .background(isShareDisabled ? Color.earthMuted.opacity(0.4) : Color.earthGreen)
+            .background(isShareDisabled ? Color.earthMuted.opacity(0.4) : Color.earthGreenFill)
             .foregroundColor(.white)
             .cornerRadius(14)
         }

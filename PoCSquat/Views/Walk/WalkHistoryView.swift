@@ -346,7 +346,7 @@ struct ManualWalkEntrySheet: View {
                         Button(action: save) {
                             Text("Save Walk")
                                 .frame(maxWidth: .infinity).padding(.vertical, 16)
-                                .background(isValid ? Color.earthGreen : Color.earthMuted.opacity(0.3))
+                                .background(isValid ? Color.earthGreenFill : Color.earthMuted.opacity(0.3))
                                 .foregroundColor(.white).font(.headline).cornerRadius(14)
                         }
                         .disabled(!isValid)

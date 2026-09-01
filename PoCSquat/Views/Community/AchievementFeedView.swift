@@ -294,7 +294,7 @@ struct ShareAchievementSheet: View {
                         }
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 16)
-                        .background(didPost ? Color.earthGreen.opacity(0.6) : Color.earthGreen)
+                        .background(didPost ? Color.earthGreenFill.opacity(0.6) : Color.earthGreenFill)
                         .foregroundColor(.white)
                         .cornerRadius(14)
                     }
