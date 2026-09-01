@@ -68,23 +68,25 @@ struct RouteFinderView: View {
     private var showingConfig: Bool { routeManager.suggestedRoutes.isEmpty }
 
     var body: some View {
-        ZStack(alignment: .bottom) {
-            RouteFinderMapView(
-                routes: routeManager.suggestedRoutes,
-                selectedRoute: $selectedRoute,
-                goalDistanceMeters: Double(stepManager.currentGoal) * 0.762,
-                userLocation: routeManager.lastLocation?.coordinate
-            )
-            .ignoresSafeArea()
+        GeometryReader { geo in
+            ZStack(alignment: .bottom) {
+                RouteFinderMapView(
+                    routes: routeManager.suggestedRoutes,
+                    selectedRoute: $selectedRoute,
+                    goalDistanceMeters: Double(stepManager.currentGoal) * 0.762,
+                    userLocation: routeManager.lastLocation?.coordinate
+                )
+                .ignoresSafeArea()
 
-            topBar
+                topBar
 
-            if showingConfig {
-                configPanel
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-            } else {
-                resultsPanel
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                if showingConfig {
+                    configPanel
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                } else {
+                    resultsPanel(containerHeight: geo.size.height)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
             }
         }
         .animation(.spring(response: 0.38, dampingFraction: 0.88), value: showingConfig)
@@ -274,7 +276,7 @@ struct RouteFinderView: View {
 
     // MARK: - Results panel
 
-    private var resultsPanel: some View {
+    private func resultsPanel(containerHeight: CGFloat) -> some View {
         VStack(spacing: 0) {
             HStack(spacing: 0) {
                 Button { clearRoutes() } label: {
@@ -344,7 +346,7 @@ struct RouteFinderView: View {
                 .animation(.easeInOut(duration: 0.2), value: selectedRoute?.id)
                 .animation(.spring(response: 0.4, dampingFraction: 0.85), value: elevationProfile == nil)
             }
-            .frame(maxHeight: UIScreen.main.bounds.height * 0.35)
+            .frame(maxHeight: containerHeight * 0.35)
         }
         .background(.ultraThinMaterial)
         .clipShape(UnevenRoundedRectangle(topLeadingRadius: 24, topTrailingRadius: 24))
