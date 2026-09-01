@@ -28,7 +28,7 @@ struct StopTracker {
     let stopCountThreshold: TimeInterval = 15   // seconds before counting a stop
     let breakThreshold: TimeInterval            // configurable; default 180 s
 
-    nonisolated enum Event { case showBreakPrompt }
+    enum Event { case showBreakPrompt }
 
     init(breakThresholdSeconds: TimeInterval) {
         self.breakThreshold = breakThresholdSeconds
@@ -84,7 +84,7 @@ struct DrivingDetector {
 
     init(speedCeiling: Double) { self.speedCeiling = speedCeiling }
 
-    nonisolated enum Event { case drivingSuspected }
+    enum Event { case drivingSuspected }
 
     mutating func tick(speed: Double, isAutomotiveHigh: Bool, now: Date = Date()) -> Event? {
         let overThreshold = (speed >= 0 && speed > speedCeiling) || isAutomotiveHigh

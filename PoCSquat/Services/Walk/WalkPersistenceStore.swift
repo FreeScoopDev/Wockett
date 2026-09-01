@@ -3,7 +3,7 @@ import CoreLocation
 
 // MARK: - Pending guided walk (saved across force-quits for resume)
 
-nonisolated struct PendingGuidedWalk: Codable, Identifiable {
+struct PendingGuidedWalk: Codable, Identifiable {
     var id: Date { savedAt }
     let routeName: String
     let waypoints: [WaypointCoord]
@@ -34,7 +34,7 @@ nonisolated struct PendingGuidedWalk: Codable, Identifiable {
 
 // MARK: - Pending free walk
 
-nonisolated struct PendingFreeWalk: Codable, Identifiable {
+struct PendingFreeWalk: Codable, Identifiable {
     var id: Date { savedAt }
     let trackPoints: [WaypointCoord]
     let totalDistance: Double
