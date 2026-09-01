@@ -75,7 +75,7 @@ struct ActiveMiniTile: View {
 
                     VStack(alignment: .leading, spacing: 2) {
                         Text(route.name)
-                            .font(.subheadline.bold())
+                            .font(.wktHeading(14))
                             .foregroundColor(.earthCream)
                             .lineLimit(1)
                         HStack(spacing: 4) {
@@ -83,7 +83,7 @@ struct ActiveMiniTile: View {
                             Text("·").foregroundColor(.earthMuted)
                             Text(distText(session.totalDistanceCovered))
                         }
-                        .font(.caption)
+                        .font(.wktBody(12))
                         .foregroundColor(.earthGreen)
                     }
 

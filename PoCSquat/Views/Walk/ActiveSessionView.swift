@@ -485,11 +485,11 @@ struct ActiveSessionView: View {
                         Image(systemName: route.activityMode.icon)
                             .font(.subheadline).foregroundColor(.earthGreen)
                         Text(isGuided ? route.name : route.activityMode.sessionLabel)
-                            .font(.headline).foregroundColor(.earthCream).lineLimit(1)
+                            .font(.wktHeading(15)).foregroundColor(.earthCream).lineLimit(1)
                     }
                     if isGuided {
                         Text(session.progressText)
-                            .font(.subheadline).foregroundColor(.earthGreen)
+                            .font(.wktBody(12)).foregroundColor(.earthGreen)
                     }
                 }
                 Spacer()
@@ -559,7 +559,7 @@ struct ActiveSessionView: View {
                                 ? Color.accentInfo : .earthMuted)
                         if waterBreakEnabled {
                             Text("/ \(waterBreakIntervalMinutes)m")
-                                .font(.system(size: 8, weight: .bold))
+                                .wktTechnical(8)
                                 .foregroundColor(Color.accentInfo)
                         }
                     }
@@ -576,7 +576,7 @@ struct ActiveSessionView: View {
                                     ? checkpointAccent : .earthMuted)
                             if checkpointsEnabled {
                                 Text(route.isCustomRoute ? "WP" : "20%")
-                                    .font(.system(size: 8, weight: .bold))
+                                    .wktTechnical(8)
                                     .foregroundColor(checkpointAccent)
                             }
                         }
@@ -632,11 +632,11 @@ struct ActiveSessionView: View {
                         Text(poi.category.emoji).font(.title2)
                         VStack(alignment: .leading, spacing: 2) {
                             Text(poi.name)
-                                .font(.subheadline.bold())
+                                .font(.wktHeading(14))
                                 .foregroundColor(.earthCream)
                                 .lineLimit(1)
                             if let dist = distanceToUser(poi.coordinate) {
-                                Text(dist).font(.caption).foregroundColor(.earthMuted)
+                                Text(dist).wktTechnical(10).foregroundColor(.earthMuted)
                             }
                         }
                         Spacer()

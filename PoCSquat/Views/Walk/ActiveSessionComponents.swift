@@ -11,8 +11,8 @@ struct SessionStatCell: View {
     var body: some View {
         VStack(spacing: 5) {
             Image(systemName: icon).font(.caption).foregroundColor(.earthGreen)
-            Text(value).font(.subheadline.bold()).foregroundColor(.earthCream)
-            Text(label).font(.caption2).foregroundColor(.earthMuted)
+            Text(value).font(.wktDisplay(17)).foregroundColor(.earthCream)
+            Text(label).wktTechnical(9).foregroundColor(.earthMuted).textCase(.uppercase)
         }
         .frame(maxWidth: .infinity)
         .accessibilityElement(children: .ignore)
@@ -54,11 +54,11 @@ struct SessionStatsBar: View {
                     }()
                     VStack(spacing: 5) {
                         Image(systemName: activityIcon).font(.caption).foregroundColor(.earthGreen)
-                        Text(session.estimatedSteps.formatted()).font(.subheadline.bold()).foregroundColor(.earthCream)
-                        Text("steps").font(.caption2).foregroundColor(.earthMuted)
+                        Text(session.estimatedSteps.formatted()).font(.wktDisplay(17)).foregroundColor(.earthCream)
+                        Text("steps").wktTechnical(9).foregroundColor(.earthMuted).textCase(.uppercase)
                         if let cad = session.cadence, cad > 0 {
                             Text("\(Int(cad))/min")
-                                .font(.system(size: 10, weight: .semibold))
+                                .wktTechnical(9)
                                 .foregroundColor(.earthGreen)
                         }
                     }
@@ -92,14 +92,14 @@ struct PauseResumeControl: View {
             Image(systemName: "pause.circle.fill")
                 .foregroundColor(.earthOrange)
             Text("\(sessionLabel) Paused")
-                .font(.caption.bold())
+                .font(.wktHeading(12))
                 .foregroundColor(.earthOrange)
             Spacer()
             Button {
                 onResume()
             } label: {
                 Label("Resume", systemImage: "play.fill")
-                    .font(.caption.bold())
+                    .font(.wktHeading(12))
                     .padding(.horizontal, 12).padding(.vertical, 6)
                     .background(Color.earthGreen.opacity(0.9))
                     .foregroundColor(.white).cornerRadius(8)
