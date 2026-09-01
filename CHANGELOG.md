@@ -6,7 +6,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Added
-- Foundation for a unified design system: four new color tokens (`earthLine`, `accentRun`, `accentRide`, `accentIndoor`) extending the existing light/dark-adaptive `earthXXX` palette; pet accent colors (previously fixed, non-adaptive) now have proper light/dark pairs so they no longer go muddy in dark mode. No visual behavior change yet for existing screens — this lays groundwork for the v1.10 design system pass (typography hierarchy + per-activity accent colors across the app). See the design system proposal in Notion for the full plan. Also adds a reusable 3-tier typography system (`Font.wktDisplay/wktHeading/wktBody`, `View.wktTechnical()`) for SF Pro Rounded + tracked SF Mono — not yet wired into any screen.
+- Unified v1.10 design system, rolled out across the whole app: a 3-tier typography hierarchy (Display / Heading-Body / Technical, using SF Pro Rounded + tracked SF Mono) and per-activity accent colors (Run/Ride/Indoor, alongside the existing Walk green) now apply consistently to the Dashboard, Active Session, Badges, Settings, the Home Screen widget, and the Live Activity — previously only a handful of screens used the shared tokens and most call sites had their own one-off font/color choices
+- Dashboard restructured to match the design: four direct-select activity tiles (Walk/Run/Ride/Indoor) replace the old action grid, a new dashed "Find a Route" tile folds in route discovery, the stat card shows goal progress/steps/distance/streak together, and pets are promoted to their own "Crew" card
+- Map polylines and guided-route waypoint markers now color by the session's activity mode (previously only cycling had its own color; everything else silently drew as walking-green)
+- Custom (built) routes now remember the activity mode they were built for; the Start screen shows a walk/run/ride chip row defaulted to that mode, changeable per-launch without altering the route's saved default
+- App and widget/Live Activity now read colors and fonts from one shared `DesignSystem.swift` file (dual target membership) instead of the widget keeping its own separate, non-adaptive palette — incidentally fixes the widget's background being hardcoded dark regardless of system theme, and the Live Activity's progress bar/dividers being nearly invisible in light mode
+
+### Changed
+- Full WCAG contrast audit across every design-system color token, in both light and dark mode: fixed `accentNotice`'s illegible light-mode value, then — more substantially — split every accent color that's used as a solid button/toggle/marker fill into two variants: the original bright value for text and icons, and a new, separately-tuned "Fill" value for white content sitting on top of a solid fill. A single color value can't serve both roles well at once (bright enough to read as text, dark enough for white content on top to read well); this removes that trade-off everywhere it showed up — roughly 50 call sites across 20 files (buttons, selected chips, toggles, the guided-nav map's markers)
+
+### Fixed
+- Several flat, non-adaptive color literals that had drifted from the shared design tokens over time — scattered across ~15 files (map pins, chip borders, a milestone-marker teal, POI category colors) — consolidated back onto the light/dark-adaptive tokens they were supposed to match
+- Build error after custom routes gained a saved activity mode: `ActivityMode` needed to conform to `Codable` for `CustomRoute`'s automatic Encodable/Decodable synthesis to work
+- The route-finder results panel sized itself against the physical device screen instead of its own window, which can misbehave in iPad multitasking (Split View, Slide Over, Stage Manager) where the app's window is smaller than the screen; now reads its actual container size
+- Minor build-warning cleanup: three unused local values removed (no behavior change)
 
 ## [1.9] - 2026-08-31
 
