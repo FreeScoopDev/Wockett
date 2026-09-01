@@ -12,16 +12,8 @@ private enum WKey {
     static let refresh  = "wkt_widget_lastRefresh"
 }
 
-// MARK: - Earth palette (mirrored from main app; can't import main target)
-
-private extension Color {
-    static let wktGreen  = Color(red: 0.28, green: 0.54, blue: 0.36)
-    static let wktCream  = Color(red: 0.94, green: 0.91, blue: 0.85)
-    static let wktMuted  = Color(red: 0.55, green: 0.55, blue: 0.52)
-    static let wktBg     = Color(red: 0.10, green: 0.12, blue: 0.11)
-    static let wktCard   = Color(red: 0.15, green: 0.17, blue: 0.16)
-    static let wktOrange = Color(red: 0.85, green: 0.45, blue: 0.20)
-}
+// Colors now come from the shared DesignSystem.swift (earthXXX tokens) --
+// this target used to carry its own separately-hardcoded, non-adaptive copy.
 
 // MARK: - Timeline Entry
 
@@ -90,12 +82,12 @@ private struct StepRingView: View {
     var body: some View {
         ZStack {
             Circle()
-                .stroke(Color.wktGreen.opacity(0.18), lineWidth: 10)
+                .stroke(Color.earthGreen.opacity(0.18), lineWidth: 10)
             Circle()
                 .trim(from: 0, to: progress)
                 .stroke(
                     AngularGradient(
-                        colors: [Color.wktGreen.opacity(0.7), Color.wktGreen],
+                        colors: [Color.earthGreen.opacity(0.7), Color.earthGreen],
                         center: .center,
                         startAngle: .degrees(-90),
                         endAngle: .degrees(270 * progress - 90)
@@ -107,10 +99,10 @@ private struct StepRingView: View {
             VStack(spacing: 1) {
                 Text(steps.formatted())
                     .font(.system(size: fontSize, weight: .bold, design: .rounded).monospacedDigit())
-                    .foregroundColor(.wktCream)
+                    .foregroundColor(.earthCream)
                 Text("steps")
                     .font(.system(size: fontSize * 0.38, weight: .medium))
-                    .foregroundColor(.wktMuted)
+                    .foregroundColor(.earthMuted)
             }
         }
     }
@@ -123,15 +115,15 @@ private struct SmallStepView: View {
 
     var body: some View {
         ZStack {
-            Color.wktBg
+            Color.earthBg
             VStack(spacing: 6) {
                 HStack(spacing: 4) {
                     Image(systemName: "figure.walk")
                         .font(.caption2.weight(.semibold))
-                        .foregroundColor(.wktGreen)
+                        .foregroundColor(.earthGreen)
                     Text("Wockett")
                         .font(.caption2.weight(.semibold))
-                        .foregroundColor(.wktMuted)
+                        .foregroundColor(.earthMuted)
                     Spacer()
                     if entry.streak > 0 {
                         HStack(spacing: 2) {
@@ -140,7 +132,7 @@ private struct SmallStepView: View {
                             Text("🔥")
                                 .font(.system(size: 9))
                         }
-                        .foregroundColor(.wktOrange)
+                        .foregroundColor(.earthOrange)
                     }
                 }
                 .padding(.horizontal, 14)
@@ -151,7 +143,7 @@ private struct SmallStepView: View {
 
                 Text("of \(entry.goal.formatted())")
                     .font(.system(size: 10, weight: .medium).monospacedDigit())
-                    .foregroundColor(.wktMuted)
+                    .foregroundColor(.earthMuted)
                     .padding(.bottom, 12)
             }
         }
@@ -165,7 +157,7 @@ private struct MediumStepView: View {
 
     var body: some View {
         ZStack {
-            Color.wktBg
+            Color.earthBg
             HStack(spacing: 0) {
                 // Ring on the left
                 StepRingView(progress: entry.progress, steps: entry.steps, fontSize: 22)
@@ -179,11 +171,11 @@ private struct MediumStepView: View {
                     if entry.streak > 0 {
                         statRow(icon: "flame.fill", label: "Streak",
                                 value: "\(entry.streak) day\(entry.streak == 1 ? "" : "s")",
-                                valueColor: .wktOrange)
+                                valueColor: .earthOrange)
                     }
                     let pct = Int(entry.progress * 100)
                     statRow(icon: "percent", label: "Progress", value: "\(pct)%",
-                            valueColor: entry.progress >= 1 ? .wktGreen : .wktCream)
+                            valueColor: entry.progress >= 1 ? .earthGreen : .earthCream)
                 }
                 .padding(.leading, 16)
                 .padding(.trailing, 14)
@@ -195,15 +187,15 @@ private struct MediumStepView: View {
     }
 
     private func statRow(icon: String, label: String, value: String,
-                         valueColor: Color = .wktCream) -> some View {
+                         valueColor: Color = .earthCream) -> some View {
         HStack(spacing: 6) {
             Image(systemName: icon)
                 .font(.system(size: 11, weight: .medium))
-                .foregroundColor(.wktGreen)
+                .foregroundColor(.earthGreen)
                 .frame(width: 14)
             Text(label)
                 .font(.system(size: 11))
-                .foregroundColor(.wktMuted)
+                .foregroundColor(.earthMuted)
             Spacer()
             Text(value)
                 .font(.system(size: 12, weight: .semibold).monospacedDigit())
@@ -225,7 +217,7 @@ private struct CircularStepView: View {
                 .font(.system(size: 11, weight: .bold, design: .rounded))
         }
         .gaugeStyle(.accessoryCircularCapacity)
-        .tint(.wktGreen)
+        .tint(.earthGreen)
     }
 
     private func shortSteps(_ n: Int) -> String {
@@ -241,7 +233,7 @@ struct WocketStepWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: kind, provider: StepWidgetProvider()) { entry in
             WocketStepWidgetView(entry: entry)
-                .containerBackground(Color.wktBg, for: .widget)
+                .containerBackground(Color.earthBg, for: .widget)
         }
         .configurationDisplayName("Daily Steps")
         .description("Track your step goal and streak at a glance.")

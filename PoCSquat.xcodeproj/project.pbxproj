@@ -10,6 +10,8 @@
 		60062A7F303AA71A002D5E94 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 60062A7E303AA71A002D5E94 /* WidgetKit.framework */; };
 		60062A81303AA71A002D5E94 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 60062A80303AA71A002D5E94 /* SwiftUI.framework */; };
 		60062A92303AA71B002D5E94 /* WocketWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 60062A7D303AA71A002D5E94 /* WocketWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		603BC82E30466FCA00A6174E /* DesignSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 603BC82D30466FCA00A6174E /* DesignSystem.swift */; };
+		603BC82F30466FCA00A6174E /* DesignSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 603BC82D30466FCA00A6174E /* DesignSystem.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -48,6 +50,7 @@
 		60062A7E303AA71A002D5E94 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
 		60062A80303AA71A002D5E94 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
 		60062A9F303AAAA3002D5E94 /* WocketWidgetExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = WocketWidgetExtension.entitlements; sourceTree = "<group>"; };
+		603BC82D30466FCA00A6174E /* DesignSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesignSystem.swift; sourceTree = "<group>"; };
 		6064430C303FCB7B004C8A82 /* WockettTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = WockettTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		6093BCDE3011AB1C00AD5E15 /* PoCSquat.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PoCSquat.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		60EB4F953043B2500003AD6B /* Versions.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Versions.xcconfig; sourceTree = "<group>"; };
@@ -133,6 +136,7 @@
 		6093BCD53011AB1B00AD5E15 = {
 			isa = PBXGroup;
 			children = (
+				603BC82D30466FCA00A6174E /* DesignSystem.swift */,
 				60EB4F953043B2500003AD6B /* Versions.xcconfig */,
 				60062A9F303AAAA3002D5E94 /* WocketWidgetExtension.entitlements */,
 				6093BCE03011AB1C00AD5E15 /* PoCSquat */,
@@ -309,6 +313,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				603BC82F30466FCA00A6174E /* DesignSystem.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -323,6 +328,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				603BC82E30466FCA00A6174E /* DesignSystem.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
