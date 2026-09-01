@@ -71,7 +71,7 @@ struct BannerTitleView: View {
         Group {
             if store.displayTitle == "Wockett" {
                 Text("Wockett")
-                    .font(.system(size: 17, weight: .black, design: .rounded))
+                    .font(.wktDisplay(17))
                     .foregroundColor(.earthCream)
             } else {
                 Text(store.displayTitle)

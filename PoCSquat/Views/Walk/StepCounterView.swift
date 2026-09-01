@@ -2,6 +2,7 @@ import SwiftUI
 import MapKit
 import CoreLocation
 import UserNotifications
+import SwiftData
 
 // MARK: - Step Counter View
 
@@ -408,7 +409,7 @@ struct StepCounterView: View {
                 .animation(.easeInOut(duration: 0.6), value: stepManager.progress)
             VStack(spacing: 2) {
                 Text(stepManager.todaySteps.formatted())
-                    .font(.system(size: stepFont, weight: .bold, design: .rounded))
+                    .font(.wktDisplay(stepFont))
                     .foregroundColor(.earthCream)
                 Text("/ \(stepManager.currentGoal.formatted())")
                     .font(.system(size: goalFont))
@@ -1057,3 +1058,16 @@ private struct ActivitySuggestionBanner: View {
     }
 }
 
+// MARK: - Preview
+
+// Mirrors the real environment wiring from SquatCounterApp.swift (ActiveWalkStore.shared +
+// a PetStore backed by the app's real SwiftData container) so the canvas renders exactly
+// like a live build/run, without needing a full compile each time. Uses the real on-disk
+// store, so pets/history you have locally will show up here too.
+#Preview("Dashboard") {
+    NavigationStack {
+        StepCounterView()
+    }
+    .environment(ActiveWalkStore.shared)
+    .environmentObject(PetStore(context: AppModelContainer.shared.mainContext))
+}
