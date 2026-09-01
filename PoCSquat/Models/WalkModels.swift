@@ -95,9 +95,9 @@ enum ActivityMode: String {
     var tileColor: Color {
         switch self {
         case .walking:    return Color.earthGreen
-        case .running:    return Color(red: 0.92, green: 0.46, blue: 0.14)
-        case .cycling:    return Color(red: 0.13, green: 0.57, blue: 0.64)
-        case .stationary: return Color(red: 0.42, green: 0.32, blue: 0.76)
+        case .running:    return Color.accentRun
+        case .cycling:    return Color.accentRide
+        case .stationary: return Color.accentIndoor
         }
     }
 

@@ -210,7 +210,11 @@ struct StepCounterView: View {
     private func mainScrollView(proxy: ScrollViewProxy) -> some View {
         ScrollView {
             VStack(spacing: 24) {
-                progressSection.padding(.top, 8)
+                activityHeaderRow.padding(.horizontal).padding(.top, 8)
+                activityModeRow.padding(.horizontal)
+                findRouteTile.padding(.horizontal)
+                statCard.padding(.horizontal)
+                crewCard.padding(.horizontal)
                 JourneyTrackView(
                     progress:    stepManager.progress,
                     avatarEmoji: petStore.activePets.first?.displayEmoji ?? "🚶"
@@ -259,12 +263,10 @@ struct StepCounterView: View {
                     .transition(.move(edge: .top).combined(with: .opacity))
                 }
                 RecoveryCard()
-                actionGrid.padding(.horizontal)
                 closeTheGapCard
                 communityRoutesCard
                 achievementFeedCard
                 challengesCard
-                streakIndicator
                 FunStatsCard(sessions: historyStore.sessions, todaySteps: stepManager.todaySteps)
                     .padding(.horizontal)
                 WeeklyCalendarView(
@@ -428,31 +430,6 @@ struct StepCounterView: View {
         .onTapGesture { showUserDetail = true }
     }
 
-    private var progressSection: some View {
-        let available  = max(containerWidth - 32, 280)
-        let badgeColW: CGFloat = 74
-        let petColW:   CGFloat = 64
-        let hSpacing:  CGFloat = 14
-        let hasPets    = !petStore.activePets.isEmpty
-        // Left column: pets (64pt) or phantom spacer equal to badge column (74pt) for symmetry.
-        // This keeps the ring centered over the action grid regardless of pet count.
-        let leftColW: CGFloat = hasPets ? petColW : badgeColW
-        let ringDiam: CGFloat = min(available - leftColW - badgeColW - hSpacing * 2, 260)
-        return VStack(spacing: 14) {
-            HStack(alignment: .center, spacing: hSpacing) {
-                if hasPets {
-                    petColumnView.frame(width: petColW)
-                } else {
-                    Color.clear.frame(width: badgeColW)
-                }
-                userRingView(diameter: ringDiam)
-                badgeColumnView
-                    .frame(width: badgeColW)
-            }
-        }
-        .padding(.vertical, 24)
-        .padding(.horizontal)
-    }
 
     private var petColumnView: some View {
         VStack(spacing: 10) {
@@ -643,14 +620,13 @@ struct StepCounterView: View {
                          detail: routeStore.routes.isEmpty ? "No routes saved" : "\(routeStore.routes.count) route\(routeStore.routes.count == 1 ? "" : "s")",
                          color: Color(red: 0.28, green: 0.49, blue: 0.84)) { showMyRoutes = true }
 
-            settingsTile(icon: "clock.arrow.circlepath", label: "Activity History",
+            settingsTile(icon: "clock.arrow.circlepath", label: "History",
                          detail: historyStore.sessions.isEmpty ? "No activities yet" : "\(historyStore.sessions.count) activit\(historyStore.sessions.count == 1 ? "y" : "ies")",
                          color: .earthOrange) { showWalkHistory = true }
 
-            settingsTile(icon: petStore.activePets.isEmpty ? "pawprint" : "pawprint.fill",
-                         label: "My Pets",
-                         detail: petStore.pets.isEmpty ? "No pets added" : petRowLabel,
-                         color: Color(red: 0.73, green: 0.45, blue: 0.27)) { showPetManagement = true }
+            settingsTile(icon: "person.3.fill", label: "Community",
+                         detail: "Feed & challenges",
+                         color: Color(red: 0.13, green: 0.57, blue: 0.64)) { showAchievementFeed = true }
         }
         .padding(.horizontal)
     }
@@ -668,11 +644,12 @@ struct StepCounterView: View {
                         .foregroundColor(.earthMuted.opacity(0.5))
                 }
                 Text(label)
-                    .font(.subheadline.bold())
+                    .font(.wktHeading(15))
                     .foregroundColor(.earthCream)
                 Text(detail)
-                    .font(.caption)
+                    .wktTechnical(9)
                     .foregroundColor(.earthMuted)
+                    .textCase(.uppercase)
                     .lineLimit(1)
             }
             .padding(14)
@@ -702,10 +679,10 @@ struct StepCounterView: View {
                     }
                     VStack(alignment: .leading, spacing: 3) {
                         Text("\(remaining.formatted()) steps to go")
-                            .font(.subheadline.bold())
+                            .font(.wktHeading(15))
                             .foregroundColor(.earthCream)
                         Text("A \(walkMinutes)-min walk closes the gap")
-                            .font(.caption)
+                            .font(.wktBody(12))
                             .foregroundColor(.earthMuted)
                     }
                     Spacer()
@@ -742,10 +719,10 @@ struct StepCounterView: View {
                 }
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Community Routes")
-                        .font(.subheadline.bold())
+                        .font(.wktHeading(15))
                         .foregroundColor(.earthCream)
                     Text("Discover routes shared by other users")
-                        .font(.caption)
+                        .font(.wktBody(12))
                         .foregroundColor(.earthMuted)
                 }
                 Spacer()
@@ -775,10 +752,10 @@ struct StepCounterView: View {
                 }
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Achievement Feed")
-                        .font(.subheadline.bold())
+                        .font(.wktHeading(15))
                         .foregroundColor(.earthCream)
                     Text("See what badges the community earned")
-                        .font(.caption)
+                        .font(.wktBody(12))
                         .foregroundColor(.earthMuted)
                 }
                 Spacer()
@@ -807,10 +784,10 @@ struct StepCounterView: View {
                 }
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Challenges")
-                        .font(.subheadline.bold())
+                        .font(.wktHeading(15))
                         .foregroundColor(.earthCream)
                     Text("Compete with the community")
-                        .font(.caption)
+                        .font(.wktBody(12))
                         .foregroundColor(.earthMuted)
                 }
                 Spacer()
@@ -828,92 +805,209 @@ struct StepCounterView: View {
 
     // MARK: Action Grid
 
-    private var actionGrid: some View {
-        LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
-            startActivityTile
+    // MARK: Dashboard Hero (v1.10 design system)
 
-            actionTile(icon: "map.fill", label: "Recommend",
-                       color: Color(red: 0.13, green: 0.57, blue: 0.64)) {
-                routeFinderShowsNearby = false
-                showRouteFinder = true
-            }
+    private var gpsIsReady: Bool {
+        let status = CLLocationManager().authorizationStatus
+        return status == .authorizedAlways || status == .authorizedWhenInUse
+    }
 
-            actionTile(icon: "sparkles", label: "Explore",
-                       color: Color.earthOrange) {
-                routeFinderShowsNearby = true
-                showRouteFinder = true
-            }
-
-            actionTile(icon: "plus.circle.fill", label: "Build Route",
-                       color: Color(red: 0.28, green: 0.49, blue: 0.84)) { showBuildRoute = true }
+    private var activityHeaderRow: some View {
+        HStack {
+            Text("START AN ACTIVITY")
+                .wktTechnical(10)
+                .foregroundColor(.earthMuted)
+            Spacer()
+            Text(gpsIsReady ? "GPS READY" : "LOCATION OFF")
+                .wktTechnical(10)
+                .foregroundColor(gpsIsReady ? .earthGreen : .earthMuted)
         }
     }
 
-    private var startActivityTile: some View {
+    private var activityModeRow: some View {
+        HStack(spacing: 10) {
+            ForEach([ActivityMode.walking, .running, .cycling, .stationary], id: \.rawValue) { mode in
+                activityModeTile(mode)
+            }
+        }
+    }
+
+    private func activityModeTile(_ mode: ActivityMode) -> some View {
+        let isSelected = freeWalkMode == mode
         return Button {
-            if freeWalkMode == .stationary {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { freeWalkMode = mode }
+            if mode == .stationary {
                 showStationary = true
             } else {
                 showFreeWalk = true
             }
         } label: {
-            ZStack(alignment: .bottomTrailing) {
-                VStack(spacing: 8) {
-                    Image(systemName: freeWalkMode.icon)
-                        .font(.system(size: 22, weight: .medium))
-                        .frame(height: 24)
-                    Text(freeWalkMode.tileLabel)
-                        .font(.subheadline.bold())
-                        .multilineTextAlignment(.center)
-                        .lineLimit(2)
-                }
-                .animation(.spring(response: 0.3, dampingFraction: 0.7), value: freeWalkMode)
-                .foregroundColor(.white)
-                .frame(maxWidth: .infinity)
-                .frame(height: 84)
-
-                // Fold corner — cycles walk → bike → indoor
-                Button {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
-                        freeWalkMode = freeWalkMode.next
-                    }
-                } label: {
-                    ZStack(alignment: .bottomTrailing) {
-                        CornerFoldShape()
-                            .fill(Color.black.opacity(0.22))
-                            .frame(width: 44, height: 44)
-                        Image(systemName: freeWalkMode.next.icon)
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundColor(.white.opacity(0.9))
-                            .padding(6)
-                    }
-                }
-                .buttonStyle(.plain)
+            VStack(spacing: 8) {
+                Image(systemName: mode.icon)
+                    .font(.system(size: 20, weight: .medium))
+                Text(mode.sessionLabel)
+                    .font(.wktHeading(13))
             }
-            .background(freeWalkMode.tileColor.animation(.spring(response: 0.35), value: freeWalkMode))
+            .foregroundColor(isSelected ? .white : mode.tileColor)
+            .frame(maxWidth: .infinity)
+            .frame(height: 78)
+            .background(isSelected ? mode.tileColor : Color.earthCard)
             .cornerRadius(16)
+            .overlay(
+                RoundedRectangle(cornerRadius: 16)
+                    .stroke(Color.earthLine, lineWidth: isSelected ? 0 : 1)
+            )
         }
         .buttonStyle(BounceButtonStyle())
     }
 
-    private func actionTile(icon: String, label: String, color: Color, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            VStack(spacing: 8) {
-                Image(systemName: icon)
-                    .font(.system(size: 22, weight: .medium))
-                    .frame(height: 24)
-                Text(label)
-                    .font(.subheadline.bold())
-                    .multilineTextAlignment(.center)
-                    .lineLimit(2)
+    // Distinctly styled (dashed outline, not a solid activity color) so it reads as a
+    // different kind of action from the four activity tiles above — route discovery,
+    // not activity start. Folds in what used to be separate Recommend/Explore tiles;
+    // Build Route already has its own entry point from the Saved Routes list.
+    private var findRouteTile: some View {
+        Button {
+            routeFinderShowsNearby = false
+            showRouteFinder = true
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "map")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(.earthGreen)
+                Text("Find a Route")
+                    .font(.wktHeading(14))
+                    .foregroundColor(.earthCream)
+                Spacer()
+                Text("Recommend · Explore · Community")
+                    .wktTechnical(8)
+                    .foregroundColor(.earthMuted)
+                    .lineLimit(1)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(.earthMuted.opacity(0.6))
             }
-            .foregroundColor(.white)
-            .frame(maxWidth: .infinity)
-            .frame(height: 84)
-            .background(color)
-            .cornerRadius(16)
+            .padding(.horizontal, 14)
+            .frame(height: 50)
+            .background(Color.earthCard)
+            .cornerRadius(14)
+            .overlay(
+                RoundedRectangle(cornerRadius: 14)
+                    .stroke(Color.earthGreen.opacity(0.4), style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
+            )
         }
-        .buttonStyle(BounceButtonStyle())
+        .buttonStyle(BounceButtonStyle(scale: 0.97))
+    }
+
+    // Ring shows % of goal; step count/goal/distance sit beside it; streak (tap → Badges,
+    // same destination the old streak pill and badge rail both used to open) anchors the
+    // right edge. Consolidates what used to be 3 separate elements (ring, streak pill,
+    // rolling badge rail) into one card, matching the mockup's stat card.
+    private var statCard: some View {
+        HStack(spacing: 16) {
+            ZStack {
+                Circle()
+                    .stroke(Color.earthMuted.opacity(0.15), lineWidth: 9)
+                Circle()
+                    .trim(from: 0, to: stepManager.progress)
+                    .stroke(
+                        LinearGradient(colors: [.earthGreen, .earthOrange], startPoint: .topLeading, endPoint: .bottomTrailing),
+                        style: StrokeStyle(lineWidth: 9, lineCap: .round)
+                    )
+                    .rotationEffect(.degrees(-90))
+                    .animation(.easeInOut(duration: 0.6), value: stepManager.progress)
+                VStack(spacing: 0) {
+                    Text("\(Int((stepManager.progress * 100).rounded()))")
+                        .font(.wktDisplay(20))
+                        .foregroundColor(.earthCream)
+                    Text("PCT")
+                        .wktTechnical(8)
+                        .foregroundColor(.earthMuted)
+                }
+            }
+            .frame(width: 68, height: 68)
+            .onTapGesture { showUserDetail = true }
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(stepManager.todaySteps.formatted())
+                    .font(.wktDisplay(26))
+                    .foregroundColor(.earthCream)
+                Text("OF \(stepManager.currentGoal.formatted()) STEPS")
+                    .wktTechnical(9)
+                    .foregroundColor(.earthMuted)
+                if stepManager.todaySteps < stepManager.currentGoal {
+                    Text("\(Self.formatDistance(stepManager.remainingMeters)) to go")
+                        .font(.wktBody(12))
+                        .foregroundColor(.earthOrange.opacity(0.85))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                }
+            }
+            .onTapGesture { showUserDetail = true }
+
+            Spacer(minLength: 8)
+
+            Button { showBadges = true } label: {
+                VStack(spacing: 0) {
+                    Text("\(streakStore.currentStreak)")
+                        .font(.wktDisplay(22))
+                        .foregroundColor(.earthOrange)
+                    Text("STREAK")
+                        .wktTechnical(8)
+                        .foregroundColor(.earthMuted)
+                }
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(16)
+        .background(Color.earthCard)
+        .cornerRadius(18)
+    }
+
+    // "The Crew" — pets promoted to their own full-width card with a Manage link,
+    // replacing the cramped side column that used to sit next to the ring.
+    private var crewCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("THE CREW")
+                    .wktTechnical(10)
+                    .foregroundColor(.earthMuted)
+                Spacer()
+                Button {
+                    showPetManagement = true
+                } label: {
+                    Text("Manage ›")
+                        .font(.wktBody(12))
+                        .foregroundColor(.earthGreen)
+                }
+            }
+            HStack(spacing: 14) {
+                ForEach(petStore.activePets) { pet in
+                    smallPetRing(pet: pet)
+                }
+                Button {
+                    showPetManagement = true
+                } label: {
+                    VStack(spacing: 4) {
+                        ZStack {
+                            Circle()
+                                .strokeBorder(Color.earthMuted.opacity(0.3), style: StrokeStyle(lineWidth: 1.5, dash: [3, 3]))
+                                .frame(width: 52, height: 52)
+                            Image(systemName: "plus")
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundColor(.earthMuted)
+                        }
+                        Text("Add")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundColor(.earthMuted)
+                    }
+                }
+                .buttonStyle(.plain)
+                Spacer(minLength: 0)
+            }
+        }
+        .padding(16)
+        .background(Color.earthCard)
+        .cornerRadius(18)
     }
 
 }
@@ -1032,10 +1126,10 @@ private struct ActivitySuggestionBanner: View {
             }
             VStack(alignment: .leading, spacing: 2) {
                 Text("Looks like you're \(label)")
-                    .font(.subheadline.bold())
+                    .font(.wktHeading(15))
                     .foregroundColor(.earthCream)
                 Text("Want to start tracking?")
-                    .font(.caption)
+                    .font(.wktBody(12))
                     .foregroundColor(.earthMuted)
             }
             Spacer()
