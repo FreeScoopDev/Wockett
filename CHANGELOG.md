@@ -3,7 +3,7 @@
 All notable changes to Wockett are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## [Unreleased]
+## [1.10] - 2026-09-01
 
 ### Added
 - Unified v1.10 design system, rolled out across the whole app: a 3-tier typography hierarchy (Display / Heading-Body / Technical, using SF Pro Rounded + tracked SF Mono) and per-activity accent colors (Run/Ride/Indoor, alongside the existing Walk green) now apply consistently to the Dashboard, Active Session, Badges, Settings, the Home Screen widget, and the Live Activity — previously only a handful of screens used the shared tokens and most call sites had their own one-off font/color choices
