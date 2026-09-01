@@ -4,12 +4,6 @@ import TipKit
 import BackgroundTasks
 import UserNotifications
 
-// MARK: - App Tab
-
-enum AppTab: Int, Hashable {
-    case home, health, community, settings
-}
-
 // MARK: - App Entry Point
 
 @main
@@ -63,6 +57,8 @@ struct SquatCounterApp: App {
                         }
                     }
                 }
+                // Bottom tab bar on iPhone; top tab bar / sidebar on iPad.
+                .tabViewStyle(.sidebarAdaptable)
                 // Tab bar collapses on downward scroll (iPhone only; ignored on iPad).
                 .tabBarMinimizeBehavior(.onScrollDown)
                 // Active walk tile floats above the tab bar; moves inline when tab bar collapses.
@@ -90,9 +86,11 @@ struct SquatCounterApp: App {
             .environmentObject(tabRouter)
             .modelContainer(container)
             .task {
-                // One-shot launch setup. Runs after StepCounterView.handleAppear() because
-                // .onAppear is synchronous and .task is async — salvageStaleWalkIfNeeded()
-                // has already completed before this body executes.
+                // Boot ordering: configure + salvage run synchronously (no suspension)
+                // before the Live Activity reap, so the reap and Home's
+                // hasRestorableWalk check both see consistent session state.
+                ActiveWalkStore.shared.configure(historyStore: historyStore)
+                ActiveWalkStore.shared.salvageStaleWalkIfNeeded()
                 if ActiveWalkStore.shared.session == nil {
                     await WalkLiveActivityManager.shared.endAllActivities()
                 }

@@ -1,21 +1,4 @@
 import SwiftUI
-import Combine
-
-// MARK: - Community Destination
-
-enum CommunityDestination: Hashable {
-    case badges
-    case achievementFeed
-    case challenges
-    case communityRoutes
-}
-
-// MARK: - Tab Router
-
-final class TabRouter: ObservableObject {
-    @Published var selected: AppTab = .home
-    @Published var pendingCommunityDestination: CommunityDestination? = nil
-}
 
 // MARK: - Community Hub View
 

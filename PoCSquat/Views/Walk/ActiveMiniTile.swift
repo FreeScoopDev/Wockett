@@ -9,6 +9,7 @@ import UserNotifications
 
 struct ActiveMiniTileContainer: View {
     @Environment(ActiveWalkStore.self) private var walkStore
+    @EnvironmentObject private var tabRouter: TabRouter
     @State private var showEndConfirmation = false
 
     var body: some View {
@@ -17,8 +18,13 @@ struct ActiveMiniTileContainer: View {
                 ActiveMiniTile(
                     session: session,
                     route: route,
-                    onReopen: { walkStore.requestReopen() },
-                    onEnd:   { showEndConfirmation = true }
+                    onReopen: {
+                        // Switch to Home first so StepCounterView's onChange fires
+                        // while it is the visible tab and can present its cover.
+                        tabRouter.selected = .home
+                        Task { @MainActor in walkStore.requestReopen() }
+                    },
+                    onEnd: { showEndConfirmation = true }
                 )
                 .padding(.horizontal, 12)
                 .padding(.bottom, 8)
