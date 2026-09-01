@@ -8,10 +8,10 @@ import UIKit
 // MARK: - Step Counter View
 
 struct StepCounterView: View {
-    @StateObject private var stepManager  = StepManager()
-    @StateObject private var routeManager = RouteManager()
-    @StateObject private var routeStore   = CustomRouteStore()
-    @StateObject private var historyStore = WalkHistoryStore()
+    @EnvironmentObject private var stepManager:  StepManager
+    @EnvironmentObject private var routeManager: RouteManager
+    @EnvironmentObject private var routeStore:   CustomRouteStore
+    @EnvironmentObject private var historyStore: WalkHistoryStore
 
     @EnvironmentObject private var petStore: PetStore
     @Environment(\.scenePhase) private var scenePhase
@@ -1168,4 +1168,8 @@ private struct ActivitySuggestionBanner: View {
     }
     .environment(ActiveWalkStore.shared)
     .environmentObject(PetStore(context: AppModelContainer.shared.mainContext))
+    .environmentObject(StepManager())
+    .environmentObject(RouteManager())
+    .environmentObject(CustomRouteStore())
+    .environmentObject(WalkHistoryStore())
 }

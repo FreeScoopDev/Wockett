@@ -21,9 +21,9 @@ struct SettingsView: View {
     @State private var showScheduleSheet = false
 
     #if DEBUG
-    @EnvironmentObject private var petStore: PetStore
-    @StateObject private var devHistoryStore = WalkHistoryStore()
-    @StateObject private var devRouteStore   = CustomRouteStore()
+    @EnvironmentObject private var petStore:      PetStore
+    @EnvironmentObject private var historyStore:  WalkHistoryStore
+    @EnvironmentObject private var routeStore:    CustomRouteStore
     @State private var devSeedMessage: String? = nil
     #endif
 
@@ -257,8 +257,8 @@ struct SettingsView: View {
                 Section("Developer") {
                     Button {
                         DevSeedStore.seedScreenshotDemo(
-                            history: devHistoryStore, pets: petStore, routes: devRouteStore)
-                        devSeedMessage = "Seeded! Relaunch to see history & badges."
+                            history: historyStore, pets: petStore, routes: routeStore)
+                        devSeedMessage = "Seeded. Dismiss Settings to see changes."
                     } label: {
                         Label("Seed Screenshot Demo", systemImage: "camera")
                             .foregroundColor(.earthGreen)
@@ -267,7 +267,7 @@ struct SettingsView: View {
 
                     Button {
                         DevSeedStore.clearScreenshotDemo(
-                            history: devHistoryStore, pets: petStore, routes: devRouteStore)
+                            history: historyStore, pets: petStore, routes: routeStore)
                         devSeedMessage = "Demo data cleared."
                     } label: {
                         Label("Clear Demo Data", systemImage: "trash")
@@ -276,7 +276,7 @@ struct SettingsView: View {
                     .listRowBackground(Color.earthCard)
 
                     Button {
-                        DevSeedStore.seedWalkSessions(into: devHistoryStore)
+                        DevSeedStore.seedWalkSessions(into: historyStore)
                         devSeedMessage = "Seeded [TEST] streak data."
                     } label: {
                         Label("Seed [TEST] Streak Data", systemImage: "flame")
@@ -285,8 +285,8 @@ struct SettingsView: View {
                     .listRowBackground(Color.earthCard)
 
                     Button {
-                        DevSeedStore.clearTestSessions(from: devHistoryStore)
-                        DevSeedStore.clearTestRoutes(from: devRouteStore)
+                        DevSeedStore.clearTestSessions(from: historyStore)
+                        DevSeedStore.clearTestRoutes(from: routeStore)
                         devSeedMessage = "Cleared [TEST] data."
                     } label: {
                         Label("Clear [TEST] Data", systemImage: "trash")

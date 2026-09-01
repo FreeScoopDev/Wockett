@@ -6,7 +6,11 @@ import BackgroundTasks
 @main
 struct SquatCounterApp: App {
     private let container = AppModelContainer.shared
-    @StateObject private var petStore: PetStore
+    @StateObject private var petStore:     PetStore
+    @StateObject private var stepManager:  StepManager
+    @StateObject private var routeManager: RouteManager
+    @StateObject private var routeStore:   CustomRouteStore
+    @StateObject private var historyStore: WalkHistoryStore
     @State private var showSplash = true
 
     init() {
@@ -14,9 +18,12 @@ struct SquatCounterApp: App {
         UNUserNotificationCenter.current().delegate = AppNotificationDelegate.shared
         UNUserNotificationCenter.registerActionCategories()
         try? Tips.configure([.displayFrequency(.weekly), .datastoreLocation(.applicationDefault)])
-        // PetStore needs the main context — construct before @StateObject wraps it
-        let store = PetStore(context: AppModelContainer.shared.mainContext)
-        _petStore = StateObject(wrappedValue: store)
+        // Construct all shared stores before @StateObject wraps them — same pattern as PetStore.
+        _petStore     = StateObject(wrappedValue: PetStore(context: AppModelContainer.shared.mainContext))
+        _stepManager  = StateObject(wrappedValue: StepManager())
+        _routeManager = StateObject(wrappedValue: RouteManager())
+        _routeStore   = StateObject(wrappedValue: CustomRouteStore())
+        _historyStore = StateObject(wrappedValue: WalkHistoryStore())
     }
 
     var body: some Scene {
@@ -40,6 +47,10 @@ struct SquatCounterApp: App {
             }
             .environment(ActiveWalkStore.shared)
             .environmentObject(petStore)
+            .environmentObject(stepManager)
+            .environmentObject(routeManager)
+            .environmentObject(routeStore)
+            .environmentObject(historyStore)
             .modelContainer(container)
         }
     }

@@ -26,7 +26,6 @@ struct ActiveSessionView: View {
 
     // Shared state
     @State private var endSessionOnDismiss    = false
-    @StateObject private var localRouteStore  = CustomRouteStore()
     @State private var showActivitySummary    = false
     @State private var summarySession: WalkSession?
     @State private var summaryPRs: [PRType]   = []
@@ -856,7 +855,7 @@ struct ActiveSessionView: View {
     }
 
     private func saveCurrentRoute() {
-        localRouteStore.save(CustomRoute(
+        routeStore.save(CustomRoute(
             id: UUID(),
             name: route.name,
             waypoints: route.waypoints.map { WaypointCoord($0) },
