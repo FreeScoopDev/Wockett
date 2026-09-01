@@ -88,7 +88,6 @@ final class AppNotificationDelegate: NSObject, UNUserNotificationCenterDelegate 
     ) {
         let actionID    = response.actionIdentifier
         let notifID     = response.notification.request.identifier
-        let category    = response.notification.request.content.categoryIdentifier
 
         switch actionID {
         case NotificationAction.snooze10:

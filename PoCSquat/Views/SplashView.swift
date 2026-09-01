@@ -66,7 +66,7 @@ private struct WArrowheadShape: Shape {
     // Open V-arrowhead at the W's top-right tip, pointing in the direction of the last stroke.
     // Direction from BR=(0.75w, h) to TR=(w, 0) — normalized for canvas proportions.
     func path(in rect: CGRect) -> Path {
-        let w = rect.width, h = rect.height
+        let w = rect.width
         // Precomputed for w=130, h=88; direction ≈ (0.347, -0.938), perp ≈ (0.938, 0.347)
         let dX: CGFloat = 0.347, dY: CGFloat = -0.938
         let pX: CGFloat = 0.938, pY: CGFloat =  0.347

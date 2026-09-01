@@ -711,7 +711,7 @@ struct ActiveSessionView: View {
         walkStore.markStarted()
         let center = UNUserNotificationCenter.current()
         if await center.notificationSettings().authorizationStatus == .notDetermined {
-            try? await center.requestAuthorization(options: [.alert, .sound])
+            _ = try? await center.requestAuthorization(options: [.alert, .sound])
         }
         for pet in petStore.activePets {
             petActiveSinceDistance[pet.id] = 0
