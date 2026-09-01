@@ -20,7 +20,8 @@ struct SquatCounterApp: App {
     @StateObject private var routeManager: RouteManager
     @StateObject private var routeStore:   CustomRouteStore
     @StateObject private var historyStore: WalkHistoryStore
-    @State private var selectedTab: AppTab = .home
+    @StateObject private var tabRouter:    TabRouter
+    @State private var communityRoutesModel = CommunityRoutesModel()
     @State private var showSplash = true
 
     init() {
@@ -34,12 +35,13 @@ struct SquatCounterApp: App {
         _routeManager = StateObject(wrappedValue: RouteManager())
         _routeStore   = StateObject(wrappedValue: CustomRouteStore())
         _historyStore = StateObject(wrappedValue: WalkHistoryStore())
+        _tabRouter    = StateObject(wrappedValue: TabRouter())
     }
 
     var body: some Scene {
         WindowGroup {
             ZStack {
-                TabView(selection: $selectedTab) {
+                TabView(selection: $tabRouter.selected) {
                     Tab("Home", systemImage: "house", value: AppTab.home) {
                         NavigationStack {
                             StepCounterView()
@@ -52,7 +54,7 @@ struct SquatCounterApp: App {
                     }
                     Tab("Community", systemImage: "person.2", value: AppTab.community) {
                         NavigationStack {
-                            CommunityPlaceholderView()
+                            CommunityHubView()
                         }
                     }
                     Tab("Settings", systemImage: "gearshape", value: AppTab.settings) {
@@ -79,11 +81,13 @@ struct SquatCounterApp: App {
                 }
             }
             .environment(ActiveWalkStore.shared)
+            .environment(communityRoutesModel)
             .environmentObject(petStore)
             .environmentObject(stepManager)
             .environmentObject(routeManager)
             .environmentObject(routeStore)
             .environmentObject(historyStore)
+            .environmentObject(tabRouter)
             .modelContainer(container)
             .task {
                 // One-shot launch setup. Runs after StepCounterView.handleAppear() because
@@ -159,23 +163,4 @@ private struct HealthPlaceholderView: View {
     }
 }
 
-private struct CommunityPlaceholderView: View {
-    var body: some View {
-        ZStack {
-            Color.earthBg.ignoresSafeArea()
-            VStack(spacing: 12) {
-                Image(systemName: "person.2")
-                    .font(.system(size: 48, weight: .medium))
-                    .foregroundColor(.earthGreen)
-                Text("Community")
-                    .font(.system(size: 28, weight: .bold, design: .rounded))
-                    .foregroundColor(.earthCream)
-                Text("Coming soon")
-                    .font(.subheadline)
-                    .foregroundColor(.earthMuted)
-            }
-        }
-        .navigationTitle("Community")
-        .navigationBarTitleDisplayMode(.inline)
-    }
-}
+

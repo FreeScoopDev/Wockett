@@ -1,16 +1,18 @@
 import SwiftUI
 import UIKit
 
-// MARK: - Badges & Streaks View
+// MARK: - Badges Content View (push-safe — no NavigationStack, no Done button)
 
-struct BadgesView: View {
-    let sessions: [WalkSession]
-    let todaySteps: Int
-    let dailyGoal: Int
-    @Binding var pinnedBadgeIdsStr: String
-    @Environment(\.dismiss) private var dismiss
+struct BadgesContentView: View {
+    @EnvironmentObject private var stepManager:  StepManager
+    @EnvironmentObject private var historyStore: WalkHistoryStore
+    @AppStorage("pinnedBadgeIds_v1") private var pinnedBadgeIdsStr: String = ""
 
     var streakStore: StreakStore = .shared
+
+    private var sessions:      [WalkSession] { historyStore.sessions }
+    private var todaySteps:    Int           { stepManager.todaySteps }
+    private var dailyGoal:     Int           { stepManager.currentGoal }
 
     private var cleanSessions: [WalkSession] { sessions.filter { !$0.flaggedPossibleVehicle } }
     private var totalKm:       Double { streakStore.totalKm(from: cleanSessions) }
@@ -50,39 +52,32 @@ struct BadgesView: View {
     }}
 
     var body: some View {
-        NavigationStack {
-            ZStack {
-                Color.earthBg.ignoresSafeArea()
-                ScrollView {
-                    VStack(spacing: 24) {
-                        pinHint
-                        streakSection
-                        personalRecordsSection
-                        badgeSection(title: "Distance",    badges: distanceBadges)
-                        badgeSection(title: "Streaks",     badges: streakBadges)
-                        badgeSection(title: "Time-Based",  badges: timeBadges)
-                        badgeSection(title: "Rides",       badges: rideBadges)
-                        badgeSection(title: "Pets",        badges: petBadges)
-                        badgeSection(title: "Explorer",    badges: explorerBadges)
-                        badgeSection(title: "Consistency", badges: consistencyBadges)
-                        badgeSection(title: "Collection",  badges: collectionBadges)
-                        badgeSection(title: "Social",      badges: socialBadges)
-                        badgeSection(title: "Meta",        badges: metaBadges)
-                        if currentStreak > 0 { shareButton }
-                    }
-                    .padding(.horizontal)
-                    .padding(.top, 8)
-                    .padding(.bottom, 32)
+        ZStack {
+            Color.earthBg.ignoresSafeArea()
+            ScrollView {
+                VStack(spacing: 24) {
+                    pinHint
+                    streakSection
+                    personalRecordsSection
+                    badgeSection(title: "Distance",    badges: distanceBadges)
+                    badgeSection(title: "Streaks",     badges: streakBadges)
+                    badgeSection(title: "Time-Based",  badges: timeBadges)
+                    badgeSection(title: "Rides",       badges: rideBadges)
+                    badgeSection(title: "Pets",        badges: petBadges)
+                    badgeSection(title: "Explorer",    badges: explorerBadges)
+                    badgeSection(title: "Consistency", badges: consistencyBadges)
+                    badgeSection(title: "Collection",  badges: collectionBadges)
+                    badgeSection(title: "Social",      badges: socialBadges)
+                    badgeSection(title: "Meta",        badges: metaBadges)
+                    if currentStreak > 0 { shareButton }
                 }
-            }
-            .navigationTitle("Streaks & Badges")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }.foregroundColor(.earthGreen)
-                }
+                .padding(.horizontal)
+                .padding(.top, 8)
+                .padding(.bottom, 32)
             }
         }
+        .navigationTitle("Streaks & Badges")
+        .navigationBarTitleDisplayMode(.inline)
         .onAppear {
             streakStore.refresh(sessions: sessions, todaySteps: todaySteps, dailyGoal: dailyGoal)
             Task {
@@ -205,7 +200,6 @@ struct BadgesView: View {
             return df.string(from: $0)
         }
 
-        // Best single day (aggregate session steps by calendar day)
         var stepsByDay: [Date: Int] = [:]
         for s in cleanSessions {
             let day = cal.startOfDay(for: s.date)
@@ -213,24 +207,18 @@ struct BadgesView: View {
         }
         if let best = stepsByDay.max(by: { $0.value < $1.value }) {
             records.append(PersonalRecord(
-                emoji: "🏆",
-                label: "Best Day",
-                value: best.value.formatted() + " steps",
-                detail: shortDate(best.key)
+                emoji: "🏆", label: "Best Day",
+                value: best.value.formatted() + " steps", detail: shortDate(best.key)
             ))
         }
 
-        // Longest single walk by distance
         if let longest = cleanSessions.max(by: { $0.totalDistance < $1.totalDistance }) {
             records.append(PersonalRecord(
-                emoji: "📏",
-                label: "Longest Walk",
-                value: longest.distanceText,
-                detail: shortDate(longest.date)
+                emoji: "📏", label: "Longest Walk",
+                value: longest.distanceText, detail: shortDate(longest.date)
             ))
         }
 
-        // Best pace — walking only, min 500 m
         let walkSessions = cleanSessions.filter {
             $0.totalDistance >= 500 && $0.elapsedTime > 60 && $0.activityType != "cycling"
         }
@@ -246,10 +234,8 @@ struct BadgesView: View {
             let mins      = Int(mpu)
             let secs      = Int((mpu - Double(mins)) * 60)
             records.append(PersonalRecord(
-                emoji: "⚡️",
-                label: "Best Pace",
-                value: String(format: "%d:%02d%@", mins, secs, unit),
-                detail: shortDate(fastest.date)
+                emoji: "⚡️", label: "Best Pace",
+                value: String(format: "%d:%02d%@", mins, secs, unit), detail: shortDate(fastest.date)
             ))
         }
 
@@ -356,6 +342,23 @@ struct BadgesView: View {
     }
 }
 
+// MARK: - Badges View (sheet wrapper — keeps existing callers compiling)
+
+struct BadgesView: View {
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            BadgesContentView()
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Done") { dismiss() }.foregroundColor(.earthGreen)
+                    }
+                }
+        }
+    }
+}
+
 // MARK: - Personal Record model
 
 private struct PersonalRecord {
@@ -368,10 +371,9 @@ private struct PersonalRecord {
 // MARK: - Preview
 
 #Preview("Badges") {
-    BadgesView(
-        sessions: [],
-        todaySteps: 4231,
-        dailyGoal: 10_000,
-        pinnedBadgeIdsStr: .constant("")
-    )
+    NavigationStack {
+        BadgesContentView()
+    }
+    .environmentObject(StepManager())
+    .environmentObject(WalkHistoryStore())
 }

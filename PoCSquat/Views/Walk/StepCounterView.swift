@@ -14,11 +14,11 @@ struct StepCounterView: View {
     @EnvironmentObject private var historyStore: WalkHistoryStore
 
     @EnvironmentObject private var petStore: PetStore
+    @EnvironmentObject private var tabRouter: TabRouter
     @Environment(\.scenePhase) private var scenePhase
     @Environment(ActiveWalkStore.self) private var walkStore
     var streakStore: StreakStore = .shared
 
-    @State private var showBadges               = false
     @State private var showResumeWalk           = false
     @State private var showRestoreWalkPrompt    = false
     @State private var earnedBadge: WalkBadge?  = nil
@@ -37,8 +37,6 @@ struct StepCounterView: View {
     @State private var showMonthCalendar = false
     @State private var showFreeWalk = false
     @State private var showStationary = false
-    @State private var showAchievementFeed = false
-    @State private var showChallenges      = false
     @State private var freeWalkMode: ActivityMode = .walking
     @State private var weatherLocator = HomeWeatherLocator()
     @State private var rollingBadgePhase: Int = 0
@@ -91,22 +89,8 @@ struct StepCounterView: View {
             .onChange(of: showWalkHistory) { _, isShowing in
                 if !isShowing && walkStore.isActive { showResumeWalk = true }
             }
-            .sheet(isPresented: $showBadges) {
-                BadgesView(
-                    sessions: historyStore.sessions,
-                    todaySteps: stepManager.todaySteps,
-                    dailyGoal: stepManager.currentGoal,
-                    pinnedBadgeIdsStr: $pinnedBadgeIdsStr
-                )
-            }
             .fullScreenCover(item: $earnedBadge) { badge in
                 BadgeEarnedView(badge: badge)
-            }
-            .sheet(isPresented: $showAchievementFeed) {
-                AchievementFeedView()
-            }
-            .sheet(isPresented: $showChallenges) {
-                ChallengesView(stepManager: stepManager, historyStore: historyStore)
             }
             .sheet(isPresented: $showResumeWalk) {
                 if let route = walkStore.activeRoute {
@@ -404,7 +388,10 @@ struct StepCounterView: View {
         // Rolling slot cycles through unearned badges
         let rollingBadge: WalkBadge? = unearned.isEmpty ? nil : unearned[rollingBadgePhase % unearned.count]
 
-        return Button { showBadges = true } label: {
+        return Button {
+            tabRouter.pendingCommunityDestination = .badges
+            tabRouter.selected = .community
+        } label: {
             VStack(spacing: 10) {
                 ForEach(fixedBadges, id: \.0.id) { badge, _ in
                     homeBadgeRing(badge, progress: 1.0, sessions: sessions, streak: streak,
@@ -477,7 +464,10 @@ struct StepCounterView: View {
 
     private var streakIndicator: some View {
         let streak = streakStore.currentStreak
-        return Button { showBadges = true } label: {
+        return Button {
+            tabRouter.pendingCommunityDestination = .badges
+            tabRouter.selected = .community
+        } label: {
             HStack(spacing: 6) {
                 Text(streak > 0 ? "🔥" : "💤")
                     .font(.system(size: 14))
@@ -571,7 +561,9 @@ struct StepCounterView: View {
 
             settingsTile(icon: "person.3.fill", label: "Community",
                          detail: "Feed & challenges",
-                         color: Color.accentRide) { showAchievementFeed = true }
+                         color: Color.accentRide) {
+                tabRouter.selected = .community
+            }
         }
         .padding(.horizontal)
     }
@@ -688,7 +680,10 @@ struct StepCounterView: View {
         let orange = Color(UIColor { tc in tc.userInterfaceStyle == .dark
             ? UIColor(red: 0.93, green: 0.50, blue: 0.38, alpha: 1)
             : UIColor(red: 0.831, green: 0.294, blue: 0.180, alpha: 1) })
-        return Button { showAchievementFeed = true } label: {
+        return Button {
+            tabRouter.pendingCommunityDestination = .achievementFeed
+            tabRouter.selected = .community
+        } label: {
             HStack(spacing: 14) {
                 ZStack {
                     RoundedRectangle(cornerRadius: 10)
@@ -720,7 +715,10 @@ struct StepCounterView: View {
     }
 
     private var challengesCard: some View {
-        Button { showChallenges = true } label: {
+        Button {
+            tabRouter.pendingCommunityDestination = .challenges
+            tabRouter.selected = .community
+        } label: {
             HStack(spacing: 14) {
                 ZStack {
                     RoundedRectangle(cornerRadius: 10)
@@ -894,7 +892,10 @@ struct StepCounterView: View {
 
             Spacer(minLength: 8)
 
-            Button { showBadges = true } label: {
+            Button {
+                tabRouter.pendingCommunityDestination = .badges
+                tabRouter.selected = .community
+            } label: {
                 VStack(spacing: 0) {
                     Text("\(streakStore.currentStreak)")
                         .font(.wktDisplay(22))

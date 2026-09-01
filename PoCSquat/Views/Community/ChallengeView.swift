@@ -1,12 +1,11 @@
 import SwiftUI
 import CloudKit
 
-// MARK: - Challenges View
+// MARK: - Challenges Content View (push-safe — no NavigationStack, no Done button)
 
-struct ChallengesView: View {
-    @ObservedObject var stepManager:  StepManager
-    @ObservedObject var historyStore: WalkHistoryStore
-    @Environment(\.dismiss) private var dismiss
+struct ChallengesContentView: View {
+    @EnvironmentObject private var stepManager:  StepManager
+    @EnvironmentObject private var historyStore: WalkHistoryStore
 
     @State private var challenges:        [WalkChallenge] = []
     @State private var isLoading         = false
@@ -15,42 +14,39 @@ struct ChallengesView: View {
     @State private var showCreate        = false
 
     var body: some View {
-        NavigationStack {
-            ZStack {
-                Color.earthBg.ignoresSafeArea()
-                if isLoading && challenges.isEmpty {
-                    VStack(spacing: 12) {
-                        ProgressView().tint(.earthGreen)
-                        Text("Loading challenges…")
-                            .font(.subheadline).foregroundColor(.earthMuted)
-                    }
-                } else if let err = loadError, challenges.isEmpty {
-                    errorView(err)
-                } else {
-                    challengeList
+        ZStack {
+            Color.earthBg.ignoresSafeArea()
+            if isLoading && challenges.isEmpty {
+                VStack(spacing: 12) {
+                    ProgressView().tint(.earthGreen)
+                    Text("Loading challenges…")
+                        .font(.subheadline).foregroundColor(.earthMuted)
                 }
-            }
-            .navigationTitle("Challenges")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Done") { dismiss() }.foregroundColor(.earthGreen)
-                }
-                ToolbarItem(placement: .primaryAction) {
-                    Button { showCreate = true } label: {
-                        Image(systemName: "plus").foregroundColor(.earthGreen)
-                    }
-                }
-            }
-            .task { await load() }
-            .sheet(isPresented: $showCreate, onDismiss: { Task { await load() } }) {
-                CreateChallengeView()
-            }
-            .sheet(item: $selectedChallenge) { challenge in
-                ChallengeDetailView(challenge: challenge, stepManager: stepManager, historyStore: historyStore)
+            } else if let err = loadError, challenges.isEmpty {
+                errorView(err)
+            } else {
+                challengeList
             }
         }
+        .navigationTitle("Challenges")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button { showCreate = true } label: {
+                    Image(systemName: "plus").foregroundColor(.earthGreen)
+                }
+            }
+        }
+        .task { await load() }
+        .sheet(isPresented: $showCreate, onDismiss: { Task { await load() } }) {
+            CreateChallengeView()
+        }
+        .sheet(item: $selectedChallenge) { challenge in
+            ChallengeDetailView(challenge: challenge)
+        }
     }
+
+    // MARK: - Helpers (ChallengesContentView)
 
     private var challengeList: some View {
         ScrollView {
@@ -170,6 +166,23 @@ struct ChallengesView: View {
     }
 }
 
+// MARK: - Challenges View (sheet wrapper — keeps existing callers compiling)
+
+struct ChallengesView: View {
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            ChallengesContentView()
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Done") { dismiss() }.foregroundColor(.earthGreen)
+                    }
+                }
+        }
+    }
+}
+
 // MARK: - Challenge Card
 
 private struct ChallengeCard: View {
@@ -248,9 +261,9 @@ private struct ChallengeCard: View {
 // MARK: - Challenge Detail View
 
 struct ChallengeDetailView: View {
-    let challenge:    WalkChallenge
-    @ObservedObject var stepManager:  StepManager
-    @ObservedObject var historyStore: WalkHistoryStore
+    let challenge: WalkChallenge
+    @EnvironmentObject private var stepManager:  StepManager
+    @EnvironmentObject private var historyStore: WalkHistoryStore
     @Environment(\.dismiss) private var dismiss
 
     @State private var participants:    [ChallengeParticipant] = []

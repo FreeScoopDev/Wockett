@@ -1,55 +1,48 @@
 import SwiftUI
 import CloudKit
 
-// MARK: - Achievement Feed View
+// MARK: - Achievement Feed Content View (push-safe — no NavigationStack, no Done button)
 
-struct AchievementFeedView: View {
-    @Environment(\.dismiss) private var dismiss
-
-    @State private var posts:        [AchievementPost] = []
-    @State private var isLoading     = false
-    @State private var loadError:    String?            = nil
+struct AchievementFeedContentView: View {
+    @State private var posts:     [AchievementPost] = []
+    @State private var isLoading  = false
+    @State private var loadError: String?            = nil
 
     var body: some View {
-        NavigationStack {
-            ZStack {
-                Color.earthBg.ignoresSafeArea()
+        ZStack {
+            Color.earthBg.ignoresSafeArea()
 
-                if isLoading && posts.isEmpty {
-                    ProgressView("Loading achievements…")
-                        .foregroundColor(.earthMuted)
-                } else if let error = loadError, posts.isEmpty {
-                    errorState(error)
-                } else if posts.isEmpty {
-                    emptyState
-                } else {
-                    ScrollView {
-                        LazyVStack(spacing: 12) {
-                            ForEach($posts) { $post in
-                                AchievementPostCard(post: $post, onHide: { posts.removeAll { $0.id == post.id } })
-                                    .padding(.horizontal)
-                            }
+            if isLoading && posts.isEmpty {
+                ProgressView("Loading achievements…")
+                    .foregroundColor(.earthMuted)
+            } else if let error = loadError, posts.isEmpty {
+                errorState(error)
+            } else if posts.isEmpty {
+                emptyState
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: 12) {
+                        ForEach($posts) { $post in
+                            AchievementPostCard(post: $post, onHide: { posts.removeAll { $0.id == post.id } })
+                                .padding(.horizontal)
                         }
-                        .padding(.top, 12)
-                        .padding(.bottom, 32)
                     }
-                    .refreshable { await load() }
+                    .padding(.top, 12)
+                    .padding(.bottom, 32)
                 }
+                .refreshable { await load() }
             }
-            .navigationTitle("Achievement Feed")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Done") { dismiss() }.foregroundColor(.earthGreen)
-                }
-                ToolbarItem(placement: .primaryAction) {
-                    if isLoading {
-                        ProgressView().tint(.earthGreen).scaleEffect(0.8)
-                    } else {
-                        Button { Task { await load() } } label: {
-                            Image(systemName: "arrow.clockwise")
-                                .foregroundColor(.earthGreen)
-                        }
+        }
+        .navigationTitle("Achievement Feed")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                if isLoading {
+                    ProgressView().tint(.earthGreen).scaleEffect(0.8)
+                } else {
+                    Button { Task { await load() } } label: {
+                        Image(systemName: "arrow.clockwise")
+                            .foregroundColor(.earthGreen)
                     }
                 }
             }
@@ -111,6 +104,23 @@ struct AchievementFeedView: View {
     }
 }
 
+// MARK: - Achievement Feed View (sheet wrapper — keeps existing callers compiling)
+
+struct AchievementFeedView: View {
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            AchievementFeedContentView()
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Done") { dismiss() }.foregroundColor(.earthGreen)
+                    }
+                }
+        }
+    }
+}
+
 // MARK: - Achievement Post Card
 
 private struct AchievementPostCard: View {
@@ -122,7 +132,6 @@ private struct AchievementPostCard: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 14) {
-            // Emoji circle
             ZStack {
                 Circle()
                     .fill(Color.earthGreen.opacity(0.12))
@@ -230,7 +239,6 @@ struct ShareAchievementSheet: View {
             ZStack {
                 Color.earthBg.ignoresSafeArea()
                 VStack(spacing: 24) {
-                    // Badge preview
                     VStack(spacing: 8) {
                         Text(badge.emoji)
                             .font(.system(size: 64))
@@ -245,7 +253,6 @@ struct ShareAchievementSheet: View {
                     }
                     .padding(.top, 8)
 
-                    // Optional message
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Add a message (optional)")
                             .font(.caption.bold())
@@ -279,7 +286,6 @@ struct ShareAchievementSheet: View {
                             .padding(.horizontal)
                     }
 
-                    // Post button
                     Button { post() } label: {
                         Group {
                             if isPosting {
@@ -323,7 +329,7 @@ struct ShareAchievementSheet: View {
             let container = CKContainer(identifier: "iCloud.Scoops.PoCSquat")
             let status    = try? await container.accountStatus()
             guard status == .available else {
-                postError = "Sign into iCloud in Settings to share achievements."
+                postError = "Sign into iCloud in Settings → [Your Name] to share achievements."
                 isPosting = false
                 return
             }

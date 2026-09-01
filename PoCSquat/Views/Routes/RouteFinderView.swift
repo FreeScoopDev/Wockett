@@ -27,10 +27,8 @@ struct RouteFinderView: View {
     @State private var routeForPosting: SuggestedRoute?
 
     // Community
-    @State private var communityRoutes: [SharedRoute] = []
-    @State private var isLoadingCommunity = false
+    @Environment(CommunityRoutesModel.self) private var communityModel
     @State private var showCommunityRoutes = true
-    @State private var communityLoadError: String? = nil
 
     // Navigation & sheets
     @State private var showNearbySheet = false
@@ -96,7 +94,7 @@ struct RouteFinderView: View {
             if routeManager.lastLocation == nil {
                 Task { routeManager.lastLocation = await routeManager.fetchCurrentLocation() }
             }
-            Task { await loadCommunityRoutes() }
+            Task { await communityModel.load() }
         }
         .onDisappear {
             clearRoutes()
@@ -435,8 +433,8 @@ struct RouteFinderView: View {
 
             Button {
                 showCommunityRoutes.toggle()
-                if showCommunityRoutes && communityRoutes.isEmpty && communityLoadError == nil {
-                    Task { await loadCommunityRoutes() }
+                if showCommunityRoutes && communityModel.routes.isEmpty && communityModel.loadError == nil && !communityModel.didLoad {
+                    Task { await communityModel.load() }
                 }
             } label: {
                 HStack {
@@ -444,7 +442,7 @@ struct RouteFinderView: View {
                         .font(.subheadline.bold())
                         .foregroundColor(.earthCream)
                     Spacer()
-                    if isLoadingCommunity {
+                    if communityModel.isLoading {
                         ProgressView().tint(.earthGreen).scaleEffect(0.8)
                     } else {
                         Image(systemName: showCommunityRoutes ? "chevron.up" : "chevron.down")
@@ -458,11 +456,11 @@ struct RouteFinderView: View {
             }
 
             if showCommunityRoutes {
-                if isLoadingCommunity {
+                if communityModel.isLoading && communityModel.routes.isEmpty {
                     ProgressView("Loading routes…")
                         .font(.caption).foregroundColor(.earthMuted)
                         .padding(.vertical, 12)
-                } else if let error = communityLoadError {
+                } else if let error = communityModel.loadError, communityModel.routes.isEmpty {
                     VStack(spacing: 10) {
                         Image(systemName: "exclamationmark.icloud")
                             .font(.system(size: 28))
@@ -473,8 +471,7 @@ struct RouteFinderView: View {
                             .multilineTextAlignment(.center)
                             .padding(.horizontal, 32)
                         Button {
-                            communityLoadError = nil
-                            Task { await loadCommunityRoutes() }
+                            Task { await communityModel.load(force: true) }
                         } label: {
                             Label("Retry", systemImage: "arrow.clockwise")
                                 .font(.caption.bold())
@@ -485,36 +482,35 @@ struct RouteFinderView: View {
                         }
                     }
                     .padding(.vertical, 12)
-                } else if communityRoutes.isEmpty {
+                } else if communityModel.routes.isEmpty && communityModel.didLoad {
                     Text("No routes shared yet — be the first!")
                         .font(.caption).foregroundColor(.earthMuted)
                         .padding(.vertical, 8)
                 } else {
-                    ForEach($communityRoutes) { $route in
+                    ForEach(Array(communityModel.routes.enumerated()), id: \.element.id) { i, route in
                         CommunityRouteCard(
-                            route: $route,
+                            route: Binding(
+                                get: { i < communityModel.routes.count ? communityModel.routes[i] : route },
+                                set: { if i < communityModel.routes.count { communityModel.routes[i] = $0 } }
+                            ),
                             hasVoted: CommunityRouteService.shared.hasVoted(for: route.id),
                             isSaved: savedCommunityIds.contains(route.id.recordName),
                             onWockett: {
-                                guard !CommunityRouteService.shared.hasVoted(for: route.id) else { return }
-                                route.wocketts += 1
+                                guard i < communityModel.routes.count,
+                                      !CommunityRouteService.shared.hasVoted(for: route.id) else { return }
+                                communityModel.routes[i].wocketts += 1
                                 CommunityRouteService.shared.markVoted(for: route.id)
                                 Task {
-                                    do {
-                                        try await CommunityRouteService.shared.wockett(id: route.id)
-                                    } catch {
-                                        wocketError = "Couldn't save your Wockett — check your connection and try again."
-                                    }
+                                    do { try await CommunityRouteService.shared.wockett(id: route.id) }
+                                    catch { wocketError = "Couldn't save your Wockett — check your connection and try again." }
                                 }
                             },
                             onSave: {
                                 routeStore.save(CustomRoute(
-                                    id: UUID(),
-                                    name: route.name,
+                                    id: UUID(), name: route.name,
                                     waypoints: route.waypoints,
                                     totalDistance: route.distanceMeters,
-                                    isLoop: route.isLoop,
-                                    createdAt: Date(),
+                                    isLoop: route.isLoop, createdAt: Date(),
                                     activityMode: activityMode
                                 ))
                                 savedCommunityIds.insert(route.id.recordName)
@@ -530,7 +526,7 @@ struct RouteFinderView: View {
                                 }
                                 dismiss()
                             },
-                            onHide: { communityRoutes.removeAll { $0.id == route.id } }
+                            onHide: { if i < communityModel.routes.count { communityModel.routes.remove(at: i) } }
                         )
                         .padding(.horizontal, 20)
                     }
@@ -538,7 +534,7 @@ struct RouteFinderView: View {
             }
         }
         .animation(.easeInOut(duration: 0.2), value: showCommunityRoutes)
-        .animation(.easeInOut(duration: 0.2), value: communityLoadError)
+        .animation(.easeInOut(duration: 0.2), value: communityModel.loadError != nil)
     }
 
     // MARK: - Helpers
@@ -678,31 +674,8 @@ struct RouteFinderView: View {
         }
     }
 
-    private func loadCommunityRoutes() async {
-        isLoadingCommunity = true
-        communityLoadError = nil
-        do {
-            communityRoutes = try await CommunityRouteService.shared.fetchRoutes()
-        } catch let ckError as CKError {
-            switch ckError.code {
-            case .notAuthenticated:
-                communityLoadError = "Sign into iCloud (Settings → [Your Name]) to view community routes."
-            case .networkUnavailable, .networkFailure:
-                communityLoadError = "No internet connection. Check your connection and retry."
-            case .unknownItem, .invalidArguments, .internalError:
-                communityLoadError = "Community routes aren't set up yet — open CloudKit Console and deploy SharedRoute to Production."
-            case .serviceUnavailable:
-                communityLoadError = "iCloud is temporarily unavailable. Try again in a moment."
-            default:
-                communityLoadError = "Couldn't load routes (error \(ckError.code.rawValue)). Tap to retry."
-            }
-        } catch {
-            communityLoadError = "Couldn't load routes: \(error.localizedDescription)"
-        }
-        isLoadingCommunity = false
-    }
-
 }
+
 
 // MARK: - WalkIntent persistence helpers
 
