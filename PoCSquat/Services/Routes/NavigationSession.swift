@@ -661,7 +661,7 @@ struct NavigationMapView: UIViewRepresentable {
                       let pt = ann as? MKPointAnnotation,
                       let title = pt.title else { continue }
                 let idx = title == "Start" ? 0 : (Int(title) ?? 0)
-                marker.markerTintColor = idx < currentWaypointIndex ? .systemGray3 : (title == "Start" ? .brandOrange : .brandGreen)
+                marker.markerTintColor = idx < currentWaypointIndex ? .systemGray3 : (title == "Start" ? .brandOrange : route.activityMode.tileUIColor)
                 marker.alpha = idx < currentWaypointIndex ? 0.45 : 1.0
             }
         }
@@ -741,9 +741,14 @@ struct NavigationMapView: UIViewRepresentable {
         return pts[n - 1].coordinate
     }
 
-    func makeCoordinator() -> Coordinator { Coordinator() }
+    func makeCoordinator() -> Coordinator {
+        let c = Coordinator()
+        c.activityColor = route.activityMode.tileUIColor
+        return c
+    }
 
     class Coordinator: NSObject, MKMapViewDelegate {
+        var activityColor: UIColor = .brandGreen
         var hasAddedLegs = false
         var lastWaypointIndex = 0
         var hasAddedCheckpoints = false
@@ -765,7 +770,7 @@ struct NavigationMapView: UIViewRepresentable {
             }
             guard let pl = overlay as? MKPolyline else { return MKOverlayRenderer(overlay: overlay) }
             let r = MKPolylineRenderer(polyline: pl)
-            r.strokeColor = .brandGreen
+            r.strokeColor = activityColor
             r.lineWidth = 5
             r.alpha = 0.85
             return r
@@ -775,7 +780,7 @@ struct NavigationMapView: UIViewRepresentable {
             if let milestone = annotation as? MilestoneAnnotation {
                 let view = MKMarkerAnnotationView(annotation: milestone, reuseIdentifier: "milestone")
                 view.glyphImage = UIImage(systemName: "flag.fill")
-                view.markerTintColor = UIColor(red: 0.13, green: 0.57, blue: 0.64, alpha: 1)
+                view.markerTintColor = .accentRide
                 view.titleVisibility = .visible
                 view.canShowCallout = false
                 return view
@@ -783,7 +788,7 @@ struct NavigationMapView: UIViewRepresentable {
             guard let ann = annotation as? MKPointAnnotation else { return nil }
             let view = MKMarkerAnnotationView(annotation: ann, reuseIdentifier: "nav")
             view.glyphText = ann.title ?? ""
-            view.markerTintColor = ann.title == "Start" ? .brandOrange : .brandGreen
+            view.markerTintColor = ann.title == "Start" ? .brandOrange : activityColor
             view.canShowCallout = false
             return view
         }

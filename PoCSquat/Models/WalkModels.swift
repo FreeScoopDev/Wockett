@@ -101,6 +101,16 @@ enum ActivityMode: String {
         }
     }
 
+    /// UIKit counterpart of `tileColor`, for MapKit renderers that take UIColor.
+    var tileUIColor: UIColor {
+        switch self {
+        case .walking:    return .brandGreen
+        case .running:    return .accentRun
+        case .cycling:    return .accentRide
+        case .stationary: return .accentIndoor
+        }
+    }
+
     var tileLabel: String {
         switch self {
         case .walking:    return "Start Walking"

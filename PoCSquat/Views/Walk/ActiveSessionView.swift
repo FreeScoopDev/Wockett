@@ -342,10 +342,7 @@ struct ActiveSessionView: View {
                 bounds: MapCameraBounds(minimumDistance: 100, maximumDistance: 800)) {
                 if session.trackPoints.count > 1 {
                     MapPolyline(coordinates: session.trackPoints)
-                        .stroke(route.activityMode == .cycling
-                            ? Color.accentRide
-                            : Color.earthGreen,
-                            lineWidth: 5)
+                        .stroke(route.activityMode.tileColor, lineWidth: 5)
                 }
                 UserAnnotation()
                 ForEach(poiManager.pois) { poi in

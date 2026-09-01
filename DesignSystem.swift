@@ -153,5 +153,26 @@ extension UIColor {
             ? UIColor(red: 0.878, green: 0.522, blue: 0.243, alpha: 1)
             : UIColor(red: 0.769, green: 0.400, blue: 0.114, alpha: 1)
     }
+
+    // UIKit mirrors of the SwiftUI accentRun/Ride/Indoor tokens above --
+    // MapKit renderers (MKPolylineRenderer, MKMarkerAnnotationView) take
+    // UIColor, not Color, so this is how NavigationSession's guided-route
+    // map can share the same per-activity accent palette used everywhere
+    // else (Dashboard tiles, free-walk map polyline).
+    static let accentRun = UIColor { tc in
+        tc.userInterfaceStyle == .dark
+            ? UIColor(red: 0.910, green: 0.545, blue: 0.322, alpha: 1)
+            : UIColor(red: 0.769, green: 0.333, blue: 0.102, alpha: 1)
+    }
+    static let accentRide = UIColor { tc in
+        tc.userInterfaceStyle == .dark
+            ? UIColor(red: 0.310, green: 0.702, blue: 0.741, alpha: 1)
+            : UIColor(red: 0.082, green: 0.478, blue: 0.522, alpha: 1)
+    }
+    static let accentIndoor = UIColor { tc in
+        tc.userInterfaceStyle == .dark
+            ? UIColor(red: 0.608, green: 0.549, blue: 0.878, alpha: 1)
+            : UIColor(red: 0.357, green: 0.294, blue: 0.690, alpha: 1)
+    }
 }
 
