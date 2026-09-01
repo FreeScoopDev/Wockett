@@ -319,7 +319,6 @@ struct SnapshotRestoreTests {
         let now        = Date()
         let checkpoint = now.addingTimeInterval(-300)
         let startTime  = checkpoint.addingTimeInterval(-1000)
-        let snapshot = makeSnapshot(isPaused: false, pausedDuration: 60, checkpointDate: checkpoint)
         // Override startTime via a fresh snapshot so the math uses our values.
         let s = ActiveWalkSnapshot(
             route: .init(makeRoute()),
