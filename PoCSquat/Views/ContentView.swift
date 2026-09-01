@@ -55,7 +55,59 @@ extension Color {
             ? UIColor(red: 0.608, green: 0.549, blue: 0.878, alpha: 1)   // #9B8CE0
             : UIColor(red: 0.357, green: 0.294, blue: 0.690, alpha: 1)   // #5B4BB0
     })
+
 }
+
+// MARK: - Typography system (v1.10 unified design system)
+//
+// Three tiers, two font families, zero new dependencies:
+//   Display    — SF Pro Rounded Black.    Hero numbers, wordmark, big stats.
+//   UI         — SF Pro Rounded Heavy/Semibold. Headings, labels, buttons.
+//   Technical  — SF Mono Semibold, tracked +14%. All-caps eyebrow labels,
+//                stat captions, and other "readout" text (GPS READY, PACE,
+//                ELAPSED, badge percentages, etc).
+//
+// The splash screen already commits to Rounded Black; this makes the rest
+// of the app follow through on that instead of using ad hoc system fonts.
+
+extension Font {
+    /// Display tier — SF Pro Rounded Black. Use for hero numbers and the wordmark.
+    static func wktDisplay(_ size: CGFloat) -> Font {
+        .system(size: size, weight: .black, design: .rounded)
+    }
+
+    /// UI tier, heading weight — SF Pro Rounded Heavy. Section titles, card headers.
+    static func wktHeading(_ size: CGFloat) -> Font {
+        .system(size: size, weight: .heavy, design: .rounded)
+    }
+
+    /// UI tier, body weight — SF Pro Rounded Semibold. Buttons, list labels, body text.
+    static func wktBody(_ size: CGFloat) -> Font {
+        .system(size: size, weight: .semibold, design: .rounded)
+    }
+}
+
+/// Technical tier — SF Mono Semibold, tracked +14%. Apply via the `.wktTechnical()`
+/// view modifier below rather than `.font()` directly, since tracking is a
+/// separate Text/View modifier in SwiftUI, not part of `Font` itself.
+private struct WktTechnicalText: ViewModifier {
+    var size: CGFloat
+    func body(content: Content) -> some View {
+        content
+            .font(.system(size: size, weight: .semibold, design: .monospaced))
+            .tracking(size * 0.14)
+    }
+}
+
+extension View {
+    /// Technical tier — SF Mono Semibold, tracked +14%. Default size 11pt
+    /// matches the small all-caps eyebrow labels and stat captions in the
+    /// design mockups (GPS READY, PACE, ELAPSED, badge percentages, etc).
+    func wktTechnical(_ size: CGFloat = 11) -> some View {
+        modifier(WktTechnicalText(size: size))
+    }
+}
+
 
 extension UIColor {
     static let brandGreen = UIColor { tc in
