@@ -11,15 +11,23 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Map polylines and guided-route waypoint markers now color by the session's activity mode (previously only cycling had its own color; everything else silently drew as walking-green)
 - Custom (built) routes now remember the activity mode they were built for; the Start screen shows a walk/run/ride chip row defaulted to that mode, changeable per-launch without altering the route's saved default
 - App and widget/Live Activity now read colors and fonts from one shared `DesignSystem.swift` file (dual target membership) instead of the widget keeping its own separate, non-adaptive palette — incidentally fixes the widget's background being hardcoded dark regardless of system theme, and the Live Activity's progress bar/dividers being nearly invisible in light mode
+- Bottom tab bar — Home, Health, Community, and Settings are now top-level tabs instead of everything living on one dashboard with a dozen pop-up sheets; the tab bar tucks away as you scroll on iPhone and adapts to a sidebar/top-tab layout on iPad
+- Community hub: streaks & badges, the achievement feed, challenges, and community routes now have a permanent home in the Community tab, with the streak on the dashboard jumping straight to your badges
+- Health hub: recovery metrics (sleep / readiness / active calories), gait detail, the weekly and monthly calendar, lifetime stats, and activity history now live in the Health tab
 
 ### Changed
 - Full WCAG contrast audit across every design-system color token, in both light and dark mode: fixed `accentNotice`'s illegible light-mode value, then — more substantially — split every accent color that's used as a solid button/toggle/marker fill into two variants: the original bright value for text and icons, and a new, separately-tuned "Fill" value for white content sitting on top of a solid fill. A single color value can't serve both roles well at once (bright enough to read as text, dark enough for white content on top to read well); this removes that trade-off everywhere it showed up — roughly 50 call sites across 20 files (buttons, selected chips, toggles, the guided-nav map's markers)
+- Settings is a tab rather than a sheet behind the gear icon; the active-walk tile now floats above the tab bar and stays visible on every tab, and tapping it reopens the session from anywhere
+- Dashboard trimmed to the at-a-glance hub: activity tiles, Find a Route, the stat card, the Crew, journey track, weather, and the close-the-gap card — sections that duplicated the new tabs were removed, along with leftover dead layout code from the earlier dashboard rebuild
+- Shared data stores (steps, routes, history) are created once at app launch and shared across screens instead of each screen keeping its own copy — seeded demo data and edits now show up immediately without relaunching
 
 ### Fixed
 - Several flat, non-adaptive color literals that had drifted from the shared design tokens over time — scattered across ~15 files (map pins, chip borders, a milestone-marker teal, POI category colors) — consolidated back onto the light/dark-adaptive tokens they were supposed to match
 - Build error after custom routes gained a saved activity mode: `ActivityMode` needed to conform to `Codable` for `CustomRoute`'s automatic Encodable/Decodable synthesis to work
 - The route-finder results panel sized itself against the physical device screen instead of its own window, which can misbehave in iPad multitasking (Split View, Slide Over, Stage Manager) where the app's window is smaller than the screen; now reads its actual container size
 - Minor build-warning cleanup: three unused local values removed (no behavior change)
+- Badges had lost their dedicated entry point in the dashboard rebuild (only reachable by tapping the streak number); they now have a proper home in the Community tab
+- Community routes were unreachable until you ran a route search, and then sat at the bottom of the results panel; they're now a first-class screen in the Community tab, reachable on a fresh launch
 
 ## [1.9] - 2026-08-31
 
