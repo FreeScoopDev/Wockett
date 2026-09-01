@@ -10,7 +10,7 @@ import OSLog
 // normally. See ActiveWalkSnapshotStore for read/write/clear, and
 // NavigationSessionManager.restore(from:) for reconstruction.
 
-struct ActiveWalkSnapshot: Codable {
+nonisolated struct ActiveWalkSnapshot: Codable {
     struct RouteData: Codable {
         let name: String
         let waypoints: [WaypointCoord]
