@@ -98,10 +98,10 @@ private struct StepRingView: View {
                 .animation(.easeOut(duration: 0.4), value: progress)
             VStack(spacing: 1) {
                 Text(steps.formatted())
-                    .font(.system(size: fontSize, weight: .bold, design: .rounded).monospacedDigit())
+                    .font(Font.wktDisplay(fontSize).monospacedDigit())
                     .foregroundColor(.earthCream)
                 Text("steps")
-                    .font(.system(size: fontSize * 0.38, weight: .medium))
+                    .wktTechnical(fontSize * 0.38)
                     .foregroundColor(.earthMuted)
             }
         }
@@ -122,13 +122,13 @@ private struct SmallStepView: View {
                         .font(.caption2.weight(.semibold))
                         .foregroundColor(.earthGreen)
                     Text("Wockett")
-                        .font(.caption2.weight(.semibold))
+                        .font(Font.wktDisplay(11))
                         .foregroundColor(.earthMuted)
                     Spacer()
                     if entry.streak > 0 {
                         HStack(spacing: 2) {
                             Text("\(entry.streak)")
-                                .font(.caption2.bold())
+                                .wktTechnical(11)
                             Text("🔥")
                                 .font(.system(size: 9))
                         }
@@ -142,7 +142,7 @@ private struct SmallStepView: View {
                     .padding(.horizontal, 18)
 
                 Text("of \(entry.goal.formatted())")
-                    .font(.system(size: 10, weight: .medium).monospacedDigit())
+                    .wktTechnical(10)
                     .foregroundColor(.earthMuted)
                     .padding(.bottom, 12)
             }
@@ -194,11 +194,12 @@ private struct MediumStepView: View {
                 .foregroundColor(.earthGreen)
                 .frame(width: 14)
             Text(label)
-                .font(.system(size: 11))
+                .wktTechnical(10)
+                .textCase(.uppercase)
                 .foregroundColor(.earthMuted)
             Spacer()
             Text(value)
-                .font(.system(size: 12, weight: .semibold).monospacedDigit())
+                .font(Font.wktDisplay(12).monospacedDigit())
                 .foregroundColor(valueColor)
         }
     }
