@@ -25,16 +25,12 @@ struct StepCounterView: View {
     @State private var showGoalSheet            = false
     @State private var showMyRoutes             = false
     @State private var showBuildRoute           = false
-    @State private var showWalkHistory          = false
     @State private var showPetManagement        = false
     @State private var showRouteFinder          = false
     @State private var routeFinderShowsNearby   = false
     @State private var showUserDetail = false
     @State private var selectedPetForDetail: PetProfile?
-    @State private var selectedCalendarDay: CalendarDay?
     @State private var containerWidth: CGFloat = 350
-    @State private var calendarWeekOffset: Int = 0
-    @State private var showMonthCalendar = false
     @State private var showFreeWalk = false
     @State private var showStationary = false
     @State private var freeWalkMode: ActivityMode = .walking
@@ -50,12 +46,6 @@ struct StepCounterView: View {
         stepCounterCore
             .sheet(isPresented: $showUserDetail) {
                 UserStepDetailSheet(stepManager: stepManager, historyStore: historyStore)
-            }
-            .sheet(item: $selectedCalendarDay) { day in
-                DayDetailSheet(day: day, sessions: historyStore.sessions)
-            }
-            .sheet(isPresented: $showMonthCalendar) {
-                MonthCalendarView(stepManager: stepManager, sessions: historyStore.sessions)
             }
             .sheet(item: $selectedPetForDetail) { pet in
                 PetDetailSheet(pet: pet, petStore: petStore, historyStore: historyStore) {
@@ -84,9 +74,6 @@ struct StepCounterView: View {
                 if !isShowing && walkStore.isActive { showResumeWalk = true }
             }
             .onChange(of: showMyRoutes) { _, isShowing in
-                if !isShowing && walkStore.isActive { showResumeWalk = true }
-            }
-            .onChange(of: showWalkHistory) { _, isShowing in
                 if !isShowing && walkStore.isActive { showResumeWalk = true }
             }
             .fullScreenCover(item: $earnedBadge) { badge in
@@ -123,7 +110,7 @@ struct StepCounterView: View {
             .onChange(of: historyStore.sessions.count) { _, _ in
                 Task {
                     await stepManager.refresh()
-                    await stepManager.refreshWeeklyCalendar(sessions: historyStore.sessions, weekOffset: calendarWeekOffset)
+                    await stepManager.refreshWeeklyCalendar(sessions: historyStore.sessions, weekOffset: 0)
                 }
             }
             .task {
@@ -143,7 +130,6 @@ struct StepCounterView: View {
                 routeStore.save(route)
                 UserDefaults.standard.set(true, forKey: "wkt_customRouteCreated")
             } }
-            .navigationDestination(isPresented: $showWalkHistory) { WalkHistoryView(store: historyStore) }
             .navigationDestination(isPresented: $showPetManagement) { PetManagementView(historyStore: historyStore, defaultGoal: stepManager.currentGoal) }
     }
 
@@ -156,7 +142,7 @@ struct StepCounterView: View {
             }
             .task {
                 await stepManager.initialize()
-                await stepManager.refreshWeeklyCalendar(sessions: historyStore.sessions, weekOffset: calendarWeekOffset)
+                await stepManager.refreshWeeklyCalendar(sessions: historyStore.sessions, weekOffset: 0)
                 await stepManager.scheduleStreakNudge(currentStreak: streakStore.currentStreak)
                 await petStore.schedulePetNudge(sessions: historyStore.sessions)
             }
@@ -173,12 +159,12 @@ struct StepCounterView: View {
             }
             .onChange(of: stepManager.todaySteps) { _, _ in
                 Task {
-                    await stepManager.refreshWeeklyCalendar(sessions: historyStore.sessions, weekOffset: calendarWeekOffset)
+                    await stepManager.refreshWeeklyCalendar(sessions: historyStore.sessions, weekOffset: 0)
                     await stepManager.scheduleStreakNudge(currentStreak: streakStore.currentStreak)
                 }
             }
             .onChange(of: stepManager.tagConfigs) { _, _ in
-                Task { await stepManager.refreshWeeklyCalendar(sessions: historyStore.sessions, weekOffset: calendarWeekOffset) }
+                Task { await stepManager.refreshWeeklyCalendar(sessions: historyStore.sessions, weekOffset: 0) }
             }
             .onAppear { handleAppear() }
             .onChange(of: stepManager.todaySteps) { _, steps in handleStepGoalCheck(steps) }
@@ -240,27 +226,10 @@ struct StepCounterView: View {
                     .padding(.horizontal)
                     .transition(.move(edge: .top).combined(with: .opacity))
                 }
-                RecoveryCard()
                 closeTheGapCard
                 communityRoutesCard
                 achievementFeedCard
                 challengesCard
-                FunStatsCard(sessions: historyStore.sessions, todaySteps: stepManager.todaySteps)
-                    .padding(.horizontal)
-                WeeklyCalendarView(
-                    days: stepManager.weeklyCalendar,
-                    weekOffset: calendarWeekOffset,
-                    stepManager: stepManager,
-                    onDayTap: { selectedCalendarDay = $0 },
-                    onWeekChange: { delta in
-                        let newOffset = (calendarWeekOffset + delta).clamped(to: -52...52)
-                        guard newOffset != calendarWeekOffset else { return }
-                        calendarWeekOffset = newOffset
-                        Task { await stepManager.refreshWeeklyCalendar(sessions: historyStore.sessions, weekOffset: newOffset) }
-                    },
-                    onCalendarTap: { showMonthCalendar = true }
-                )
-                GaitHealthSection()
                 settingsSection
             }
             .padding(.bottom, 40)
@@ -280,10 +249,6 @@ struct StepCounterView: View {
         walkStore.salvageStaleWalkIfNeeded()
         if walkStore.hasRestorableWalk {
             showRestoreWalkPrompt = true
-        }
-        if calendarWeekOffset != 0 {
-            calendarWeekOffset = 0
-            Task { await stepManager.refreshWeeklyCalendar(sessions: historyStore.sessions, weekOffset: 0) }
         }
         if let badge = streakStore.refresh(sessions: historyStore.sessions, todaySteps: stepManager.todaySteps, dailyGoal: stepManager.currentGoal) {
             earnedBadge = badge
@@ -554,10 +519,6 @@ struct StepCounterView: View {
             settingsTile(icon: "mappin.and.ellipse", label: "Saved Routes",
                          detail: routeStore.routes.isEmpty ? "No routes saved" : "\(routeStore.routes.count) route\(routeStore.routes.count == 1 ? "" : "s")",
                          color: Color.accentInfo) { showMyRoutes = true }
-
-            settingsTile(icon: "clock.arrow.circlepath", label: "History",
-                         detail: historyStore.sessions.isEmpty ? "No activities yet" : "\(historyStore.sessions.count) activit\(historyStore.sessions.count == 1 ? "y" : "ies")",
-                         color: .earthOrange) { showWalkHistory = true }
 
             settingsTile(icon: "person.3.fill", label: "Community",
                          detail: "Feed & challenges",
@@ -961,85 +922,6 @@ struct StepCounterView: View {
 
 }
 
-// MARK: - Fun Stats Card
-
-private struct FunStatsCard: View {
-    let sessions: [WalkSession]
-    let todaySteps: Int
-
-    private var totalKm: Double { sessions.reduce(0.0) { $0 + $1.totalDistance } / 1000 }
-    private var totalSteps: Int { sessions.reduce(0) { $0 + $1.estimatedSteps } + todaySteps }
-
-    private struct Fact: Identifiable {
-        let id = UUID()
-        let emoji: String
-        let headline: String
-        let detail: String
-    }
-
-    private var facts: [Fact] {
-        var result: [Fact] = []
-        // Golden Gate Bridge crossings (2.73 km one way)
-        let bridges = Int(totalKm / 2.73)
-        if bridges >= 1 {
-            result.append(Fact(emoji: "🌉",
-                headline: "\(bridges) Golden Gate crossing\(bridges == 1 ? "" : "s")",
-                detail: "Total distance covered"))
-        }
-        // Marathons (42.195 km)
-        let marathons = Int(totalKm / 42.195)
-        if marathons >= 1 {
-            result.append(Fact(emoji: "🏅",
-                headline: "\(marathons) marathon\(marathons == 1 ? "" : "s") completed",
-                detail: "Based on total distance"))
-        }
-        // Empire State Building stair climbs (1,576 steps per ascent)
-        let esbClimbs = totalSteps / 1_576
-        if esbClimbs >= 1 {
-            result.append(Fact(emoji: "🏙️",
-                headline: "\(esbClimbs)× up the Empire State Building",
-                detail: "1,576 steps per climb"))
-        }
-        // Earth circumference % (40,075 km)
-        let earthPct = (totalKm / 40_075) * 100
-        if earthPct >= 0.01 {
-            result.append(Fact(emoji: "🌍",
-                headline: String(format: "%.2f%% around Earth", earthPct),
-                detail: "40,075 km circumference"))
-        }
-        return Array(result.prefix(2))
-    }
-
-    var body: some View {
-        if facts.isEmpty { EmptyView() } else {
-            VStack(alignment: .leading, spacing: 10) {
-                Text("Your Journey in Perspective")
-                    .font(.caption.bold())
-                    .foregroundColor(.earthMuted)
-                    .textCase(.uppercase)
-                HStack(spacing: 10) {
-                    ForEach(facts) { fact in
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(fact.emoji).font(.title2)
-                            Text(fact.headline)
-                                .font(.system(size: 12, weight: .bold))
-                                .foregroundColor(.earthCream)
-                                .lineLimit(2)
-                                .fixedSize(horizontal: false, vertical: true)
-                            Text(fact.detail)
-                                .font(.system(size: 10))
-                                .foregroundColor(.earthMuted)
-                        }
-                        .padding(12)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Color.earthCard)
-                        .cornerRadius(14)
-                    }
-                }
-            }
-        }
-    }
-}
 
 // MARK: - Activity Suggestion Banner
 

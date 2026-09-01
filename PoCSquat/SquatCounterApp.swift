@@ -49,7 +49,7 @@ struct SquatCounterApp: App {
                     }
                     Tab("Health", systemImage: "heart.text.square", value: AppTab.health) {
                         NavigationStack {
-                            HealthPlaceholderView()
+                            HealthHubView()
                         }
                     }
                     Tab("Community", systemImage: "person.2", value: AppTab.community) {
@@ -137,29 +137,6 @@ struct SquatCounterApp: App {
         center.removePendingNotificationRequests(withIdentifiers: ["wkt-weekly-summary"])
         try? await center.add(UNNotificationRequest(identifier: "wkt-weekly-summary",
                                                     content: content, trigger: trigger))
-    }
-}
-
-// MARK: - Placeholder tabs
-
-private struct HealthPlaceholderView: View {
-    var body: some View {
-        ZStack {
-            Color.earthBg.ignoresSafeArea()
-            VStack(spacing: 12) {
-                Image(systemName: "heart.text.square")
-                    .font(.system(size: 48, weight: .medium))
-                    .foregroundColor(.earthGreen)
-                Text("Health")
-                    .font(.system(size: 28, weight: .bold, design: .rounded))
-                    .foregroundColor(.earthCream)
-                Text("Coming soon")
-                    .font(.subheadline)
-                    .foregroundColor(.earthMuted)
-            }
-        }
-        .navigationTitle("Health")
-        .navigationBarTitleDisplayMode(.inline)
     }
 }
 

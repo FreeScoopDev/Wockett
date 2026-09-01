@@ -273,8 +273,8 @@ struct GaitMetricConfig: Identifiable {
 // MARK: - Section
 
 struct GaitHealthSection: View {
-    private var service      = GaitHealthService.shared
-    @State private var selectedConfig: GaitMetricConfig? = nil
+    private var service = GaitHealthService.shared
+    @State private var selectedConfigId: String? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -300,7 +300,7 @@ struct GaitHealthSection: View {
                         GaitMetricCard(
                             config:    config,
                             snapshots: service.snapshots,
-                            onTap:     { selectedConfig = config }
+                            onTap:     { selectedConfigId = config.id }
                         )
                     }
                 }
@@ -315,8 +315,14 @@ struct GaitHealthSection: View {
         .task {
             if service.snapshots.isEmpty { await service.load() }
         }
-        .sheet(item: $selectedConfig) { config in
-            GaitMetricDetailSheet(config: config, snapshots: service.snapshots)
+        .navigationDestination(isPresented: Binding(
+            get: { selectedConfigId != nil },
+            set: { if !$0 { selectedConfigId = nil } }
+        )) {
+            if let id = selectedConfigId,
+               let config = GaitMetricConfig.all.first(where: { $0.id == id }) {
+                GaitMetricDetailContentView(config: config, snapshots: service.snapshots)
+            }
         }
     }
 
@@ -452,13 +458,11 @@ private struct GaitMetricCard: View {
     }
 }
 
-// MARK: - Detail Sheet
+// MARK: - Detail Content (push-safe: no NavigationStack, no Done button)
 
-struct GaitMetricDetailSheet: View {
+struct GaitMetricDetailContentView: View {
     let config:    GaitMetricConfig
     let snapshots: [GaitDaySnapshot]
-
-    @Environment(\.dismiss) private var dismiss
 
     // Computed statistics
     private var allValues:   [Double] { snapshots.compactMap { config.values($0) } }
@@ -513,32 +517,23 @@ struct GaitMetricDetailSheet: View {
     }
 
     var body: some View {
-        NavigationStack {
-            ZStack {
-                Color.earthBg.ignoresSafeArea()
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 24) {
-                        heroHeader
-                        if !chartPts.isEmpty { trendChartSection }
-                        statsGrid
-                        if !dowAverages.isEmpty { dowSection }
-                        aboutSection
-                        affectsSection
-                        tipsSection
-                    }
-                    .padding(.bottom, 40)
+        ZStack {
+            Color.earthBg.ignoresSafeArea()
+            ScrollView {
+                VStack(alignment: .leading, spacing: 24) {
+                    heroHeader
+                    if !chartPts.isEmpty { trendChartSection }
+                    statsGrid
+                    if !dowAverages.isEmpty { dowSection }
+                    aboutSection
+                    affectsSection
+                    tipsSection
                 }
-            }
-            .navigationTitle(config.title)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Done") { dismiss() }.foregroundColor(.earthGreen)
-                }
+                .padding(.bottom, 40)
             }
         }
-        .presentationDetents([.large])
-        .presentationDragIndicator(.visible)
+        .navigationTitle(config.title)
+        .navigationBarTitleDisplayMode(.inline)
     }
 
     // MARK: Hero header
@@ -807,5 +802,26 @@ struct GaitMetricDetailSheet: View {
         .background(Color.earthCard)
         .cornerRadius(16)
         .padding(.horizontal, 20)
+    }
+}
+
+// MARK: - Detail Sheet (thin wrapper — keeps existing sheet callers compiling)
+
+struct GaitMetricDetailSheet: View {
+    let config:    GaitMetricConfig
+    let snapshots: [GaitDaySnapshot]
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            GaitMetricDetailContentView(config: config, snapshots: snapshots)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Done") { dismiss() }.foregroundColor(.earthGreen)
+                    }
+                }
+        }
+        .presentationDetents([.large])
+        .presentationDragIndicator(.visible)
     }
 }

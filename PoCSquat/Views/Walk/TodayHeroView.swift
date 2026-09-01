@@ -282,6 +282,7 @@ struct RecoveryCard: View {
     private var gait     = GaitHealthService.shared
 
     @State private var selectedMetric: RecoveryMetricType? = nil
+    @State private var pushGaitDetail  = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -328,9 +329,12 @@ struct RecoveryCard: View {
                     }
                     Spacer()
                     if let (label, color, icon) = gaitStatus {
-                        Label("Gait: \(label)", systemImage: icon)
-                            .font(.caption2.bold())
-                            .foregroundColor(color)
+                        Button { pushGaitDetail = true } label: {
+                            Label("Gait: \(label)", systemImage: icon)
+                                .font(.caption2.bold())
+                                .foregroundColor(color)
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
                 .padding(.horizontal, 14)
@@ -343,6 +347,11 @@ struct RecoveryCard: View {
         .task { if recovery.activeCal == nil { await recovery.load() } }
         .sheet(item: $selectedMetric) { metric in
             RecoveryMetricDetailSheet(metric: metric)
+        }
+        .navigationDestination(isPresented: $pushGaitDetail) {
+            if let config = GaitMetricConfig.all.first {
+                GaitMetricDetailContentView(config: config, snapshots: gait.snapshots)
+            }
         }
     }
 
