@@ -6,7 +6,7 @@ import EventKit
 // MARK: - Settings View
 
 struct SettingsView: View {
-    @ObservedObject var stepManager: StepManager
+    @EnvironmentObject private var stepManager: StepManager
     var bannerStore: BannerStore = .shared
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL

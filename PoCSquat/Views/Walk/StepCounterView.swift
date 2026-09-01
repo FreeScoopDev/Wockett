@@ -34,7 +34,6 @@ struct StepCounterView: View {
     @State private var selectedCalendarDay: CalendarDay?
     @State private var containerWidth: CGFloat = 350
     @State private var calendarWeekOffset: Int = 0
-    @State private var showSettings = false
     @State private var showMonthCalendar = false
     @State private var showFreeWalk = false
     @State private var showStationary = false
@@ -155,7 +154,6 @@ struct StepCounterView: View {
 
     private var scrollWithDestinations: some View {
         scrollWithLifecycle
-            .navigationDestination(isPresented: $showSettings) { SettingsView(stepManager: stepManager) }
             .navigationDestination(isPresented: $showMyRoutes) { CustomRoutesListView(store: routeStore, historyStore: historyStore) }
             .navigationDestination(isPresented: $showBuildRoute) { CustomRouteBuilderView { route in
                 routeStore.save(route)
@@ -170,11 +168,6 @@ struct StepCounterView: View {
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button { showSettings = true } label: {
-                        Image(systemName: "gear").foregroundColor(.earthGreen)
-                    }
-                }
                 ToolbarItem(placement: .principal) { BannerTitleView() }
             }
             .task {
@@ -301,12 +294,6 @@ struct StepCounterView: View {
     private func handleAppear() {
         walkStore.configure(historyStore: historyStore)
         walkStore.salvageStaleWalkIfNeeded()
-        // Reap any phantom Live Activity left over from a force-quit when there is no
-        // active walk to attach to. Must come after salvageStaleWalkIfNeeded() so we
-        // don't kill the activity of a walk that's about to be offered for resume.
-        if walkStore.session == nil {
-            Task { await WalkLiveActivityManager.shared.endAllActivities() }
-        }
         if walkStore.hasRestorableWalk {
             showRestoreWalkPrompt = true
         }
@@ -318,49 +305,6 @@ struct StepCounterView: View {
             earnedBadge = badge
         }
         weatherLocator.fetchIfAuthorized()
-        scheduleWeeklySummaryNotification()
-        ActivityDetectionService.shared.startDetection()
-    }
-
-    private func scheduleWeeklySummaryNotification() {
-        let center = UNUserNotificationCenter.current()
-        let sessions = historyStore.sessions
-        let streak = streakStore.currentStreak
-        Task {
-            let status = await center.notificationSettings().authorizationStatus
-            guard status == .authorized else { return }
-            let enabled = UserDefaults.standard.object(forKey: "notif_weeklySummary") as? Bool ?? true
-            guard enabled else {
-                center.removePendingNotificationRequests(withIdentifiers: ["wkt-weekly-summary"])
-                return
-            }
-
-            // This week's stats from sessions
-            let cal = Calendar.current
-            let weekStart = cal.date(from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: Date())) ?? Date()
-            let weekSessions = sessions.filter { $0.date >= weekStart }
-            let weekSteps    = weekSessions.reduce(0) { $0 + $1.estimatedSteps }
-            let weekKm       = weekSessions.reduce(0.0) { $0 + $1.totalDistance } / 1000
-
-            let content = UNMutableNotificationContent()
-            content.title = "Your week in review 📊"
-            if weekSteps > 0 {
-                let streakSuffix = streak > 0 ? " · \(streak)-day streak 🔥" : ""
-                content.body = "This week: \(weekSteps.formatted()) steps · \(String(format: "%.1f", weekKm)) km\(streakSuffix). Keep it up!"
-            } else {
-                content.body = "A new week starts today — lace up and start strong! 💪"
-            }
-            content.sound = .default
-
-            // Fire every Sunday at 8 pm, re-scheduled with fresh data each app open
-            var comps = DateComponents()
-            comps.weekday = 1
-            comps.hour    = 20
-            comps.minute  = 0
-            let trigger = UNCalendarNotificationTrigger(dateMatching: comps, repeats: true)
-            center.removePendingNotificationRequests(withIdentifiers: ["wkt-weekly-summary"])
-            try? await center.add(UNNotificationRequest(identifier: "wkt-weekly-summary", content: content, trigger: trigger))
-        }
     }
 
     private func handleStepGoalCheck(_ steps: Int) {
