@@ -100,11 +100,11 @@ struct BadgesView: View {
                 .font(.system(size: 11))
                 .foregroundColor(.earthOrange)
             Text("Pin up to 2 badges to your home screen")
-                .font(.caption)
+                .font(.wktBody(12))
                 .foregroundColor(.earthMuted)
             Spacer()
             Text("\(pinnedIds.count)/2")
-                .font(.caption.bold())
+                .wktTechnical(11)
                 .foregroundColor(pinnedIds.count == 2 ? .earthOrange : .earthMuted)
         }
         .padding(.horizontal, 14).padding(.vertical, 10)
@@ -124,7 +124,7 @@ struct BadgesView: View {
             HStack(spacing: 8) {
                 Image(systemName: "figure.walk").foregroundColor(.earthGreen)
                 Text(String(format: "%.1f km walked all time", totalKm))
-                    .font(.subheadline).foregroundColor(.earthCream)
+                    .font(.wktBody(14)).foregroundColor(.earthCream)
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 12).padding(.horizontal, 16)
@@ -136,13 +136,14 @@ struct BadgesView: View {
         VStack(spacing: 4) {
             Text(emoji).font(.system(size: 24))
             Text("\(value)")
-                .font(.system(size: 26, weight: .black, design: .rounded))
+                .font(.wktDisplay(26))
                 .foregroundColor(.earthCream)
             Text("day\(value == 1 ? "" : "s")")
-                .font(.caption2).foregroundColor(.earthMuted)
+                .wktTechnical(9).foregroundColor(.earthMuted)
             Text(label)
-                .font(.system(size: 9, weight: .semibold))
+                .wktTechnical(9)
                 .foregroundColor(.earthMuted)
+                .textCase(.uppercase)
                 .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity)
@@ -157,10 +158,10 @@ struct BadgesView: View {
     private var personalRecordsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Personal Records")
-                .font(.headline).foregroundColor(.earthCream)
+                .font(.wktHeading(17)).foregroundColor(.earthCream)
             if sessions.isEmpty {
                 Text("Complete walks to unlock personal records.")
-                    .font(.caption).foregroundColor(.earthMuted)
+                    .font(.wktBody(12)).foregroundColor(.earthMuted)
                     .padding(14)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(Color.earthCard).cornerRadius(12)
@@ -173,17 +174,17 @@ struct BadgesView: View {
                                 .frame(width: 32, alignment: .center)
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(rec.label)
-                                    .font(.system(size: 10, weight: .bold))
+                                    .wktTechnical(10)
                                     .foregroundColor(.earthMuted)
                                     .textCase(.uppercase)
                                 Text(rec.value)
-                                    .font(.subheadline.bold())
+                                    .font(.wktHeading(15))
                                     .foregroundColor(.earthCream)
                             }
                             Spacer()
                             if let detail = rec.detail {
                                 Text(detail)
-                                    .font(.system(size: 10))
+                                    .wktTechnical(10)
                                     .foregroundColor(.earthMuted.opacity(0.7))
                             }
                         }
@@ -260,7 +261,7 @@ struct BadgesView: View {
     private func badgeSection(title: String, badges: [WalkBadge]) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(title)
-                .font(.headline).foregroundColor(.earthCream)
+                .font(.wktHeading(17)).foregroundColor(.earthCream)
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
                 ForEach(badges) { badge in
                     badgeTile(badge)
@@ -279,7 +280,7 @@ struct BadgesView: View {
                     .stroke(Color.earthMuted.opacity(0.15), lineWidth: 3)
                 Circle()
                     .trim(from: 0, to: progress)
-                    .stroke(earned ? Color.earthGreen : Color.earthOrange,
+                    .stroke(earned ? Color.earthGreen : Color.accentNotice,
                             style: StrokeStyle(lineWidth: 3, lineCap: .round))
                     .rotationEffect(.degrees(-90))
                 Text(badge.emoji)
@@ -289,10 +290,10 @@ struct BadgesView: View {
             }
             .frame(width: 44, height: 44)
             Text(badge.name)
-                .font(.caption.bold())
+                .font(.wktHeading(12))
                 .foregroundColor(earned ? .earthCream : .earthMuted)
             Text(badge.description)
-                .font(.system(size: 9))
+                .font(.wktBody(9))
                 .foregroundColor(.earthMuted)
                 .multilineTextAlignment(.center)
         }
@@ -344,7 +345,7 @@ struct BadgesView: View {
                 .present(av, animated: true)
         } label: {
             Label("Challenge a Friend", systemImage: "square.and.arrow.up")
-                .font(.headline)
+                .font(.wktHeading(17))
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 16)
                 .background(Color.earthGreen)
@@ -362,4 +363,15 @@ private struct PersonalRecord {
     let label:  String
     let value:  String
     let detail: String?
+}
+
+// MARK: - Preview
+
+#Preview("Badges") {
+    BadgesView(
+        sessions: [],
+        todaySteps: 4231,
+        dailyGoal: 10_000,
+        pinnedBadgeIdsStr: .constant("")
+    )
 }

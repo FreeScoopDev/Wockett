@@ -1,5 +1,11 @@
 import SwiftUI
 
+// MARK: - Preview
+
+#Preview("Badge Earned") {
+    BadgeEarnedView(badge: walkBadges.first!)
+}
+
 struct BadgeEarnedView: View {
     let badge: WalkBadge
     @Environment(\.dismiss) private var dismiss
@@ -23,15 +29,14 @@ struct BadgeEarnedView: View {
 
                 VStack(spacing: 10) {
                     Text("Badge Unlocked!")
-                        .font(.caption.bold())
+                        .wktTechnical(12)
                         .foregroundColor(.earthGreen)
                         .textCase(.uppercase)
-                        .tracking(2)
                     Text(badge.name)
-                        .font(.system(size: 34, weight: .black, design: .rounded))
+                        .font(.wktDisplay(34))
                         .foregroundColor(.earthCream)
                     Text(badge.description)
-                        .font(.subheadline)
+                        .font(.wktBody(14))
                         .foregroundColor(.earthMuted)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 32)
@@ -43,7 +48,7 @@ struct BadgeEarnedView: View {
                     // Share to community feed
                     Button { showShareSheet = true } label: {
                         Label("Share to Community", systemImage: "person.2.wave.2")
-                            .font(.headline)
+                            .font(.wktHeading(17))
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 16)
                             .background(Color.earthGreen)
@@ -55,7 +60,7 @@ struct BadgeEarnedView: View {
                     let shareText = "I just earned the \"\(badge.name)\" badge on Wockett \(badge.emoji) Keep walking!"
                     ShareLink(item: shareText) {
                         Label("Share via Messages / Social", systemImage: "square.and.arrow.up")
-                            .font(.subheadline.bold())
+                            .font(.wktHeading(14))
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 14)
                             .background(Color.earthCard)
@@ -64,7 +69,7 @@ struct BadgeEarnedView: View {
                     }
 
                     Button("Close") { dismiss() }
-                        .font(.subheadline)
+                        .font(.wktBody(14))
                         .foregroundColor(.earthMuted)
                         .padding(.bottom, 8)
                 }
