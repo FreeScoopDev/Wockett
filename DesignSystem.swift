@@ -81,7 +81,12 @@ extension Color {
     static let accentNotice = Color(UIColor { tc in
         tc.userInterfaceStyle == .dark
             ? UIColor(red: 0.95, green: 0.82, blue: 0.25, alpha: 1)
-            : UIColor(red: 0.82, green: 0.70, blue: 0.05, alpha: 1)
+            // Light-mode value darkened for the v1.10 accessibility audit --
+            // the original (0.82, 0.70, 0.05) measured 1.89:1 against earthBg
+            // (WCAG requires 3:1 even for large text/UI, 4.5:1 for normal
+            // text), essentially illegible on the cream background. This
+            // darker gold hits 4.75:1 / 5.22:1 against earthBg/earthCard.
+            : UIColor(red: 0.55, green: 0.40, blue: 0.02, alpha: 1)
     })
     static let accentHealth = Color(UIColor { tc in
         tc.userInterfaceStyle == .dark
