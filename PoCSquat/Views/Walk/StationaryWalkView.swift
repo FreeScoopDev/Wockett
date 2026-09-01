@@ -97,7 +97,7 @@ struct StationaryWalkView: View {
     @State private var showSummary = false
     @State private var petActiveSinceSteps: [UUID: Int] = [:]
 
-    private let purple = Color(red: 0.42, green: 0.32, blue: 0.76)
+    private let purple = Color.accentIndoor
 
     var body: some View {
         ZStack {
@@ -279,7 +279,7 @@ private struct StationarySummarySheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var saved = false
 
-    private let purple = Color(red: 0.42, green: 0.32, blue: 0.76)
+    private let purple = Color.accentIndoor
 
     var body: some View {
         NavigationStack {

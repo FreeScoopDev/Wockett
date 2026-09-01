@@ -56,6 +56,26 @@ extension Color {
             : UIColor(red: 0.357, green: 0.294, blue: 0.690, alpha: 1)   // #5B4BB0
     })
 
+    // Recurring "utility" colors found duplicated as flat literals across the codebase
+    // during the v1.10 consistency pass (routes/info blue, notice/attention amber,
+    // health-metric blue-purple) — consolidated here so every call site shares one
+    // adaptive definition instead of copy-pasted, non-adaptive RGB values.
+    static let accentInfo = Color(UIColor { tc in
+        tc.userInterfaceStyle == .dark
+            ? UIColor(red: 0.45, green: 0.62, blue: 0.92, alpha: 1)
+            : UIColor(red: 0.28, green: 0.49, blue: 0.84, alpha: 1)
+    })
+    static let accentNotice = Color(UIColor { tc in
+        tc.userInterfaceStyle == .dark
+            ? UIColor(red: 0.95, green: 0.82, blue: 0.25, alpha: 1)
+            : UIColor(red: 0.82, green: 0.70, blue: 0.05, alpha: 1)
+    })
+    static let accentHealth = Color(UIColor { tc in
+        tc.userInterfaceStyle == .dark
+            ? UIColor(red: 0.58, green: 0.66, blue: 0.95, alpha: 1)
+            : UIColor(red: 0.42, green: 0.52, blue: 0.88, alpha: 1)
+    })
+
 }
 
 // MARK: - Typography system (v1.10 unified design system)

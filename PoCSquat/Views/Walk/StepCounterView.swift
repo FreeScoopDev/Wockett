@@ -3,6 +3,7 @@ import MapKit
 import CoreLocation
 import UserNotifications
 import SwiftData
+import UIKit
 
 // MARK: - Step Counter View
 
@@ -618,7 +619,7 @@ struct StepCounterView: View {
 
             settingsTile(icon: "mappin.and.ellipse", label: "Saved Routes",
                          detail: routeStore.routes.isEmpty ? "No routes saved" : "\(routeStore.routes.count) route\(routeStore.routes.count == 1 ? "" : "s")",
-                         color: Color(red: 0.28, green: 0.49, blue: 0.84)) { showMyRoutes = true }
+                         color: Color.accentInfo) { showMyRoutes = true }
 
             settingsTile(icon: "clock.arrow.circlepath", label: "History",
                          detail: historyStore.sessions.isEmpty ? "No activities yet" : "\(historyStore.sessions.count) activit\(historyStore.sessions.count == 1 ? "y" : "ies")",
@@ -626,7 +627,7 @@ struct StepCounterView: View {
 
             settingsTile(icon: "person.3.fill", label: "Community",
                          detail: "Feed & challenges",
-                         color: Color(red: 0.13, green: 0.57, blue: 0.64)) { showAchievementFeed = true }
+                         color: Color.accentRide) { showAchievementFeed = true }
         }
         .padding(.horizontal)
     }
@@ -711,11 +712,11 @@ struct StepCounterView: View {
             HStack(spacing: 14) {
                 ZStack {
                     RoundedRectangle(cornerRadius: 10)
-                        .fill(Color(red: 0.13, green: 0.57, blue: 0.64).opacity(0.15))
+                        .fill(Color.accentRide.opacity(0.15))
                         .frame(width: 38, height: 38)
                     Image(systemName: "person.2.wave.2")
                         .font(.system(size: 15, weight: .medium))
-                        .foregroundColor(Color(red: 0.13, green: 0.57, blue: 0.64))
+                        .foregroundColor(Color.accentRide)
                 }
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Community Routes")
@@ -739,7 +740,10 @@ struct StepCounterView: View {
     }
 
     private var achievementFeedCard: some View {
-        let orange = Color(red: 0.831, green: 0.294, blue: 0.180)
+        // File-local adaptive constant — this exact orange-red doesn't recur elsewhere.
+        let orange = Color(UIColor { tc in tc.userInterfaceStyle == .dark
+            ? UIColor(red: 0.93, green: 0.50, blue: 0.38, alpha: 1)
+            : UIColor(red: 0.831, green: 0.294, blue: 0.180, alpha: 1) })
         return Button { showAchievementFeed = true } label: {
             HStack(spacing: 14) {
                 ZStack {

@@ -342,7 +342,7 @@ struct ChallengeDetailView: View {
                         ZStack(alignment: .leading) {
                             Capsule().fill(Color.earthMuted.opacity(0.12))
                             Capsule()
-                                .fill(prog >= 1 ? Color(red: 0.85, green: 0.72, blue: 0.1) : Color.earthGreen)
+                                .fill(prog >= 1 ? Color.accentNotice : Color.earthGreen)
                                 .frame(width: max(6, geo.size.width * prog))
                                 .animation(.spring(response: 0.5, dampingFraction: 0.8), value: prog)
                         }
@@ -543,7 +543,7 @@ private struct LeaderboardRow: View {
                         Capsule().fill(Color.earthMuted.opacity(0.1))
                         Capsule()
                             .fill(progress >= 1
-                                ? Color(red: 0.85, green: 0.72, blue: 0.1)
+                                ? Color.accentNotice
                                 : (participant.isCurrentDevice ? Color.earthGreen : Color.earthGreen.opacity(0.55)))
                             .frame(width: max(3, geo.size.width * progress))
                     }

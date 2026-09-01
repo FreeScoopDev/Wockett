@@ -3,6 +3,7 @@ import Combine
 import MapKit
 import CoreLocation
 import MessageUI
+import UIKit
 
 // MARK: - POI Support
 
@@ -39,13 +40,22 @@ enum WalkPOIFilter: String, CaseIterable {
         }
     }
 
+    // Light values are the original fixed palette; dark values are lifted so pins/chips
+    // stay readable against earthBg instead of going muddy, matching the adaptive
+    // treatment already used for pet accent colors and the activity tokens.
     var color: Color {
         switch self {
-        case .cafe:     return Color(red: 0.52, green: 0.33, blue: 0.18)
+        case .cafe:
+            return Color(UIColor { tc in tc.userInterfaceStyle == .dark
+                ? UIColor(red: 0.78, green: 0.58, blue: 0.38, alpha: 1)
+                : UIColor(red: 0.52, green: 0.33, blue: 0.18, alpha: 1) })
         case .park:     return .earthGreen
         case .food:     return .earthOrange
-        case .restroom: return Color(red: 0.28, green: 0.49, blue: 0.84)
-        case .pharmacy: return Color(red: 0.72, green: 0.22, blue: 0.28)
+        case .restroom: return .accentInfo
+        case .pharmacy:
+            return Color(UIColor { tc in tc.userInterfaceStyle == .dark
+                ? UIColor(red: 0.90, green: 0.45, blue: 0.50, alpha: 1)
+                : UIColor(red: 0.72, green: 0.22, blue: 0.28, alpha: 1) })
         }
     }
 }

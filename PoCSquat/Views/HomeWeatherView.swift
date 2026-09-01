@@ -173,14 +173,14 @@ struct HourlyWeatherRow: View {
                         .foregroundColor(.earthMuted)
                     Image(systemName: point.symbolName)
                         .font(.system(size: 13))
-                        .foregroundColor(point.precipitationChance >= 0.4 ? Color(red: 0.28, green: 0.49, blue: 0.84) : .earthCream)
+                        .foregroundColor(point.precipitationChance >= 0.4 ? Color.accentInfo : .earthCream)
                     Text(point.temperatureText)
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundColor(.earthCream)
                     if point.precipitationChance >= 0.3 {
                         Text("\(Int(point.precipitationChance * 100))%")
                             .font(.system(size: 9))
-                            .foregroundColor(Color(red: 0.28, green: 0.49, blue: 0.84))
+                            .foregroundColor(Color.accentInfo)
                     } else {
                         Spacer().frame(height: 11)
                     }
@@ -258,7 +258,7 @@ struct HomeWeatherChip: View {
 
     private var iconColor: Color {
         if isHot   { return .earthOrange }
-        if isRainy { return Color(red: 0.28, green: 0.49, blue: 0.84) }
+        if isRainy { return Color.accentInfo }
         return .earthGreen
     }
 }

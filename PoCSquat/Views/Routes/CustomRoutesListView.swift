@@ -101,10 +101,10 @@ struct BookmarkRow: View {
         HStack(spacing: 14) {
             ZStack {
                 RoundedRectangle(cornerRadius: 10)
-                    .fill(Color(red: 0.28, green: 0.49, blue: 0.84).opacity(0.15))
+                    .fill(Color.accentInfo.opacity(0.15))
                     .frame(width: 46, height: 46)
                 Image(systemName: "bookmark.fill")
-                    .foregroundColor(Color(red: 0.28, green: 0.49, blue: 0.84))
+                    .foregroundColor(Color.accentInfo)
                     .font(.system(size: 18, weight: .medium))
             }
             VStack(alignment: .leading, spacing: 4) {
@@ -167,8 +167,8 @@ struct CustomRouteDetailView: View {
     private enum ShareState { case idle, sharing, shared, failed }
     private var shareButtonColor: Color {
         switch shareState {
-        case .idle:    return Color(red: 0.28, green: 0.49, blue: 0.84)
-        case .sharing: return Color(red: 0.28, green: 0.49, blue: 0.84).opacity(0.6)
+        case .idle:    return Color.accentInfo
+        case .sharing: return Color.accentInfo.opacity(0.6)
         case .shared:  return .earthGreen
         case .failed:  return .red.opacity(0.7)
         }

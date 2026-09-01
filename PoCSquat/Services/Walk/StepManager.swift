@@ -3,6 +3,7 @@ import Combine
 import HealthKit
 import CoreMotion
 import UserNotifications
+import UIKit
 import WidgetKit
 
 // MARK: - Calendar Day Model
@@ -37,13 +38,28 @@ struct ActivityTagConfig: Identifiable, Codable, Hashable {
     var emoji: String
     var colorIndex: Int
 
+    // Light values are the original fixed palette; dark values are lifted so custom
+    // activity tags don't go muddy in dark mode, matching the treatment already used
+    // for pet accent colors.
     static let palette: [Color] = [
-        Color(red: 0.40, green: 0.60, blue: 0.90),  // blue
-        Color(red: 0.35, green: 0.65, blue: 0.45),  // green
-        Color(red: 0.90, green: 0.45, blue: 0.20),  // orange
-        Color(red: 0.62, green: 0.45, blue: 0.30),  // brown
-        Color(red: 0.85, green: 0.30, blue: 0.30),  // red
-        Color(red: 0.55, green: 0.35, blue: 0.80),  // purple
+        Color(UIColor { tc in tc.userInterfaceStyle == .dark
+            ? UIColor(red: 0.55, green: 0.72, blue: 0.95, alpha: 1)
+            : UIColor(red: 0.40, green: 0.60, blue: 0.90, alpha: 1) }),  // blue
+        Color(UIColor { tc in tc.userInterfaceStyle == .dark
+            ? UIColor(red: 0.48, green: 0.78, blue: 0.58, alpha: 1)
+            : UIColor(red: 0.35, green: 0.65, blue: 0.45, alpha: 1) }),  // green
+        Color(UIColor { tc in tc.userInterfaceStyle == .dark
+            ? UIColor(red: 0.95, green: 0.58, blue: 0.35, alpha: 1)
+            : UIColor(red: 0.90, green: 0.45, blue: 0.20, alpha: 1) }),  // orange
+        Color(UIColor { tc in tc.userInterfaceStyle == .dark
+            ? UIColor(red: 0.78, green: 0.60, blue: 0.44, alpha: 1)
+            : UIColor(red: 0.62, green: 0.45, blue: 0.30, alpha: 1) }),  // brown
+        Color(UIColor { tc in tc.userInterfaceStyle == .dark
+            ? UIColor(red: 0.95, green: 0.48, blue: 0.48, alpha: 1)
+            : UIColor(red: 0.85, green: 0.30, blue: 0.30, alpha: 1) }),  // red
+        Color(UIColor { tc in tc.userInterfaceStyle == .dark
+            ? UIColor(red: 0.72, green: 0.55, blue: 0.92, alpha: 1)
+            : UIColor(red: 0.55, green: 0.35, blue: 0.80, alpha: 1) }),  // purple
     ]
 
     var color: Color { Self.palette[colorIndex % Self.palette.count] }

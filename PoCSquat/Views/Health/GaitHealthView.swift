@@ -114,7 +114,7 @@ enum GaitStatus {
     var color: Color {
         switch self {
         case .good:      return .earthGreen
-        case .notice:    return Color(red: 0.82, green: 0.70, blue: 0.05)
+        case .notice:    return Color.accentNotice
         case .attention: return .earthOrange
         }
     }
@@ -735,7 +735,7 @@ struct GaitMetricDetailSheet: View {
     // MARK: About
 
     private var aboutSection: some View {
-        infoSection(title: "About This Metric", icon: "info.circle.fill", color: Color(red: 0.42, green: 0.52, blue: 0.88)) {
+        infoSection(title: "About This Metric", icon: "info.circle.fill", color: Color.accentHealth) {
             Text(config.explanation)
                 .font(.subheadline)
                 .foregroundColor(.earthMuted)

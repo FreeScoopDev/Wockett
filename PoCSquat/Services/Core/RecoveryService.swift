@@ -21,7 +21,7 @@ enum ReadinessLevel: Equatable {
     var color: Color {
         switch self {
         case .push:    return .earthGreen
-        case .active:  return Color(red: 0.82, green: 0.70, blue: 0.05)
+        case .active:  return Color.accentNotice
         case .recover: return .earthOrange
         case .unknown: return .earthMuted
         }

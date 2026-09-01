@@ -285,9 +285,9 @@ struct ActiveSessionView: View {
             .accessibilityLabel("Minimize session")
             .padding(.top, 60).padding(.leading, 16)
         }
-        .overlay(alignment: .top) {
+        .overlay(alignment: .topTrailing) {
             if !isGuided {
-                poiChipsRow.padding(.top, 56)
+                poiChipsRow.padding(.top, 60).padding(.trailing, 16)
             }
         }
         .fullScreenCover(isPresented: $showActivitySummary, onDismiss: {
@@ -343,7 +343,7 @@ struct ActiveSessionView: View {
                 if session.trackPoints.count > 1 {
                     MapPolyline(coordinates: session.trackPoints)
                         .stroke(route.activityMode == .cycling
-                            ? Color(red: 0.13, green: 0.57, blue: 0.64)
+                            ? Color.accentRide
                             : Color.earthGreen,
                             lineWidth: 5)
                 }
@@ -381,21 +381,53 @@ struct ActiveSessionView: View {
     // MARK: - POI Chips Row (free sessions)
 
     private var poiChipsRow: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                ForEach(WalkPOIFilter.allCases, id: \.rawValue) { cat in
-                    Button {
-                        if poiManager.activeCategories.contains(cat) {
-                            poiManager.disable(cat)
-                        } else {
+        Menu {
+            ForEach(WalkPOIFilter.allCases, id: \.rawValue) { cat in
+                Toggle(isOn: Binding(
+                    get: { poiManager.activeCategories.contains(cat) },
+                    set: { isOn in
+                        if isOn {
                             poiManager.enable(cat, near: session.trackPoints.last)
+                        } else {
+                            poiManager.disable(cat)
                         }
-                    } label: { poiChip(cat) }
+                    }
+                )) {
+                    Label {
+                        Text(cat.label)
+                    } icon: {
+                        Text(cat.emoji)
+                    }
                 }
             }
-            .padding(.horizontal, 20)
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "mappin.and.ellipse")
+                    .font(.system(size: 13, weight: .semibold))
+                Text(poiFilterButtonLabel)
+                    .font(.wktBody(12))
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 9, weight: .semibold))
+            }
+            .foregroundColor(.earthCream)
+            .padding(.horizontal, 12).padding(.vertical, 8)
+            .background(.ultraThinMaterial)
+            .clipShape(Capsule())
         }
-        .padding(.vertical, 6)
+    }
+
+    private var poiFilterButtonLabel: String {
+        let count = poiManager.activeCategories.count
+        return count == 0 ? "Nearby" : "\(count) shown"
+    }
+
+    // Checkpoint indicator — adaptive so it doesn't go muddy in dark mode, matching the
+    // treatment used for the shared design-system accent tokens. File-local because this
+    // exact purple doesn't recur anywhere else in the app.
+    private var checkpointAccent: Color {
+        Color(UIColor { tc in tc.userInterfaceStyle == .dark
+            ? UIColor(red: 0.62, green: 0.48, blue: 0.88, alpha: 1)
+            : UIColor(red: 0.35, green: 0.22, blue: 0.72, alpha: 1) })
     }
 
     // MARK: - HUD Panel
@@ -524,11 +556,11 @@ struct ActiveSessionView: View {
                         Image(systemName: waterBreakEnabled ? "drop.fill" : "drop")
                             .font(.title2)
                             .foregroundColor(waterBreakEnabled
-                                ? Color(red: 0.28, green: 0.49, blue: 0.84) : .earthMuted)
+                                ? Color.accentInfo : .earthMuted)
                         if waterBreakEnabled {
                             Text("/ \(waterBreakIntervalMinutes)m")
                                 .font(.system(size: 8, weight: .bold))
-                                .foregroundColor(Color(red: 0.28, green: 0.49, blue: 0.84))
+                                .foregroundColor(Color.accentInfo)
                         }
                     }
                     .animation(.spring(duration: 0.2), value: waterBreakEnabled)
@@ -541,11 +573,11 @@ struct ActiveSessionView: View {
                             Image(systemName: checkpointsEnabled ? "flag.fill" : "flag")
                                 .font(.title2)
                                 .foregroundColor(checkpointsEnabled
-                                    ? Color(red: 0.35, green: 0.22, blue: 0.72) : .earthMuted)
+                                    ? checkpointAccent : .earthMuted)
                             if checkpointsEnabled {
                                 Text(route.isCustomRoute ? "WP" : "20%")
                                     .font(.system(size: 8, weight: .bold))
-                                    .foregroundColor(Color(red: 0.35, green: 0.22, blue: 0.72))
+                                    .foregroundColor(checkpointAccent)
                             }
                         }
                         .animation(.spring(duration: 0.2), value: checkpointsEnabled)
@@ -640,7 +672,7 @@ struct ActiveSessionView: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 18)
                         .background(route.activityMode == .cycling
-                            ? Color(red: 0.13, green: 0.57, blue: 0.64)
+                            ? Color.accentRide
                             : Color.earthGreen)
                         .foregroundColor(.white)
                         .font(.headline)
@@ -940,20 +972,6 @@ struct ActiveSessionView: View {
 
     // MARK: - POI Chip
 
-    private func poiChip(_ cat: WalkPOIFilter) -> some View {
-        let active = poiManager.activeCategories.contains(cat)
-        return HStack(spacing: 4) {
-            Text(cat.emoji).font(.footnote)
-            Text(cat.label).font(.system(size: 11, weight: .semibold))
-        }
-        .padding(.horizontal, 10).padding(.vertical, 6)
-        .background(active ? cat.color : Color(UIColor.systemGray6).opacity(0.9))
-        .foregroundColor(active ? .white : .secondary)
-        .clipShape(Capsule())
-        .animation(.spring(response: 0.25), value: active)
-        .frame(minHeight: 44)
-        .contentShape(Rectangle())
-    }
 }
 
 // MARK: - Heat Advisory Banner
@@ -978,7 +996,7 @@ private struct HeatAdvisoryBanner: View {
                 Label("Every \(intervalMinutes) min", systemImage: "drop.fill")
                     .font(.caption.bold())
                     .padding(.horizontal, 10).padding(.vertical, 6)
-                    .background(Color(red: 0.28, green: 0.49, blue: 0.84).opacity(0.85))
+                    .background(Color.accentInfo.opacity(0.85))
                     .foregroundColor(.white).cornerRadius(8)
             }
             Button { onDismiss() } label: {

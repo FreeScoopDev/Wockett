@@ -290,7 +290,7 @@ struct RecoveryCard: View {
                     icon:  "bed.double.fill",
                     label: "Sleep",
                     value: recovery.sleepFormatted ?? "–",
-                    color: Color(red: 0.42, green: 0.52, blue: 0.88)
+                    color: Color.accentHealth
                 )
                 pillDivider
                 pillButton(metric: .readiness,
@@ -447,7 +447,7 @@ struct RecoveryMetricDetailSheet: View {
         return Group {
             heroHeader(
                 icon: "bed.double.fill",
-                color: Color(red: 0.42, green: 0.52, blue: 0.88),
+                color: Color.accentHealth,
                 value: recovery.sleepFormatted ?? "–",
                 subtitle: "Last night",
                 statusLabel: sleepStatus?.label,
@@ -498,7 +498,7 @@ struct RecoveryMetricDetailSheet: View {
             ])
 
             infoSection(title: "What This Measures", icon: "info.circle.fill",
-                        color: Color(red: 0.42, green: 0.52, blue: 0.88)) {
+                        color: Color.accentHealth) {
                 Text("Sleep duration is estimated from Apple Watch or iPhone motion sensors detecting when you're still. Apple Health records sleep in stages — Core (light sleep), Deep (slow-wave), and REM — as well as time in bed and any awake periods. This view shows total asleep time after merging all sources to avoid double-counting.")
                     .font(.subheadline).foregroundColor(.earthMuted).fixedSize(horizontal: false, vertical: true)
             }
@@ -621,7 +621,7 @@ struct RecoveryMetricDetailSheet: View {
                     .font(.subheadline).foregroundColor(.earthMuted).fixedSize(horizontal: false, vertical: true)
             }
 
-            infoSection(title: "What Is HRV?", icon: "waveform.path.ecg", color: Color(red: 0.42, green: 0.52, blue: 0.88)) {
+            infoSection(title: "What Is HRV?", icon: "waveform.path.ecg", color: Color.accentHealth) {
                 Text("Heart Rate Variability is the variation in time between consecutive heartbeats. Counterintuitively, more variation is better — it means your autonomic nervous system is adaptable. A high HRV relative to your baseline indicates your body recovered well. HRV is recorded by Apple Watch during sleep or during Breathe sessions.")
                     .font(.subheadline).foregroundColor(.earthMuted).fixedSize(horizontal: false, vertical: true)
             }
@@ -721,7 +721,7 @@ struct RecoveryMetricDetailSheet: View {
                     .font(.subheadline).foregroundColor(.earthMuted).fixedSize(horizontal: false, vertical: true)
             }
 
-            infoSection(title: "NEAT — The Hidden Calorie Burn", icon: "figure.walk", color: Color(red: 0.42, green: 0.52, blue: 0.88)) {
+            infoSection(title: "NEAT — The Hidden Calorie Burn", icon: "figure.walk", color: Color.accentHealth) {
                 Text("Non-Exercise Activity Thermogenesis (NEAT) is movement that isn't formal exercise — fidgeting, walking to meetings, taking stairs, standing vs sitting. Research shows NEAT can account for up to 2,000 extra calories per day in highly active people. Most wearable calorie estimates include NEAT, making it a key lever for total daily energy.")
                     .font(.subheadline).foregroundColor(.earthMuted).fixedSize(horizontal: false, vertical: true)
             }
@@ -885,7 +885,7 @@ struct RecoveryMetricDetailSheet: View {
                 .foregroundColor(.earthCream)
             HStack(spacing: 12) {
                 scoreComponent(icon: "bed.double.fill",
-                               color: Color(red: 0.42, green: 0.52, blue: 0.88),
+                               color: Color.accentHealth,
                                label: "Sleep", value: sleepScore)
                 scoreComponent(icon: "waveform.path.ecg",
                                color: recovery.readiness.color,
@@ -918,7 +918,7 @@ struct RecoveryMetricDetailSheet: View {
     private func sleepLevel(_ hours: Double) -> (label: String, color: Color) {
         if hours >= 7.5 { return ("Excellent", .earthGreen) }
         if hours >= 7.0 { return ("Good",      .earthGreen) }
-        if hours >= 6.0 { return ("Fair",       Color(red: 0.82, green: 0.70, blue: 0.05)) }
+        if hours >= 6.0 { return ("Fair",       Color.accentNotice) }
         return ("Short", .earthOrange)
     }
 }
