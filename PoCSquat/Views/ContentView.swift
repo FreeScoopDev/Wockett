@@ -33,6 +33,28 @@ extension Color {
             ? UIColor(red: 0.620, green: 0.608, blue: 0.580, alpha: 1)
             : UIColor(red: 0.431, green: 0.447, blue: 0.420, alpha: 1)
     })
+
+    // MARK: Design system foundation (added for v1.10 unified design system)
+    static let earthLine = Color(UIColor { tc in
+        tc.userInterfaceStyle == .dark
+            ? UIColor(red: 0.149, green: 0.188, blue: 0.165, alpha: 1)   // #26302A
+            : UIColor(red: 0.894, green: 0.878, blue: 0.835, alpha: 1)   // #E4E0D5
+    })
+    static let accentRun = Color(UIColor { tc in
+        tc.userInterfaceStyle == .dark
+            ? UIColor(red: 0.910, green: 0.545, blue: 0.322, alpha: 1)   // #E88B52
+            : UIColor(red: 0.769, green: 0.333, blue: 0.102, alpha: 1)   // #C4551A
+    })
+    static let accentRide = Color(UIColor { tc in
+        tc.userInterfaceStyle == .dark
+            ? UIColor(red: 0.310, green: 0.702, blue: 0.741, alpha: 1)   // #4FB3BD
+            : UIColor(red: 0.082, green: 0.478, blue: 0.522, alpha: 1)   // #157A85
+    })
+    static let accentIndoor = Color(UIColor { tc in
+        tc.userInterfaceStyle == .dark
+            ? UIColor(red: 0.608, green: 0.549, blue: 0.878, alpha: 1)   // #9B8CE0
+            : UIColor(red: 0.357, green: 0.294, blue: 0.690, alpha: 1)   // #5B4BB0
+    })
 }
 
 extension UIColor {

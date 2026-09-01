@@ -3,6 +3,7 @@ import Foundation
 import MapKit
 import SwiftUI
 import SwiftData
+import UIKit
 import UserNotifications
 
 // MARK: - Pet Profile
@@ -38,12 +39,25 @@ struct PetProfile: Identifiable, Codable, Equatable {
 
     var displayEmoji: String { customEmoji ?? emoji }
 
+    // Light values are the original fixed palette; dark values are lifted
+    // (brighter, slightly desaturated) so they read against `earthBg` instead
+    // of going muddy the way the old fixed single-mode colors did.
     static let accentColors: [Color] = [
-        Color(red: 0.78, green: 0.33, blue: 0.22),  // terracotta
-        Color(red: 0.85, green: 0.60, blue: 0.15),  // amber
-        Color(red: 0.28, green: 0.49, blue: 0.84),  // slate blue
-        Color(red: 0.67, green: 0.32, blue: 0.64),  // mauve
-        Color(red: 0.40, green: 0.63, blue: 0.38),  // sage
+        Color(UIColor { tc in tc.userInterfaceStyle == .dark
+            ? UIColor(red: 0.90, green: 0.50, blue: 0.38, alpha: 1)   // terracotta (lifted)
+            : UIColor(red: 0.78, green: 0.33, blue: 0.22, alpha: 1) }),
+        Color(UIColor { tc in tc.userInterfaceStyle == .dark
+            ? UIColor(red: 0.95, green: 0.72, blue: 0.32, alpha: 1)   // amber (lifted)
+            : UIColor(red: 0.85, green: 0.60, blue: 0.15, alpha: 1) }),
+        Color(UIColor { tc in tc.userInterfaceStyle == .dark
+            ? UIColor(red: 0.45, green: 0.62, blue: 0.92, alpha: 1)   // slate blue (lifted)
+            : UIColor(red: 0.28, green: 0.49, blue: 0.84, alpha: 1) }),
+        Color(UIColor { tc in tc.userInterfaceStyle == .dark
+            ? UIColor(red: 0.82, green: 0.50, blue: 0.80, alpha: 1)   // mauve (lifted)
+            : UIColor(red: 0.67, green: 0.32, blue: 0.64, alpha: 1) }),
+        Color(UIColor { tc in tc.userInterfaceStyle == .dark
+            ? UIColor(red: 0.55, green: 0.78, blue: 0.52, alpha: 1)   // sage (lifted)
+            : UIColor(red: 0.40, green: 0.63, blue: 0.38, alpha: 1) }),
     ]
 
     var accentColor: Color {

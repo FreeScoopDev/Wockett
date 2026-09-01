@@ -3,6 +3,11 @@
 All notable changes to Wockett are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Unreleased]
+
+### Added
+- Foundation for a unified design system: four new color tokens (`earthLine`, `accentRun`, `accentRide`, `accentIndoor`) extending the existing light/dark-adaptive `earthXXX` palette; pet accent colors (previously fixed, non-adaptive) now have proper light/dark pairs so they no longer go muddy in dark mode. No visual behavior change yet for existing screens — this lays groundwork for the v1.10 design system pass (typography hierarchy + per-activity accent colors across the app). See the design system proposal in Notion for the full plan.
+
 ## [1.9] - 2026-08-31
 
 ### Added
