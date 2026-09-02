@@ -27,6 +27,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Shared data stores (steps, routes, history) are created once at app launch and shared across screens instead of each screen keeping its own copy — seeded demo data and edits now show up immediately without relaunching
 
 ### Fixed
+- Routes tab bottom sheet no longer clipped by the tab bar: panels are presented via `.safeAreaInset(edge: .bottom)` on the map so the config and results sheets sit above the tab bar rather than beneath it
 - Icon-only buttons now have VoiceOver labels (29 sites: navigation controls, toolbar actions, toggle buttons, route save/share, session controls)
 - Text and icons now scale with the user's preferred text size; capped at Accessibility 2 so tiles and the tab bar remain usable at the largest sizes
 - Blank capsule bar appearing when no walk is active — `tabViewBottomAccessory(isEnabled:)` completely hides the capsule when idle instead of leaving an empty slot

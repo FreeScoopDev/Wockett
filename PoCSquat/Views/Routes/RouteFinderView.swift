@@ -72,7 +72,7 @@ struct RouteFinderContentView: View {
 
     var body: some View {
         GeometryReader { geo in
-            ZStack(alignment: .bottom) {
+            ZStack {
                 RouteFinderMapView(
                     routes: routeManager.suggestedRoutes,
                     selectedRoute: $selectedRoute,
@@ -80,20 +80,20 @@ struct RouteFinderContentView: View {
                     userLocation: routeManager.lastLocation?.coordinate
                 )
                 .ignoresSafeArea()
+                .safeAreaInset(edge: .bottom) {
+                    if showingConfig {
+                        configPanel
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                    } else {
+                        resultsPanel(containerHeight: geo.size.height)
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                    }
+                }
 
                 topBar
-
-                if showingConfig {
-                    configPanel
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
-                } else {
-                    resultsPanel(containerHeight: geo.size.height)
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
-                }
             }
         }
         .animation(.spring(response: 0.38, dampingFraction: 0.88), value: showingConfig)
-        .ignoresSafeArea(edges: .bottom)
         .onAppear {
             if tabRouter.pendingRoutesDestination == .nearby {
                 showNearbySheet = true
@@ -287,11 +287,11 @@ struct RouteFinderContentView: View {
                 }
                 .padding(.bottom, 4)
             }
-            .padding(.bottom, 36)
+            .padding(.bottom, 14)
             .animation(.spring(response: 0.35), value: routeManager.locationError != nil)
         }
-        .background(.ultraThinMaterial)
         .clipShape(UnevenRoundedRectangle(topLeadingRadius: 24, topTrailingRadius: 24))
+        .background(.ultraThinMaterial, ignoresSafeAreaEdges: .bottom)
     }
 
     // MARK: - Results panel
@@ -366,14 +366,14 @@ struct RouteFinderContentView: View {
 
                     communitySection
                 }
-                .padding(.bottom, 40)
+                .padding(.bottom, 14)
                 .animation(.easeInOut(duration: 0.2), value: selectedRoute?.id)
                 .animation(.spring(response: 0.4, dampingFraction: 0.85), value: elevationProfile == nil)
             }
             .frame(maxHeight: containerHeight * 0.35)
         }
-        .background(.ultraThinMaterial)
         .clipShape(UnevenRoundedRectangle(topLeadingRadius: 24, topTrailingRadius: 24))
+        .background(.ultraThinMaterial, ignoresSafeAreaEdges: .bottom)
     }
 
     @ViewBuilder
