@@ -4,8 +4,8 @@ import UserNotifications
 
 // MARK: - Active Mini Tile Container
 //
-// Placed in the root NavigationStack's safe-area inset (SquatCounterApp) so it
-// floats persistently above every pushed view while a session is live.
+// Content for .tabViewBottomAccessory(isEnabled: walkStore.isActive).
+// The system capsule handles background, shape, and show/hide animation.
 
 struct ActiveMiniTileContainer: View {
     @Environment(ActiveWalkStore.self) private var walkStore
@@ -13,25 +13,19 @@ struct ActiveMiniTileContainer: View {
     @State private var showEndConfirmation = false
 
     var body: some View {
-        VStack(spacing: 0) {
-            if walkStore.isActive, let session = walkStore.session, let route = walkStore.activeRoute {
+        Group {
+            if let session = walkStore.session, let route = walkStore.activeRoute {
                 ActiveMiniTile(
                     session: session,
                     route: route,
                     onReopen: {
-                        // Switch to Home first so StepCounterView's onChange fires
-                        // while it is the visible tab and can present its cover.
                         tabRouter.selected = .home
                         Task { @MainActor in walkStore.requestReopen() }
                     },
                     onEnd: { showEndConfirmation = true }
                 )
-                .padding(.horizontal, 12)
-                .padding(.bottom, 8)
-                .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
-        .animation(.spring(response: 0.4, dampingFraction: 0.82), value: walkStore.isActive)
         .confirmationDialog("End \(walkStore.activeRoute?.activityMode.sessionLabel ?? "Walk")?", isPresented: $showEndConfirmation, titleVisibility: .visible) {
             Button("Save & End \(walkStore.activeRoute?.activityMode.sessionLabel ?? "Walk")") {
                 guard walkStore.session != nil else { return }
@@ -58,6 +52,9 @@ struct ActiveMiniTileContainer: View {
 }
 
 // MARK: - Active Mini Tile
+//
+// Renders compact (inline — tab bar minimized) or expanded (normal) form.
+// The system capsule provides the background and shape; no chrome here.
 
 struct ActiveMiniTile: View {
     let session: NavigationSessionManager
@@ -65,18 +62,49 @@ struct ActiveMiniTile: View {
     let onReopen: () -> Void
     let onEnd:    () -> Void
 
+    @Environment(\.tabViewBottomAccessoryPlacement) private var placement
+
     var body: some View {
+        if placement == .inline {
+            compactView
+        } else {
+            expandedView
+        }
+    }
+
+    // MARK: - Compact (inline — tab bar minimized)
+
+    private var compactView: some View {
+        Button(action: onReopen) {
+            HStack(spacing: 8) {
+                Image(wkt: route.activityMode.wktSymbol)
+                    .wktIcon(.inline, tint: .earthGreen)
+                Text(distText(session.totalDistanceCovered))
+                    .font(.wktBody(13))
+                    .foregroundColor(.earthCream)
+                Text("·")
+                    .foregroundColor(.earthMuted)
+                Text(timeText(session.elapsedTime))
+                    .font(.wktBody(13))
+                    .foregroundColor(.earthGreen)
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Active \(route.activityMode.noun): \(distText(session.totalDistanceCovered)), \(timeText(session.elapsedTime))")
+    }
+
+    // MARK: - Expanded (normal — tab bar visible)
+
+    private var expandedView: some View {
         HStack(spacing: 0) {
-            // Tappable area — reopens the full map
             Button(action: onReopen) {
                 HStack(spacing: 10) {
                     ZStack {
                         Circle()
                             .fill(Color.earthGreen.opacity(0.15))
                             .frame(width: 38, height: 38)
-                        Image(systemName: route.activityMode.icon)
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundColor(.earthGreen)
+                        Image(wkt: route.activityMode.wktSymbol)
+                            .wktIcon(.row, tint: .earthGreen)
                     }
 
                     VStack(alignment: .leading, spacing: 2) {
@@ -95,9 +123,8 @@ struct ActiveMiniTile: View {
 
                     Spacer(minLength: 8)
 
-                    Image(systemName: "chevron.up")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundColor(.earthMuted)
+                    Image(wkt: .chevronUp)
+                        .wktIcon(.inline, tint: .earthMuted)
                         .padding(.trailing, 4)
                 }
                 .padding(.leading, 12)
@@ -108,19 +135,14 @@ struct ActiveMiniTile: View {
             .accessibilityLabel("Return to \(route.name)")
             .accessibilityHint("Opens the active session")
 
-            // Stop button — separate hit target
             Button(action: onEnd) {
-                Image(systemName: "stop.circle.fill")
-                    .font(.title2)
-                    .foregroundColor(.red.opacity(0.85))
+                Image(wkt: .stop)
+                    .wktIcon(.tab, tint: .red.opacity(0.85))
             }
             .buttonStyle(.plain)
             .padding(.horizontal, 14)
             .accessibilityLabel("End \(route.activityMode.noun)")
         }
-        .background(.ultraThinMaterial)
-        .cornerRadius(16)
-        .shadow(color: .black.opacity(0.12), radius: 8, x: 0, y: 4)
     }
 
     private func timeText(_ t: TimeInterval) -> String {

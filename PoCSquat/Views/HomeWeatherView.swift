@@ -93,7 +93,7 @@ struct WeatherAttributionLink: View {
     var body: some View {
         Link(destination: url) {
             HStack(spacing: 3) {
-                Image(systemName: "apple.logo")
+                Image(wkt: .appleLogo)
                     .font(.system(size: 9, weight: .semibold))
                 Text("Weather")
                     .font(.system(size: 10))
@@ -115,16 +115,14 @@ struct WeatherDeniedChip: View {
             }
         } label: {
             HStack(spacing: 8) {
-                Image(systemName: "location.slash.fill")
-                    .font(.system(size: 13))
-                    .foregroundColor(.earthMuted)
+                Image(wkt: .locationOff)
+                    .wktIcon(.inline, tint: .earthMuted)
                 Text("Enable location for weather")
                     .font(.caption)
                     .foregroundColor(.earthMuted)
                 Spacer()
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundColor(.earthMuted.opacity(0.5))
+                Image(wkt: .chevronRight)
+                    .wktIcon(.inline, tint: .earthMuted.opacity(0.5))
             }
             .padding(.horizontal, 14).padding(.vertical, 10)
             .background(Color.earthCard)
@@ -140,9 +138,8 @@ struct WeatherFailedChip: View {
     var body: some View {
         Button(action: onRetry) {
             HStack(spacing: 8) {
-                Image(systemName: "cloud.slash")
-                    .font(.system(size: 13))
-                    .foregroundColor(.earthMuted)
+                Image(wkt: .cloudOff)
+                    .wktIcon(.inline, tint: .earthMuted)
                 Text("Weather unavailable")
                     .font(.caption)
                     .foregroundColor(.earthMuted)

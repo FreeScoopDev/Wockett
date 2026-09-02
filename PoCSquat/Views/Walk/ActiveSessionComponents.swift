@@ -6,11 +6,11 @@ import SwiftUI
 struct SessionStatCell: View {
     let value: String
     let label: String
-    let icon: String
+    let icon: WktSymbol
 
     var body: some View {
         VStack(spacing: 5) {
-            Image(systemName: icon).font(.caption).foregroundColor(.earthGreen)
+            Image(wkt: icon).wktIcon(.inline, tint: .earthGreen)
             Text(value).font(.wktDisplay(17)).foregroundColor(.earthCream)
             Text(label).wktTechnical(9).foregroundColor(.earthMuted).textCase(.uppercase)
         }
@@ -24,21 +24,21 @@ struct SessionStatCell: View {
 
 struct SessionStatsBar: View {
     let session: NavigationSessionManager
-    let activityIcon: String
+    let activityIcon: WktSymbol
     let showsRemaining: Bool
 
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 0) {
                 if showsRemaining {
-                    SessionStatCell(value: session.distanceText(session.distanceToNextWaypoint), label: "to next", icon: "location.fill")
+                    SessionStatCell(value: session.distanceText(session.distanceToNextWaypoint), label: "to next", icon: .locationOn)
                     Rectangle().frame(width: 0.5, height: 36).foregroundColor(Color.earthMuted.opacity(0.25))
-                    SessionStatCell(value: session.distanceText(session.remainingDistance), label: "remaining", icon: "flag.fill")
+                    SessionStatCell(value: session.distanceText(session.remainingDistance), label: "remaining", icon: .finish)
                     Rectangle().frame(width: 0.5, height: 36).foregroundColor(Color.earthMuted.opacity(0.25))
                 }
-                SessionStatCell(value: session.elapsedText, label: "elapsed", icon: "clock.fill")
+                SessionStatCell(value: session.elapsedText, label: "elapsed", icon: .time)
                 Rectangle().frame(width: 0.5, height: 36).foregroundColor(Color.earthMuted.opacity(0.25))
-                SessionStatCell(value: session.paceText, label: session.paceLabel, icon: "speedometer")
+                SessionStatCell(value: session.paceText, label: session.paceLabel, icon: .pace)
             }
             .padding(.vertical, 14)
 
@@ -53,7 +53,7 @@ struct SessionStatsBar: View {
                         return base
                     }()
                     VStack(spacing: 5) {
-                        Image(systemName: activityIcon).font(.caption).foregroundColor(.earthGreen)
+                        Image(wkt: activityIcon).wktIcon(.inline, tint: .earthGreen)
                         Text(session.estimatedSteps.formatted()).font(.wktDisplay(17)).foregroundColor(.earthCream)
                         Text("steps").wktTechnical(9).foregroundColor(.earthMuted).textCase(.uppercase)
                         if let cad = session.cadence, cad > 0 {
@@ -67,7 +67,7 @@ struct SessionStatsBar: View {
                     .accessibilityLabel(stepsLabel)
                     if let eta = session.estimatedSecondsRemaining {
                         Rectangle().frame(width: 0.5, height: 36).foregroundColor(Color.earthMuted.opacity(0.25))
-                        SessionStatCell(value: fmtDuration(eta), label: "est. left", icon: "timer")
+                        SessionStatCell(value: fmtDuration(eta), label: "est. left", icon: .timer)
                     }
                 }
                 .padding(.vertical, 14)
@@ -89,8 +89,8 @@ struct PauseResumeControl: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            Image(systemName: "pause.circle.fill")
-                .foregroundColor(.earthOrange)
+            Image(wkt: .pauseCircle)
+                .wktIcon(.inline, tint: .earthOrange, filled: true)
             Text("\(sessionLabel) Paused")
                 .font(.wktHeading(12))
                 .foregroundColor(.earthOrange)
@@ -98,11 +98,16 @@ struct PauseResumeControl: View {
             Button {
                 onResume()
             } label: {
-                Label("Resume", systemImage: "play.fill")
-                    .font(.wktHeading(12))
-                    .padding(.horizontal, 12).padding(.vertical, 6)
-                    .background(Color.earthGreenFill.opacity(0.9))
-                    .foregroundColor(.white).cornerRadius(8)
+                Label {
+                    Text("Resume")
+                } icon: {
+                    Image(wkt: .play)
+                        .wktIcon(.inline, tint: .white, onFill: true)
+                }
+                .font(.wktHeading(12))
+                .padding(.horizontal, 12).padding(.vertical, 6)
+                .background(Color.earthGreenFill.opacity(0.9))
+                .foregroundColor(.white).cornerRadius(8)
             }
         }
         .padding(.horizontal, 16).padding(.vertical, 10)
@@ -161,8 +166,8 @@ struct DrivingSuspectedBanner: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: "car.fill")
-                .font(.title3).foregroundColor(.red.opacity(0.85))
+            Image(wkt: .vehicle)
+                .wktIcon(.row, tint: .red.opacity(0.85))
             VStack(alignment: .leading, spacing: 2) {
                 Text("This looks faster than a \(activityMode.noun)")
                     .font(.caption.bold()).foregroundColor(.earthCream)

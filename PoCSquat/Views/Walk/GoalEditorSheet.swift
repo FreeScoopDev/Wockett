@@ -154,7 +154,7 @@ struct GoalEditorSheet: View {
                                         }
                                     } label: {
                                         HStack(spacing: 4) {
-                                            Image(systemName: allLocked ? "lock.fill" : "lock.open")
+                                            Image(wkt: allLocked ? .lock : .lockOpen)
                                             Text(allLocked ? "Unlock All" : "Lock All")
                                                 .font(.caption.bold())
                                         }
@@ -193,9 +193,9 @@ struct GoalEditorSheet: View {
                                                     stepManager.lockedWeekdays.insert(wd)
                                                 }
                                             } label: {
-                                                Image(systemName: stepManager.lockedWeekdays.contains(wd) ? "lock.fill" : "lock.open")
-                                                    .font(.subheadline)
-                                                    .foregroundColor(stepManager.lockedWeekdays.contains(wd) ? .earthGreen : .earthMuted.opacity(0.4))
+                                                Image(wkt: stepManager.lockedWeekdays.contains(wd) ? .lock : .lockOpen)
+                                                    .wktIcon(.inline, tint: stepManager.lockedWeekdays.contains(wd) ? .earthGreen : .earthMuted.opacity(0.4),
+                                                             filled: stepManager.lockedWeekdays.contains(wd))
                                             }
                                             .frame(width: 28)
                                         }
@@ -248,8 +248,8 @@ struct GoalEditorSheet: View {
                                 }
                                 Spacer()
                                 Button { showTagCustomizer.toggle() } label: {
-                                    Image(systemName: showTagCustomizer ? "chevron.up" : "chevron.down")
-                                        .font(.caption).foregroundColor(.earthMuted.opacity(0.7))
+                                    Image(wkt: showTagCustomizer ? .chevronUp : .chevronDown)
+                                        .wktIcon(.inline, tint: .earthMuted.opacity(0.7))
                                 }
                             }
                             .padding(14)
@@ -289,9 +289,8 @@ struct GoalEditorSheet: View {
                                                                     ? ActivityTagConfig.palette[i].opacity(0.55) : .clear,
                                                                     radius: 4, y: 2)
                                                             if config.colorIndex == i {
-                                                                Image(systemName: "checkmark")
-                                                                    .font(.system(size: 9, weight: .bold))
-                                                                    .foregroundColor(.white)
+                                                                Image(wkt: .check)
+                                                                    .wktIcon(.inline, tint: .white, onFill: true)
                                                             }
                                                         }
                                                     }

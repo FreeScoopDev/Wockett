@@ -47,25 +47,33 @@ struct BadgeEarnedView: View {
                 VStack(spacing: 12) {
                     // Share to community feed
                     Button { showShareSheet = true } label: {
-                        Label("Share to Community", systemImage: "person.2.wave.2")
-                            .font(.wktHeading(17))
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 16)
-                            .background(Color.earthGreenFill)
-                            .foregroundColor(.white)
-                            .cornerRadius(14)
+                        Label {
+                            Text("Share to Community")
+                        } icon: {
+                            Image(wkt: .communityWave).wktIcon(.row, tint: .white, onFill: true)
+                        }
+                        .font(.wktHeading(17))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 16)
+                        .background(Color.earthGreenFill)
+                        .foregroundColor(.white)
+                        .cornerRadius(14)
                     }
 
                     // Standard iOS share sheet (Messages, social apps, etc.)
                     let shareText = "I just earned the \"\(badge.name)\" badge on Wockett \(badge.emoji) Keep walking!"
                     ShareLink(item: shareText) {
-                        Label("Share via Messages / Social", systemImage: "square.and.arrow.up")
-                            .font(.wktHeading(14))
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 14)
-                            .background(Color.earthCard)
-                            .foregroundColor(.earthCream)
-                            .cornerRadius(14)
+                        Label {
+                            Text("Share via Messages / Social")
+                        } icon: {
+                            Image(wkt: .share).wktIcon(.row, tint: .earthCream)
+                        }
+                        .font(.wktHeading(14))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(Color.earthCard)
+                        .foregroundColor(.earthCream)
+                        .cornerRadius(14)
                     }
 
                     Button("Close") { dismiss() }

@@ -47,7 +47,7 @@ struct WalkHistoryView: View {
                 Button {
                     showManualEntry = true
                 } label: {
-                    Image(systemName: "plus").foregroundColor(.earthGreen)
+                    Image(wkt: .add).wktIcon(.inline, tint: .earthGreen)
                 }
             }
         }
@@ -66,7 +66,7 @@ struct WalkHistoryView: View {
 
     private var emptyState: some View {
         VStack(spacing: 16) {
-            Image(systemName: "clock.arrow.circlepath")
+            Image(wkt: .history)
                 .font(.system(size: 64)).foregroundColor(.earthMuted.opacity(0.4))
             Text("No Walks Yet")
                 .font(.headline).foregroundColor(.earthCream)
@@ -156,9 +156,9 @@ struct WalkSessionDetailSheet: View {
                             .padding(.top, 4)
 
                         HStack(spacing: 12) {
-                            detailTile(session.distanceText, "Distance", "ruler")
-                            detailTile(session.timeText,     "Duration", "clock")
-                            detailTile("\(session.estimatedSteps.formatted())", "Steps", "figure.walk")
+                            detailTile(session.distanceText, "Distance", .distance)
+                            detailTile(session.timeText,     "Duration", .time)
+                            detailTile("\(session.estimatedSteps.formatted())", "Steps", .walk)
                         }
                         .padding(.horizontal)
 
@@ -200,14 +200,18 @@ struct WalkSessionDetailSheet: View {
                         }
 
                         Button { showActivityShare = true } label: {
-                            Label("Share this Walk", systemImage: "square.and.arrow.up")
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 14)
-                                .background(Color.earthCard)
-                                .foregroundColor(.earthCream)
-                                .fontWeight(.semibold)
-                                .cornerRadius(14)
-                                .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.earthGreen.opacity(0.4), lineWidth: 1.5))
+                            Label {
+                                Text("Share this Walk")
+                            } icon: {
+                                Image(wkt: .share).wktIcon(.row, tint: .earthCream)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 14)
+                            .background(Color.earthCard)
+                            .foregroundColor(.earthCream)
+                            .fontWeight(.semibold)
+                            .cornerRadius(14)
+                            .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.earthGreen.opacity(0.4), lineWidth: 1.5))
                         }
                         .padding(.horizontal)
 
@@ -246,9 +250,9 @@ struct WalkSessionDetailSheet: View {
         }
     }
 
-    private func detailTile(_ value: String, _ label: String, _ icon: String) -> some View {
+    private func detailTile(_ value: String, _ label: String, _ icon: WktSymbol) -> some View {
         VStack(spacing: 6) {
-            Image(systemName: icon).foregroundColor(.earthGreen).font(.title3)
+            Image(wkt: icon).wktIcon(.row, tint: .earthGreen)
             Text(value).font(.headline.bold()).foregroundColor(.earthCream)
             Text(label).font(.caption).foregroundColor(.earthMuted)
         }
@@ -412,12 +416,12 @@ struct WalkHistoryRow: View {
     let onWalkAgain: () -> Void
     let onInfo: () -> Void
 
-    private var rowIcon: String {
+    private var rowIcon: WktSymbol {
         switch session.activityType {
-        case "running":    return "figure.run"
-        case "cycling":    return "bicycle"
-        case "stationary": return "figure.walk.motion"
-        default:           return "figure.walk"
+        case "running":    return .run
+        case "cycling":    return .ride
+        case "stationary": return .indoor
+        default:           return .walk
         }
     }
 
@@ -435,14 +439,14 @@ struct WalkHistoryRow: View {
             ZStack {
                 RoundedRectangle(cornerRadius: 10)
                     .fill(rowColor.opacity(0.15)).frame(width: 46, height: 46)
-                Image(systemName: rowIcon).foregroundColor(rowColor)
+                Image(wkt: rowIcon).wktIcon(.row, tint: rowColor)
             }
             VStack(alignment: .leading, spacing: 4) {
                 Text(session.routeName).font(.headline).foregroundColor(.earthCream).lineLimit(1)
                 Text(session.formattedDate).font(.subheadline).foregroundColor(.earthMuted)
                 HStack(spacing: 10) {
-                    Label(session.distanceText, systemImage: "ruler")
-                    Label(session.timeText, systemImage: "clock")
+                    Label { Text(session.distanceText) } icon: { Image(wkt: .distance).wktIcon(.inline, tint: .earthMuted) }
+                    Label { Text(session.timeText) } icon: { Image(wkt: .time).wktIcon(.inline, tint: .earthMuted) }
                 }
                 .font(.footnote).foregroundColor(.earthMuted)
                 if !session.notes.isEmpty {
@@ -454,18 +458,16 @@ struct WalkHistoryRow: View {
             Spacer()
             VStack(spacing: 8) {
                 Button { onWalkAgain() } label: {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(rowColor)
+                    Image(wkt: .refresh)
+                        .wktIcon(.inline, tint: rowColor)
                         .frame(width: 34, height: 34)
                         .background(rowColor.opacity(0.12))
                         .cornerRadius(8)
                 }
                 .buttonStyle(.plain)
                 Button { onInfo() } label: {
-                    Image(systemName: session.notes.isEmpty ? "note.text.badge.plus" : "note.text")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(.earthMuted)
+                    Image(wkt: session.notes.isEmpty ? .notePlus : .noteText)
+                        .wktIcon(.inline, tint: .earthMuted)
                         .frame(width: 34, height: 34)
                         .background(Color.earthMuted.opacity(0.1))
                         .cornerRadius(8)

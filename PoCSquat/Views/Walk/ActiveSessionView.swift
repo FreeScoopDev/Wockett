@@ -274,9 +274,8 @@ struct ActiveSessionView: View {
         }
         .overlay(alignment: .topLeading) {
             Button { dismiss() } label: {
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 16, weight: .bold))
-                    .foregroundColor(.earthCream)
+                Image(wkt: .chevronDown)
+                    .wktIcon(.row, tint: .earthCream)
                     .padding(10)
                     .background(.ultraThinMaterial)
                     .clipShape(Circle())
@@ -398,12 +397,12 @@ struct ActiveSessionView: View {
             }
         } label: {
             HStack(spacing: 6) {
-                Image(systemName: "mappin.and.ellipse")
-                    .font(.system(size: 13, weight: .semibold))
+                Image(wkt: .place)
+                    .wktIcon(.inline, tint: .earthCream)
                 Text(poiFilterButtonLabel)
                     .font(.wktBody(12))
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 9, weight: .semibold))
+                Image(wkt: .chevronDown)
+                    .wktIcon(.inline, tint: .earthCream)
             }
             .foregroundColor(.earthCream)
             .padding(.horizontal, 12).padding(.vertical, 8)
@@ -478,8 +477,8 @@ struct ActiveSessionView: View {
             HStack {
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(spacing: 6) {
-                        Image(systemName: route.activityMode.icon)
-                            .font(.subheadline).foregroundColor(.earthGreen)
+                        Image(wkt: route.activityMode.wktSymbol)
+                            .wktIcon(.inline, tint: .earthGreen)
                         Text(isGuided ? route.name : route.activityMode.sessionLabel)
                             .font(.wktHeading(15)).foregroundColor(.earthCream).lineLimit(1)
                     }
@@ -529,8 +528,8 @@ struct ActiveSessionView: View {
                                 ownerUpdatePickerPets = activePetsWithOwner
                             }
                         } label: {
-                            Image(systemName: "message.fill")
-                                .font(.title2).foregroundColor(.earthGreen)
+                            Image(wkt: .chat)
+                                .wktIcon(.row, tint: .earthGreen)
                         }
                         .padding(.trailing, 10)
                     }
@@ -538,9 +537,9 @@ struct ActiveSessionView: View {
                 Button {
                     WalkAudioCueService.shared.isEnabled.toggle()
                 } label: {
-                    Image(systemName: WalkAudioCueService.shared.isEnabled ? "speaker.wave.2.fill" : "speaker.slash")
-                        .font(.title2)
-                        .foregroundColor(WalkAudioCueService.shared.isEnabled ? .earthGreen : .earthMuted)
+                    Image(wkt: WalkAudioCueService.shared.isEnabled ? .speakerOn : .speakerOff)
+                        .wktIcon(.row, tint: WalkAudioCueService.shared.isEnabled ? .earthGreen : .earthMuted,
+                                 filled: WalkAudioCueService.shared.isEnabled)
                 }
                 .accessibilityLabel(WalkAudioCueService.shared.isEnabled ? "Mute audio cues" : "Enable audio cues")
                 .padding(.trailing, 10)
@@ -549,10 +548,9 @@ struct ActiveSessionView: View {
                     if !waterBreakEnabled { cancelWaterBreakReminders() }
                 } label: {
                     VStack(spacing: 1) {
-                        Image(systemName: waterBreakEnabled ? "drop.fill" : "drop")
-                            .font(.title2)
-                            .foregroundColor(waterBreakEnabled
-                                ? Color.accentInfo : .earthMuted)
+                        Image(wkt: .hydration)
+                            .wktIcon(.row, tint: waterBreakEnabled ? .accentInfo : .earthMuted,
+                                     filled: waterBreakEnabled)
                         if waterBreakEnabled {
                             Text("/ \(waterBreakIntervalMinutes)m")
                                 .wktTechnical(8)
@@ -566,10 +564,9 @@ struct ActiveSessionView: View {
                 if isGuided {
                     Button { checkpointsEnabled.toggle() } label: {
                         VStack(spacing: 1) {
-                            Image(systemName: checkpointsEnabled ? "flag.fill" : "flag")
-                                .font(.title2)
-                                .foregroundColor(checkpointsEnabled
-                                    ? checkpointAccent : .earthMuted)
+                            Image(wkt: .finish)
+                                .wktIcon(.row, tint: checkpointsEnabled ? checkpointAccent : .earthMuted,
+                                         filled: checkpointsEnabled)
                             if checkpointsEnabled {
                                 Text(route.isCustomRoute ? "WP" : "20%")
                                     .wktTechnical(8)
@@ -584,9 +581,9 @@ struct ActiveSessionView: View {
                 Button {
                     if session.isPaused { session.resume() } else { session.pause() }
                 } label: {
-                    Image(systemName: session.isPaused ? "play.circle.fill" : "pause.circle")
-                        .font(.title)
-                        .foregroundColor(session.isPaused ? .earthGreen : .earthMuted)
+                    Image(wkt: session.isPaused ? .playCircle : .pauseCircle)
+                        .wktIcon(.row, tint: session.isPaused ? .earthGreen : .earthMuted,
+                                 filled: session.isPaused)
                 }
                 .accessibilityLabel(session.isPaused
                     ? "Resume \(route.activityMode.noun)"
@@ -595,9 +592,8 @@ struct ActiveSessionView: View {
                 Button {
                     if isGuided { showStopAlert = true } else { endFreeSession() }
                 } label: {
-                    Image(systemName: "stop.circle.fill")
-                        .font(.title)
-                        .foregroundColor(.red.opacity(0.85))
+                    Image(wkt: .stopCircle)
+                        .wktIcon(.row, tint: .red.opacity(0.85), filled: true)
                 }
                 .accessibilityLabel("End \(route.activityMode.noun)")
             }
@@ -616,7 +612,7 @@ struct ActiveSessionView: View {
                 .padding(.top, session.isPaused ? 0 : 14)
 
             SessionStatsBar(session: session,
-                            activityIcon: route.activityMode.icon,
+                            activityIcon: route.activityMode.wktSymbol,
                             showsRemaining: isGuided)
 
             if !isGuided {
@@ -641,19 +637,19 @@ struct ActiveSessionView: View {
                                 MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeWalking
                             ])
                         } label: {
-                            Image(systemName: "map.fill")
+                            Image(wkt: .routes)
+                                .wktIcon(.row, tint: .white, filled: true, onFill: true)
                                 .padding(9)
                                 .background(Color.earthGreenFill.opacity(0.9))
-                                .foregroundColor(.white)
                                 .clipShape(Circle())
                         }
                         Button {
                             withAnimation(.spring(response: 0.3)) { poiManager.selectedPOI = nil }
                         } label: {
-                            Image(systemName: "xmark")
+                            Image(wkt: .dismiss)
+                                .wktIcon(.inline, tint: .earthMuted)
                                 .padding(9)
                                 .background(Color.earthCard)
-                                .foregroundColor(.earthMuted)
                                 .clipShape(Circle())
                         }
                         .accessibilityLabel("Close \(poi.name) details")
@@ -663,15 +659,19 @@ struct ActiveSessionView: View {
                 }
 
                 Button { endFreeSession() } label: {
-                    Label("Finish \(route.activityMode.sessionLabel)",
-                          systemImage: "checkmark.circle.fill")
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 18)
-                        .background(route.activityMode.tileFillColor)
-                        .foregroundColor(.white)
-                        .font(.headline)
-                        .cornerRadius(14)
-                        .padding(.horizontal, 24)
+                    Label {
+                        Text("Finish \(route.activityMode.sessionLabel)")
+                    } icon: {
+                        Image(wkt: .success)
+                            .wktIcon(.row, tint: .white, filled: true, onFill: true)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 18)
+                    .background(route.activityMode.tileFillColor)
+                    .foregroundColor(.white)
+                    .font(.headline)
+                    .cornerRadius(14)
+                    .padding(.horizontal, 24)
                 }
                 .padding(.top, 12).padding(.bottom, 48)
             }
@@ -978,8 +978,8 @@ private struct HeatAdvisoryBanner: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: "thermometer.high")
-                .font(.title3).foregroundColor(.orange)
+            Image(wkt: .heat)
+                .wktIcon(.row, tint: .orange)
             VStack(alignment: .leading, spacing: 2) {
                 Text("Heat Advisory")
                     .font(.caption.bold()).foregroundColor(.earthCream)
@@ -988,14 +988,20 @@ private struct HeatAdvisoryBanner: View {
             }
             Spacer()
             Button { onEnableWaterBreaks() } label: {
-                Label("Every \(intervalMinutes) min", systemImage: "drop.fill")
-                    .font(.caption.bold())
-                    .padding(.horizontal, 10).padding(.vertical, 6)
-                    .background(Color.accentInfoFill.opacity(0.85))
-                    .foregroundColor(.white).cornerRadius(8)
+                Label {
+                    Text("Every \(intervalMinutes) min")
+                } icon: {
+                    Image(wkt: .hydration)
+                        .wktIcon(.inline, tint: .white, filled: true, onFill: true)
+                }
+                .font(.caption.bold())
+                .padding(.horizontal, 10).padding(.vertical, 6)
+                .background(Color.accentInfoFill.opacity(0.85))
+                .foregroundColor(.white).cornerRadius(8)
             }
             Button { onDismiss() } label: {
-                Image(systemName: "xmark").font(.caption).foregroundColor(.earthMuted)
+                Image(wkt: .dismiss)
+                    .wktIcon(.inline, tint: .earthMuted)
             }
             .accessibilityLabel("Dismiss heat advisory")
         }

@@ -27,28 +27,28 @@ struct CommunityHubView: View {
             ScrollView {
                 VStack(spacing: 16) {
                     hubCard(
-                        icon: "flame.fill",
+                        icon: .calories,
                         iconColor: .earthOrange,
                         title: "Streaks & Badges",
                         detail: streakDetail
                     ) { pushBadges = true }
 
                     hubCard(
-                        icon: "medal.fill",
+                        icon: .badges,
                         iconColor: Color(red: 0.93, green: 0.50, blue: 0.38),
                         title: "Achievement Feed",
                         detail: "Community milestones"
                     ) { pushFeed = true }
 
                     hubCard(
-                        icon: "trophy.fill",
+                        icon: .records,
                         iconColor: .earthGreen,
                         title: "Challenges",
                         detail: "Compete with walkers worldwide"
                     ) { pushChallenges = true }
 
                     hubCard(
-                        icon: "person.2.wave.2",
+                        icon: .communityWave,
                         iconColor: Color.accentRide,
                         title: "Community Routes",
                         detail: "Routes shared by other walkers"
@@ -95,7 +95,7 @@ struct CommunityHubView: View {
     }
 
     private func hubCard(
-        icon: String,
+        icon: WktSymbol,
         iconColor: Color,
         title: String,
         detail: String,
@@ -107,9 +107,8 @@ struct CommunityHubView: View {
                     RoundedRectangle(cornerRadius: 12)
                         .fill(iconColor.opacity(0.15))
                         .frame(width: 48, height: 48)
-                    Image(systemName: icon)
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundColor(iconColor)
+                    Image(wkt: icon)
+                        .wktIcon(.row, tint: iconColor, filled: true)
                 }
                 VStack(alignment: .leading, spacing: 3) {
                     Text(title)
@@ -120,9 +119,8 @@ struct CommunityHubView: View {
                         .foregroundColor(.earthMuted)
                 }
                 Spacer()
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(.earthMuted.opacity(0.5))
+                Image(wkt: .chevronRight)
+                    .wktIcon(.inline, tint: .earthMuted.opacity(0.5))
             }
             .padding(16)
             .background(Color.earthCard)

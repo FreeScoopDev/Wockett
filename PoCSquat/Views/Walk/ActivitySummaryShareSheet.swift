@@ -229,7 +229,7 @@ struct ActivitySummaryCard: View {
 
                 if let comparison = routeComparison {
                     HStack(spacing: 5) {
-                        Image(systemName: "bolt.fill")
+                        Image(wkt: .lightning)
                             .font(.system(size: 10))
                             .foregroundColor(.yellow)
                         Text(comparison)
@@ -406,8 +406,12 @@ struct ActivitySummaryShareSheet: View {
                     ProgressView().tint(.white)
                         .accessibilityLabel("Preparing share image")
                 } else {
-                    Label("Share", systemImage: "square.and.arrow.up")
-                        .fontWeight(.semibold)
+                    Label {
+                        Text("Share")
+                    } icon: {
+                        Image(wkt: .share).wktIcon(.row, tint: .white, onFill: true)
+                    }
+                    .fontWeight(.semibold)
                 }
             }
             .frame(maxWidth: .infinity)

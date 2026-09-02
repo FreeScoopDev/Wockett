@@ -6,6 +6,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [1.10] - 2026-09-01
 
 ### Added
+- Five-slot tab bar (Health · Routes · Home · Community · Settings) with the Wockett waypoint as the custom Home tab icon (wkt.home.pin vector imageset)
+- Routes tab: RouteFinderContentView is now a first-class tab root — no fullScreenCover or state juggling in StepCounterView; route discovery is always one tap away
+- WktSymbol enum + `.wktIcon()` modifier as the single catalogue for every icon in the app; `Image(wkt:)` initializer dispatches to asset catalog or SF Symbols automatically
 - Unified v1.10 design system, rolled out across the whole app: a 3-tier typography hierarchy (Display / Heading-Body / Technical, using SF Pro Rounded + tracked SF Mono) and per-activity accent colors (Run/Ride/Indoor, alongside the existing Walk green) now apply consistently to the Dashboard, Active Session, Badges, Settings, the Home Screen widget, and the Live Activity — previously only a handful of screens used the shared tokens and most call sites had their own one-off font/color choices
 - Dashboard restructured to match the design: four direct-select activity tiles (Walk/Run/Ride/Indoor) replace the old action grid, a new dashed "Find a Route" tile folds in route discovery, the stat card shows goal progress/steps/distance/streak together, and pets are promoted to their own "Crew" card
 - Map polylines and guided-route waypoint markers now color by the session's activity mode (previously only cycling had its own color; everything else silently drew as walking-green)
@@ -16,12 +19,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Health hub: recovery metrics (sleep / readiness / active calories), gait detail, the weekly and monthly calendar, lifetime stats, and activity history now live in the Health tab
 
 ### Changed
+- Activity icons updated to HealthKit-aligned SF Symbols: `figure.outdoor.cycle` for cycling, `figure.walk.treadmill` for indoor (previously `bicycle` / `figure.walk.motion`)
+- Settings tab icon changed from `gearshape` to `slider.horizontal.3`; Community tab icon changed from `person.2` to `pawprint`
 - Full WCAG contrast audit across every design-system color token, in both light and dark mode: fixed `accentNotice`'s illegible light-mode value, then — more substantially — split every accent color that's used as a solid button/toggle/marker fill into two variants: the original bright value for text and icons, and a new, separately-tuned "Fill" value for white content sitting on top of a solid fill. A single color value can't serve both roles well at once (bright enough to read as text, dark enough for white content on top to read well); this removes that trade-off everywhere it showed up — roughly 50 call sites across 20 files (buttons, selected chips, toggles, the guided-nav map's markers)
 - Settings is a tab rather than a sheet behind the gear icon; the active-walk tile now floats above the tab bar and stays visible on every tab, and tapping it reopens the session from anywhere
 - Dashboard trimmed to the at-a-glance hub: activity tiles, Find a Route, the stat card, the Crew, journey track, weather, and the close-the-gap card — sections that duplicated the new tabs were removed, along with leftover dead layout code from the earlier dashboard rebuild
 - Shared data stores (steps, routes, history) are created once at app launch and shared across screens instead of each screen keeping its own copy — seeded demo data and edits now show up immediately without relaunching
 
 ### Fixed
+- Blank capsule bar appearing when no walk is active — `tabViewBottomAccessory(isEnabled:)` completely hides the capsule when idle instead of leaving an empty slot
+- Active walk tile chrome (background material, corner radius, shadow, outer padding) stripped — the system capsule provides the container; tile renders a compact inline form when the tab bar is minimised
 - Several flat, non-adaptive color literals that had drifted from the shared design tokens over time — scattered across ~15 files (map pins, chip borders, a milestone-marker teal, POI category colors) — consolidated back onto the light/dark-adaptive tokens they were supposed to match
 - Build error after custom routes gained a saved activity mode: `ActivityMode` needed to conform to `Codable` for `CustomRoute`'s automatic Encodable/Decodable synthesis to work
 - The route-finder results panel sized itself against the physical device screen instead of its own window, which can misbehave in iPad multitasking (Split View, Slide Over, Stage Manager) where the app's window is smaller than the screen; now reads its actual container size

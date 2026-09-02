@@ -133,7 +133,7 @@ enum GaitStatus {
 struct GaitMetricConfig: Identifiable {
     let id: String
     let title: String
-    let systemImage: String
+    let symbol: WktSymbol
     let unit: String
     let higherIsBetter: Bool
     let format: (Double) -> String
@@ -149,7 +149,7 @@ struct GaitMetricConfig: Identifiable {
         GaitMetricConfig(
             id: "speed",
             title: "Walking Speed",
-            systemImage: "figure.walk.motion",
+            symbol: .walkMotion,
             unit: "km/h",
             higherIsBetter: true,
             format: { String(format: "%.1f km/h", $0 * 3.6) },
@@ -180,7 +180,7 @@ struct GaitMetricConfig: Identifiable {
         GaitMetricConfig(
             id: "stride",
             title: "Step Length",
-            systemImage: "arrow.forward",
+            symbol: .cadenceArrow,
             unit: "cm",
             higherIsBetter: true,
             format: { "\(Int($0.rounded())) cm" },
@@ -210,7 +210,7 @@ struct GaitMetricConfig: Identifiable {
         GaitMetricConfig(
             id: "support",
             title: "Double Support",
-            systemImage: "figure.stand",
+            symbol: .balanceFigure,
             unit: "%",
             higherIsBetter: false,
             format: { String(format: "%.0f%%", $0) },
@@ -240,7 +240,7 @@ struct GaitMetricConfig: Identifiable {
         GaitMetricConfig(
             id: "asymmetry",
             title: "Step Asymmetry",
-            systemImage: "arrow.left.arrow.right",
+            symbol: .strideWidth,
             unit: "%",
             higherIsBetter: false,
             format: { String(format: "%.0f%%", $0) },
@@ -279,9 +279,13 @@ struct GaitHealthSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
-                Label("Walking Health", systemImage: "waveform.path.ecg")
-                    .font(.headline)
-                    .foregroundColor(.earthCream)
+                Label {
+                    Text("Walking Health")
+                } icon: {
+                    Image(wkt: .readiness).wktIcon(.row, tint: .earthCream)
+                }
+                .font(.headline)
+                .foregroundColor(.earthCream)
                 Spacer()
                 if service.isLoading {
                     ProgressView().scaleEffect(0.75).tint(.earthGreen)
@@ -328,9 +332,8 @@ struct GaitHealthSection: View {
 
     private var emptyState: some View {
         HStack(spacing: 14) {
-            Image(systemName: "figure.walk")
-                .font(.title2)
-                .foregroundColor(.earthMuted)
+            Image(wkt: .walk)
+                .wktIcon(.row, tint: .earthMuted)
             VStack(alignment: .leading, spacing: 4) {
                 Text("No gait data yet")
                     .font(.subheadline.bold())
@@ -382,15 +385,14 @@ private struct GaitMetricCard: View {
         Button(action: onTap) {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 5) {
-                    Image(systemName: config.systemImage)
-                        .font(.caption)
-                        .foregroundColor(.earthGreen)
+                    Image(wkt: config.symbol)
+                        .wktIcon(.inline, tint: .earthGreen)
                     Text(config.title)
                         .font(.caption.bold())
                         .foregroundColor(.earthCream)
                         .lineLimit(1)
                     Spacer()
-                    Image(systemName: "chevron.right")
+                    Image(wkt: .chevronRight)
                         .font(.system(size: 9, weight: .semibold))
                         .foregroundColor(.earthMuted.opacity(0.4))
                 }
@@ -544,9 +546,7 @@ struct GaitMetricDetailContentView: View {
                 RoundedRectangle(cornerRadius: 14)
                     .fill(Color.earthGreen.opacity(0.12))
                     .frame(width: 56, height: 56)
-                Image(systemName: config.systemImage)
-                    .font(.system(size: 24, weight: .medium))
-                    .foregroundColor(.earthGreen)
+                Image(wkt: config.symbol).wktIcon(.row, tint: .earthGreen)
             }
 
             VStack(alignment: .leading, spacing: 4) {

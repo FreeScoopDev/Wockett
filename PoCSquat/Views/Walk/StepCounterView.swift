@@ -25,8 +25,6 @@ struct StepCounterView: View {
     @State private var showMyRoutes             = false
     @State private var showBuildRoute           = false
     @State private var showPetManagement        = false
-    @State private var showRouteFinder          = false
-    @State private var routeFinderShowsNearby   = false
     @State private var showUserDetail = false
     @State private var selectedPetForDetail: PetProfile?
     @State private var showFreeWalk = false
@@ -49,20 +47,6 @@ struct StepCounterView: View {
             }
             .fullScreenCover(isPresented: $showStationary) {
                 StationaryWalkView(historyStore: historyStore, dailyGoal: stepManager.currentGoal)
-            }
-            .fullScreenCover(isPresented: $showRouteFinder) {
-                RouteFinderView(
-                    routeManager: routeManager,
-                    historyStore: historyStore,
-                    routeStore: routeStore,
-                    stepManager: stepManager,
-                    openWithNearby: routeFinderShowsNearby
-                )
-            }
-            .onChange(of: showRouteFinder) { _, isShowing in
-                if !isShowing { routeFinderShowsNearby = false }
-                // When RouteFinderView closes with an active session, jump straight to the walk.
-                if !isShowing && walkStore.isActive { showResumeWalk = true }
             }
             .onChange(of: showMyRoutes) { _, isShowing in
                 if !isShowing && walkStore.isActive { showResumeWalk = true }
@@ -295,9 +279,8 @@ struct StepCounterView: View {
                         RoundedRectangle(cornerRadius: 10)
                             .fill(Color.earthGreen.opacity(0.15))
                             .frame(width: 38, height: 38)
-                        Image(systemName: "figure.walk.motion")
-                            .font(.system(size: 15, weight: .medium))
-                            .foregroundColor(.earthGreen)
+                        Image(wkt: .walk)
+                            .wktIcon(.row, tint: .earthGreen)
                     }
                     VStack(alignment: .leading, spacing: 3) {
                         Text("\(remaining.formatted()) steps to go")
@@ -361,8 +344,8 @@ struct StepCounterView: View {
             }
         } label: {
             VStack(spacing: 8) {
-                Image(systemName: mode.icon)
-                    .font(.system(size: 20, weight: .medium))
+                Image(wkt: mode.wktSymbol)
+                    .font(.system(size: 20, weight: .semibold))
                 Text(mode.sessionLabel)
                     .font(.wktHeading(13))
             }
@@ -385,13 +368,11 @@ struct StepCounterView: View {
     // Build Route already has its own entry point from the Saved Routes list.
     private var findRouteTile: some View {
         Button {
-            routeFinderShowsNearby = false
-            showRouteFinder = true
+            tabRouter.selected = .routes
         } label: {
             HStack(spacing: 10) {
-                Image(systemName: "map")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(.earthGreen)
+                Image(wkt: .routes)
+                    .wktIcon(.inline, tint: .earthGreen)
                 Text("Find a Route")
                     .font(.wktHeading(14))
                     .foregroundColor(.earthCream)
@@ -400,9 +381,8 @@ struct StepCounterView: View {
                     .wktTechnical(8)
                     .foregroundColor(.earthMuted)
                     .lineLimit(1)
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(.earthMuted.opacity(0.6))
+                Image(wkt: .chevronRight)
+                    .wktIcon(.inline, tint: .earthMuted.opacity(0.6))
             }
             .padding(.horizontal, 14)
             .frame(height: 50)
@@ -423,9 +403,8 @@ struct StepCounterView: View {
                     RoundedRectangle(cornerRadius: 10)
                         .fill(Color.accentInfo.opacity(0.15))
                         .frame(width: 38, height: 38)
-                    Image(systemName: "mappin.and.ellipse")
-                        .font(.system(size: 15, weight: .medium))
-                        .foregroundColor(Color.accentInfo)
+                    Image(wkt: .place)
+                        .wktIcon(.row, tint: .accentInfo)
                 }
                 VStack(alignment: .leading, spacing: 2) {
                     Text("My Routes")
@@ -437,9 +416,8 @@ struct StepCounterView: View {
                         .foregroundColor(.earthMuted)
                 }
                 Spacer()
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(.earthMuted.opacity(0.6))
+                Image(wkt: .chevronRight)
+                    .wktIcon(.inline, tint: .earthMuted.opacity(0.6))
             }
             .padding(14)
             .background(Color.earthCard)
@@ -545,9 +523,8 @@ struct StepCounterView: View {
                             Circle()
                                 .strokeBorder(Color.earthMuted.opacity(0.3), style: StrokeStyle(lineWidth: 1.5, dash: [3, 3]))
                                 .frame(width: 52, height: 52)
-                            Image(systemName: "plus")
-                                .font(.system(size: 16, weight: .semibold))
-                                .foregroundColor(.earthMuted)
+                            Image(wkt: .add)
+                                .wktIcon(.row, tint: .earthMuted)
                         }
                         Text("Add")
                             .font(.system(size: 9, weight: .bold))
@@ -573,11 +550,11 @@ private struct ActivitySuggestionBanner: View {
     let onStart: () -> Void
     let onDismiss: () -> Void
 
-    private var icon: String {
+    private var icon: WktSymbol {
         switch activity {
-        case .cycling: return "bicycle"
-        case .running: return "figure.run"
-        default:       return "figure.walk"
+        case .cycling: return .ride
+        case .running: return .run
+        default:       return .walk
         }
     }
     private var label: String {
@@ -594,9 +571,8 @@ private struct ActivitySuggestionBanner: View {
                 Circle()
                     .fill(Color.earthGreen.opacity(0.15))
                     .frame(width: 40, height: 40)
-                Image(systemName: icon)
-                    .font(.system(size: 16, weight: .medium))
-                    .foregroundColor(.earthGreen)
+                Image(wkt: icon)
+                    .wktIcon(.row, tint: .earthGreen)
             }
             VStack(alignment: .leading, spacing: 2) {
                 Text("Looks like you're \(label)")
@@ -614,9 +590,8 @@ private struct ActivitySuggestionBanner: View {
                 .background(Color.earthGreen.opacity(0.15))
                 .cornerRadius(8)
             Button(action: onDismiss) {
-                Image(systemName: "xmark")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(.earthMuted)
+                Image(wkt: .dismiss)
+                    .wktIcon(.inline, tint: .earthMuted)
             }
         }
         .padding(14)

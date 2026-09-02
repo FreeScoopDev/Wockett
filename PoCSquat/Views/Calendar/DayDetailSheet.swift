@@ -77,8 +77,12 @@ struct DayDetailSheet: View {
                                 .cornerRadius(20)
                             }
                             if day.isFuture {
-                                Label("Scheduled", systemImage: "calendar.badge.clock")
-                                    .font(.caption.bold()).foregroundColor(.earthMuted)
+                                Label {
+                                    Text("Scheduled")
+                                } icon: {
+                                    Image(wkt: .calendarClock).wktIcon(.inline, tint: .earthMuted)
+                                }
+                                .font(.caption.bold()).foregroundColor(.earthMuted)
                             } else if let met = day.goalMet {
                                 Label(met ? "Goal achieved" : "Goal not met",
                                       systemImage: met ? "checkmark.seal.fill" : "xmark.circle")
@@ -204,8 +208,8 @@ struct DayDetailSheet: View {
                 Text(session.routeName)
                     .font(.subheadline).foregroundColor(.earthCream)
                 HStack(spacing: 12) {
-                    Label(session.distanceText, systemImage: "ruler")
-                    Label(session.timeText, systemImage: "clock")
+                    Label { Text(session.distanceText) } icon: { Image(wkt: .distance).wktIcon(.inline, tint: .earthMuted) }
+                    Label { Text(session.timeText) } icon: { Image(wkt: .time).wktIcon(.inline, tint: .earthMuted) }
                 }
                 .font(.caption).foregroundColor(.earthMuted)
             }

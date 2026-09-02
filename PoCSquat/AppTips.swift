@@ -11,7 +11,7 @@ struct AudioCueTip: Tip {
 
     var title: Text { Text("Audio Cues") }
     var message: Text? { Text("Tap the speaker icon during a walk to hear distance and pace updates — no need to look at your screen.") }
-    var image: Image? { Image(systemName: "speaker.wave.2.fill") }
+    var image: Image? { Image(wkt: .speakerOn) }
 
     var rules: [Rule] {
         #Rule(Self.firstWalkCompleted) { $0.donations.count >= 1 }
@@ -24,7 +24,7 @@ struct FreeWalkTip: Tip {
 
     var title: Text { Text("Free Walk Mode") }
     var message: Text? { Text("No route planned? Tap the walk button on the home screen for an open-ended free walk that records your path as you go.") }
-    var image: Image? { Image(systemName: "figure.walk.circle") }
+    var image: Image? { Image(wkt: .walkCircle) }
 
     var rules: [Rule] {
         #Rule(Self.routeWalkStarted) { $0.donations.count >= 2 }
@@ -37,7 +37,7 @@ struct GaitHealthTip: Tip {
 
     var title: Text { Text("Walking Health") }
     var message: Text? { Text("Scroll down on the home screen to see your gait metrics — speed, stride, and balance — tracked automatically by your iPhone.") }
-    var image: Image? { Image(systemName: "waveform.path.ecg") }
+    var image: Image? { Image(wkt: .readiness) }
 
     var rules: [Rule] {
         #Rule(Self.sessionsLogged) { $0.donations.count >= 3 }
@@ -48,7 +48,7 @@ struct GaitHealthTip: Tip {
 struct PetWalkTip: Tip {
     var title: Text { Text("Walk With Pets") }
     var message: Text? { Text("Tap a pet emoji in the walk HUD to toggle them as active — Wockett tracks each pet's distance separately.") }
-    var image: Image? { Image(systemName: "pawprint.fill") }
+    var image: Image? { Image(wkt: .pets) }
 }
 
 // Shown when the route list is non-empty and community tab hasn't been visited
@@ -57,7 +57,7 @@ struct CommunityRouteTip: Tip {
 
     var title: Text { Text("Community Routes") }
     var message: Text? { Text("Share your favourite routes and discover ones others have walked nearby.") }
-    var image: Image? { Image(systemName: "globe.americas.fill") }
+    var image: Image? { Image(wkt: .communityRoutes) }
 
     var rules: [Rule] {
         #Rule(Self.communityTabVisited) { $0.donations.count == 0 }

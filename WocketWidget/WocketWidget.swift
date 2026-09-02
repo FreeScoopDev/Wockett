@@ -1,6 +1,11 @@
 import WidgetKit
 import SwiftUI
 
+// Widget-local symbol names (WktSymbol is in the app target, unavailable here)
+private enum WS {
+    static let walk = "figure.walk"
+}
+
 // MARK: - App Group keys (must match BackgroundTaskManager + WidgetDataWriter)
 
 private let appGroup = "group.com.scoops.wockett"
@@ -118,7 +123,7 @@ private struct SmallStepView: View {
             Color.earthBg
             VStack(spacing: 6) {
                 HStack(spacing: 4) {
-                    Image(systemName: "figure.walk")
+                    Image(systemName: WS.walk)
                         .font(.caption2.weight(.semibold))
                         .foregroundColor(.earthGreen)
                     Text("Wockett")
@@ -212,7 +217,7 @@ private struct CircularStepView: View {
 
     var body: some View {
         Gauge(value: entry.progress) {
-            Image(systemName: "figure.walk")
+            Image(systemName: WS.walk)
         } currentValueLabel: {
             Text(shortSteps(entry.steps))
                 .font(.system(size: 11, weight: .bold, design: .rounded))

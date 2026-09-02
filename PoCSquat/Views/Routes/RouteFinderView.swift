@@ -2,16 +2,20 @@ import SwiftUI
 import MapKit
 import CloudKit
 
-// MARK: - Route Finder View
+// MARK: - Route Finder Content View (push-safe, no dismiss chrome)
+//
+// Use this directly as the Routes tab root. Pass onNavigateAway to handle
+// post-startWalk navigation (tab switch or sheet dismiss).
 
-struct RouteFinderView: View {
+struct RouteFinderContentView: View {
     @ObservedObject var routeManager: RouteManager
     @ObservedObject var historyStore: WalkHistoryStore
     @ObservedObject var routeStore: CustomRouteStore
     @ObservedObject var stepManager: StepManager
-    var openWithNearby: Bool = false
+    var onNavigateAway: (() -> Void)? = nil
+    var onDismiss: (() -> Void)? = nil
 
-    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var tabRouter: TabRouter
 
     // Persisted config
     @State private var walkIntent: WalkIntent
@@ -49,12 +53,13 @@ struct RouteFinderView: View {
 
     init(routeManager: RouteManager, historyStore: WalkHistoryStore,
          routeStore: CustomRouteStore, stepManager: StepManager,
-         openWithNearby: Bool = false) {
+         onNavigateAway: (() -> Void)? = nil, onDismiss: (() -> Void)? = nil) {
         self.routeManager = routeManager
         self.historyStore = historyStore
         self.routeStore = routeStore
         self.stepManager = stepManager
-        self.openWithNearby = openWithNearby
+        self.onNavigateAway = onNavigateAway
+        self.onDismiss = onDismiss
 
         let s = UserDefaults.standard.string(forKey: "wkt_lastWalkIntent_v1") ?? "finishGoal"
         _walkIntent = State(initialValue: WalkIntent(rawStorageString: s))
@@ -90,7 +95,10 @@ struct RouteFinderView: View {
         .animation(.spring(response: 0.38, dampingFraction: 0.88), value: showingConfig)
         .ignoresSafeArea(edges: .bottom)
         .onAppear {
-            if openWithNearby { showNearbySheet = true }
+            if tabRouter.pendingRoutesDestination == .nearby {
+                showNearbySheet = true
+                tabRouter.pendingRoutesDestination = nil
+            }
             if routeManager.lastLocation == nil {
                 Task { routeManager.lastLocation = await routeManager.fetchCurrentLocation() }
             }
@@ -98,6 +106,12 @@ struct RouteFinderView: View {
         }
         .onDisappear {
             clearRoutes()
+        }
+        .onChange(of: tabRouter.pendingRoutesDestination) { _, dest in
+            if dest == .nearby {
+                showNearbySheet = true
+                tabRouter.pendingRoutesDestination = nil
+            }
         }
         .onChange(of: selectedRoute?.id) { _, _ in loadElevation() }
         .onChange(of: activityMode) { _, v in
@@ -145,11 +159,15 @@ struct RouteFinderView: View {
     private var topBar: some View {
         VStack {
             HStack {
-                Button { dismiss() } label: {
-                    Image(systemName: "chevron.left")
-                        .font(.system(size: 16, weight: .semibold))
-                        .padding(10)
-                        .background(.ultraThinMaterial, in: Circle())
+                if let dismiss = onDismiss {
+                    Button { dismiss() } label: {
+                        Image(wkt: .chevronLeft)
+                            .wktIcon(.row, tint: .primary)
+                            .padding(10)
+                            .background(.ultraThinMaterial, in: Circle())
+                    }
+                } else {
+                    Spacer().frame(width: 44)
                 }
                 Spacer()
                 if routeManager.isGenerating {
@@ -205,7 +223,11 @@ struct RouteFinderView: View {
                                 Text("Finding routes…")
                             }
                         } else {
-                            Label("Find Routes", systemImage: "map.fill")
+                            Label {
+                                Text("Find Routes")
+                            } icon: {
+                                Image(wkt: .mapFill).wktIcon(.row, tint: .white, onFill: true)
+                            }
                         }
                     }
                     .font(.headline)
@@ -220,8 +242,7 @@ struct RouteFinderView: View {
 
                 if let err = routeManager.locationError {
                     HStack(spacing: 6) {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .font(.caption)
+                        Image(wkt: .warning).wktIcon(.inline, tint: .orange, filled: true)
                         Text(err)
                             .font(.caption)
                             .multilineTextAlignment(.leading)
@@ -232,7 +253,7 @@ struct RouteFinderView: View {
 
                     Button(action: triggerNearbyLoops) {
                         HStack(spacing: 6) {
-                            Image(systemName: "arrow.triangle.2.circlepath")
+                            Image(wkt: .loop).wktIcon(.inline, tint: .earthGreen)
                             Text("Try nearby loops instead")
                         }
                         .font(.subheadline.bold())
@@ -245,7 +266,7 @@ struct RouteFinderView: View {
                 HStack(spacing: 20) {
                     Button { showDestSearch = true } label: {
                         HStack(spacing: 4) {
-                            Image(systemName: "magnifyingglass")
+                            Image(wkt: .find).wktIcon(.inline, tint: .earthMuted)
                             Text("Search a place")
                         }
                         .font(.caption)
@@ -256,7 +277,7 @@ struct RouteFinderView: View {
                         .frame(width: 1, height: 14)
                     Button { showNearbySheet = true } label: {
                         HStack(spacing: 4) {
-                            Image(systemName: "location.fill")
+                            Image(wkt: .locationOn).wktIcon(.inline, tint: .earthMuted)
                             Text("Nearby places")
                         }
                         .font(.caption)
@@ -278,9 +299,13 @@ struct RouteFinderView: View {
         VStack(spacing: 0) {
             HStack(spacing: 0) {
                 Button { clearRoutes() } label: {
-                    Label("New Search", systemImage: "arrow.clockwise")
-                        .font(.caption.bold())
-                        .foregroundColor(.earthGreen)
+                    Label {
+                        Text("New Search")
+                    } icon: {
+                        Image(wkt: .refresh).wktIcon(.inline, tint: .earthGreen)
+                    }
+                    .font(.caption.bold())
+                    .foregroundColor(.earthGreen)
                 }
                 .frame(width: 110, alignment: .leading)
 
@@ -364,8 +389,7 @@ struct RouteFinderView: View {
                 .padding(.horizontal, 20)
         } else if let err = elevationError {
             HStack(spacing: 6) {
-                Image(systemName: "chart.line.uptrend.xyaxis")
-                    .font(.caption)
+                Image(wkt: .elevation).wktIcon(.inline, tint: .earthMuted)
                 Text(err)
                     .font(.caption)
             }
@@ -381,9 +405,7 @@ struct RouteFinderView: View {
                 showActiveSessionAlert = true
                 return
             }
-            // Dismiss RouteFinderView — StepCounterView will auto-present WalkNavigationView.
-            // Using dismiss() here avoids a nested fullScreenCover that can silently fail.
-            dismiss()
+            onNavigateAway?()
         } label: {
             Label("Start \(activityMode.sessionLabel)", systemImage: activityMode.icon)
                 .font(.headline)
@@ -400,7 +422,7 @@ struct RouteFinderView: View {
         VStack(spacing: 4) {
             Button { route.openInAppleMaps(activityMode: activityMode) } label: {
                 HStack(spacing: 4) {
-                    Image(systemName: "map")
+                    Image(wkt: .openInMaps).wktIcon(.inline, tint: .earthMuted)
                     Text("Open in Apple Maps")
                 }
                 .font(.subheadline).foregroundColor(.earthMuted)
@@ -420,8 +442,7 @@ struct RouteFinderView: View {
         VStack(spacing: 10) {
             if let err = wocketError {
                 HStack(spacing: 6) {
-                    Image(systemName: "exclamationmark.circle.fill")
-                        .font(.caption)
+                    Image(wkt: .errorCircle).wktIcon(.inline, tint: .orange, filled: true)
                     Text(err)
                         .font(.caption)
                 }
@@ -438,9 +459,13 @@ struct RouteFinderView: View {
                 }
             } label: {
                 HStack {
-                    Label("Community Routes", systemImage: "person.2.fill")
-                        .font(.subheadline.bold())
-                        .foregroundColor(.earthCream)
+                    Label {
+                        Text("Community Routes")
+                    } icon: {
+                        Image(wkt: .communityFill).wktIcon(.inline, tint: .earthCream, filled: true)
+                    }
+                    .font(.subheadline.bold())
+                    .foregroundColor(.earthCream)
                     Spacer()
                     if communityModel.isLoading {
                         ProgressView().tint(.earthGreen).scaleEffect(0.8)
@@ -462,7 +487,7 @@ struct RouteFinderView: View {
                         .padding(.vertical, 12)
                 } else if let error = communityModel.loadError, communityModel.routes.isEmpty {
                     VStack(spacing: 10) {
-                        Image(systemName: "exclamationmark.icloud")
+                        Image(wkt: .cloudError)
                             .font(.system(size: 28))
                             .foregroundColor(.earthMuted)
                         Text(error)
@@ -473,12 +498,16 @@ struct RouteFinderView: View {
                         Button {
                             Task { await communityModel.load(force: true) }
                         } label: {
-                            Label("Retry", systemImage: "arrow.clockwise")
-                                .font(.caption.bold())
-                                .padding(.horizontal, 16).padding(.vertical, 8)
-                                .background(Color.earthCard)
-                                .foregroundColor(.earthGreen)
-                                .cornerRadius(8)
+                            Label {
+                                Text("Retry")
+                            } icon: {
+                                Image(wkt: .refresh).wktIcon(.inline, tint: .earthGreen)
+                            }
+                            .font(.caption.bold())
+                            .padding(.horizontal, 16).padding(.vertical, 8)
+                            .background(Color.earthCard)
+                            .foregroundColor(.earthGreen)
+                            .cornerRadius(8)
                         }
                     }
                     .padding(.vertical, 12)
@@ -524,7 +553,7 @@ struct RouteFinderView: View {
                                     showActiveSessionAlert = true
                                     return
                                 }
-                                dismiss()
+                                onNavigateAway?()
                             },
                             onHide: { if i < communityModel.routes.count { communityModel.routes.remove(at: i) } }
                         )
@@ -580,8 +609,6 @@ struct RouteFinderView: View {
                 switch walkIntent {
                 case .finishGoal:
                     let r = stepManager.remainingMeters
-                    // Below ~650 steps remaining (500m), suggest a short finishing walk
-                    // rather than jumping to a full 5km fallback.
                     return r > 500 ? r : 1500
                 case .quickWalk(let mins):
                     return Double(mins) * 80
@@ -600,8 +627,6 @@ struct RouteFinderView: View {
                 switch walkIntent {
                 case .finishGoal:
                     let r = stepManager.remainingMeters
-                    // Below ~650 steps remaining (500m), suggest a short finishing walk
-                    // rather than jumping to a full 5km fallback.
                     return r > 500 ? r : 1500
                 case .quickWalk(let mins):
                     return Double(mins) * 80
@@ -635,7 +660,6 @@ struct RouteFinderView: View {
             isLoadingElevation = false
             return
         }
-        // Serve from cache — avoid re-fetching when the user re-selects the same route.
         if let cached = elevationCache[route.id] {
             elevationProfile = cached
             elevationError = nil
@@ -673,7 +697,27 @@ struct RouteFinderView: View {
             UserDefaults.standard.set("quickWalk:\(mins)", forKey: intentKey)
         }
     }
+}
 
+// MARK: - Route Finder View (thin modal wrapper with dismiss chrome)
+
+struct RouteFinderView: View {
+    @ObservedObject var routeManager: RouteManager
+    @ObservedObject var historyStore: WalkHistoryStore
+    @ObservedObject var routeStore: CustomRouteStore
+    @ObservedObject var stepManager: StepManager
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        RouteFinderContentView(
+            routeManager: routeManager,
+            historyStore: historyStore,
+            routeStore: routeStore,
+            stepManager: stepManager,
+            onNavigateAway: { dismiss() },
+            onDismiss: { dismiss() }
+        )
+    }
 }
 
 
@@ -751,7 +795,6 @@ struct RouteFinderMapView: UIViewRepresentable {
                         let p = MKMapPoint(c)
                         return r.union(MKMapRect(x: p.x, y: p.y, width: 0, height: 0))
                     }
-                    // Extra bottom padding so routes show above the results panel
                     map.setVisibleMapRect(
                         rect,
                         edgePadding: UIEdgeInsets(top: 80, left: 40, bottom: 420, right: 40),
@@ -766,7 +809,6 @@ struct RouteFinderMapView: UIViewRepresentable {
         if context.coordinator.lastSelectedId != newSelectedId {
             context.coordinator.lastSelectedId = newSelectedId
 
-            // Checkpoint + finish overlays for the selected route
             map.removeOverlays(map.overlays.filter { $0 is MarkerCircle })
             if let sel = selectedRoute {
                 for fraction in [0.25, 0.5, 0.75] {

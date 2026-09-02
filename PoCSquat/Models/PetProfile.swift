@@ -297,7 +297,7 @@ struct PetManagementView: View {
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button { showAddPet = true } label: {
-                    Image(systemName: "plus").foregroundColor(.earthGreen)
+                    Image(wkt: .add).wktIcon(.inline, tint: .earthGreen)
                 }
             }
         }
@@ -321,7 +321,7 @@ struct PetManagementView: View {
                     .listRowSeparatorTint(Color.earthMuted.opacity(0.2))
             }
             Button { showAddPet = true } label: {
-                Label("Add a Pet", systemImage: "plus.circle.fill")
+                Label { Text("Add a Pet") } icon: { Image(wkt: .addCircle).wktIcon(.row, tint: .earthGreen, filled: true) }
                     .foregroundColor(.earthGreen)
                     .padding(.vertical, 4)
             }
@@ -339,7 +339,7 @@ struct PetManagementView: View {
                 .font(.subheadline).foregroundColor(.earthMuted)
                 .multilineTextAlignment(.center).padding(.horizontal, 40)
             Button { showAddPet = true } label: {
-                Label("Add a Pet", systemImage: "plus.circle.fill")
+                Label { Text("Add a Pet") } icon: { Image(wkt: .addCircle).wktIcon(.row, tint: .earthGreen, filled: true) }
                     .padding(.horizontal, 24).padding(.vertical, 14)
                     .background(Color.earthGreenFill).foregroundColor(.white)
                     .fontWeight(.semibold).cornerRadius(12)
@@ -377,8 +377,8 @@ private struct PetManagementRow: View {
                     }
                 }
                 HStack(spacing: 10) {
-                    Label("\(totalWalks) walks", systemImage: "figure.walk")
-                    Label(totalDistText, systemImage: "ruler")
+                    Label { Text("\(totalWalks) walks") } icon: { Image(wkt: .walk).wktIcon(.inline, tint: .earthMuted) }
+                    Label { Text(totalDistText) } icon: { Image(wkt: .distance).wktIcon(.inline, tint: .earthMuted) }
                 }
                 .font(.footnote).foregroundColor(.earthMuted)
                 Text("Goal: \(pet.goalSteps.formatted()) steps")
@@ -506,7 +506,7 @@ struct PetEditorSheet: View {
                                     .cornerRadius(10)
                                 if !emojiText.isEmpty {
                                     Button { emojiText = "" } label: {
-                                        Image(systemName: "xmark.circle.fill").foregroundColor(.earthMuted)
+                                        Image(wkt: .close).wktIcon(.inline, tint: .earthMuted, filled: true)
                                     }
                                 }
                             }
@@ -518,7 +518,11 @@ struct PetEditorSheet: View {
 
                         if let suggested = suggestedGoal, Int(goalText) != suggested {
                             Button { goalText = "\(suggested)" } label: {
-                                Label("Suggested for this breed: \(suggested.formatted()) steps", systemImage: "lightbulb.fill")
+                                Label {
+                                    Text("Suggested for this breed: \(suggested.formatted()) steps")
+                                } icon: {
+                                    Image(wkt: .tip).wktIcon(.inline, tint: .earthOrange, filled: true)
+                                }
                                     .font(.caption.bold())
                                     .foregroundColor(.earthOrange)
                             }
@@ -533,7 +537,7 @@ struct PetEditorSheet: View {
                                         ZStack {
                                             Circle().fill(PetProfile.accentColors[i]).frame(width: 32, height: 32)
                                             if colorIndex == i {
-                                                Image(systemName: "checkmark").font(.caption.bold()).foregroundColor(.white)
+                                                Image(wkt: .check).wktIcon(.inline, tint: .white, onFill: true)
                                             }
                                         }
                                         .overlay(Circle().stroke(colorIndex == i ? Color.white.opacity(0.8) : Color.clear, lineWidth: 2))
@@ -544,9 +548,13 @@ struct PetEditorSheet: View {
 
                         VStack(alignment: .leading, spacing: 12) {
                             Toggle(isOn: $hasOwnerContact.animation()) {
-                                Label("This pet has an owner to notify", systemImage: "person.fill")
-                                    .font(.subheadline)
-                                    .foregroundColor(.earthCream)
+                                Label {
+                                    Text("This pet has an owner to notify")
+                                } icon: {
+                                    Image(wkt: .person).wktIcon(.inline, tint: .earthCream, filled: true)
+                                }
+                                .font(.subheadline)
+                                .foregroundColor(.earthCream)
                             }
                             .tint(.earthGreenFill)
                             .padding(.horizontal, 4)

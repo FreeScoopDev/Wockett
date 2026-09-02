@@ -142,7 +142,7 @@ struct MonthCalendarView: View {
                             monthShiftDirection = false
                             shiftMonth(-1)
                         } label: {
-                            Image(systemName: "chevron.left").font(.subheadline.bold()).foregroundColor(.earthMuted)
+                            Image(wkt: .chevronLeft).wktIcon(.inline, tint: .earthMuted)
                         }
 
                         ZStack {
@@ -162,8 +162,8 @@ struct MonthCalendarView: View {
                             monthShiftDirection = true
                             shiftMonth(1)
                         } label: {
-                            Image(systemName: "chevron.right").font(.subheadline.bold())
-                                .foregroundColor(isFutureMonth ? .earthMuted.opacity(0.3) : .earthMuted)
+                            Image(wkt: .chevronRight)
+                                .wktIcon(.inline, tint: isFutureMonth ? .earthMuted.opacity(0.3) : .earthMuted)
                         }
                         .disabled(isFutureMonth)
                     }
@@ -394,11 +394,11 @@ private struct MonthDayCell: View {
                 }
                 Group {
                     if isFuture {
-                        Image(systemName: "plus")
+                        Image(wkt: .add)
                             .font(.system(size: 7)).foregroundColor(.earthMuted.opacity(0.3))
                     } else if let met = goalMet {
                         if met {
-                            Image(systemName: "checkmark")
+                            Image(wkt: .check)
                                 .font(.system(size: 7, weight: .bold))
                                 .foregroundColor(.earthGreen)
                         } else if let s = steps, s > 0 {
@@ -406,7 +406,7 @@ private struct MonthDayCell: View {
                                 .font(.system(size: 6, weight: .bold))
                                 .foregroundColor(.orange)
                         } else {
-                            Image(systemName: "xmark")
+                            Image(wkt: .dismiss)
                                 .font(.system(size: 6))
                                 .foregroundColor(.earthMuted.opacity(0.4))
                         }

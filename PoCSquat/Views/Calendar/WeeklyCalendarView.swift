@@ -31,9 +31,8 @@ struct WeeklyCalendarView: View {
                     slideFromLeading = true
                     onWeekChange(-1)
                 } label: {
-                    Image(systemName: "chevron.left")
-                        .font(.caption.bold())
-                        .foregroundColor(weekOffset <= -52 ? .earthMuted.opacity(0.25) : .earthMuted)
+                    Image(wkt: .chevronLeft)
+                        .wktIcon(.inline, tint: weekOffset <= -52 ? .earthMuted.opacity(0.25) : .earthMuted)
                 }
                 .disabled(weekOffset <= -52)
 
@@ -52,17 +51,16 @@ struct WeeklyCalendarView: View {
                 .animation(.easeInOut(duration: 0.22), value: weekOffset)
 
                 Button { onCalendarTap() } label: {
-                    Image(systemName: "calendar")
-                        .font(.caption.bold()).foregroundColor(.earthMuted)
+                    Image(wkt: .calendar)
+                        .wktIcon(.inline, tint: .earthMuted)
                 }
 
                 Button {
                     slideFromLeading = false
                     onWeekChange(1)
                 } label: {
-                    Image(systemName: "chevron.right")
-                        .font(.caption.bold())
-                        .foregroundColor(weekOffset >= 52 ? .earthMuted.opacity(0.25) : .earthMuted)
+                    Image(wkt: .chevronRight)
+                        .wktIcon(.inline, tint: weekOffset >= 52 ? .earthMuted.opacity(0.25) : .earthMuted)
                 }
                 .disabled(weekOffset >= 52)
             }
@@ -289,14 +287,14 @@ private struct DayCell: View {
 
                 Group {
                     if day.isFuture {
-                        Image(systemName: "minus")
+                        Image(wkt: .subtract)
                             .font(.system(size: 9)).foregroundColor(.earthMuted.opacity(0.3))
                     } else if day.isToday {
-                        Image(systemName: "figure.walk")
+                        Image(wkt: .walk)
                             .font(.system(size: 10)).foregroundColor(.earthGreen)
                     } else if let met = day.goalMet {
                         if met {
-                            Image(systemName: "checkmark")
+                            Image(wkt: .check)
                                 .font(.system(size: 9, weight: .bold))
                                 .foregroundColor(.earthGreen)
                         } else if let steps = day.steps, steps > 0 {
@@ -304,7 +302,7 @@ private struct DayCell: View {
                                 .font(.system(size: 8, weight: .bold))
                                 .foregroundColor(.orange)
                         } else {
-                            Image(systemName: "xmark")
+                            Image(wkt: .dismiss)
                                 .font(.system(size: 8))
                                 .foregroundColor(.earthMuted.opacity(0.4))
                         }

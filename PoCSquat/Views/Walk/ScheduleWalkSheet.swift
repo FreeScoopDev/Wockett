@@ -12,7 +12,7 @@ struct ScheduleWalkSheet: View {
             ZStack {
                 Color.earthBg.ignoresSafeArea()
                 VStack(spacing: 24) {
-                    Image(systemName: "calendar.badge.plus")
+                    Image(wkt: .calendarAdd)
                         .font(.system(size: 52)).foregroundColor(.earthGreen)
                     Text("Schedule \"\(routeName)\"")
                         .font(.headline).foregroundColor(.earthCream).multilineTextAlignment(.center)
@@ -25,8 +25,12 @@ struct ScheduleWalkSheet: View {
                     .datePickerStyle(.graphical).tint(.earthGreenFill)
                     .padding(.horizontal)
                     if notifDenied {
-                        Label("Enable notifications in iOS Settings to receive reminders", systemImage: "bell.slash")
-                            .font(.caption).foregroundColor(.orange)
+                        Label {
+                            Text("Enable notifications in iOS Settings to receive reminders")
+                        } icon: {
+                            Image(wkt: .notificationsOff).wktIcon(.inline, tint: .orange)
+                        }
+                        .font(.caption).foregroundColor(.orange)
                             .multilineTextAlignment(.center).padding(.horizontal)
                     }
                     Spacer()

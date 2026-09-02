@@ -388,7 +388,7 @@ struct RecoveryCard: View {
                     Text(label)
                         .font(.system(size: 10))
                         .foregroundColor(.earthMuted)
-                    Image(systemName: "chevron.right")
+                    Image(wkt: .chevronRight)
                         .font(.system(size: 7, weight: .semibold))
                         .foregroundColor(.earthMuted.opacity(0.45))
                 }

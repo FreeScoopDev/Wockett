@@ -60,7 +60,7 @@ struct SettingsView: View {
                         Button {
                             if let url = URL(string: "x-apple-health://") { UIApplication.shared.open(url) }
                         } label: {
-                            Label("Open Apple Health", systemImage: "heart.text.square")
+                            Label { Text("Open Apple Health") } icon: { Image(wkt: .openHealth).wktIcon(.row, tint: .earthGreen) }
                                 .foregroundColor(.earthGreen)
                         }
                         .listRowBackground(Color.earthCard)
@@ -83,7 +83,7 @@ struct SettingsView: View {
                 // ── Notifications ─────────────────────────────────
                 Section("Notifications") {
                     HStack {
-                        Label("Status", systemImage: "bell")
+                        Label { Text("Status") } icon: { Image(wkt: .notifications).wktIcon(.row, tint: .earthCream) }
                             .foregroundColor(.earthCream)
                         Spacer()
                         Text(notifAuthorized ? "Enabled" : "Disabled")
@@ -98,7 +98,7 @@ struct SettingsView: View {
                                 UIApplication.shared.open(url)
                             }
                         } label: {
-                            Label("Enable in iOS Settings", systemImage: "arrow.up.right.square")
+                            Label { Text("Enable in iOS Settings") } icon: { Image(wkt: .openExternal).wktIcon(.row, tint: .earthGreen) }
                                 .foregroundColor(.earthGreen)
                         }
                         .listRowBackground(Color.earthCard)
@@ -151,14 +151,14 @@ struct SettingsView: View {
                     } else {
                         ForEach(Array(scheduler.scheduledWalkEventIDs.enumerated()), id: \.element) { idx, eventID in
                             HStack {
-                                Label("Walk Reminder \(idx + 1)", systemImage: "calendar.badge.clock")
+                                Label { Text("Walk Reminder \(idx + 1)") } icon: { Image(wkt: .calendarClock).wktIcon(.row, tint: .earthCream) }
                                     .foregroundColor(.earthCream)
                                 Spacer()
                                 Button {
                                     scheduler.removeWalk(eventID: eventID)
                                 } label: {
-                                    Image(systemName: "trash")
-                                        .foregroundColor(.red.opacity(0.7))
+                                    Image(wkt: .discard)
+                                        .wktIcon(.inline, tint: .red.opacity(0.7))
                                 }
                                 .buttonStyle(.plain)
                             }
@@ -168,7 +168,7 @@ struct SettingsView: View {
                     Button {
                         showScheduleSheet = true
                     } label: {
-                        Label("Add Walk Reminder", systemImage: "calendar.badge.plus")
+                        Label { Text("Add Walk Reminder") } icon: { Image(wkt: .calendarAdd).wktIcon(.row, tint: .earthGreen) }
                             .foregroundColor(.earthGreen)
                     }
                     .listRowBackground(Color.earthCard)
@@ -211,7 +211,7 @@ struct SettingsView: View {
                         Button {
                             isAddingAffirmation = true
                         } label: {
-                            Label("Add Affirmation", systemImage: "plus")
+                            Label { Text("Add Affirmation") } icon: { Image(wkt: .add).wktIcon(.row, tint: .earthGreen) }
                                 .foregroundColor(.earthGreen)
                         }
                         .listRowBackground(Color.earthCard)
@@ -244,7 +244,7 @@ struct SettingsView: View {
                             openURL(url)
                         }
                     } label: {
-                        Label("Send Feedback", systemImage: "envelope")
+                        Label { Text("Send Feedback") } icon: { Image(wkt: .envelope).wktIcon(.row, tint: .earthGreen) }
                             .foregroundColor(.earthGreen)
                     }
                     .listRowBackground(Color.earthCard)
@@ -260,7 +260,7 @@ struct SettingsView: View {
                             history: historyStore, pets: petStore, routes: routeStore)
                         devSeedMessage = "Seeded. Dismiss Settings to see changes."
                     } label: {
-                        Label("Seed Screenshot Demo", systemImage: "camera")
+                        Label { Text("Seed Screenshot Demo") } icon: { Image(wkt: .camera).wktIcon(.row, tint: .earthGreen) }
                             .foregroundColor(.earthGreen)
                     }
                     .listRowBackground(Color.earthCard)
@@ -270,7 +270,7 @@ struct SettingsView: View {
                             history: historyStore, pets: petStore, routes: routeStore)
                         devSeedMessage = "Demo data cleared."
                     } label: {
-                        Label("Clear Demo Data", systemImage: "trash")
+                        Label { Text("Clear Demo Data") } icon: { Image(wkt: .discard).wktIcon(.row, tint: .red.opacity(0.75)) }
                             .foregroundColor(.red.opacity(0.75))
                     }
                     .listRowBackground(Color.earthCard)
@@ -279,7 +279,7 @@ struct SettingsView: View {
                         DevSeedStore.seedWalkSessions(into: historyStore)
                         devSeedMessage = "Seeded [TEST] streak data."
                     } label: {
-                        Label("Seed [TEST] Streak Data", systemImage: "flame")
+                        Label { Text("Seed [TEST] Streak Data") } icon: { Image(wkt: .calories).wktIcon(.row, tint: .earthMuted) }
                             .foregroundColor(.earthMuted)
                     }
                     .listRowBackground(Color.earthCard)
@@ -289,7 +289,7 @@ struct SettingsView: View {
                         DevSeedStore.clearTestRoutes(from: routeStore)
                         devSeedMessage = "Cleared [TEST] data."
                     } label: {
-                        Label("Clear [TEST] Data", systemImage: "trash")
+                        Label { Text("Clear [TEST] Data") } icon: { Image(wkt: .discard).wktIcon(.row, tint: .red.opacity(0.55)) }
                             .foregroundColor(.red.opacity(0.55))
                     }
                     .listRowBackground(Color.earthCard)

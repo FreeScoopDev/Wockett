@@ -206,7 +206,7 @@ struct SplashView: View {
                 Spacer()
 
                 VStack(spacing: 10) {
-                    Image(systemName: "lightbulb.fill")
+                    Image(wkt: .tip)
                         .font(.title3)
                         .foregroundColor(splashDot)
                     Text(tips[tipIndex])

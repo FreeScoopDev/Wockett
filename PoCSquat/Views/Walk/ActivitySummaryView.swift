@@ -50,9 +50,8 @@ struct ActivitySummaryView: View {
                 Spacer()
                 // Header
                 VStack(spacing: 12) {
-                    Image(systemName: mode.icon)
-                        .font(.system(size: 72))
-                        .foregroundStyle(Color.earthGreen)
+                    Image(wkt: mode.wktSymbol)
+                        .wktIcon(.tab, tint: .earthGreen, filled: true)
                         .padding(.bottom, 4)
                     Text("\(mode.sessionLabel) Complete!")
                         .font(.system(size: 32, weight: .bold, design: .rounded))
@@ -70,11 +69,11 @@ struct ActivitySummaryView: View {
                         // Stats tiles
                         HStack(spacing: 10) {
                             statTile(value: session.distanceText, label: "Distance",
-                                     icon: "ruler", color: .earthGreen)
+                                     icon: .distance, color: .earthGreen)
                             statTile(value: session.timeText, label: "Time",
-                                     icon: "clock", color: .earthOrange)
+                                     icon: .time, color: .earthOrange)
                             statTile(value: session.estimatedSteps.formatted(), label: "Steps",
-                                     icon: mode.icon, color: .earthCream)
+                                     icon: mode.wktSymbol, color: .earthCream)
                         }
                         .padding(.horizontal)
 
@@ -94,24 +93,30 @@ struct ActivitySummaryView: View {
                         // Action buttons
                         VStack(spacing: 12) {
                             Button { showActivityShare = true } label: {
-                                Label("Share this \(mode.sessionLabel)",
-                                      systemImage: "square.and.arrow.up")
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 18).padding(.horizontal, 20)
-                                    .background(Color.earthCard).foregroundColor(.earthCream)
-                                    .fontWeight(.semibold).cornerRadius(14)
-                                    .overlay(RoundedRectangle(cornerRadius: 14)
-                                        .stroke(Color.earthGreen.opacity(0.4), lineWidth: 1.5))
+                                Label {
+                                    Text("Share this \(mode.sessionLabel)")
+                                } icon: {
+                                    Image(wkt: .share).wktIcon(.row, tint: .earthCream)
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 18).padding(.horizontal, 20)
+                                .background(Color.earthCard).foregroundColor(.earthCream)
+                                .fontWeight(.semibold).cornerRadius(14)
+                                .overlay(RoundedRectangle(cornerRadius: 14)
+                                    .stroke(Color.earthGreen.opacity(0.4), lineWidth: 1.5))
                             }
                             Button { showScheduleSheet = true } label: {
-                                Label("Schedule This \(mode.sessionLabel) Again",
-                                      systemImage: "calendar.badge.plus")
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 18).padding(.horizontal, 20)
-                                    .background(Color.earthCard).foregroundColor(.earthCream)
-                                    .fontWeight(.semibold).cornerRadius(14)
-                                    .overlay(RoundedRectangle(cornerRadius: 14)
-                                        .stroke(Color.earthGreen.opacity(0.4), lineWidth: 1.5))
+                                Label {
+                                    Text("Schedule This \(mode.sessionLabel) Again")
+                                } icon: {
+                                    Image(wkt: .calendarAdd).wktIcon(.row, tint: .earthCream)
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 18).padding(.horizontal, 20)
+                                .background(Color.earthCard).foregroundColor(.earthCream)
+                                .fontWeight(.semibold).cornerRadius(14)
+                                .overlay(RoundedRectangle(cornerRadius: 14)
+                                    .stroke(Color.earthGreen.opacity(0.4), lineWidth: 1.5))
                             }
                             Button { dismiss() } label: {
                                 Text("Done")
@@ -145,9 +150,9 @@ struct ActivitySummaryView: View {
 
     // MARK: - Subviews
 
-    private func statTile(value: String, label: String, icon: String, color: Color) -> some View {
+    private func statTile(value: String, label: String, icon: WktSymbol, color: Color) -> some View {
         VStack(spacing: 8) {
-            Image(systemName: icon).foregroundColor(color).font(.title3)
+            Image(wkt: icon).wktIcon(.row, tint: color)
             Text(value).font(.headline.bold()).foregroundColor(.earthCream)
             Text(label).font(.caption).foregroundColor(.earthMuted)
         }
@@ -273,10 +278,13 @@ struct ActivitySummaryView: View {
                 .padding(.horizontal)
             } else {
                 Button { if !savedAsRoute { showRouteNameField = true } } label: {
-                    Label(
-                        savedAsRoute ? "Saved as Custom Route" : "Save as Custom Route",
-                        systemImage: savedAsRoute ? "checkmark.circle.fill" : "bookmark.fill"
-                    )
+                    Label {
+                        Text(savedAsRoute ? "Saved as Custom Route" : "Save as Custom Route")
+                    } icon: {
+                        Image(wkt: savedAsRoute ? .success : .saved)
+                            .wktIcon(.row, tint: savedAsRoute ? .earthGreen : .earthCream,
+                                     filled: true)
+                    }
                     .frame(maxWidth: .infinity).padding(.vertical, 16)
                     .background(Color.earthCard)
                     .foregroundColor(savedAsRoute ? .earthGreen : .earthCream)

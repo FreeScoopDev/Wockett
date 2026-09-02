@@ -2,6 +2,9 @@ import AppIntents
 import SwiftUI
 import WidgetKit
 
+// Widget-local symbol names (WktSymbol is in the app target, unavailable here)
+private let wktWalkIconName = "figure.walk"
+
 // MARK: - Start Walk Control
 //
 // Appears in Control Center (iOS 18+). Tapping opens Wockett and
@@ -13,7 +16,7 @@ struct WocketStartWalkControl: ControlWidget {
     var body: some ControlWidgetConfiguration {
         StaticControlConfiguration(kind: Self.kind) {
             ControlWidgetButton(action: OpenWockettForWalkIntent()) {
-                Label("Start Walk", systemImage: "figure.walk")
+                Label("Start Walk", systemImage: wktWalkIconName)
             }
         }
         .displayName("Start Walk")

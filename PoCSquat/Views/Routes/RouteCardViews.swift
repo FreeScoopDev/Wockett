@@ -46,8 +46,8 @@ struct RouteCard: View {
                     Text(route.label ?? "\(route.directionName) \(route.isLoop ? "loop" : "route")")
                         .font(.headline).foregroundColor(.earthCream)
                     HStack(spacing: 14) {
-                        Label(route.distanceText, systemImage: "ruler")
-                        Label(route.timeText,     systemImage: "clock")
+                        Label { Text(route.distanceText) } icon: { Image(wkt: .distance).wktIcon(.inline, tint: .earthMuted) }
+                        Label { Text(route.timeText) }     icon: { Image(wkt: .time).wktIcon(.inline, tint: .earthMuted) }
                     }
                     .font(.footnote).foregroundColor(.earthMuted)
                     if let elev = route.elevationSummary {
@@ -72,9 +72,8 @@ struct RouteCard: View {
 
                 VStack(spacing: 10) {
                     if isSelected {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundColor(routeColor)
-                            .font(.body)
+                        Image(wkt: .success)
+                            .wktIcon(.row, tint: routeColor, filled: true)
                     }
                     if let onSave {
                         Button(action: onSave) {
@@ -87,9 +86,7 @@ struct RouteCard: View {
                     }
                     if let onPost {
                         Button(action: onPost) {
-                            Image(systemName: "square.and.arrow.up")
-                                .foregroundColor(.earthMuted)
-                                .font(.subheadline)
+                            Image(wkt: .share).wktIcon(.row, tint: .earthMuted)
                         }
                         .buttonStyle(.plain)
                     }
@@ -134,9 +131,9 @@ struct CommunityRouteCard: View {
             }
 
             HStack(spacing: 16) {
-                Label(route.distanceText, systemImage: "ruler")
-                Label(route.timeText, systemImage: "clock")
-                Label("\(route.estimatedSteps.formatted()) steps", systemImage: "figure.walk")
+                Label { Text(route.distanceText) } icon: { Image(wkt: .distance).wktIcon(.inline, tint: .earthMuted) }
+                Label { Text(route.timeText) } icon: { Image(wkt: .time).wktIcon(.inline, tint: .earthMuted) }
+                Label { Text("\(route.estimatedSteps.formatted()) steps") } icon: { Image(wkt: .walk).wktIcon(.inline, tint: .earthMuted) }
             }
             .font(.caption).foregroundColor(.earthMuted)
 
@@ -171,11 +168,15 @@ struct CommunityRouteCard: View {
                 }
 
                 Button(action: onStart) {
-                    Label("Start Walk", systemImage: "figure.walk")
-                        .font(.subheadline.bold())
-                        .padding(.horizontal, 16).padding(.vertical, 8)
-                        .background(Color.earthGreenFill).foregroundColor(.white)
-                        .cornerRadius(10)
+                    Label {
+                        Text("Start Walk")
+                    } icon: {
+                        Image(wkt: .walk).wktIcon(.inline, tint: .white, onFill: true)
+                    }
+                    .font(.subheadline.bold())
+                    .padding(.horizontal, 16).padding(.vertical, 8)
+                    .background(Color.earthGreenFill).foregroundColor(.white)
+                    .cornerRadius(10)
                 }
             }
         }
@@ -188,13 +189,21 @@ struct CommunityRouteCard: View {
                     CommunityModerationStore.shared.report(route.id)
                     onHide()
                 } label: {
-                    Label("Report Route", systemImage: "flag")
+                    Label {
+                        Text("Report Route")
+                    } icon: {
+                        Image(wkt: .flagReport).wktIcon(.inline, tint: .red)
+                    }
                 }
                 Button(role: .destructive) {
                     CommunityModerationStore.shared.block(author: route.authorName)
                     onHide()
                 } label: {
-                    Label("Block \(route.authorName)", systemImage: "nosign")
+                    Label {
+                        Text("Block \(route.authorName)")
+                    } icon: {
+                        Image(wkt: .blockUser).wktIcon(.inline, tint: .red)
+                    }
                 }
             }
         }
@@ -220,9 +229,9 @@ struct PostToCommunitySheet: View {
                 Color.earthBg.ignoresSafeArea()
                 VStack(spacing: 28) {
                     HStack(spacing: 12) {
-                        statTile(value: route.distanceText, label: "Distance", icon: "ruler")
-                        statTile(value: route.timeText,     label: "Time",     icon: "clock")
-                        statTile(value: "~\(route.estimatedSteps.formatted())", label: "Steps", icon: "figure.walk")
+                        statTile(value: route.distanceText, label: "Distance", icon: .distance)
+                        statTile(value: route.timeText,     label: "Time",     icon: .time)
+                        statTile(value: "~\(route.estimatedSteps.formatted())", label: "Steps", icon: .walk)
                     }
                     .padding(.horizontal)
 
@@ -250,9 +259,17 @@ struct PostToCommunitySheet: View {
                             if isPosting {
                                 ProgressView().tint(.white)
                             } else if didPost {
-                                Label("Shared!", systemImage: "checkmark.circle.fill")
+                            Label {
+                                Text("Shared!")
+                            } icon: {
+                                Image(wkt: .success).wktIcon(.row, tint: .white, filled: true, onFill: true)
+                            }
                             } else {
-                                Label("Post & Save to My Routes", systemImage: "square.and.arrow.up")
+                                Label {
+                                    Text("Post & Save to My Routes")
+                                } icon: {
+                                    Image(wkt: .share).wktIcon(.row, tint: .white, onFill: true)
+                                }
                             }
                         }
                         .frame(maxWidth: .infinity)
@@ -332,9 +349,9 @@ struct PostToCommunitySheet: View {
         }
     }
 
-    private func statTile(value: String, label: String, icon: String) -> some View {
+    private func statTile(value: String, label: String, icon: WktSymbol) -> some View {
         VStack(spacing: 6) {
-            Image(systemName: icon).foregroundColor(.earthGreen).font(.title3)
+            Image(wkt: icon).wktIcon(.row, tint: .earthGreen)
             Text(value).font(.headline.bold()).foregroundColor(.earthCream)
             Text(label).font(.caption).foregroundColor(.earthMuted)
         }

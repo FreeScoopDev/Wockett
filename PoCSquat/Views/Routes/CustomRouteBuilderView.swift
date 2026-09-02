@@ -31,7 +31,7 @@ struct CustomRouteBuilderView: View {
             // Empty-state hint
             if builder.waypoints.isEmpty {
                 VStack(spacing: 10) {
-                    Image(systemName: "hand.tap")
+                    Image(wkt: .tap)
                         .font(.system(size: 34)).foregroundColor(.earthGreen)
                     Text("Tap the map to add waypoints")
                         .font(.headline).foregroundColor(.earthCream)
@@ -85,13 +85,17 @@ struct CustomRouteBuilderView: View {
                 HStack(spacing: 10) {
                     if !builder.waypoints.isEmpty {
                         Button { builder.undoLast() } label: {
-                            Label("Undo", systemImage: "arrow.uturn.backward")
-                                .font(.subheadline)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 18)
-                                .background(Color.earthCard)
-                                .foregroundColor(.earthCream)
-                                .cornerRadius(12)
+                            Label {
+                                Text("Undo")
+                            } icon: {
+                                Image(wkt: .undo).wktIcon(.inline, tint: .earthCream)
+                            }
+                            .font(.subheadline)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 18)
+                            .background(Color.earthCard)
+                            .foregroundColor(.earthCream)
+                            .cornerRadius(12)
                         }
                     }
                     if builder.canSave {
@@ -180,7 +184,7 @@ struct SaveRouteSheet: View {
             ZStack {
                 Color.earthBg.ignoresSafeArea()
                 VStack(spacing: 24) {
-                    Image(systemName: "map.fill")
+                    Image(wkt: .mapFill)
                         .font(.system(size: 52)).foregroundColor(.earthGreen)
                     Text("Name your route")
                         .font(.subheadline).foregroundColor(.earthMuted)

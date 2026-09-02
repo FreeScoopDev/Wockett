@@ -25,7 +25,7 @@ struct CustomRoutesListView: View {
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button { isBuilding = true } label: {
-                    Image(systemName: "plus").foregroundColor(.earthGreen)
+                    Image(wkt: .add).wktIcon(.inline, tint: .earthGreen)
                 }
             }
         }
@@ -36,7 +36,7 @@ struct CustomRoutesListView: View {
 
     private var emptyState: some View {
         VStack(spacing: 16) {
-            Image(systemName: "bookmark")
+            Image(wkt: .saved)
                 .font(.system(size: 64)).foregroundColor(.earthMuted.opacity(0.4))
             Text("Nothing Saved Yet")
                 .font(.headline).foregroundColor(.earthCream)
@@ -44,10 +44,14 @@ struct CustomRoutesListView: View {
                 .font(.subheadline).foregroundColor(.earthMuted)
                 .multilineTextAlignment(.center)
             Button { isBuilding = true } label: {
-                Label("Create Route", systemImage: "plus")
-                    .padding(.horizontal, 24).padding(.vertical, 16)
-                    .background(Color.earthOrangeFill).foregroundColor(.white).bold()
-                    .cornerRadius(12)
+                Label {
+                    Text("Create Route")
+                } icon: {
+                    Image(wkt: .add).wktIcon(.inline, tint: .white, onFill: true)
+                }
+                .padding(.horizontal, 24).padding(.vertical, 16)
+                .background(Color.earthOrangeFill).foregroundColor(.white).bold()
+                .cornerRadius(12)
             }
             .padding(.top, 8)
         }
@@ -103,9 +107,8 @@ struct BookmarkRow: View {
                 RoundedRectangle(cornerRadius: 10)
                     .fill(Color.accentInfo.opacity(0.15))
                     .frame(width: 46, height: 46)
-                Image(systemName: "bookmark.fill")
-                    .foregroundColor(Color.accentInfo)
-                    .font(.system(size: 18, weight: .medium))
+                Image(wkt: .saved)
+                    .wktIcon(.row, tint: Color.accentInfo, filled: true)
             }
             VStack(alignment: .leading, spacing: 4) {
                 Text(bookmark.name).font(.headline).foregroundColor(.earthCream)
@@ -136,8 +139,8 @@ struct CustomRouteRow: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(route.name).font(.headline).foregroundColor(.earthCream)
                 HStack(spacing: 10) {
-                    Label(route.distanceText, systemImage: "ruler")
-                    Label("~\(route.estimatedSteps.formatted()) steps", systemImage: "figure.walk")
+                    Label { Text(route.distanceText) } icon: { Image(wkt: .distance).wktIcon(.inline, tint: .earthMuted) }
+                    Label { Text("~\(route.estimatedSteps.formatted()) steps") } icon: { Image(wkt: .walk).wktIcon(.inline, tint: .earthMuted) }
                 }
                 .font(.footnote).foregroundColor(.earthMuted)
             }
@@ -281,13 +284,17 @@ struct CustomRouteDetailView: View {
                         NavigationLink {
                             RouteSessionHistoryView(route: route, historyStore: historyStore)
                         } label: {
-                            Label("View Run History", systemImage: "clock.arrow.circlepath")
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 14)
-                                .background(Color.earthCard)
-                                .foregroundColor(.earthCream)
-                                .fontWeight(.semibold)
-                                .cornerRadius(12)
+                            Label {
+                                Text("View Run History")
+                            } icon: {
+                                Image(wkt: .history).wktIcon(.row, tint: .earthCream)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 14)
+                            .background(Color.earthCard)
+                            .foregroundColor(.earthCream)
+                            .fontWeight(.semibold)
+                            .cornerRadius(12)
                         }
                         .buttonStyle(.plain)
 
@@ -300,7 +307,7 @@ struct CustomRouteDetailView: View {
                                 }
                             } label: {
                                 HStack(spacing: 4) {
-                                    Image(systemName: "map")
+                                    Image(wkt: .openInMaps).wktIcon(.inline, tint: .earthMuted)
                                     Text("Open in Apple Maps")
                                 }
                                 .font(.subheadline).foregroundColor(.earthMuted)
@@ -344,16 +351,16 @@ struct CustomRouteDetailView: View {
                                 HStack(spacing: 8) {
                                     switch shareState {
                                     case .idle:
-                                        Image(systemName: "arrow.up.circle")
+                                        Image(wkt: .upload).wktIcon(.row, tint: .white, onFill: true)
                                         Text("Share Route")
                                     case .sharing:
                                         ProgressView().tint(.white).scaleEffect(0.85)
                                         Text("Sharing…")
                                     case .shared:
-                                        Image(systemName: "checkmark.circle.fill")
+                                        Image(wkt: .success).wktIcon(.row, tint: .white, filled: true, onFill: true)
                                         Text("Shared!")
                                     case .failed:
-                                        Image(systemName: "exclamationmark.circle")
+                                        Image(wkt: .errorCircle).wktIcon(.row, tint: .white, onFill: true)
                                         Text("Couldn't Share")
                                     }
                                 }
@@ -376,7 +383,7 @@ struct CustomRouteDetailView: View {
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button { isEditing = true } label: {
-                    Image(systemName: "pencil").foregroundColor(.earthGreen)
+                    Image(wkt: .buildRoute).wktIcon(.inline, tint: .earthGreen)
                 }
             }
         }

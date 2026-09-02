@@ -784,7 +784,7 @@ struct NavigationMapView: UIViewRepresentable {
         func mapView(_ map: MKMapView, viewFor annotation: MKAnnotation) -> MKAnnotationView? {
             if let milestone = annotation as? MilestoneAnnotation {
                 let view = MKMarkerAnnotationView(annotation: milestone, reuseIdentifier: "milestone")
-                view.glyphImage = UIImage(systemName: "flag.fill")
+                view.glyphImage = UIImage(systemName: WktSymbol.finish.name)
                 view.markerTintColor = .accentRideFill
                 view.titleVisibility = .visible
                 view.canShowCallout = false

@@ -3,6 +3,16 @@ import WidgetKit
 import SwiftUI
 import AppIntents
 
+// Widget-local symbol names (WktSymbol is in the app target, unavailable here)
+private enum WS {
+    static let pauseCircle = "pause.circle.fill"
+    static let ecg         = "waveform.path.ecg"
+    static let stop        = "stop.fill"
+    static let flag        = "flag.fill"
+    static let speedometer = "speedometer"
+    static let location    = "location.fill"
+}
+
 // MARK: - Formatting helpers (widget-local, no access to main app)
 
 private func fmtDistance(_ meters: Double) -> String {
@@ -47,8 +57,8 @@ private func adjustedStart(_ attrs: WalkActivityAttributes, _ state: WalkActivit
 private func activityIcon(_ mode: String) -> String {
     switch mode {
     case "running":    return "figure.run"
-    case "cycling":    return "bicycle"
-    case "stationary": return "figure.walk.motion"
+    case "cycling":    return "figure.outdoor.cycle"
+    case "stationary": return "figure.walk.treadmill"
     default:           return "figure.walk"
     }
 }
@@ -83,11 +93,11 @@ private struct WalkLockScreenView: View {
                     .lineLimit(1)
                 Spacer()
                 if state.isPaused {
-                    Label("Paused", systemImage: "pause.circle.fill")
+                    Label("Paused", systemImage: WS.pauseCircle)
                         .font(Font.wktHeading(12))
                         .foregroundColor(.earthOrange)
                 } else {
-                    Image(systemName: "waveform.path.ecg")
+                    Image(systemName: WS.ecg)
                         .font(.caption)
                         .foregroundColor(.earthGreen)
                 }
@@ -144,7 +154,7 @@ private struct WalkLockScreenView: View {
                 .tint(.earthOrangeFill)
 
                 Button(intent: EndWalkLiveActivityIntent()) {
-                    Label("End \(activityNoun(attrs.activityMode))", systemImage: "stop.fill")
+                    Label("End \(activityNoun(attrs.activityMode))", systemImage: WS.stop)
                         .font(Font.wktHeading(12))
                 }
                 .tint(.earthGreenFill)
@@ -230,7 +240,7 @@ struct WocketWalkLiveActivity: Widget {
                 DynamicIslandExpandedRegion(.trailing) {
                     VStack(alignment: .trailing, spacing: 2) {
                         if context.attributes.totalDistanceMeters > 0 {
-                            Image(systemName: "flag.fill")
+                            Image(systemName: WS.flag)
                                 .font(.caption.weight(.semibold))
                                 .foregroundColor(.earthGreen)
                             let remaining = max(0, context.attributes.totalDistanceMeters - context.state.distanceCoveredMeters)
@@ -242,7 +252,7 @@ struct WocketWalkLiveActivity: Widget {
                                 .textCase(.uppercase)
                                 .foregroundColor(.earthMuted)
                         } else {
-                            Image(systemName: "speedometer")
+                            Image(systemName: WS.speedometer)
                                 .font(.caption.weight(.semibold))
                                 .foregroundColor(.earthGreen)
                             Text(fmtPace(context.state.paceSecsPerKm, mode: context.attributes.activityMode))
@@ -267,14 +277,14 @@ struct WocketWalkLiveActivity: Widget {
                 DynamicIslandExpandedRegion(.bottom) {
                     VStack(spacing: 8) {
                         HStack(spacing: 20) {
-                            Label(fmtDistance(context.state.distanceCoveredMeters), systemImage: "location.fill")
+                            Label(fmtDistance(context.state.distanceCoveredMeters), systemImage: WS.location)
                                 .wktTechnical(13)
                                 .foregroundColor(.earthCream)
-                            Label(fmtPace(context.state.paceSecsPerKm, mode: context.attributes.activityMode), systemImage: "speedometer")
+                            Label(fmtPace(context.state.paceSecsPerKm, mode: context.attributes.activityMode), systemImage: WS.speedometer)
                                 .wktTechnical(13)
                                 .foregroundColor(context.state.isPaused ? .earthOrange : .earthCream)
                             if context.state.isPaused {
-                                Label("Paused", systemImage: "pause.circle.fill")
+                                Label("Paused", systemImage: WS.pauseCircle)
                                     .font(Font.wktHeading(12))
                                     .foregroundColor(.earthOrange)
                             }
@@ -289,7 +299,7 @@ struct WocketWalkLiveActivity: Widget {
                             .tint(.earthOrangeFill)
 
                             Button(intent: EndWalkLiveActivityIntent()) {
-                                Label("End \(activityNoun(context.attributes.activityMode))", systemImage: "stop.fill")
+                                Label("End \(activityNoun(context.attributes.activityMode))", systemImage: WS.stop)
                                     .font(Font.wktHeading(12))
                             }
                             .tint(.earthGreenFill)

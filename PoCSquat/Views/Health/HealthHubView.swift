@@ -75,9 +75,8 @@ struct HealthHubView: View {
                     RoundedRectangle(cornerRadius: 12)
                         .fill(Color.earthOrange.opacity(0.15))
                         .frame(width: 48, height: 48)
-                    Image(systemName: "clock.arrow.circlepath")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundColor(.earthOrange)
+                    Image(wkt: .history)
+                        .wktIcon(.row, tint: .earthOrange)
                 }
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Activity History")
@@ -89,9 +88,8 @@ struct HealthHubView: View {
                         .foregroundColor(.earthMuted)
                 }
                 Spacer()
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(.earthMuted.opacity(0.5))
+                Image(wkt: .chevronRight)
+                    .wktIcon(.inline, tint: .earthMuted.opacity(0.5))
             }
             .padding(16)
             .background(Color.earthCard)

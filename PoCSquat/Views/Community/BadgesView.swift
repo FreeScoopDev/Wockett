@@ -91,9 +91,8 @@ struct BadgesContentView: View {
 
     private var pinHint: some View {
         HStack(spacing: 8) {
-            Image(systemName: "pin.fill")
-                .font(.system(size: 11))
-                .foregroundColor(.earthOrange)
+            Image(wkt: .pin)
+                .wktIcon(.inline, tint: .earthOrange, filled: true)
             Text("Pin up to 2 badges to your home screen")
                 .font(.wktBody(12))
                 .foregroundColor(.earthMuted)
@@ -117,7 +116,7 @@ struct BadgesContentView: View {
                 streakTile(value: longestStreak,   label: "Best Streak",  emoji: "🏆")
             }
             HStack(spacing: 8) {
-                Image(systemName: "figure.walk").foregroundColor(.earthGreen)
+                Image(wkt: .walk).wktIcon(.inline, tint: .earthGreen)
                 Text(String(format: "%.1f km walked all time", totalKm))
                     .font(.wktBody(14)).foregroundColor(.earthCream)
             }
@@ -330,13 +329,17 @@ struct BadgesContentView: View {
                 .first?.windows.first?.rootViewController?
                 .present(av, animated: true)
         } label: {
-            Label("Challenge a Friend", systemImage: "square.and.arrow.up")
-                .font(.wktHeading(17))
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 16)
-                .background(Color.earthGreenFill)
-                .foregroundColor(.white)
-                .cornerRadius(14)
+            Label {
+                Text("Challenge a Friend")
+            } icon: {
+                Image(wkt: .share).wktIcon(.row, tint: .white, onFill: true)
+            }
+            .font(.wktHeading(17))
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 16)
+            .background(Color.earthGreenFill)
+            .foregroundColor(.white)
+            .cornerRadius(14)
         }
         .buttonStyle(.plain)
     }

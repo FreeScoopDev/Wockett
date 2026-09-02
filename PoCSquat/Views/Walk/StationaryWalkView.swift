@@ -108,12 +108,14 @@ struct StationaryWalkView: View {
                 // Header
                 HStack {
                     Button { manager.stop(); dismiss() } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 26))
-                            .foregroundColor(.earthMuted)
+                        Image(wkt: .close).wktIcon(.tab, tint: .earthMuted, filled: true)
                     }
                     Spacer()
-                    Label("Indoor Walk", systemImage: "figure.walk.motion")
+                    Label {
+                        Text("Indoor Walk")
+                    } icon: {
+                        Image(wkt: .walkMotion).wktIcon(.row, tint: .earthCream)
+                    }
                         .font(.headline)
                         .foregroundColor(.earthCream)
                     Spacer()
@@ -210,14 +212,18 @@ struct StationaryWalkView: View {
                     manager.stop()
                     showSummary = true
                 } label: {
-                    Label("Finish Workout", systemImage: "checkmark.circle.fill")
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 18)
-                        .background(purpleFill)
-                        .foregroundColor(.white)
-                        .font(.headline)
-                        .cornerRadius(14)
-                        .padding(.horizontal, 24)
+                    Label {
+                        Text("Finish Workout")
+                    } icon: {
+                        Image(wkt: .success).wktIcon(.row, tint: .white, filled: true, onFill: true)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 18)
+                    .background(purpleFill)
+                    .foregroundColor(.white)
+                    .font(.headline)
+                    .cornerRadius(14)
+                    .padding(.horizontal, 24)
                 }
                 .padding(.bottom, 48)
             }

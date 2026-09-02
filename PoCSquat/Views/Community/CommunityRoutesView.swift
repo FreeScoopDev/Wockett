@@ -86,7 +86,7 @@ struct CommunityRoutesView: View {
             LazyVStack(spacing: 14) {
                 if let err = wocketError {
                     HStack(spacing: 6) {
-                        Image(systemName: "exclamationmark.circle.fill").font(.caption)
+                        Image(wkt: .errorCircle).wktIcon(.inline, tint: .orange, filled: true)
                         Text(err).font(.caption)
                     }
                     .foregroundColor(.orange)
@@ -130,16 +130,20 @@ struct CommunityRoutesView: View {
 
     private func errorState(_ message: String) -> some View {
         VStack(spacing: 14) {
-            Image(systemName: "exclamationmark.icloud")
+            Image(wkt: .cloudError)
                 .font(.system(size: 36)).foregroundColor(.earthMuted)
             Text(message)
                 .font(.subheadline).foregroundColor(.earthMuted)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 40)
             Button { Task { await model.load(force: true) } } label: {
-                Label("Retry", systemImage: "arrow.clockwise")
-                    .font(.subheadline.bold())
-                    .padding(.horizontal, 20).padding(.vertical, 10)
+                Label {
+                    Text("Retry")
+                } icon: {
+                    Image(wkt: .refresh).wktIcon(.inline, tint: .earthGreen)
+                }
+                .font(.subheadline.bold())
+                .padding(.horizontal, 20).padding(.vertical, 10)
                     .background(Color.earthCard)
                     .foregroundColor(.earthGreen)
                     .cornerRadius(10)

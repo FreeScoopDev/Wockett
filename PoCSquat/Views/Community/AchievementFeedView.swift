@@ -41,8 +41,7 @@ struct AchievementFeedContentView: View {
                     ProgressView().tint(.earthGreen).scaleEffect(0.8)
                 } else {
                     Button { Task { await load() } } label: {
-                        Image(systemName: "arrow.clockwise")
-                            .foregroundColor(.earthGreen)
+                        Image(wkt: .refresh).wktIcon(.inline, tint: .earthGreen)
                     }
                 }
             }
@@ -64,19 +63,23 @@ struct AchievementFeedContentView: View {
 
     private func errorState(_ message: String) -> some View {
         VStack(spacing: 14) {
-            Image(systemName: "exclamationmark.icloud")
+            Image(wkt: .cloudError)
                 .font(.system(size: 36)).foregroundColor(.earthMuted)
             Text(message)
                 .font(.subheadline).foregroundColor(.earthMuted)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 40)
             Button { loadError = nil; Task { await load() } } label: {
-                Label("Retry", systemImage: "arrow.clockwise")
-                    .font(.subheadline.bold())
-                    .padding(.horizontal, 20).padding(.vertical, 10)
-                    .background(Color.earthCard)
-                    .foregroundColor(.earthGreen)
-                    .cornerRadius(10)
+                Label {
+                    Text("Retry")
+                } icon: {
+                    Image(wkt: .refresh).wktIcon(.inline, tint: .earthGreen)
+                }
+                .font(.subheadline.bold())
+                .padding(.horizontal, 20).padding(.vertical, 10)
+                .background(Color.earthCard)
+                .foregroundColor(.earthGreen)
+                .cornerRadius(10)
             }
         }
     }
@@ -201,13 +204,21 @@ private struct AchievementPostCard: View {
                     CommunityModerationStore.shared.report(post.id)
                     onHide()
                 } label: {
-                    Label("Report Post", systemImage: "flag")
+                    Label {
+                        Text("Report Post")
+                    } icon: {
+                        Image(wkt: .flagReport).wktIcon(.inline, tint: .red)
+                    }
                 }
                 Button(role: .destructive) {
                     CommunityModerationStore.shared.block(author: post.authorName)
                     onHide()
                 } label: {
-                    Label("Block \(post.authorName)", systemImage: "nosign")
+                    Label {
+                        Text("Block \(post.authorName)")
+                    } icon: {
+                        Image(wkt: .blockUser).wktIcon(.inline, tint: .red)
+                    }
                 }
             }
         }

@@ -33,7 +33,7 @@ struct ChallengesContentView: View {
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button { showCreate = true } label: {
-                    Image(systemName: "plus").foregroundColor(.earthGreen)
+                    Image(wkt: .add).wktIcon(.inline, tint: .earthGreen)
                 }
             }
         }
@@ -115,19 +115,23 @@ struct ChallengesContentView: View {
 
     private func errorView(_ message: String) -> some View {
         VStack(spacing: 16) {
-            Image(systemName: "exclamationmark.icloud")
+            Image(wkt: .cloudError)
                 .font(.system(size: 40)).foregroundColor(.earthMuted)
             Text(message)
                 .font(.subheadline).foregroundColor(.earthMuted)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 32)
             Button { Task { await load() } } label: {
-                Label("Retry", systemImage: "arrow.clockwise")
-                    .font(.subheadline.bold())
-                    .foregroundColor(.earthGreen)
-                    .padding(.horizontal, 20).padding(.vertical, 10)
-                    .background(Color.earthCard)
-                    .cornerRadius(10)
+                Label {
+                    Text("Retry")
+                } icon: {
+                    Image(wkt: .refresh).wktIcon(.inline, tint: .earthGreen)
+                }
+                .font(.subheadline.bold())
+                .foregroundColor(.earthGreen)
+                .padding(.horizontal, 20).padding(.vertical, 10)
+                .background(Color.earthCard)
+                .cornerRadius(10)
             }
         }
     }
@@ -228,9 +232,8 @@ private struct ChallengeCard: View {
 
             Spacer()
 
-            Image(systemName: "chevron.right")
-                .font(.caption.bold())
-                .foregroundColor(.earthMuted.opacity(0.4))
+            Image(wkt: .chevronRight)
+                .wktIcon(.inline, tint: .earthMuted.opacity(0.4))
         }
         .padding(14)
         .background(Color.earthCard)
@@ -245,13 +248,21 @@ private struct ChallengeCard: View {
                     CommunityModerationStore.shared.report(challenge.id)
                     onHide()
                 } label: {
-                    Label("Report Challenge", systemImage: "flag")
+                    Label {
+                        Text("Report Challenge")
+                    } icon: {
+                        Image(wkt: .flagReport).wktIcon(.inline, tint: .red)
+                    }
                 }
                 Button(role: .destructive) {
                     CommunityModerationStore.shared.block(author: challenge.authorName)
                     onHide()
                 } label: {
-                    Label("Block \(challenge.authorName)", systemImage: "nosign")
+                    Label {
+                        Text("Block \(challenge.authorName)")
+                    } icon: {
+                        Image(wkt: .blockUser).wktIcon(.inline, tint: .red)
+                    }
                 }
             }
         }
@@ -863,7 +874,11 @@ struct CreateChallengeView: View {
                         Text("Creating…")
                     }
                 } else {
-                    Label("Create Challenge", systemImage: "trophy.fill")
+                    Label {
+                        Text("Create Challenge")
+                    } icon: {
+                        Image(wkt: .records).wktIcon(.row, tint: .white, filled: true, onFill: true)
+                    }
                 }
             }
             .font(.headline)

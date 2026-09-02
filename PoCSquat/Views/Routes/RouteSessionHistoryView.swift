@@ -29,7 +29,7 @@ struct RouteSessionHistoryView: View {
 
     private var emptyState: some View {
         VStack(spacing: 16) {
-            Image(systemName: "clock.arrow.circlepath")
+            Image(wkt: .history)
                 .font(.system(size: 64)).foregroundColor(.earthMuted.opacity(0.4))
             Text("No Runs Yet")
                 .font(.headline).foregroundColor(.earthCream)
@@ -79,9 +79,9 @@ struct RouteSessionRow: View {
                 Text(Self.dateFmt.string(from: session.date))
                     .font(.subheadline.bold()).foregroundColor(.earthCream)
                 HStack(spacing: 10) {
-                    Label(session.distanceText,      systemImage: "ruler")
-                    Label(session.timeText,          systemImage: "clock")
-                    Label(session.paceOrSpeedText,   systemImage: "speedometer")
+                    Label { Text(session.distanceText) }    icon: { Image(wkt: .distance).wktIcon(.inline, tint: .earthMuted) }
+                    Label { Text(session.timeText) }        icon: { Image(wkt: .time).wktIcon(.inline, tint: .earthMuted) }
+                    Label { Text(session.paceOrSpeedText) } icon: { Image(wkt: .pace).wktIcon(.inline, tint: .earthMuted) }
                 }
                 .font(.footnote).foregroundColor(.earthMuted)
             }

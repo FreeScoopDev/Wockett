@@ -37,8 +37,17 @@ enum ActivityMode: String, Codable {
         switch self {
         case .walking:    return "figure.walk"
         case .running:    return "figure.run"
-        case .cycling:    return "bicycle"
-        case .stationary: return "figure.walk.motion"
+        case .cycling:    return "figure.outdoor.cycle"
+        case .stationary: return "figure.walk.treadmill"
+        }
+    }
+
+    var wktSymbol: WktSymbol {
+        switch self {
+        case .walking:    return .walk
+        case .running:    return .run
+        case .cycling:    return .ride
+        case .stationary: return .indoor
         }
     }
 

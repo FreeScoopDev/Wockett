@@ -36,35 +36,58 @@ struct SquatCounterApp: App {
         WindowGroup {
             ZStack {
                 TabView(selection: $tabRouter.selected) {
-                    Tab("Home", systemImage: "house", value: AppTab.home) {
+                    Tab(value: AppTab.health) {
+                        NavigationStack {
+                            HealthHubView()
+                        }
+                    } label: {
+                        Label { Text("Health") } icon: { Image(wkt: .health) }
+                    }
+                    Tab(value: AppTab.routes) {
+                        NavigationStack {
+                            RouteFinderContentView(
+                                routeManager: routeManager,
+                                historyStore: historyStore,
+                                routeStore: routeStore,
+                                stepManager: stepManager,
+                                onNavigateAway: {
+                                    ActiveWalkStore.shared.requestReopen()
+                                    tabRouter.selected = .home
+                                }
+                            )
+                        }
+                    } label: {
+                        Label { Text("Routes") } icon: { Image(wkt: .routes) }
+                    }
+                    Tab("Home", image: "wkt.home.pin", value: AppTab.home) {
                         NavigationStack {
                             StepCounterView()
                         }
                     }
-                    Tab("Health", systemImage: "heart.text.square", value: AppTab.health) {
-                        NavigationStack {
-                            HealthHubView()
-                        }
-                    }
-                    Tab("Community", systemImage: "person.2", value: AppTab.community) {
+                    Tab(value: AppTab.community) {
                         NavigationStack {
                             CommunityHubView()
                         }
+                    } label: {
+                        Label { Text("Community") } icon: { Image(wkt: .community) }
                     }
-                    Tab("Settings", systemImage: "gearshape", value: AppTab.settings) {
+                    Tab(value: AppTab.settings) {
                         NavigationStack {
                             SettingsView()
                         }
+                    } label: {
+                        Label { Text("Settings") } icon: { Image(wkt: .settings) }
                     }
                 }
                 // Bottom tab bar on iPhone; top tab bar / sidebar on iPad.
                 .tabViewStyle(.sidebarAdaptable)
                 // Tab bar collapses on downward scroll (iPhone only; ignored on iPad).
                 .tabBarMinimizeBehavior(.onScrollDown)
-                // Active walk tile floats above the tab bar; moves inline when tab bar collapses.
-                .tabViewBottomAccessory {
+                // Active walk tile; isEnabled:false completely hides the capsule when idle.
+                .tabViewBottomAccessory(isEnabled: ActiveWalkStore.shared.isActive) {
                     ActiveMiniTileContainer()
                 }
+                .tint(.earthGreen)
 
                 // Splash renders on top from the very first frame — no system presentation
                 // delay, so the dashboard is never visible before it. showSplash starts true

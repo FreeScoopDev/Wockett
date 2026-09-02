@@ -26,16 +26,14 @@ struct DestinationSearchSheet: View {
                 VStack(spacing: 0) {
                     // Search field
                     HStack(spacing: 10) {
-                        Image(systemName: "magnifyingglass")
-                            .foregroundColor(.earthMuted)
+                        Image(wkt: .find).wktIcon(.inline, tint: .earthMuted)
                         TextField("Café, park, gym, landmark...", text: $searchText)
                             .foregroundColor(.earthCream)
                             .autocorrectionDisabled()
                             .submitLabel(.search)
                         if !searchText.isEmpty {
                             Button { searchText = "" } label: {
-                                Image(systemName: "xmark.circle.fill")
-                                    .foregroundColor(.earthMuted)
+                                Image(wkt: .close).wktIcon(.inline, tint: .earthMuted, filled: true)
                             }
                         }
                     }
@@ -47,7 +45,7 @@ struct DestinationSearchSheet: View {
                     if searchText.isEmpty {
                         Spacer()
                         VStack(spacing: 12) {
-                            Image(systemName: "mappin.and.ellipse")
+                            Image(wkt: .place)
                                 .font(.system(size: 44))
                                 .foregroundColor(.earthMuted.opacity(0.4))
                             Text("Search for anywhere you'd like to walk — a café, park, gym, landmark, or friend's street.")
@@ -147,9 +145,8 @@ private struct SearchResultRow: View {
     var body: some View {
         Button(action: onTap) {
             HStack(spacing: 12) {
-                Image(systemName: "mappin.circle.fill")
-                    .foregroundColor(.earthGreen)
-                    .font(.title2)
+                Image(wkt: .mapPinFill)
+                    .wktIcon(.row, tint: .earthGreen, filled: true)
 
                 VStack(alignment: .leading, spacing: 3) {
                     Text(result.mapItem.name ?? "Unknown place")
@@ -248,7 +245,7 @@ struct NearbyPlacesSheet: View {
                             results = []
                         } label: {
                             HStack(spacing: 4) {
-                                Image(systemName: "chevron.left")
+                                Image(wkt: .chevronLeft).wktIcon(.inline, tint: .earthGreen)
                                 Text("Categories")
                             }
                             .foregroundColor(.earthGreen)
@@ -582,23 +579,31 @@ private struct NearbyPlaceRow: View {
 
             HStack(spacing: 8) {
                 Button { onWalkThere() } label: {
-                    Label("Walk There", systemImage: "arrow.right")
-                        .font(.caption.bold())
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 7)
-                        .background(Color.earthGreen.opacity(0.15))
-                        .foregroundColor(.earthGreen)
-                        .cornerRadius(8)
+                    Label {
+                        Text("Walk There")
+                    } icon: {
+                        Image(wkt: .arrowRight).wktIcon(.inline, tint: .earthGreen)
+                    }
+                    .font(.caption.bold())
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 7)
+                    .background(Color.earthGreen.opacity(0.15))
+                    .foregroundColor(.earthGreen)
+                    .cornerRadius(8)
                 }
                 Button { onLoopBack() } label: {
-                    Label("& Back", systemImage: "arrow.triangle.2.circlepath")
-                        .font(.caption.bold())
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 7)
-                        .background(Color.earthCard)
-                        .foregroundColor(.earthMuted)
-                        .cornerRadius(8)
-                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.earthMuted.opacity(0.3), lineWidth: 1))
+                    Label {
+                        Text("& Back")
+                    } icon: {
+                        Image(wkt: .loop).wktIcon(.inline, tint: .earthMuted)
+                    }
+                    .font(.caption.bold())
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 7)
+                    .background(Color.earthCard)
+                    .foregroundColor(.earthMuted)
+                    .cornerRadius(8)
+                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.earthMuted.opacity(0.3), lineWidth: 1))
                 }
             }
             .buttonStyle(.plain)
@@ -607,18 +612,30 @@ private struct NearbyPlaceRow: View {
         .contextMenu {
             if let url = callURL {
                 Button { openURL(url) } label: {
-                    Label("Call", systemImage: "phone.fill")
+                    Label {
+                        Text("Call")
+                    } icon: {
+                        Image(wkt: .phone).wktIcon(.inline, tint: .primary)
+                    }
                 }
             }
             if let url = item.url {
                 Button { openURL(url) } label: {
-                    Label("Visit Website", systemImage: "globe")
+                    Label {
+                        Text("Visit Website")
+                    } icon: {
+                        Image(wkt: .link).wktIcon(.inline, tint: .primary)
+                    }
                 }
             }
             Button {
                 item.openInMaps(launchOptions: [MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeWalking])
             } label: {
-                Label("Open in Apple Maps", systemImage: "map.fill")
+                Label {
+                    Text("Open in Apple Maps")
+                } icon: {
+                    Image(wkt: .mapFill).wktIcon(.inline, tint: .primary)
+                }
             }
         }
     }
