@@ -166,6 +166,7 @@ struct RouteFinderContentView: View {
                             .padding(10)
                             .background(.ultraThinMaterial, in: Circle())
                     }
+                    .accessibilityLabel("Back")
                 } else {
                     Spacer().frame(width: 44)
                 }

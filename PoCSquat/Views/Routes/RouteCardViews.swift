@@ -77,18 +77,21 @@ struct RouteCard: View {
                     }
                     if let onSave {
                         Button(action: onSave) {
-                            Image(systemName: isSaved ? "bookmark.fill" : "bookmark")
-                                .foregroundColor(isSaved ? routeColor : .earthMuted)
-                                .font(.subheadline)
+                            Image(wkt: .saved)
+                                .wktIcon(.inline, tint: isSaved ? routeColor : .earthMuted, filled: isSaved)
                         }
                         .buttonStyle(.plain)
                         .disabled(isSaved)
+                        .accessibilityLabel("Save route")
+                        .accessibilityValue(isSaved ? "Saved" : "Not saved")
+                        .accessibilityAddTraits(isSaved ? .isSelected : [])
                     }
                     if let onPost {
                         Button(action: onPost) {
                             Image(wkt: .share).wktIcon(.row, tint: .earthMuted)
                         }
                         .buttonStyle(.plain)
+                        .accessibilityLabel("Share route")
                     }
                 }
             }
@@ -156,15 +159,17 @@ struct CommunityRouteCard: View {
 
                 if let onSave {
                     Button(action: onSave) {
-                        Image(systemName: isSaved ? "bookmark.fill" : "bookmark")
-                            .foregroundColor(isSaved ? .earthGreen : .earthMuted)
-                            .font(.subheadline)
+                        Image(wkt: .saved)
+                            .wktIcon(.inline, tint: isSaved ? .earthGreen : .earthMuted, filled: isSaved)
                             .padding(.horizontal, 10).padding(.vertical, 8)
                             .background(Color.earthCard)
                             .cornerRadius(10)
                             .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.earthMuted.opacity(0.2), lineWidth: 1))
                     }
                     .disabled(isSaved)
+                    .accessibilityLabel("Save route")
+                    .accessibilityValue(isSaved ? "Saved" : "Not saved")
+                    .accessibilityAddTraits(isSaved ? .isSelected : [])
                 }
 
                 Button(action: onStart) {

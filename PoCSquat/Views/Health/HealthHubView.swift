@@ -77,7 +77,9 @@ struct HealthHubView: View {
                         .frame(width: 48, height: 48)
                     Image(wkt: .history)
                         .wktIcon(.row, tint: .earthOrange)
+                        .accessibilityHidden(true)
                 }
+                .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Activity History")
                         .font(.wktHeading(17))
@@ -90,6 +92,7 @@ struct HealthHubView: View {
                 Spacer()
                 Image(wkt: .chevronRight)
                     .wktIcon(.inline, tint: .earthMuted.opacity(0.5))
+                    .accessibilityHidden(true)
             }
             .padding(16)
             .background(Color.earthCard)

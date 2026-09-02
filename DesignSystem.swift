@@ -156,17 +156,20 @@ extension Color {
 extension Font {
     /// Display tier — SF Pro Rounded Black. Use for hero numbers and the wordmark.
     static func wktDisplay(_ size: CGFloat) -> Font {
-        .system(size: size, weight: .black, design: .rounded)
+        let s = UIFontMetrics(forTextStyle: .body).scaledValue(for: size)
+        return .system(size: s, weight: .black, design: .rounded)
     }
 
     /// UI tier, heading weight — SF Pro Rounded Heavy. Section titles, card headers.
     static func wktHeading(_ size: CGFloat) -> Font {
-        .system(size: size, weight: .heavy, design: .rounded)
+        let s = UIFontMetrics(forTextStyle: .body).scaledValue(for: size)
+        return .system(size: s, weight: .heavy, design: .rounded)
     }
 
     /// UI tier, body weight — SF Pro Rounded Semibold. Buttons, list labels, body text.
     static func wktBody(_ size: CGFloat) -> Font {
-        .system(size: size, weight: .semibold, design: .rounded)
+        let s = UIFontMetrics(forTextStyle: .body).scaledValue(for: size)
+        return .system(size: s, weight: .semibold, design: .rounded)
     }
 }
 
@@ -176,9 +179,10 @@ extension Font {
 private struct WktTechnicalText: ViewModifier {
     var size: CGFloat
     func body(content: Content) -> some View {
-        content
-            .font(.system(size: size, weight: .semibold, design: .monospaced))
-            .tracking(size * 0.14)
+        let s = UIFontMetrics(forTextStyle: .body).scaledValue(for: size)
+        return content
+            .font(.system(size: s, weight: .semibold, design: .monospaced))
+            .tracking(s * 0.14)
     }
 }
 

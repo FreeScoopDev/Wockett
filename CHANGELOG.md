@@ -27,6 +27,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Shared data stores (steps, routes, history) are created once at app launch and shared across screens instead of each screen keeping its own copy — seeded demo data and edits now show up immediately without relaunching
 
 ### Fixed
+- Icon-only buttons now have VoiceOver labels (29 sites: navigation controls, toolbar actions, toggle buttons, route save/share, session controls)
+- Text and icons now scale with the user's preferred text size; capped at Accessibility 2 so tiles and the tab bar remain usable at the largest sizes
 - Blank capsule bar appearing when no walk is active — `tabViewBottomAccessory(isEnabled:)` completely hides the capsule when idle instead of leaving an empty slot
 - Active walk tile chrome (background material, corner radius, shadow, outer padding) stripped — the system capsule provides the container; tile renders a compact inline form when the tab bar is minimised
 - Several flat, non-adaptive color literals that had drifted from the shared design tokens over time — scattered across ~15 files (map pins, chip borders, a milestone-marker teal, POI category colors) — consolidated back onto the light/dark-adaptive tokens they were supposed to match

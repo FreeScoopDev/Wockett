@@ -144,6 +144,7 @@ struct MonthCalendarView: View {
                         } label: {
                             Image(wkt: .chevronLeft).wktIcon(.inline, tint: .earthMuted)
                         }
+                        .accessibilityLabel("Previous month")
 
                         ZStack {
                             Text(Self.monthFmt.string(from: monthStart))
@@ -166,6 +167,7 @@ struct MonthCalendarView: View {
                                 .wktIcon(.inline, tint: isFutureMonth ? .earthMuted.opacity(0.3) : .earthMuted)
                         }
                         .disabled(isFutureMonth)
+                        .accessibilityLabel("Next month")
                     }
                     .padding(.horizontal, 20).padding(.vertical, 14)
 

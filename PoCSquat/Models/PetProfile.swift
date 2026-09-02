@@ -299,6 +299,7 @@ struct PetManagementView: View {
                 Button { showAddPet = true } label: {
                     Image(wkt: .add).wktIcon(.inline, tint: .earthGreen)
                 }
+                .accessibilityLabel("Add pet")
             }
         }
         .sheet(isPresented: $showAddPet) {
@@ -508,6 +509,7 @@ struct PetEditorSheet: View {
                                     Button { emojiText = "" } label: {
                                         Image(wkt: .close).wktIcon(.inline, tint: .earthMuted, filled: true)
                                     }
+                                    .accessibilityLabel("Clear emoji")
                                 }
                             }
                         }
@@ -542,6 +544,8 @@ struct PetEditorSheet: View {
                                         }
                                         .overlay(Circle().stroke(colorIndex == i ? Color.white.opacity(0.8) : Color.clear, lineWidth: 2))
                                     }
+                                    .accessibilityLabel("Color option \(i + 1)")
+                                    .accessibilityAddTraits(colorIndex == i ? .isSelected : [])
                                 }
                             }
                         }

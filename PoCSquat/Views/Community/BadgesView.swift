@@ -117,6 +117,7 @@ struct BadgesContentView: View {
             }
             HStack(spacing: 8) {
                 Image(wkt: .walk).wktIcon(.inline, tint: .earthGreen)
+                    .accessibilityHidden(true)
                 Text(String(format: "%.1f km walked all time", totalKm))
                     .font(.wktBody(14)).foregroundColor(.earthCream)
             }
@@ -294,12 +295,14 @@ struct BadgesContentView: View {
             Button {
                 togglePin(badge.id)
             } label: {
-                Image(systemName: isPinned ? "pin.fill" : "pin")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundColor(isPinned ? .earthOrange : .earthMuted.opacity(0.4))
+                Image(wkt: .pin)
+                    .wktIcon(.inline, tint: isPinned ? .earthOrange : .earthMuted.opacity(0.4), filled: isPinned)
                     .padding(7)
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("Pin badge")
+            .accessibilityValue(isPinned ? "Pinned" : "Unpinned")
+            .accessibilityAddTraits(isPinned ? .isSelected : [])
         }
     }
 

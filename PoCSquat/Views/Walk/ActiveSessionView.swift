@@ -532,6 +532,7 @@ struct ActiveSessionView: View {
                                 .wktIcon(.row, tint: .earthGreen)
                         }
                         .padding(.trailing, 10)
+                        .accessibilityLabel("Send owner update")
                     }
                 }
                 Button {
@@ -643,6 +644,7 @@ struct ActiveSessionView: View {
                                 .background(Color.earthGreenFill.opacity(0.9))
                                 .clipShape(Circle())
                         }
+                        .accessibilityLabel("Show route")
                         Button {
                             withAnimation(.spring(response: 0.3)) { poiManager.selectedPOI = nil }
                         } label: {

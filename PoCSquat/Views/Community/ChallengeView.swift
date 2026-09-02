@@ -35,6 +35,7 @@ struct ChallengesContentView: View {
                 Button { showCreate = true } label: {
                     Image(wkt: .add).wktIcon(.inline, tint: .earthGreen)
                 }
+                .accessibilityLabel("New challenge")
             }
         }
         .task { await load() }

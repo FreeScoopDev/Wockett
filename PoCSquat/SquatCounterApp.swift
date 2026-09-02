@@ -83,6 +83,8 @@ struct SquatCounterApp: App {
                 .tabViewStyle(.sidebarAdaptable)
                 // Tab bar collapses on downward scroll (iPhone only; ignored on iPad).
                 .tabBarMinimizeBehavior(.onScrollDown)
+                // Cap Dynamic Type at Accessibility 2 so tiles and tab bar remain usable.
+                .dynamicTypeSize(...DynamicTypeSize.accessibility2)
                 // Active walk tile; isEnabled:false completely hides the capsule when idle.
                 .tabViewBottomAccessory(isEnabled: ActiveWalkStore.shared.isActive) {
                     ActiveMiniTileContainer()

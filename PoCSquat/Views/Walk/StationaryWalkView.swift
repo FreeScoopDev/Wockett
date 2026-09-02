@@ -110,6 +110,7 @@ struct StationaryWalkView: View {
                     Button { manager.stop(); dismiss() } label: {
                         Image(wkt: .close).wktIcon(.tab, tint: .earthMuted, filled: true)
                     }
+                    .accessibilityLabel("Close")
                     Spacer()
                     Label {
                         Text("Indoor Walk")

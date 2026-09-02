@@ -43,6 +43,7 @@ struct AchievementFeedContentView: View {
                     Button { Task { await load() } } label: {
                         Image(wkt: .refresh).wktIcon(.inline, tint: .earthGreen)
                     }
+                    .accessibilityLabel("Refresh feed")
                 }
             }
         }

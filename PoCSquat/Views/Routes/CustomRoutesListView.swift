@@ -27,6 +27,7 @@ struct CustomRoutesListView: View {
                 Button { isBuilding = true } label: {
                     Image(wkt: .add).wktIcon(.inline, tint: .earthGreen)
                 }
+                .accessibilityLabel("New route")
             }
         }
         .navigationDestination(isPresented: $isBuilding) {
@@ -385,6 +386,7 @@ struct CustomRouteDetailView: View {
                 Button { isEditing = true } label: {
                     Image(wkt: .buildRoute).wktIcon(.inline, tint: .earthGreen)
                 }
+                .accessibilityLabel("Build route")
             }
         }
         .alert("Walk Already Active", isPresented: $showActiveSessionAlert) {

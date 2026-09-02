@@ -161,6 +161,7 @@ struct SettingsView: View {
                                         .wktIcon(.inline, tint: .red.opacity(0.7))
                                 }
                                 .buttonStyle(.plain)
+                                .accessibilityLabel("Delete walk reminder \(idx + 1)")
                             }
                             .listRowBackground(Color.earthCard)
                         }

@@ -109,7 +109,9 @@ struct CommunityHubView: View {
                         .frame(width: 48, height: 48)
                     Image(wkt: icon)
                         .wktIcon(.row, tint: iconColor, filled: true)
+                        .accessibilityHidden(true)
                 }
+                .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(title)
                         .font(.wktHeading(17))
@@ -121,6 +123,7 @@ struct CommunityHubView: View {
                 Spacer()
                 Image(wkt: .chevronRight)
                     .wktIcon(.inline, tint: .earthMuted.opacity(0.5))
+                    .accessibilityHidden(true)
             }
             .padding(16)
             .background(Color.earthCard)

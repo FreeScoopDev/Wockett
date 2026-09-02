@@ -223,7 +223,7 @@ enum WktSymbol {
         case .errorCircle:    return "exclamationmark.circle"
         case .calendarClock:  return "calendar.badge.clock"
         case .calendarAdd:    return "calendar.badge.plus"
-        case .pin:            return "pin.fill"
+        case .pin:            return "pin"
         case .tap:            return "hand.tap"
         case .envelope:       return "envelope"
         case .camera:         return "camera"
@@ -286,10 +286,11 @@ struct WktIconModifier: ViewModifier {
     var tint:   Color
     var filled: Bool
     var onFill: Bool
+    @ScaledMetric(relativeTo: .body) private var scale: CGFloat = 1
 
     func body(content: Content) -> some View {
         content
-            .font(.system(size: size.points, weight: .semibold))
+            .font(.system(size: size.points * scale, weight: .semibold))
             .symbolRenderingMode(onFill ? .monochrome : .hierarchical)
             .foregroundStyle(tint)
             .symbolVariant(filled ? .fill : .none)

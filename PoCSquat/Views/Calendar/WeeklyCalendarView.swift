@@ -35,6 +35,7 @@ struct WeeklyCalendarView: View {
                         .wktIcon(.inline, tint: weekOffset <= -52 ? .earthMuted.opacity(0.25) : .earthMuted)
                 }
                 .disabled(weekOffset <= -52)
+                .accessibilityLabel("Previous week")
 
                 ZStack {
                     Text(weekLabel)
@@ -54,6 +55,7 @@ struct WeeklyCalendarView: View {
                     Image(wkt: .calendar)
                         .wktIcon(.inline, tint: .earthMuted)
                 }
+                .accessibilityLabel("Open month calendar")
 
                 Button {
                     slideFromLeading = false
@@ -63,6 +65,7 @@ struct WeeklyCalendarView: View {
                         .wktIcon(.inline, tint: weekOffset >= 52 ? .earthMuted.opacity(0.25) : .earthMuted)
                 }
                 .disabled(weekOffset >= 52)
+                .accessibilityLabel("Next week")
             }
             .padding(.horizontal, 20)
 

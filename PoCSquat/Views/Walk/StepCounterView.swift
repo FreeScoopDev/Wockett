@@ -593,6 +593,7 @@ private struct ActivitySuggestionBanner: View {
                 Image(wkt: .dismiss)
                     .wktIcon(.inline, tint: .earthMuted)
             }
+            .accessibilityLabel("Dismiss suggestion")
         }
         .padding(14)
         .background(Color.earthCard)

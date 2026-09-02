@@ -35,6 +35,7 @@ struct DestinationSearchSheet: View {
                             Button { searchText = "" } label: {
                                 Image(wkt: .close).wktIcon(.inline, tint: .earthMuted, filled: true)
                             }
+                            .accessibilityLabel("Clear search")
                         }
                     }
                     .padding(12)

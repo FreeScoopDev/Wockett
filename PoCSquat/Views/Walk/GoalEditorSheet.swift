@@ -155,6 +155,7 @@ struct GoalEditorSheet: View {
                                     } label: {
                                         HStack(spacing: 4) {
                                             Image(wkt: allLocked ? .lock : .lockOpen)
+                                                .accessibilityHidden(true)
                                             Text(allLocked ? "Unlock All" : "Lock All")
                                                 .font(.caption.bold())
                                         }
@@ -198,6 +199,9 @@ struct GoalEditorSheet: View {
                                                              filled: stepManager.lockedWeekdays.contains(wd))
                                             }
                                             .frame(width: 28)
+                                            .accessibilityLabel(stepManager.lockedWeekdays.contains(wd) ? "Unlock \(name) goal" : "Lock \(name) goal")
+                                            .accessibilityValue(stepManager.lockedWeekdays.contains(wd) ? "Locked" : "Unlocked")
+                                            .accessibilityAddTraits(stepManager.lockedWeekdays.contains(wd) ? .isSelected : [])
                                         }
                                         .padding(.horizontal, 14).padding(.vertical, 10)
 
@@ -251,6 +255,7 @@ struct GoalEditorSheet: View {
                                     Image(wkt: showTagCustomizer ? .chevronUp : .chevronDown)
                                         .wktIcon(.inline, tint: .earthMuted.opacity(0.7))
                                 }
+                                .accessibilityLabel(showTagCustomizer ? "Collapse tag settings" : "Expand tag settings")
                             }
                             .padding(14)
 
@@ -295,6 +300,8 @@ struct GoalEditorSheet: View {
                                                         }
                                                     }
                                                     .animation(.spring(duration: 0.2), value: config.colorIndex)
+                                                    .accessibilityLabel("Tag color \(i + 1)")
+                                                    .accessibilityAddTraits(config.colorIndex == i ? .isSelected : [])
                                                 }
                                             }
                                         }

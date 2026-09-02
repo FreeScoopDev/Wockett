@@ -49,6 +49,7 @@ struct WalkHistoryView: View {
                 } label: {
                     Image(wkt: .add).wktIcon(.inline, tint: .earthGreen)
                 }
+                .accessibilityLabel("Add activity")
             }
         }
         .alert("Walk Already Active", isPresented: $showActiveSessionAlert) {
@@ -465,6 +466,7 @@ struct WalkHistoryRow: View {
                         .cornerRadius(8)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Walk again")
                 Button { onInfo() } label: {
                     Image(wkt: session.notes.isEmpty ? .notePlus : .noteText)
                         .wktIcon(.inline, tint: .earthMuted)
@@ -473,6 +475,7 @@ struct WalkHistoryRow: View {
                         .cornerRadius(8)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(session.notes.isEmpty ? "Add note" : "View note")
             }
         }
         .padding(.vertical, 8)
