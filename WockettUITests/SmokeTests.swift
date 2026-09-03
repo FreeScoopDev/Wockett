@@ -166,8 +166,17 @@ final class SmokeTests: XCTestCase {
         XCTAssertTrue(resultsPanel.waitForExistence(timeout: 30),
                       "Results panel must appear after route generation")
 
+        // Start Walk is gated on `selectedRoute`, which only RouteCard's onSelect
+        // sets. This test used to assert Start Walk existed the moment routes were
+        // generated — behaviour the app never had. Select a route first.
+        let firstCard = app.buttons["routes.routeCard"].firstMatch
+        XCTAssertTrue(firstCard.waitForExistence(timeout: 10),
+                      "At least one route card must be listed after generation")
+        forceTap(firstCard)
+
         let startWalk = app.buttons["routes.startWalk"]
-        XCTAssertTrue(startWalk.exists, "Start Walk button must exist in the results panel")
+        XCTAssertTrue(startWalk.waitForExistence(timeout: 10),
+                      "Start Walk must appear once a route is selected")
         XCTAssertTrue(startWalk.isHittable,
                       "Start Walk must be hittable — not covered by the tab bar")
     }
