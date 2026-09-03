@@ -59,6 +59,28 @@ final class RouteManager: NSObject, ObservableObject, CLLocationManagerDelegate 
 
     func generateRoutes(remainingMeters: Double,
                         transportType: MKDirectionsTransportType = .walking) async {
+        #if DEBUG
+        if isWKTUITestMode {
+            let origin = CLLocationCoordinate2D(latitude: 40.7589, longitude: -73.9851)
+            let dest   = CLLocationCoordinate2D(latitude: 40.7650, longitude: -73.9780)
+            var pts    = [origin, dest, origin]
+            let poly   = MKPolyline(coordinates: &pts, count: pts.count)
+            suggestedRoutes = [SuggestedRoute(
+                polyline:            poly,
+                openInMapsItem:      MKMapItem(location: CLLocation(latitude: dest.latitude, longitude: dest.longitude), address: nil),
+                isLoop:              true,
+                bearing:             45,
+                totalDistance:       1500,
+                totalTime:           1200,
+                lapCount:            1,
+                label:               "Test Route",
+                legWaypoints:        [origin, dest, origin],
+                elevationGainMeters: 0,
+                elevationLossMeters: 0
+            )]
+            return
+        }
+        #endif
         searchGeneration += 1
         let myGen = searchGeneration
         isGenerating    = true

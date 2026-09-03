@@ -177,6 +177,17 @@ final class SmokeTests: XCTestCase {
         let startWalk = app.buttons["routes.startWalk"]
         XCTAssertTrue(startWalk.waitForExistence(timeout: 10),
                       "Start Walk must appear once a route is selected")
+
+        // The results panel is capped at 35% of the screen height and the weather
+        // widget sits above the route list, so Start Walk routinely renders below
+        // the fold. Scroll it into view first: without this the hittability check
+        // can't distinguish "below the fold" (fine) from "covered by the tab bar"
+        // (the v1.10 regression this assertion exists to catch).
+        var scrollAttempts = 0
+        while !startWalk.isHittable && scrollAttempts < 4 {
+            resultsPanel.swipeUp()
+            scrollAttempts += 1
+        }
         XCTAssertTrue(startWalk.isHittable,
                       "Start Walk must be hittable — not covered by the tab bar")
     }

@@ -102,7 +102,7 @@ struct RouteFinderContentView: View {
             if routeManager.lastLocation == nil {
                 Task { routeManager.lastLocation = await routeManager.fetchCurrentLocation() }
             }
-            Task { await communityModel.load() }
+            if !isWKTUITestMode { Task { await communityModel.load() } }
         }
         .onDisappear {
             clearRoutes()
