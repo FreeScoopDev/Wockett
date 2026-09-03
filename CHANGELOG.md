@@ -7,6 +7,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 - UI smoke test target (5 XCUITest tests) covering launch, tab navigation, walk lifecycle, the active-walk accessory, and Routes reachability; launch argument `-WKTUITest` enables deterministic mode (no animations, no permission dialogs, seeded demo data)
+- CI runs the UI smoke tests in their own job, so a navigation/layout regression is distinguishable at a glance from a logic failure; the unit-test job is pinned to `WockettTests` so it stays fast
+
+### Fixed
+- SwiftData no longer initialises CloudKit mirroring during test runs. `ModelContainer(...)` returns successfully and CoreData then sets CloudKit up *asynchronously*, trapping rather than throwing when no iCloud entitlement is present — which is the case in CI, where code signing is disabled. The existing `try?` fallbacks in `AppModelContainer` could not catch a trap on another queue, so the host app died ~3 s into every test run.
+- Marker views the UI tests rely on (`home.statCard`, the tab roots, session and summary roots, the Routes results panel) are now real accessibility containers via `.accessibilityElement(children: .contain)`. No change for VoiceOver users — children remain individually accessible — but without it a plain SwiftUI container carrying only an identifier never appears in the accessibility tree at all.
 
 ## [1.10] - 2026-09-01
 

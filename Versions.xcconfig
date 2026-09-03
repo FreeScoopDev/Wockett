@@ -1,4 +1,22 @@
-// Single source of truth for app + widget version numbers.
-// Bump these here, never in target build settings.
+// Version numbers for the app + widget targets. Both targets read this file, so
+// bump values here — never in per-target build settings.
+//
+// MARKETING_VERSION is the user-facing version ("1.10" in the App Store).
+//
+// CURRENT_PROJECT_VERSION is the build number. Info.plist resolves CFBundleVersion
+// from $(CURRENT_PROJECT_VERSION), so this value MUST stay defined — without it the
+// build falls back to "1" from project.pbxproj and App Store Connect rejects the
+// upload (build numbers must always increase).
+//
+// Who owns the build number:
+//   - Xcode Cloud IGNORES this value and auto-increments from the highest build
+//     already in App Store Connect. That is why shipped builds ran 20, 21, 22, 23
+//     while this file still read 19.
+//   - A manual archive from Xcode uses THIS value verbatim.
+//   - App Store Connect is authoritative for what actually shipped.
+//
+// So: after each release, set this to the last shipped build number. That keeps a
+// manual archive from colliding with a number Xcode Cloud has already used.
+// Last shipped: build 23 (v1.10, submitted 2026-09-02).
 MARKETING_VERSION = 1.10
-CURRENT_PROJECT_VERSION = 19
+CURRENT_PROJECT_VERSION = 23
