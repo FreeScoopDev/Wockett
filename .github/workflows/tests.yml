@@ -66,6 +66,9 @@ jobs:
             -scheme PoCSquat \
             -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest' \
             -only-testing:WockettUITests \
+            -parallel-testing-enabled NO \
+            -maximum-concurrent-test-simulator-destinations 1 \
+            -retry-tests-on-failure -test-iterations 3 \
             -resultBundlePath UITestResults.xcresult \
             CODE_SIGNING_ALLOWED=NO
 

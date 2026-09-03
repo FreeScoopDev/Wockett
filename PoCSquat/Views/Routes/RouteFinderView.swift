@@ -374,6 +374,7 @@ struct RouteFinderContentView: View {
             }
             .frame(maxHeight: containerHeight * 0.35)
         }
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("routes.resultsPanel")
         .clipShape(UnevenRoundedRectangle(topLeadingRadius: 24, topTrailingRadius: 24))
         .background(.ultraThinMaterial, ignoresSafeAreaEdges: .bottom)

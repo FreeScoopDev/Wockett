@@ -47,6 +47,7 @@ struct HealthHubView: View {
                     sessions: historyStore.sessions, weekOffset: calendarWeekOffset)
             }
         }
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("health.root")
         .navigationTitle("Health")
         .navigationBarTitleDisplayMode(.large)
