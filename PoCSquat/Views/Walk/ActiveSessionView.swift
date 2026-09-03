@@ -58,6 +58,7 @@ struct ActiveSessionView: View {
     var body: some View {
         if walkStore.session != nil {
             activeContent
+                .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("session.root")
                 .toolbar(.hidden, for: .navigationBar)
                 .presentationDetents([.large])

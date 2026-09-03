@@ -60,6 +60,7 @@ struct CommunityHubView: View {
                 .padding(.bottom, 32)
             }
         }
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("community.root")
         .navigationTitle("Community")
         .navigationBarTitleDisplayMode(.large)

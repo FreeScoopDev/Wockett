@@ -309,6 +309,7 @@ struct SettingsView: View {
             .listStyle(.insetGrouped)
             .scrollContentBackground(.hidden)
         }
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("settings.root")
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)

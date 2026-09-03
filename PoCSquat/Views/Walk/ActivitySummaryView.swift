@@ -135,6 +135,7 @@ struct ActivitySummaryView: View {
                 }
             }
         }
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("summary.root")
         .onAppear {
             for (i, c) in petCompletions.enumerated() {

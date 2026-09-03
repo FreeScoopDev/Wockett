@@ -210,6 +210,7 @@ struct StepCounterView: View {
         if let badge = streakStore.refresh(sessions: historyStore.sessions, todaySteps: stepManager.todaySteps, dailyGoal: stepManager.currentGoal) {
             earnedBadge = badge
         }
+        guard !isWKTUITestMode else { return }
         weatherLocator.fetchIfAuthorized()
     }
 
@@ -501,6 +502,7 @@ struct StepCounterView: View {
         .padding(16)
         .background(Color.earthCard)
         .cornerRadius(18)
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("home.statCard")
     }
 
