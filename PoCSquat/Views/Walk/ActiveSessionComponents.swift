@@ -37,6 +37,7 @@ struct SessionStatsBar: View {
                     Rectangle().frame(width: 0.5, height: 36).foregroundColor(Color.earthMuted.opacity(0.25))
                 }
                 SessionStatCell(value: session.elapsedText, label: "elapsed", icon: .time)
+                    .accessibilityIdentifier("session.elapsed")
                 Rectangle().frame(width: 0.5, height: 36).foregroundColor(Color.earthMuted.opacity(0.25))
                 SessionStatCell(value: session.paceText, label: session.paceLabel, icon: .pace)
             }

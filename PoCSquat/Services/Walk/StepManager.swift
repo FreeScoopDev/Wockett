@@ -164,7 +164,9 @@ final class StepManager: ObservableObject {
 
     func initialize() async {
         switch trackingMode {
-        case .healthKit: await authorizeAndFetchHealthKit()
+        case .healthKit:
+            guard !isWKTUITestMode else { break }
+            await authorizeAndFetchHealthKit()
         case .appOnly:   startPedometer()
         }
     }

@@ -335,6 +335,13 @@ struct StepCounterView: View {
 
     private func activityModeTile(_ mode: ActivityMode) -> some View {
         let isSelected = freeWalkMode == mode
+        let tileId: String
+        switch mode {
+        case .walking:    tileId = "home.tile.walk"
+        case .running:    tileId = "home.tile.run"
+        case .cycling:    tileId = "home.tile.ride"
+        case .stationary: tileId = "home.tile.indoor"
+        }
         return Button {
             withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { freeWalkMode = mode }
             if mode == .stationary {
@@ -360,6 +367,7 @@ struct StepCounterView: View {
             )
         }
         .buttonStyle(BounceButtonStyle())
+        .accessibilityIdentifier(tileId)
     }
 
     // Distinctly styled (dashed outline, not a solid activity color) so it reads as a
@@ -394,6 +402,7 @@ struct StepCounterView: View {
             )
         }
         .buttonStyle(BounceButtonStyle(scale: 0.97))
+        .accessibilityIdentifier("home.findRoute")
     }
 
     private var myRoutesCard: some View {
@@ -492,6 +501,7 @@ struct StepCounterView: View {
         .padding(16)
         .background(Color.earthCard)
         .cornerRadius(18)
+        .accessibilityIdentifier("home.statCard")
     }
 
     // "The Crew" — pets promoted to their own full-width card with a Manage link,
@@ -538,6 +548,7 @@ struct StepCounterView: View {
         .padding(16)
         .background(Color.earthCard)
         .cornerRadius(18)
+        .accessibilityIdentifier("home.crewCard")
     }
 
 }

@@ -41,6 +41,17 @@
                ReferencedContainer = "container:PoCSquat.xcodeproj">
             </BuildableReference>
          </TestableReference>
+         <TestableReference
+            skipped = "NO"
+            parallelizable = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "60831CE63049136F00851D94"
+               BuildableName = "WockettUITests.xctest"
+               BlueprintName = "WockettUITests"
+               ReferencedContainer = "container:PoCSquat.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
       </Testables>
    </TestAction>
    <LaunchAction

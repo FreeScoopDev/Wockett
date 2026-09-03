@@ -16,6 +16,7 @@ struct HealthHubView: View {
         ZStack {
             Color.earthBg.ignoresSafeArea()
             ScrollView {
+
                 VStack(spacing: 24) {
                     RecoveryCard()
                     WeeklyCalendarView(
@@ -46,6 +47,7 @@ struct HealthHubView: View {
                     sessions: historyStore.sessions, weekOffset: calendarWeekOffset)
             }
         }
+        .accessibilityIdentifier("health.root")
         .navigationTitle("Health")
         .navigationBarTitleDisplayMode(.large)
         .navigationDestination(isPresented: $pushWalkHistory) {

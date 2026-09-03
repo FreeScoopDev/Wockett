@@ -58,6 +58,7 @@ struct ActiveSessionView: View {
     var body: some View {
         if walkStore.session != nil {
             activeContent
+                .accessibilityIdentifier("session.root")
                 .toolbar(.hidden, for: .navigationBar)
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
@@ -281,6 +282,7 @@ struct ActiveSessionView: View {
                     .clipShape(Circle())
             }
             .accessibilityLabel("Minimize session")
+            .accessibilityIdentifier("session.minimize")
             .padding(.top, 60).padding(.leading, 16)
         }
         .overlay(alignment: .topTrailing) {
@@ -676,6 +678,7 @@ struct ActiveSessionView: View {
                     .padding(.horizontal, 24)
                 }
                 .padding(.top, 12).padding(.bottom, 48)
+                .accessibilityIdentifier("session.finish")
             }
         }
         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: showDrivingBanner)
