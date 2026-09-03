@@ -4,6 +4,14 @@ import TipKit
 import BackgroundTasks
 import UserNotifications
 
+// MARK: - UI Test Detection
+
+#if DEBUG
+let isWKTUITestMode = ProcessInfo.processInfo.arguments.contains("-WKTUITest")
+#else
+let isWKTUITestMode = false
+#endif
+
 // MARK: - App Entry Point
 
 @main
@@ -16,7 +24,7 @@ struct SquatCounterApp: App {
     @StateObject private var historyStore: WalkHistoryStore
     @StateObject private var tabRouter:    TabRouter
     @State private var communityRoutesModel = CommunityRoutesModel()
-    @State private var showSplash = true
+    @State private var showSplash = !isWKTUITestMode
 
     init() {
         BackgroundTaskManager.shared.registerTasks()
@@ -30,6 +38,9 @@ struct SquatCounterApp: App {
         _routeStore   = StateObject(wrappedValue: CustomRouteStore())
         _historyStore = StateObject(wrappedValue: WalkHistoryStore())
         _tabRouter    = StateObject(wrappedValue: TabRouter())
+        #if DEBUG
+        if isWKTUITestMode { UIView.setAnimationsEnabled(false) }
+        #endif
     }
 
     var body: some Scene {
@@ -43,6 +54,7 @@ struct SquatCounterApp: App {
                     } label: {
                         Label { Text("Health") } icon: { Image(wkt: .health) }
                     }
+                    .accessibilityIdentifier("tab.health")
                     Tab(value: AppTab.routes) {
                         NavigationStack {
                             RouteFinderContentView(
@@ -59,11 +71,13 @@ struct SquatCounterApp: App {
                     } label: {
                         Label { Text("Routes") } icon: { Image(wkt: .routes) }
                     }
+                    .accessibilityIdentifier("tab.routes")
                     Tab("Home", image: "wkt.home.pin", value: AppTab.home) {
                         NavigationStack {
                             StepCounterView()
                         }
                     }
+                    .accessibilityIdentifier("tab.home")
                     Tab(value: AppTab.community) {
                         NavigationStack {
                             CommunityHubView()
@@ -71,6 +85,7 @@ struct SquatCounterApp: App {
                     } label: {
                         Label { Text("Community") } icon: { Image(wkt: .community) }
                     }
+                    .accessibilityIdentifier("tab.community")
                     Tab(value: AppTab.settings) {
                         NavigationStack {
                             SettingsView()
@@ -78,6 +93,7 @@ struct SquatCounterApp: App {
                     } label: {
                         Label { Text("Settings") } icon: { Image(wkt: .settings) }
                     }
+                    .accessibilityIdentifier("tab.settings")
                 }
                 // Bottom tab bar on iPhone; top tab bar / sidebar on iPad.
                 .tabViewStyle(.sidebarAdaptable)
@@ -119,6 +135,12 @@ struct SquatCounterApp: App {
                 if ActiveWalkStore.shared.session == nil {
                     await WalkLiveActivityManager.shared.endAllActivities()
                 }
+                #if DEBUG
+                if isWKTUITestMode {
+                    DevSeedStore.seedScreenshotDemo(history: historyStore, pets: petStore, routes: routeStore)
+                    return
+                }
+                #endif
                 ActivityDetectionService.shared.startDetection()
                 await scheduleWeeklySummaryNotification()
             }

@@ -91,6 +91,7 @@ struct ActiveMiniTile: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Active \(route.activityMode.noun): \(distText(session.totalDistanceCovered)), \(timeText(session.elapsedTime))")
+        .accessibilityIdentifier("accessory.miniTile")
     }
 
     // MARK: - Expanded (normal — tab bar visible)
@@ -134,6 +135,7 @@ struct ActiveMiniTile: View {
             .buttonStyle(.plain)
             .accessibilityLabel("Return to \(route.name)")
             .accessibilityHint("Opens the active session")
+            .accessibilityIdentifier("accessory.miniTile")
 
             Button(action: onEnd) {
                 Image(wkt: .stop)

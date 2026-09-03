@@ -46,6 +46,7 @@ struct ActivitySummaryView: View {
         ZStack {
             Color.earthBg.ignoresSafeArea()
             ConfettiOverlay()
+
             VStack(spacing: 0) {
                 Spacer()
                 // Header
@@ -125,6 +126,7 @@ struct ActivitySummaryView: View {
                                     .background(Color.earthCard).foregroundColor(.earthCream)
                                     .cornerRadius(14)
                             }
+                            .accessibilityIdentifier("summary.done")
                         }
                         .padding(.horizontal)
                         .padding(.bottom, 32)
@@ -133,6 +135,7 @@ struct ActivitySummaryView: View {
                 }
             }
         }
+        .accessibilityIdentifier("summary.root")
         .onAppear {
             for (i, c) in petCompletions.enumerated() {
                 withAnimation(.spring(duration: 0.9, bounce: 0.25).delay(Double(i) * 0.18)) {

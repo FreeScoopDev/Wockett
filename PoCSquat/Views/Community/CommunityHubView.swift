@@ -25,6 +25,7 @@ struct CommunityHubView: View {
         ZStack {
             Color.earthBg.ignoresSafeArea()
             ScrollView {
+
                 VStack(spacing: 16) {
                     hubCard(
                         icon: .calories,
@@ -59,6 +60,7 @@ struct CommunityHubView: View {
                 .padding(.bottom, 32)
             }
         }
+        .accessibilityIdentifier("community.root")
         .navigationTitle("Community")
         .navigationBarTitleDisplayMode(.large)
         .navigationDestination(isPresented: $pushBadges) {

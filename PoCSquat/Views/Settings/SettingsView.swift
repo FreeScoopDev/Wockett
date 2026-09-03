@@ -38,6 +38,7 @@ struct SettingsView: View {
         ZStack {
             Color.earthBg.ignoresSafeArea()
             List {
+
                 // ── Tracking ──────────────────────────────────────
                 Section("Tracking") {
                     VStack(alignment: .leading, spacing: 10) {
@@ -308,6 +309,7 @@ struct SettingsView: View {
             .listStyle(.insetGrouped)
             .scrollContentBackground(.hidden)
         }
+        .accessibilityIdentifier("settings.root")
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $showScheduleSheet) { WalkReminderSheet() }

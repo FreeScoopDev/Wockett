@@ -239,6 +239,7 @@ struct RouteFinderContentView: View {
                     .cornerRadius(14)
                 }
                 .disabled(routeManager.isGenerating)
+                .accessibilityIdentifier("routes.findRoutes")
                 .padding(.horizontal, 20)
 
                 if let err = routeManager.locationError {
@@ -308,6 +309,7 @@ struct RouteFinderContentView: View {
                     .font(.caption.bold())
                     .foregroundColor(.earthGreen)
                 }
+                .accessibilityIdentifier("routes.newSearch")
                 .frame(width: 110, alignment: .leading)
 
                 Capsule()
@@ -372,6 +374,7 @@ struct RouteFinderContentView: View {
             }
             .frame(maxHeight: containerHeight * 0.35)
         }
+        .accessibilityIdentifier("routes.resultsPanel")
         .clipShape(UnevenRoundedRectangle(topLeadingRadius: 24, topTrailingRadius: 24))
         .background(.ultraThinMaterial, ignoresSafeAreaEdges: .bottom)
     }
@@ -416,6 +419,7 @@ struct RouteFinderContentView: View {
                 .foregroundColor(.white)
                 .cornerRadius(14)
         }
+        .accessibilityIdentifier("routes.startWalk")
         .padding(.horizontal, 20)
     }
 
