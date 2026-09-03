@@ -8,11 +8,12 @@ final class SmokeTests: XCTestCase {
         super.setUp()
         continueAfterFailure = false
         addUIInterruptionMonitor(withDescription: "System alert") { alert in
-            let dismiss = alert.buttons["Don't Allow"].exists ? alert.buttons["Don't Allow"] :
-                          alert.buttons["OK"].exists ? alert.buttons["OK"] :
-                          alert.buttons.element(boundBy: 0)
-            if dismiss.exists { dismiss.tap() }
-            return true
+            for title in ["Don't Allow", "Not Now", "OK", "Allow", "Cancel"] where alert.buttons[title].exists {
+                alert.buttons[title].tap()
+                return true
+            }
+            if alert.buttons.count > 0 { alert.buttons.element(boundBy: 0).tap(); return true }
+            return false
         }
         app = XCUIApplication()
         app.launchArguments = ["-WKTUITest"]
@@ -24,12 +25,26 @@ final class SmokeTests: XCTestCase {
         super.tearDown()
     }
 
-    /// Finds an element by accessibility identifier regardless of its element
-    /// type. SwiftUI decides whether a given view surfaces as otherElement,
-    /// staticText or something else, and that mapping is not stable enough to
-    /// hard-code in a test.
+    // MARK: - Helpers
+
+    /// Finds an element by accessibility identifier regardless of its element type.
+    /// SwiftUI decides whether a view surfaces as otherElement, staticText, etc.,
+    /// and that mapping is not stable enough to hard-code in a test.
     private func el(_ identifier: String) -> XCUIElement {
         app.descendants(matching: .any).matching(identifier: identifier).firstMatch
+    }
+
+    /// iOS 26 discards `.accessibilityIdentifier` set on a `Tab`, so tab-bar
+    /// buttons are only addressable by their visible title. Query by label.
+    private func tab(_ title: String) -> XCUIElement {
+        app.tabBars.buttons[title].firstMatch
+    }
+
+    /// Taps the centre of an element by coordinate, bypassing XCUITest's
+    /// hittability gate. Custom-styled SwiftUI buttons (BounceButtonStyle here)
+    /// can report `isHittable == false` while being perfectly tappable.
+    private func forceTap(_ element: XCUIElement) {
+        element.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
     }
 
     // MARK: - 1. Launch
@@ -37,8 +52,9 @@ final class SmokeTests: XCTestCase {
     func testLaunch() {
         XCTAssertTrue(el("home.statCard").waitForExistence(timeout: 10),
                       "Home stat card must appear within 10 s of launch")
-        for id in ["tab.health", "tab.routes", "tab.home", "tab.community", "tab.settings"] {
-            XCTAssertTrue(el(id).exists, "Tab '\(id)' must exist after launch")
+        for title in ["Health", "Routes", "Home", "Community", "Settings"] {
+            XCTAssertTrue(tab(title).waitForExistence(timeout: 5),
+                          "Tab '\(title)' must exist after launch")
         }
     }
 
@@ -47,19 +63,19 @@ final class SmokeTests: XCTestCase {
     func testTabNavigation() {
         XCTAssertTrue(el("home.statCard").waitForExistence(timeout: 10))
 
-        el("tab.health").tap()
+        tab("Health").tap()
         XCTAssertTrue(el("health.root").waitForExistence(timeout: 5))
 
-        el("tab.routes").tap()
+        tab("Routes").tap()
         XCTAssertTrue(app.buttons["routes.findRoutes"].waitForExistence(timeout: 5))
 
-        el("tab.community").tap()
+        tab("Community").tap()
         XCTAssertTrue(el("community.root").waitForExistence(timeout: 5))
 
-        el("tab.settings").tap()
+        tab("Settings").tap()
         XCTAssertTrue(el("settings.root").waitForExistence(timeout: 5))
 
-        el("tab.home").tap()
+        tab("Home").tap()
         XCTAssertTrue(el("home.statCard").waitForExistence(timeout: 5),
                       "Stat card must still be present after returning to Home")
     }
@@ -69,7 +85,9 @@ final class SmokeTests: XCTestCase {
     func testWalkLifecycle() {
         XCTAssertTrue(el("home.statCard").waitForExistence(timeout: 10))
 
-        app.buttons["home.tile.walk"].tap()
+        let walkTile = app.buttons["home.tile.walk"]
+        XCTAssertTrue(walkTile.waitForExistence(timeout: 5))
+        forceTap(walkTile)
         XCTAssertTrue(el("session.root").waitForExistence(timeout: 15),
                       "Session screen must appear after starting a walk")
 
@@ -98,17 +116,19 @@ final class SmokeTests: XCTestCase {
         XCTAssertFalse(app.buttons["accessory.miniTile"].exists,
                        "Mini tile must not exist before a walk is started")
 
-        app.buttons["home.tile.walk"].tap()
+        let walkTile = app.buttons["home.tile.walk"]
+        XCTAssertTrue(walkTile.waitForExistence(timeout: 5))
+        forceTap(walkTile)
         XCTAssertTrue(el("session.root").waitForExistence(timeout: 15))
 
-        app.buttons["Minimize session"].tap()
+        app.buttons["session.minimize"].tap()
         let sessionGone = XCTNSPredicateExpectation(
             predicate: NSPredicate(format: "exists == NO"),
             object: el("session.root")
         )
         wait(for: [sessionGone], timeout: 10)
 
-        el("tab.community").tap()
+        tab("Community").tap()
 
         let miniTile = app.buttons["accessory.miniTile"]
         XCTAssertTrue(miniTile.waitForExistence(timeout: 5),
@@ -135,7 +155,7 @@ final class SmokeTests: XCTestCase {
     func testRoutesReachable() {
         XCTAssertTrue(el("home.statCard").waitForExistence(timeout: 10))
 
-        el("tab.routes").tap()
+        tab("Routes").tap()
 
         let findRoutes = app.buttons["routes.findRoutes"]
         XCTAssertTrue(findRoutes.waitForExistence(timeout: 5))
