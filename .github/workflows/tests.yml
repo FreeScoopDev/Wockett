@@ -38,12 +38,20 @@ jobs:
           brew install swiftlint >/dev/null 2>&1 || true
           swiftlint lint --config .swiftlint.yml --reporter github-actions-logging || true
 
+      # Runner images don't always ship the same simulator set, and the two
+      # jobs in this workflow get two different VMs -- which is how the unit
+      # job passed and the UI job died in 79s on the identical
+      # 'name=iPhone 17' specifier. Discover a real device instead.
+      - name: Pick a simulator
+        id: sim
+        run: echo "udid=$(bash scripts/ci_pick_simulator.sh)" >> "$GITHUB_OUTPUT"
+
       - name: Run tests (WockettTests)
         run: |
           xcodebuild test \
             -project PoCSquat.xcodeproj \
             -scheme PoCSquat \
-            -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest' \
+            -destination "id=${{ steps.sim.outputs.udid }}" \
             -only-testing:WockettTests \
             CODE_SIGNING_ALLOWED=NO
 
@@ -55,6 +63,14 @@ jobs:
       - name: Check out repo
         uses: actions/checkout@v4
 
+      # Runner images don't always ship the same simulator set, and the two
+      # jobs in this workflow get two different VMs -- which is how the unit
+      # job passed and the UI job died in 79s on the identical
+      # 'name=iPhone 17' specifier. Discover a real device instead.
+      - name: Pick a simulator
+        id: sim
+        run: echo "udid=$(bash scripts/ci_pick_simulator.sh)" >> "$GITHUB_OUTPUT"
+
       # UI tests drive the real app in a simulator. They are slower than the
       # unit tests and live in their own job so a failure here is obviously a
       # navigation/layout regression rather than a logic one. The app seeds
@@ -64,7 +80,7 @@ jobs:
           xcodebuild test \
             -project PoCSquat.xcodeproj \
             -scheme PoCSquat \
-            -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest' \
+            -destination "id=${{ steps.sim.outputs.udid }}" \
             -only-testing:WockettUITests \
             -parallel-testing-enabled NO \
             -maximum-concurrent-test-simulator-destinations 1 \

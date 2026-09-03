@@ -12,6 +12,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Fixed
 - SwiftData no longer initialises CloudKit mirroring during test runs. `ModelContainer(...)` returns successfully and CoreData then sets CloudKit up *asynchronously*, trapping rather than throwing when no iCloud entitlement is present — which is the case in CI, where code signing is disabled. The existing `try?` fallbacks in `AppModelContainer` could not catch a trap on another queue, so the host app died ~3 s into every test run.
 - Marker views the UI tests rely on (`home.statCard`, the tab roots, session and summary roots, the Routes results panel) are now real accessibility containers via `.accessibilityElement(children: .contain)`. No change for VoiceOver users — children remain individually accessible — but without it a plain SwiftUI container carrying only an identifier never appears in the accessibility tree at all.
+- CI now discovers an available iPhone simulator at runtime (`scripts/ci_pick_simulator.sh`) instead of hardcoding `name=iPhone 17`. The two jobs run on two different runner VMs whose simulator sets can differ, which is how the unit job passed and the UI job failed in 79 s on the identical destination specifier, before a single test ran.
 
 ## [1.10] - 2026-09-01
 
