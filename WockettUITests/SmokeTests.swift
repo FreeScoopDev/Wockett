@@ -86,7 +86,7 @@ final class SmokeTests: XCTestCase {
         app.buttons["home.tile.walk"].tap()
         XCTAssertTrue(app.otherElements["session.root"].waitForExistence(timeout: 15))
 
-        app.buttons["Minimize session"].tap()
+        app.buttons["session.minimize"].tap()
         let sessionGone = XCTNSPredicateExpectation(
             predicate: NSPredicate(format: "exists == NO"),
             evaluatedWith: app.otherElements["session.root"]

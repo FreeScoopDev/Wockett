@@ -282,6 +282,7 @@ struct ActiveSessionView: View {
                     .clipShape(Circle())
             }
             .accessibilityLabel("Minimize session")
+            .accessibilityIdentifier("session.minimize")
             .padding(.top, 60).padding(.leading, 16)
         }
         .overlay(alignment: .topTrailing) {
