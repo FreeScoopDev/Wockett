@@ -1,0 +1,41 @@
+# Cheap, fast repo guards that need no Apple toolchain.
+#
+# These run on ubuntu-latest, which bills at 1x. The macOS runners in
+# tests.yml bill at 10x, so a 14-minute UI test job costs 140 of the 2,000
+# minutes a GitHub Free private repo gets each month. Anything that does not
+# genuinely need Xcode belongs here instead.
+#
+# Building and testing the app moves to Xcode Cloud (25 compute hours/month,
+# included with the Apple Developer Program). Once that is verified green on a
+# pull request, tests.yml is deleted and this is the only GitHub Actions
+# workflow left.
+
+name: Guards
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  language-guard:
+    name: Language-consistency guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      # Guard for the activity-aware language layer (Round C, 2026-08-30):
+      # user-facing copy must read the session's activity, never a hardcoded
+      # "walk". Fails the build if any of these literals reappear.
+      - name: Language-consistency guard
+        run: |
+          if grep -rn '"Still walking\|"Walk Paused"\|"End Walk"\|"Walk Complete\|"Walk History"\|"Finish Walk"\|"Resume Your Walk' \
+               PoCSquat/Views PoCSquat/Intents WocketWidget --include="*.swift"; then
+            echo "::error::Hardcoded walk-specific copy found — use ActivityMode.noun/gerund/sessionLabel instead."
+            exit 1
+          fi
+          echo "Language guard passed."
