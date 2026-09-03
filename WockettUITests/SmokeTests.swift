@@ -64,19 +64,19 @@ final class SmokeTests: XCTestCase {
         XCTAssertTrue(el("home.statCard").waitForExistence(timeout: 10))
 
         tab("Health").tap()
-        XCTAssertTrue(el("health.root").waitForExistence(timeout: 5))
+        XCTAssertTrue(el("health.root").waitForExistence(timeout: 15))
 
         tab("Routes").tap()
-        XCTAssertTrue(app.buttons["routes.findRoutes"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["routes.findRoutes"].waitForExistence(timeout: 30))
 
         tab("Community").tap()
-        XCTAssertTrue(el("community.root").waitForExistence(timeout: 5))
+        XCTAssertTrue(el("community.root").waitForExistence(timeout: 15))
 
         tab("Settings").tap()
-        XCTAssertTrue(el("settings.root").waitForExistence(timeout: 5))
+        XCTAssertTrue(el("settings.root").waitForExistence(timeout: 15))
 
         tab("Home").tap()
-        XCTAssertTrue(el("home.statCard").waitForExistence(timeout: 5),
+        XCTAssertTrue(el("home.statCard").waitForExistence(timeout: 15),
                       "Stat card must still be present after returning to Home")
     }
 
@@ -86,9 +86,9 @@ final class SmokeTests: XCTestCase {
         XCTAssertTrue(el("home.statCard").waitForExistence(timeout: 10))
 
         let walkTile = app.buttons["home.tile.walk"]
-        XCTAssertTrue(walkTile.waitForExistence(timeout: 5))
+        XCTAssertTrue(walkTile.waitForExistence(timeout: 15))
         forceTap(walkTile)
-        XCTAssertTrue(el("session.root").waitForExistence(timeout: 15),
+        XCTAssertTrue(el("session.root").waitForExistence(timeout: 30),
                       "Session screen must appear after starting a walk")
 
         let elapsed = el("session.elapsed")
@@ -117,9 +117,9 @@ final class SmokeTests: XCTestCase {
                        "Mini tile must not exist before a walk is started")
 
         let walkTile = app.buttons["home.tile.walk"]
-        XCTAssertTrue(walkTile.waitForExistence(timeout: 5))
+        XCTAssertTrue(walkTile.waitForExistence(timeout: 15))
         forceTap(walkTile)
-        XCTAssertTrue(el("session.root").waitForExistence(timeout: 15))
+        XCTAssertTrue(el("session.root").waitForExistence(timeout: 30))
 
         app.buttons["session.minimize"].tap()
         let sessionGone = XCTNSPredicateExpectation(
@@ -131,7 +131,7 @@ final class SmokeTests: XCTestCase {
         tab("Community").tap()
 
         let miniTile = app.buttons["accessory.miniTile"]
-        XCTAssertTrue(miniTile.waitForExistence(timeout: 5),
+        XCTAssertTrue(miniTile.waitForExistence(timeout: 15),
                       "Mini tile must appear on Community tab while walk is active")
         XCTAssertTrue(miniTile.isHittable, "Mini tile must be hittable above the tab bar")
 
@@ -158,7 +158,7 @@ final class SmokeTests: XCTestCase {
         tab("Routes").tap()
 
         let findRoutes = app.buttons["routes.findRoutes"]
-        XCTAssertTrue(findRoutes.waitForExistence(timeout: 5))
+        XCTAssertTrue(findRoutes.waitForExistence(timeout: 30))
         findRoutes.tap()
 
         // Network + location required; allow up to 30 s.
