@@ -12,6 +12,21 @@ import Foundation
 
 enum AppModelContainer {
 
+    // True when the process is running under XCTest — unit tests inject into the
+    // host app (XCTestConfigurationFilePath is set), UI tests pass -WKTUITest.
+    //
+    // CloudKit mirroring is skipped in that case. CI builds with
+    // CODE_SIGNING_ALLOWED=NO carry no iCloud entitlement, and CoreData's
+    // CloudKit setup runs asynchronously on com.apple.coredata.cloudkit.queue
+    // and TRAPS rather than throwing — so the `try?` fallbacks below cannot
+    // catch it and the app dies ~3s after launch. Tests should not sync to a
+    // real iCloud database anyway.
+    static var isRunningUnderTests: Bool {
+        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+            || NSClassFromString("XCTestCase") != nil
+            || ProcessInfo.processInfo.arguments.contains("-WKTUITest")
+    }
+
     static let schema = Schema([
         WalkSessionRecord.self,
         PetProfileRecord.self,
@@ -20,15 +35,17 @@ enum AppModelContainer {
     ])
 
     static let shared: ModelContainer = {
-        // Attempt 1: CloudKit-backed persistent store
-        let cloudConfig = ModelConfiguration(
-            schema: schema,
-            isStoredInMemoryOnly: false,
-            cloudKitDatabase: .private("iCloud.Scoops.PoCSquat")
-        )
-        if let container = try? ModelContainer(for: schema, configurations: cloudConfig) {
-            runMigrationIfNeeded(context: ModelContext(container))
-            return container
+        // Attempt 1: CloudKit-backed persistent store (skipped under tests)
+        if !isRunningUnderTests {
+            let cloudConfig = ModelConfiguration(
+                schema: schema,
+                isStoredInMemoryOnly: false,
+                cloudKitDatabase: .private("iCloud.Scoops.PoCSquat")
+            )
+            if let container = try? ModelContainer(for: schema, configurations: cloudConfig) {
+                runMigrationIfNeeded(context: ModelContext(container))
+                return container
+            }
         }
 
         // Attempt 2: Local persistent store (no CloudKit)
