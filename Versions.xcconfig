@@ -18,5 +18,9 @@
 // So: after each release, set this to the last shipped build number. That keeps a
 // manual archive from colliding with a number Xcode Cloud has already used.
 // Last shipped: build 23 (v1.10, submitted 2026-09-02).
+// 1.10 shipped to the App Store on 2026-09-04 as build 24, not 23 — App Store
+// Connect is authoritative. Set to 25 so the next MANUAL archive produces a
+// build number Apple will accept; 23 and 24 are already used and would be
+// rejected on upload. Xcode Cloud ignores this value and increments its own.
 MARKETING_VERSION = 1.10
-CURRENT_PROJECT_VERSION = 23
+CURRENT_PROJECT_VERSION = 25
