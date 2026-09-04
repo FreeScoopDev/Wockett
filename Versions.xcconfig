@@ -22,5 +22,5 @@
 // Connect is authoritative. Set to 25 so the next MANUAL archive produces a
 // build number Apple will accept; 23 and 24 are already used and would be
 // rejected on upload. Xcode Cloud ignores this value and increments its own.
-MARKETING_VERSION = 1.10
+MARKETING_VERSION = 1.11
 CURRENT_PROJECT_VERSION = 25

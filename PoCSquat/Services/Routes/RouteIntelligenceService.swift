@@ -237,37 +237,71 @@ extension OTDResult: Decodable {
 struct WeatherWidget: View {
     let weather: RouteWeather
 
+    /// The Routes results panel is height-capped, so it opens this collapsed to keep
+    /// the route cards above the fold. Screens with room to spare start expanded.
+    var initiallyExpanded: Bool = true
+
+    @State private var isExpanded: Bool
+
+    init(weather: RouteWeather, initiallyExpanded: Bool = true) {
+        self.weather = weather
+        self.initiallyExpanded = initiallyExpanded
+        _isExpanded = State(initialValue: initiallyExpanded)
+    }
+
+    private var hasForecast: Bool { !weather.hourlyForecast.isEmpty }
+
     var body: some View {
         VStack(spacing: 0) {
-            // Current conditions
-            HStack(spacing: 14) {
-                Image(systemName: weather.symbolName)
-                    .font(.title2)
-                    .symbolRenderingMode(.multicolor)
-                    .frame(width: 32)
+            HStack(spacing: 10) {
+                Button {
+                    withAnimation(.snappy(duration: 0.22)) { isExpanded.toggle() }
+                } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: weather.symbolName)
+                            .font(.title3)
+                            .symbolRenderingMode(.multicolor)
+                            .frame(width: 26)
 
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(weather.conditionDescription)
-                        .font(.subheadline.bold())
-                        .foregroundColor(.earthCream)
-                    Label(weather.statusText, systemImage: weather.statusSymbol)
-                        .font(.subheadline)
-                        .foregroundColor(weather.statusColor)
+                        Text(weather.temperatureText)
+                            .font(.subheadline.bold())
+                            .foregroundColor(.earthCream)
+
+                        Text(weather.conditionDescription)
+                            .font(.subheadline)
+                            .foregroundColor(.earthMuted)
+                            .lineLimit(1)
+
+                        Spacer(minLength: 6)
+
+                        Label(weather.statusText, systemImage: weather.statusSymbol)
+                            .font(.caption)
+                            .foregroundColor(weather.statusColor)
+                            .lineLimit(1)
+                            .layoutPriority(1)
+
+                        if hasForecast {
+                            Image(wkt: .chevronDown)
+                                .wktIcon(.inline, tint: .earthMuted)
+                                .rotationEffect(.degrees(isExpanded ? 180 : 0))
+                        }
+                    }
+                    .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
+                .disabled(!hasForecast)
+                .accessibilityLabel("\(weather.temperatureText), \(weather.conditionDescription). \(weather.statusText)")
+                .accessibilityHint(hasForecast ? (isExpanded ? "Hides the hourly forecast" : "Shows the hourly forecast") : "")
 
-                Spacer()
-
-                VStack(alignment: .trailing, spacing: 4) {
-                    Text(weather.temperatureText)
-                        .font(.title3.bold())
-                        .foregroundColor(.earthCream)
-                    WeatherAttributionLink()
-                }
+                // Apple requires WeatherKit attribution wherever its data is shown, so
+                // this stays visible when collapsed — and sits outside the toggle
+                // button so it remains tappable as a link.
+                WeatherAttributionLink()
             }
-            .padding(14)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 11)
 
-            // Hourly strip
-            if !weather.hourlyForecast.isEmpty {
+            if isExpanded && hasForecast {
                 Divider()
                     .background(Color.earthMuted.opacity(0.15))
                     .padding(.horizontal, 14)
@@ -278,6 +312,8 @@ struct WeatherWidget: View {
         }
         .background(Color.earthCard)
         .cornerRadius(12)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("routes.weatherTile")
     }
 }
 
