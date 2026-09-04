@@ -204,10 +204,24 @@ struct StepCounterView: View {
     }
 
     private func handleAppear() {
-        if walkStore.hasRestorableWalk {
+        // A UI test that terminates the app mid-session leaves a checkpoint behind,
+        // so the NEXT test launches into the "Resume Your Activity?" alert, which is
+        // modal and blocks the tab bar. Discard the checkpoint instead of prompting
+        // so every test starts from the same clean state. Release builds are
+        // unaffected (isWKTUITestMode is compiled out).
+        if isWKTUITestMode {
+            walkStore.declineRestore()
+        } else if walkStore.hasRestorableWalk {
             showRestoreWalkPrompt = true
         }
-        if let badge = streakStore.refresh(sessions: historyStore.sessions, todaySteps: stepManager.todaySteps, dailyGoal: stepManager.currentGoal) {
+        // The badge celebration is a fullScreenCover, so it covers the tab bar and
+        // every tab root while it is up. Under UI tests the seeded demo history
+        // immediately awards "First Steps", which blocked every navigation test
+        // roughly 15 s into the run. Keep refresh() running so streak bookkeeping
+        // is identical; only suppress the presentation. (isWKTUITestMode is
+        // compiled out of release builds, so shipping behaviour is unchanged.)
+        if let badge = streakStore.refresh(sessions: historyStore.sessions, todaySteps: stepManager.todaySteps, dailyGoal: stepManager.currentGoal),
+           !isWKTUITestMode {
             earnedBadge = badge
         }
         guard !isWKTUITestMode else { return }
@@ -215,7 +229,10 @@ struct StepCounterView: View {
     }
 
     private func handleStepGoalCheck(_ steps: Int) {
-        if let badge = streakStore.refresh(sessions: historyStore.sessions, todaySteps: steps, dailyGoal: stepManager.currentGoal) {
+        // Same reasoning as handleAppear: never present the celebration cover
+        // during a UI test run.
+        if let badge = streakStore.refresh(sessions: historyStore.sessions, todaySteps: steps, dailyGoal: stepManager.currentGoal),
+           !isWKTUITestMode {
             earnedBadge = badge
         }
     }

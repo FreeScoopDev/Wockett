@@ -102,7 +102,7 @@ struct RouteFinderContentView: View {
             if routeManager.lastLocation == nil {
                 Task { routeManager.lastLocation = await routeManager.fetchCurrentLocation() }
             }
-            Task { await communityModel.load() }
+            if !isWKTUITestMode { Task { await communityModel.load() } }
         }
         .onDisappear {
             clearRoutes()
@@ -357,6 +357,9 @@ struct RouteFinderContentView: View {
                             },
                             onPost: { routeForPosting = route }
                         )
+                        // Selecting a card is what reveals the Start Walk button, so
+                        // the smoke test needs a way to address one.
+                        .accessibilityIdentifier("routes.routeCard")
                         .padding(.horizontal, 20)
                     }
 
@@ -879,6 +882,11 @@ struct RouteFinderMapView: UIViewRepresentable {
 
     static func coordAlong(_ polyline: MKPolyline, fraction: Double) -> CLLocationCoordinate2D? {
         let n = polyline.pointCount
+        // An empty polyline has no point 0 to fall back on, and points()[0] is an
+        // unchecked C-array read — it traps the process rather than returning nil.
+        // MKDirections can hand back a degenerate route (no walkable path, a bad
+        // fix, poor connectivity), so this is reachable in ordinary use.
+        guard n > 0 else { return nil }
         guard n > 1, fraction > 0 else { return polyline.points()[0].coordinate }
         if fraction >= 1 { return polyline.points()[n - 1].coordinate }
         let pts = polyline.points()

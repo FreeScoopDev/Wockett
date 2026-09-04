@@ -2,6 +2,14 @@ import XCTest
 
 final class SmokeTests: XCTestCase {
 
+    // Timeouts here are deliberately generous. A GitHub macOS runner is a shared
+    // VM and is several times slower than a developer Mac: on 2026-09-03 the same
+    // commit passed 5/5 locally while testTabNavigation failed 3/3 on CI waiting
+    // for the Community tab, and one testAccessoryBar attempt took 162 s. Every
+    // wait that follows a map-bearing screen (Routes, the active session) is the
+    // slow one, so those are the ones raised. A smoke test should fail when a
+    // screen is broken, not when a rented machine is having a bad minute.
+
     private var app: XCUIApplication!
 
     override func setUp() {
@@ -70,13 +78,13 @@ final class SmokeTests: XCTestCase {
         XCTAssertTrue(app.buttons["routes.findRoutes"].waitForExistence(timeout: 30))
 
         tab("Community").tap()
-        XCTAssertTrue(el("community.root").waitForExistence(timeout: 15))
+        XCTAssertTrue(el("community.root").waitForExistence(timeout: 30))
 
         tab("Settings").tap()
-        XCTAssertTrue(el("settings.root").waitForExistence(timeout: 15))
+        XCTAssertTrue(el("settings.root").waitForExistence(timeout: 30))
 
         tab("Home").tap()
-        XCTAssertTrue(el("home.statCard").waitForExistence(timeout: 15),
+        XCTAssertTrue(el("home.statCard").waitForExistence(timeout: 30),
                       "Stat card must still be present after returning to Home")
     }
 
@@ -126,17 +134,17 @@ final class SmokeTests: XCTestCase {
             predicate: NSPredicate(format: "exists == NO"),
             object: el("session.root")
         )
-        wait(for: [sessionGone], timeout: 10)
+        wait(for: [sessionGone], timeout: 25)
 
         tab("Community").tap()
 
         let miniTile = app.buttons["accessory.miniTile"]
-        XCTAssertTrue(miniTile.waitForExistence(timeout: 15),
+        XCTAssertTrue(miniTile.waitForExistence(timeout: 30),
                       "Mini tile must appear on Community tab while walk is active")
         XCTAssertTrue(miniTile.isHittable, "Mini tile must be hittable above the tab bar")
 
         miniTile.tap()
-        XCTAssertTrue(el("session.root").waitForExistence(timeout: 10),
+        XCTAssertTrue(el("session.root").waitForExistence(timeout: 20),
                       "Tapping the mini tile must reopen the session")
 
         app.buttons["session.finish"].tap()
@@ -166,8 +174,28 @@ final class SmokeTests: XCTestCase {
         XCTAssertTrue(resultsPanel.waitForExistence(timeout: 30),
                       "Results panel must appear after route generation")
 
+        // Start Walk is gated on `selectedRoute`, which only RouteCard's onSelect
+        // sets. This test used to assert Start Walk existed the moment routes were
+        // generated — behaviour the app never had. Select a route first.
+        let firstCard = app.buttons["routes.routeCard"].firstMatch
+        XCTAssertTrue(firstCard.waitForExistence(timeout: 10),
+                      "At least one route card must be listed after generation")
+        forceTap(firstCard)
+
         let startWalk = app.buttons["routes.startWalk"]
-        XCTAssertTrue(startWalk.exists, "Start Walk button must exist in the results panel")
+        XCTAssertTrue(startWalk.waitForExistence(timeout: 10),
+                      "Start Walk must appear once a route is selected")
+
+        // The results panel is capped at 35% of the screen height and the weather
+        // widget sits above the route list, so Start Walk routinely renders below
+        // the fold. Scroll it into view first: without this the hittability check
+        // can't distinguish "below the fold" (fine) from "covered by the tab bar"
+        // (the v1.10 regression this assertion exists to catch).
+        var scrollAttempts = 0
+        while !startWalk.isHittable && scrollAttempts < 4 {
+            resultsPanel.swipeUp()
+            scrollAttempts += 1
+        }
         XCTAssertTrue(startWalk.isHittable,
                       "Start Walk must be hittable — not covered by the tab bar")
     }
