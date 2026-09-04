@@ -15,12 +15,11 @@
 //   - A manual archive from Xcode uses THIS value verbatim.
 //   - App Store Connect is authoritative for what actually shipped.
 //
-// So: after each release, set this to the last shipped build number. That keeps a
-// manual archive from colliding with a number Xcode Cloud has already used.
-// Last shipped: build 23 (v1.10, submitted 2026-09-02).
-// 1.10 shipped to the App Store on 2026-09-04 as build 24, not 23 — App Store
-// Connect is authoritative. Set to 25 so the next MANUAL archive produces a
-// build number Apple will accept; 23 and 24 are already used and would be
-// rejected on upload. Xcode Cloud ignores this value and increments its own.
-MARKETING_VERSION = 1.10
+// So: after each release, set this to the last shipped build number — or the next
+// one up if that number is already taken. That keeps a manual archive from
+// colliding with a number Xcode Cloud has already used.
+//
+// Last shipped: v1.10, build 24, released to the App Store 2026-09-04. Set to 25
+// because 23 and 24 are both used and Apple rejects a repeat on upload.
+MARKETING_VERSION = 1.11
 CURRENT_PROJECT_VERSION = 25

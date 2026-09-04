@@ -85,7 +85,8 @@ struct RouteFinderContentView: View {
                         configPanel
                             .transition(.move(edge: .bottom).combined(with: .opacity))
                     } else {
-                        resultsPanel(containerHeight: geo.size.height)
+                        resultsPanel(containerHeight: geo.size.height,
+                                     bottomInset: geo.safeAreaInsets.bottom)
                             .transition(.move(edge: .bottom).combined(with: .opacity))
                     }
                 }
@@ -297,7 +298,7 @@ struct RouteFinderContentView: View {
 
     // MARK: - Results panel
 
-    private func resultsPanel(containerHeight: CGFloat) -> some View {
+    private func resultsPanel(containerHeight: CGFloat, bottomInset: CGFloat) -> some View {
         VStack(spacing: 0) {
             HStack(spacing: 0) {
                 Button { clearRoutes() } label: {
@@ -326,7 +327,7 @@ struct RouteFinderContentView: View {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 14) {
                     if let weather = routeWeather {
-                        WeatherWidget(weather: weather)
+                        WeatherWidget(weather: weather, initiallyExpanded: false)
                             .padding(.horizontal, 20)
                     }
 
@@ -371,11 +372,16 @@ struct RouteFinderContentView: View {
 
                     communitySection
                 }
-                .padding(.bottom, 14)
+                // The map ignores the safe area, so this panel is laid out over the
+                // floating tab bar rather than above it — without this the last card
+                // is clipped by the bar instead of scrolling clear of it.
+                .padding(.bottom, 14 + bottomInset)
                 .animation(.easeInOut(duration: 0.2), value: selectedRoute?.id)
                 .animation(.spring(response: 0.4, dampingFraction: 0.85), value: elevationProfile == nil)
             }
-            .frame(maxHeight: containerHeight * 0.35)
+            // 0.35 left the route list and Start Walk below the fold on a fresh
+            // search; 0.45 puts at least two cards in the first screenful.
+            .frame(maxHeight: containerHeight * 0.45)
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("routes.resultsPanel")
