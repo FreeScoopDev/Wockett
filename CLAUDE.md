@@ -39,9 +39,24 @@ way unless there's a strong reason; adding the first one is a real decision.
   `cloudKitDatabase:` config returns fine, then CoreData sets CloudKit up
   *asynchronously* and traps on failure. `try?` cannot catch that. This killed
   every CI test run for days. `AppModelContainer.isRunningUnderTests` skips it.
-- **`.safeAreaInset` on a view that `.ignoresSafeArea()`** lays content out over
-  the floating tab bar, not above it. Panels need explicit bottom padding from
-  `geo.safeAreaInsets.bottom` or their last row gets clipped.
+- **`.safeAreaInset` already respects the safe area** even when the view it is
+  attached to calls `.ignoresSafeArea()`. The modifier places its content inside
+  the container's safe area regardless; `.ignoresSafeArea()` governs the view
+  underneath. This entry previously claimed the opposite, and that wrong belief
+  produced two commits of `padding(.bottom, 14 + geo.safeAreaInsets.bottom)` that
+  double-counted the inset. Measured on an iPhone 17 (2026-09-05): the Routes
+  panels' content already ends at y=791, exactly the top of the tab bar. Do not
+  add the inset by hand. If a panel looks cut off, measure before theorising —
+  the real cause in v1.10 was content below the fold in a 35%-height panel.
+- **An assertion that cannot fail is worse than no assertion**, because it is
+  counted as coverage. Two versions of the Routes "clipping" check passed green
+  against a deliberately broken layout. Before claiming a test guards something,
+  break the thing on purpose and watch the test go red. If it doesn't, the test
+  is decorative — say so out loud rather than leaving it in place.
+- **`isHittable` cannot see below-the-fold or visual-layout regressions.** Every
+  element in both Routes panels sits 90-101pt above the tab bar with no
+  scrolling, so hittability is true whatever the layout does. That class of bug
+  needs snapshot testing (`fastlane snapshot`, still on the backlog).
 - **Modal screens silently break UI tests.** A `fullScreenCover` still lets views
   beneath it satisfy `exists` queries — so tests fail on *taps*, not on the
   assertions that came first. Two of these (badge celebration, resume-walk

@@ -186,17 +186,18 @@ final class SmokeTests: XCTestCase {
         XCTAssertTrue(startWalk.waitForExistence(timeout: 10),
                       "Start Walk must appear once a route is selected")
 
-        // The results panel is capped at 35% of the screen height and the weather
-        // widget sits above the route list, so Start Walk routinely renders below
-        // the fold. Scroll it into view first: without this the hittability check
-        // can't distinguish "below the fold" (fine) from "covered by the tab bar"
-        // (the v1.10 regression this assertion exists to catch).
-        var scrollAttempts = 0
-        while !startWalk.isHittable && scrollAttempts < 4 {
-            resultsPanel.swipeUp()
-            scrollAttempts += 1
-        }
-        XCTAssertTrue(startWalk.isHittable,
-                      "Start Walk must be hittable — not covered by the tab bar")
+        // This test deliberately stops here, and does NOT assert that anything
+        // clears the floating tab bar. Measured on an iPhone 17 (2026-09-05): every
+        // candidate element in both Routes panels sits 90-101pt above the bar with
+        // no scrolling at all, so `isHittable` is true no matter what the layout
+        // does. Two successive attempts at a clipping assertion were written here,
+        // and both passed green against a deliberately broken layout before anyone
+        // checked whether they could fail.
+        //
+        // The regression actually reported against v1.10 was content sitting below
+        // the fold in a short panel — a visual problem that hittability cannot see.
+        // Covering it needs snapshot testing, not XCUITest. Until that exists, this
+        // gap is uncovered, and it is better to say so here than to leave an
+        // assertion that looks like protection and isn't.
     }
 }
