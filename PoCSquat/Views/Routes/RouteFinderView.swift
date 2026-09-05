@@ -286,6 +286,11 @@ struct RouteFinderContentView: View {
                         .font(.caption)
                         .foregroundColor(.earthMuted)
                     }
+                    // Bottom-most control in the config panel, which has no ScrollView.
+                    // The smoke test asserts it is hittable on arrival: if the panel is
+                    // laid out over the tab bar, this is what disappears under it and
+                    // there is no way for the user to scroll it into reach.
+                    .accessibilityIdentifier("routes.nearbyPlaces")
                 }
                 .padding(.bottom, 4)
             }
@@ -498,6 +503,10 @@ struct RouteFinderContentView: View {
                 .cornerRadius(12)
                 .padding(.horizontal, 20)
             }
+            // Last unconditional element in the results panel. The smoke test scrolls
+            // to the bottom and asserts this is reachable — nothing renders below it,
+            // so if the panel clips under the tab bar no amount of scrolling rescues it.
+            .accessibilityIdentifier("routes.communityToggle")
 
             if showCommunityRoutes {
                 if communityModel.isLoading && communityModel.routes.isEmpty {

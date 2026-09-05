@@ -68,7 +68,8 @@ way unless there's a strong reason; adding the first one is a real decision.
   `session.root`, `session.minimize`, `session.finish`, `summary.root`,
   `summary.done`, `accessory.miniTile`, `health.root`, `community.root`,
   `settings.root`, `routes.findRoutes`, `routes.resultsPanel`,
-  `routes.routeCard`, `routes.startWalk`, `routes.weatherTile`.
+  `routes.routeCard`, `routes.startWalk`, `routes.weatherTile`,
+  `routes.nearbyPlaces`, `routes.communityToggle`.
 - **Tab bar buttons are addressed by visible title**, not identifier — iOS 26
   discards `.accessibilityIdentifier` on `Tab`.
 

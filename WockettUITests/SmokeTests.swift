@@ -167,6 +167,18 @@ final class SmokeTests: XCTestCase {
 
         let findRoutes = app.buttons["routes.findRoutes"]
         XCTAssertTrue(findRoutes.waitForExistence(timeout: 30))
+
+        // Clipping guard #1 — the config panel, before any search.
+        // This panel has no ScrollView, so its bottom-most control either clears the
+        // tab bar or it is permanently unreachable. No scrolling, no rescue: a plain
+        // hittability check here is a true test. This is the exact bug that shipped
+        // on 2026-09-05 and that the old Start Walk assertion could not catch.
+        let nearbyPlaces = app.buttons["routes.nearbyPlaces"]
+        XCTAssertTrue(nearbyPlaces.waitForExistence(timeout: 10),
+                      "Config panel's bottom row must exist")
+        XCTAssertTrue(nearbyPlaces.isHittable,
+                      "Config panel's bottom row must clear the tab bar — it cannot be scrolled")
+
         findRoutes.tap()
 
         // Network + location required; allow up to 30 s.
@@ -182,21 +194,33 @@ final class SmokeTests: XCTestCase {
                       "At least one route card must be listed after generation")
         forceTap(firstCard)
 
+        // Functional check only: selecting a route reveals Start Walk.
+        //
+        // This deliberately does NOT assert hittability. Start Walk has content below
+        // it in the scroll view (Open in Apple Maps, then the community section), so a
+        // swipe can always lift it clear of the tab bar — which made the previous
+        // `scroll until hittable, then assert hittable` version unable to fail. It
+        // passed green while the config panel next door was visibly clipped.
         let startWalk = app.buttons["routes.startWalk"]
         XCTAssertTrue(startWalk.waitForExistence(timeout: 10),
                       "Start Walk must appear once a route is selected")
 
-        // The results panel is capped at 35% of the screen height and the weather
-        // widget sits above the route list, so Start Walk routinely renders below
-        // the fold. Scroll it into view first: without this the hittability check
-        // can't distinguish "below the fold" (fine) from "covered by the tab bar"
-        // (the v1.10 regression this assertion exists to catch).
+        // Clipping guard #2 — the results panel, scrolled to the bottom.
+        // `routes.communityToggle` is the last unconditional element in the panel.
+        // Scrolling is legitimate here precisely because nothing renders below it: if
+        // the panel's content is laid out under the tab bar, the scroll view runs out
+        // of content before this clears the bar, and the assertion fails. That is the
+        // property the old version lacked.
+        let lastRow = app.buttons["routes.communityToggle"]
+        XCTAssertTrue(lastRow.waitForExistence(timeout: 10),
+                      "Community toggle must exist in the results panel")
+
         var scrollAttempts = 0
-        while !startWalk.isHittable && scrollAttempts < 4 {
+        while !lastRow.isHittable && scrollAttempts < 5 {
             resultsPanel.swipeUp()
             scrollAttempts += 1
         }
-        XCTAssertTrue(startWalk.isHittable,
-                      "Start Walk must be hittable — not covered by the tab bar")
+        XCTAssertTrue(lastRow.isHittable,
+                      "The results panel's last row must scroll clear of the tab bar")
     }
 }
