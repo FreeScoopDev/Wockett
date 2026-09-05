@@ -82,7 +82,7 @@ struct RouteFinderContentView: View {
                 .ignoresSafeArea()
                 .safeAreaInset(edge: .bottom) {
                     if showingConfig {
-                        configPanel
+                        configPanel(bottomInset: geo.safeAreaInsets.bottom)
                             .transition(.move(edge: .bottom).combined(with: .opacity))
                     } else {
                         resultsPanel(containerHeight: geo.size.height,
@@ -191,7 +191,7 @@ struct RouteFinderContentView: View {
 
     // MARK: - Config panel
 
-    private var configPanel: some View {
+    private func configPanel(bottomInset: CGFloat) -> some View {
         VStack(spacing: 0) {
             Capsule()
                 .fill(Color.secondary.opacity(0.3))
@@ -289,7 +289,11 @@ struct RouteFinderContentView: View {
                 }
                 .padding(.bottom, 4)
             }
-            .padding(.bottom, 14)
+            // Same reason as resultsPanel: the map ignores the safe area, so this
+            // panel is laid out over the floating tab bar rather than above it.
+            // Unlike resultsPanel this one has no ScrollView, so without the inset
+            // the bottom row is clipped with no way for the user to reach it.
+            .padding(.bottom, 14 + bottomInset)
             .animation(.spring(response: 0.35), value: routeManager.locationError != nil)
         }
         .clipShape(UnevenRoundedRectangle(topLeadingRadius: 24, topTrailingRadius: 24))

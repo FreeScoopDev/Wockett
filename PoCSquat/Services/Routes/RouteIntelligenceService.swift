@@ -237,15 +237,16 @@ extension OTDResult: Decodable {
 struct WeatherWidget: View {
     let weather: RouteWeather
 
-    /// The Routes results panel is height-capped, so it opens this collapsed to keep
-    /// the route cards above the fold. Screens with room to spare start expanded.
-    var initiallyExpanded: Bool = true
-
     @State private var isExpanded: Bool
 
+    /// `initiallyExpanded` seeds @State once and is deliberately NOT stored: SwiftUI
+    /// @State initialised from a parameter does not update when that parameter
+    /// changes on a re-render, so keeping it as a property would read as live
+    /// configuration while silently ignoring changes. The Routes results panel is
+    /// height-capped and passes false to keep route cards above the fold; screens
+    /// with room to spare take the default.
     init(weather: RouteWeather, initiallyExpanded: Bool = true) {
         self.weather = weather
-        self.initiallyExpanded = initiallyExpanded
         _isExpanded = State(initialValue: initiallyExpanded)
     }
 
@@ -295,8 +296,12 @@ struct WeatherWidget: View {
 
                 // Apple requires WeatherKit attribution wherever its data is shown, so
                 // this stays visible when collapsed — and sits outside the toggle
-                // button so it remains tappable as a link.
+                // button so it remains tappable as a link. Higher layout priority
+                // than the status label plus fixedSize so it is never the thing the
+                // row truncates at large Dynamic Type sizes.
                 WeatherAttributionLink()
+                    .layoutPriority(2)
+                    .fixedSize()
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 11)
