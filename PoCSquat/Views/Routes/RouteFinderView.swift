@@ -82,11 +82,10 @@ struct RouteFinderContentView: View {
                 .ignoresSafeArea()
                 .safeAreaInset(edge: .bottom) {
                     if showingConfig {
-                        configPanel(bottomInset: geo.safeAreaInsets.bottom)
+                        configPanel()
                             .transition(.move(edge: .bottom).combined(with: .opacity))
                     } else {
-                        resultsPanel(containerHeight: geo.size.height,
-                                     bottomInset: geo.safeAreaInsets.bottom)
+                        resultsPanel(containerHeight: geo.size.height)
                             .transition(.move(edge: .bottom).combined(with: .opacity))
                     }
                 }
@@ -191,7 +190,7 @@ struct RouteFinderContentView: View {
 
     // MARK: - Config panel
 
-    private func configPanel(bottomInset: CGFloat) -> some View {
+    private func configPanel() -> some View {
         VStack(spacing: 0) {
             Capsule()
                 .fill(Color.secondary.opacity(0.3))
@@ -289,11 +288,14 @@ struct RouteFinderContentView: View {
                 }
                 .padding(.bottom, 4)
             }
-            // Same reason as resultsPanel: the map ignores the safe area, so this
-            // panel is laid out over the floating tab bar rather than above it.
-            // Unlike resultsPanel this one has no ScrollView, so without the inset
-            // the bottom row is clipped with no way for the user to reach it.
-            .padding(.bottom, 14 + bottomInset)
+            // 14, not 14 + safeAreaInsets.bottom. Measured on an iPhone 17
+            // (2026-09-05): this panel's content already ends exactly at the top of
+            // the tab bar (y=791) on its own, because .safeAreaInset places its
+            // content inside the container's safe area even though the map beneath
+            // it calls .ignoresSafeArea(). Adding the inset a second time pushed the
+            // bottom row to 101pt above the bar instead of 18pt — an empty band, not
+            // a fix for anything. The panel was never clipped.
+            .padding(.bottom, 14)
             .animation(.spring(response: 0.35), value: routeManager.locationError != nil)
         }
         .clipShape(UnevenRoundedRectangle(topLeadingRadius: 24, topTrailingRadius: 24))
@@ -302,7 +304,7 @@ struct RouteFinderContentView: View {
 
     // MARK: - Results panel
 
-    private func resultsPanel(containerHeight: CGFloat, bottomInset: CGFloat) -> some View {
+    private func resultsPanel(containerHeight: CGFloat) -> some View {
         VStack(spacing: 0) {
             HStack(spacing: 0) {
                 Button { clearRoutes() } label: {
@@ -376,10 +378,13 @@ struct RouteFinderContentView: View {
 
                     communitySection
                 }
-                // The map ignores the safe area, so this panel is laid out over the
-                // floating tab bar rather than above it — without this the last card
-                // is clipped by the bar instead of scrolling clear of it.
-                .padding(.bottom, 14 + bottomInset)
+                // 14, not 14 + safeAreaInsets.bottom — same reason as configPanel.
+                // Here the extra inset had no measurable effect whatsoever: this
+                // padding sits below the content inside a ScrollView, so it can only
+                // add trailing scroll space, never move anything above it. What
+                // actually fixed the "cards cut off" report was the 0.45 height cap
+                // below and the compact weather tile, both in the same commit.
+                .padding(.bottom, 14)
                 .animation(.easeInOut(duration: 0.2), value: selectedRoute?.id)
                 .animation(.spring(response: 0.4, dampingFraction: 0.85), value: elevationProfile == nil)
             }
