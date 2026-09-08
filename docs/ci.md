@@ -13,6 +13,14 @@ and nowhere else.
 `main` is protected: no direct pushes, no force-push, no deletion, and these two
 checks must pass before a PR can merge.
 
+**The protection is a repository *ruleset*, not legacy branch protection.** This
+matters when checking it: `gh api repos/FreeScoopDev/Wockett/branches/main/protection`
+returns **404 "Branch not protected"** even though `main` very much is. That 404
+was read as "protection was removed" on 2026-09-08. Use this instead:
+
+    gh api repos/FreeScoopDev/Wockett/rulesets
+    gh api repos/FreeScoopDev/Wockett/rulesets/22245839
+
 | Required check | Provider | Runner | Bills at |
 | --- | --- | --- | --- |
 | `Wockett \| CI Tests \| Test - iOS` | Xcode Cloud | macOS | Included in Developer Program (25 h/month) |
