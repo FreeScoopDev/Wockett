@@ -15,6 +15,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - CI runs the UI smoke tests in their own job, so a navigation/layout regression is distinguishable at a glance from a logic failure; the unit-test job is pinned to `WockettTests` so it stays fast
 
 ### Changed
+- Minimum iOS version lowered from 26.5 to 26.1. Nothing in the codebase required 26.5 — the highest floor any API actually imposes is `tabViewBottomAccessory(isEnabled:content:)`, which is iOS 26.1, and a build at 26.0 fails on that one call and nothing else. The previous value appears to have followed the installed SDK rather than a decision, and it excluded everyone on 26.1 through 26.4 who had not taken the latest point update. Verified by building the app and running the unit suite at 26.1.
 - Routes results panel: the weather tile is now a single compact row — icon, temperature, condition and the conditions verdict — that expands to the hourly forecast on tap. The panel itself grew from 35% to 45% of screen height. Previously a fresh route search filled the panel with a full-height weather card and one partially visible route card, putting the route list and Start Walk below the fold on the screen whose entire purpose is picking a route. Apple's required WeatherKit attribution stays visible in the collapsed state.
 
 ### Fixed
