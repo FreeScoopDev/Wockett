@@ -5,6 +5,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Changed
+- Minimum iOS version lowered from 26.5 to 26.1. Nothing in the codebase required 26.5 — the highest floor any API actually imposes is `tabViewBottomAccessory(isEnabled:content:)`, which is iOS 26.1, and a build at 26.0 fails on that one call and nothing else. The previous value appears to have followed the installed SDK rather than a decision, and it excluded everyone on 26.1 through 26.4 who had not taken the latest point update. Verified by building the app and running the unit suite at 26.1.
+
 ### Added
 - UI smoke test target (5 XCUITest tests) covering launch, tab navigation, walk lifecycle, the active-walk accessory, and Routes reachability; launch argument `-WKTUITest` enables deterministic mode (no animations, no permission dialogs, seeded demo data)
 - CI runs the UI smoke tests in their own job, so a navigation/layout regression is distinguishable at a glance from a logic failure; the unit-test job is pinned to `WockettTests` so it stays fast
