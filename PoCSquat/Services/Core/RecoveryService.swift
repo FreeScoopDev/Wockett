@@ -293,14 +293,17 @@ final class RecoveryService {
 
     // MARK: - Static helpers
 
-    static let asleepValueSet: Set<Int> = [
+    // Pure data and pure functions — no actor state touched. Marked nonisolated so
+    // the HealthKit query callbacks, which arrive on a background queue, can use them
+    // without hopping to the main actor (SWIFT_DEFAULT_ACTOR_ISOLATION is MainActor).
+    nonisolated static let asleepValueSet: Set<Int> = [
         HKCategoryValueSleepAnalysis.asleepUnspecified.rawValue,
         HKCategoryValueSleepAnalysis.asleepCore.rawValue,
         HKCategoryValueSleepAnalysis.asleepDeep.rawValue,
         HKCategoryValueSleepAnalysis.asleepREM.rawValue
     ]
 
-    static func sumAsleepSeconds(_ samples: [HKCategorySample]) -> Double {
+    nonisolated static func sumAsleepSeconds(_ samples: [HKCategorySample]) -> Double {
         let ivs = samples
             .filter { asleepValueSet.contains($0.value) }
             .map { ($0.startDate, $0.endDate) }
@@ -308,7 +311,7 @@ final class RecoveryService {
         return mergeAndSum(ivs)
     }
 
-    static func mergeAndSum(_ ivs: [(Date, Date)]) -> Double {
+    nonisolated static func mergeAndSum(_ ivs: [(Date, Date)]) -> Double {
         var merged: [(Date, Date)] = []
         for iv in ivs {
             if let last = merged.last, iv.0 <= last.1 {
