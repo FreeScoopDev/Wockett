@@ -5,6 +5,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Internal
+- Added `docs/ci.md`, a written reference for what CI actually does. The Xcode Cloud half of the pipeline is configured in App Store Connect and has no workflow-as-code format, so since the 2026-09-04 migration the definition of what gates `main` has lived in a web UI and nowhere else — unreviewable, undiffable, and unrecoverable if edited. The file records both workflows (`CI Tests`, `Release Flow`), how to read the non-blocking SwiftLint result without misreading its green tick, and two SwiftLint autocorrect rules that break this codebase's build.
+
 ### Added
 - UI smoke test target (5 XCUITest tests) covering launch, tab navigation, walk lifecycle, the active-walk accessory, and Routes reachability; launch argument `-WKTUITest` enables deterministic mode (no animations, no permission dialogs, seeded demo data)
 - CI runs the UI smoke tests in their own job, so a navigation/layout regression is distinguishable at a glance from a logic failure; the unit-test job is pinned to `WockettTests` so it stays fast
