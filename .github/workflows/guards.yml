@@ -39,3 +39,29 @@ jobs:
             exit 1
           fi
           echo "Language guard passed."
+
+  swiftlint:
+    name: SwiftLint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # SwiftLint needs a Swift toolchain but not Xcode, so it runs here on the
+    # 1x Linux runner rather than on a 10x macOS one. The official image ships
+    # the binary, so there is nothing to install.
+    container: ghcr.io/realm/swiftlint:0.57.0
+
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      # .swiftlint.yml was added 2026-08-30 with force_unwrapping, force_cast
+      # and force_try set to `error`. The step that ran it lived in tests.yml,
+      # which the 2026-09-04 Xcode Cloud migration deleted — so from that date
+      # until now the config existed but nothing executed it.
+      #
+      # Restored deliberately NON-BLOCKING (continue-on-error) so the first
+      # runs report the real force-unwrap count without gating merges. Drop
+      # continue-on-error once that backlog is triaged; the config already
+      # treats these as errors, so that is the only change needed.
+      - name: SwiftLint (report-only)
+        continue-on-error: true
+        run: swiftlint lint --reporter github-actions-logging
