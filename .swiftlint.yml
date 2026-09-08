@@ -1,6 +1,9 @@
 # Wockett SwiftLint config — introduced 2026-08-30 (Pipeline Review follow-up).
 # Runs in CI as a NON-BLOCKING report for now; tighten to blocking once the
 # existing force-unwrap sites are triaged. Only rules we actually care about.
+#
+# NOTE: `excluded` paths resolve relative to THIS file's directory. Keep this
+# file at the repo root or the exclusions silently match nothing.
 disabled_rules:
   - line_length
   - trailing_whitespace
@@ -10,9 +13,21 @@ disabled_rules:
   - file_length
   - cyclomatic_complexity
   - todo
+  # Both fight this codebase's deliberate column alignment in property blocks
+  # (`var sleepHours:      Double?`). Together they were 669 of 863 violations
+  # — pure noise that buried the force-unwrap findings this config exists for.
+  - colon
+  - comma
+  # Wrong inside a @ViewBuilder: `let _ = x` is a declaration the builder skips,
+  # but the bare `_ = x` this rule wants is a statement of type `()` that the
+  # builder tries to render. Autofixing it broke the build on 2026-09-07.
+  - redundant_discardable_let
 opt_in_rules:
   - force_unwrapping      # the crash class behind this week's Live Activity bug
-  - empty_count
+  # empty_count is deliberately NOT enabled. Its one violation is
+  # `alert.buttons.count > 0` in the UI tests, and XCUIElementQuery has no
+  # `isEmpty` — so the rule flags correct code it cannot fix, and at `error`
+  # severity it would block merges once this job stops being advisory.
 force_unwrapping:
   severity: error
 force_cast: error

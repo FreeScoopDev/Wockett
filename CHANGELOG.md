@@ -5,6 +5,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Internal
+- Tuned `.swiftlint.yml` so the rules it exists for are actually visible. `colon` and `comma` were 669 of 863 violations and in this codebase almost all of them are deliberate column alignment in property blocks, so they buried everything else; `redundant_discardable_let` is wrong inside a `@ViewBuilder`, where `let _ = x` is a declaration the builder skips and the bare `_ = x` it wants is a statement of type `()` the builder tries to render; and `empty_count` flagged `alert.buttons.count > 0` in the UI tests, which cannot be rewritten as the rule asks because `XCUIElementQuery` has no `isEmpty` — at `error` severity that would have blocked merges on correct code. With those off the count is 191, and the 32 error-severity violations are the crash class the config was written for: 26 force-unwraps, 1 `force_try`, 1 `force_cast`, plus 3 `large_tuple` and 1 `function_parameter_count`. No source files were touched. Also documented that `excluded` paths resolve relative to the config file's own directory, which is why running SwiftLint with `--config` pointed elsewhere silently lints the test targets.
+
 ### Added
 - UI smoke test target (5 XCUITest tests) covering launch, tab navigation, walk lifecycle, the active-walk accessory, and Routes reachability; launch argument `-WKTUITest` enables deterministic mode (no animations, no permission dialogs, seeded demo data)
 - CI runs the UI smoke tests in their own job, so a navigation/layout regression is distinguishable at a glance from a logic failure; the unit-test job is pinned to `WockettTests` so it stays fast
