@@ -87,6 +87,7 @@ which is the other half of why this file exists.
 | Start condition | **Pull Request Changes** — source `Any Branches`, target `main`, starts if any file changes |
 | Auto-cancel | On. A newer push to the same source branch cancels the running build. |
 | Action | **Test - iOS** — platform iOS, scheme `PoCSquat`, **Required to Pass**, Test Option `Test (Use Scheme Setting)`, 1 destination |
+| Environment | Xcode **26.6 (17F113)**, macOS **Tahoe 26.6.2 (25G83)** — pinned explicitly, not `Latest Release` |
 | Clean | **Off** — restores derived data and caches, so runs stay fast |
 | Notifies | Slack `#ci_tests`, all successes and failures. No email recipients. |
 
@@ -101,8 +102,9 @@ run?"
 
 | | |
 | --- | --- |
-| Start condition | **Manual Start** only — branch `Any Branches`; Pull Request and Tag both **Not Enabled** |
+| Start condition | **Manual Start** only, restricted to **`main`**; Pull Request and Tag both **Not Enabled** |
 | Action | **Archive - iOS** — platform iOS, scheme `PoCSquat`, Distribution Preparation **TestFlight (Internal Testing Only)** |
+| Environment | Xcode **26.6 (17F113)**, macOS **Tahoe 26.6.2 (25G83)** — pinned explicitly, not `Latest Release` |
 | Clean | **On** — no cache restore, slower but reproducible. Correct for a release build. |
 | Notifies | Slack `#wockett_release_updates`, all successes and failures. No email recipients. |
 
@@ -112,18 +114,23 @@ auto-increment, this is the most likely explanation for 1.10 shipping as build
 24 while `Versions.xcconfig` read 23 — a manual Release Flow run took the next
 number from App Store Connect and the file was never reconciled.
 
-**Two things worth changing when convenient:**
+### Two settings that were deliberately changed on 2026-09-08
 
-1. **Xcode and macOS are not pinned.** Both workflows are set to
-   `Latest Release` (currently Xcode 26.6 / macOS Tahoe 26.6.2). A new Xcode
-   ships and the toolchain under CI changes with no commit in this repo —
-   builds can start failing, or behaviour can shift, with nothing in `git log`
-   to explain it. Pinning an explicit version makes toolchain upgrades a
-   deliberate, revertible act.
-2. **`Release Flow` can archive from any branch.** Start condition is
-   `Any Branches`, so a mis-click can push a feature branch to TestFlight
-   internal testing. Restricting it to `main` costs nothing and removes the
-   footgun.
+1. **Xcode and macOS are pinned**, on both workflows. They previously tracked
+   `Latest Release`, which meant a new Xcode could change the CI toolchain with
+   no commit in this repo — a build starts failing, or behaviour shifts, and
+   nothing in `git log` explains it. Pinned, a toolchain upgrade becomes a
+   dated, revertible decision.
+
+   The cost is that upgrades are now manual, and Apple retires older Xcode
+   versions from Xcode Cloud periodically. Expect to move the pin forward a
+   couple of times a year; worth folding into the weekly QA pass so it is not
+   something to remember.
+
+2. **`Release Flow` is restricted to `main`.** It previously accepted
+   `Any Branches`, so a mis-click on the Start dialog could archive a feature
+   branch straight to TestFlight internal testing. There is no longer a branch
+   to pick but the one that ships.
 
 ### Still unrecorded
 
