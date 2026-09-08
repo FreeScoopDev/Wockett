@@ -483,6 +483,11 @@ final class RouteManager: NSObject, ObservableObject, CLLocationManagerDelegate 
     }
 
     nonisolated func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
-        Task { @MainActor in authStatus = manager.authorizationStatus }
+        // Read the status here, on the delegate's queue, and send only the value.
+        // Capturing `manager` itself would put a non-Sendable CLLocationManager
+        // inside a @Sendable closure — an error under Swift 6. Same shape as
+        // didUpdateLocations above, which already hoists its value out first.
+        let status = manager.authorizationStatus
+        Task { @MainActor in authStatus = status }
     }
 }
