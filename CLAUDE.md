@@ -105,6 +105,67 @@ Run the tests locally before pushing:
 
 Full step-by-step procedure lives in the Session Runbook artifact.
 
+## Verifying claims
+
+Every mistake worth writing down here so far has the same shape: a cheap check
+was available and reasoning was used instead. Before stating a finding, ask what
+would make it false and whether that can be checked in under two minutes. It
+usually can.
+
+**State how a claim is known.** These are not equivalent, and the weakest one is
+where the errors live:
+
+| Level | Worth |
+| --- | --- |
+| Read the source | A hypothesis. Say so. |
+| Inspected the built artifact | Real, for anything about what ships |
+| Ran it | Real, for behaviour |
+| Broke it on purpose and watched it fail | The only proof a guard guards anything |
+
+Real examples of the first level going wrong, all on 2026-09-06/07: a "crash" in
+`ActiveSessionView` that a `guard` 35 lines below the force-unwraps already
+prevented; a "declared camera permission" that `GENERATE_INFOPLIST_FILE = NO`
+made inert and that does not appear in the built `Info.plist` at all.
+
+**Before reporting, try to disprove the strongest finding.** Not as an attitude —
+as a step. A coherent story starts attracting corroboration: a redundant `if let`
+got read as "someone already fixed one of three doors" when it was simply
+redundant.
+
+**An assertion that cannot fail is worse than none.** This applies to guards and
+scripts, not just tests. A check that derives its expectations from the same
+thing it is verifying passes vacuously — `scripts/lint.sh` hardcodes its expected
+exclusion list for exactly this reason, and has been verified to fire when the
+config is removed.
+
+## Running things
+
+Use the scripts. They exist because the obvious invocations are wrong in
+non-obvious ways.
+
+    scripts/test.sh              # full scheme (unit + UI) — what CI runs
+    scripts/test.sh --unit-only  # faster, but NOT what CI runs
+    scripts/lint.sh              # SwiftLint with verified exclusions
+
+- **`xcodebuild test | tail` reports the exit code of `tail`.** A failed run
+  looks green. Never pipe when the exit code matters; check for the literal
+  `** TEST SUCCEEDED **`.
+- **The `PoCSquat` scheme runs `WockettTests` *and* `WockettUITests`,** and Xcode
+  Cloud's Test action uses "Use Scheme Setting". Running `-only-testing:WockettTests`
+  is a smaller suite than CI and will not catch what CI catches.
+- **SwiftLint resolves `excluded:` relative to the config file's own directory.**
+  `swiftlint --config /tmp/x.yml` silently lints the excluded test targets and
+  inflates every count, with output that looks completely normal.
+- **`swiftlint --fix` has broken this build twice** — `redundant_discardable_let`
+  inside a `@ViewBuilder`, and `empty_count` against `XCUIElementQuery`. Both
+  rules are disabled now. Any autofix run must be followed by `scripts/test.sh`.
+- **In multi-step shell, `set -euo pipefail`.** A guard script that fails does not
+  stop a `&&` chain on the next line; this shipped a commit without its changelog
+  entry, twice.
+- **Fast-forward `main` before branching.** `git fetch` alone leaves local `main`
+  stale, and a branch cut from it silently omits merged work — once nearly
+  reverting a shipped build setting.
+
 ## Working with Joe
 
 - Give the reasoning alongside the instruction; he's learning the system, not
