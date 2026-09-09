@@ -16,6 +16,11 @@ final class SmokeTests: XCTestCase {
         super.setUp()
         continueAfterFailure = false
         addUIInterruptionMonitor(withDescription: "System alert") { alert in
+            // Only permission alerts. A notification banner also arrives here, and
+            // tapping one that has already slid away fails the test at the tap
+            // ("no matches found for Descendants matching type BannerNotification").
+            // Returning false lets XCTest carry on; banners never block a tap.
+            guard alert.elementType == .alert else { return false }
             for title in ["Don't Allow", "Not Now", "OK", "Allow", "Cancel"] where alert.buttons[title].exists {
                 alert.buttons[title].tap()
                 return true

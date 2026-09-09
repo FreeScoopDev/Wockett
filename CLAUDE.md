@@ -61,6 +61,12 @@ way unless there's a strong reason; adding the first one is a real decision.
   beneath it satisfy `exists` queries — so tests fail on *taps*, not on the
   assertions that came first. Two of these (badge celebration, resume-walk
   alert) are suppressed under `-WKTUITest`.
+- **Notification banners wake the UI-test interruption monitor.** The monitor
+  exists for permission alerts; a banner also arrives there, and tapping one
+  that has slid away fails the test at the tap, not at any assertion. The app
+  must never hold notification authorization under `-WKTUITest` (launch and
+  session start both skip the request), and the monitor ignores non-alerts.
+  Cost a CI run on 2026-09-09.
 - **The iOS Simulator has no Health app**, so HealthKit is always empty there.
   Step rings read 0. Expected, not a bug.
 
