@@ -58,10 +58,11 @@ jobs:
       # which the 2026-09-04 Xcode Cloud migration deleted — so from that date
       # until now the config existed but nothing executed it.
       #
-      # Restored deliberately NON-BLOCKING (continue-on-error) so the first
-      # runs report the real force-unwrap count without gating merges. Drop
-      # continue-on-error once that backlog is triaged; the config already
-      # treats these as errors, so that is the only change needed.
-      - name: SwiftLint (report-only)
-        continue-on-error: true
+      # Restored 2026-09-07 as report-only while the backlog was triaged. All 32
+      # error-severity violations were cleared on 2026-09-08 and the job now fails
+      # on any new one. The gate was break-tested: a planted force-unwrap is
+      # reported before this line was removed. NOTE: this job is not yet in the
+      # ruleset's required checks — it goes red but does not block a merge until
+      # it is added there.
+      - name: SwiftLint
         run: swiftlint lint --reporter github-actions-logging

@@ -61,9 +61,16 @@ enum AppModelContainer {
             return container
         }
 
-        // Final fallback: in-memory (data is ephemeral this session, but no crash)
+        // Final fallback: in-memory (data is ephemeral this session).
+        // If even this fails, the schema itself is unusable — a programmer error with
+        // no runtime recovery. Trap explicitly with the reason, rather than via `try!`,
+        // so the crash log says what went wrong and not just where.
         let memConfig = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
-        return try! ModelContainer(for: schema, configurations: memConfig)
+        do {
+            return try ModelContainer(for: schema, configurations: memConfig)
+        } catch {
+            fatalError("AppModelContainer: in-memory ModelContainer failed — schema is unusable: \(error)")
+        }
     }()
 
     // MARK: - One-time legacy migration

@@ -44,7 +44,7 @@ final class GaitHealthService {
 
         let cal   = Calendar.current
         let today = cal.startOfDay(for: Date())
-        let start = cal.date(byAdding: .day, value: -29, to: today)!
+        let start = cal.date(byAdding: .day, value: -29, to: today) ?? today
         let end   = Date()
 
         async let s = dailyAverages(.walkingSpeed,                   unit: HKUnit.meter().unitDivided(by: .second()), from: start, to: end)

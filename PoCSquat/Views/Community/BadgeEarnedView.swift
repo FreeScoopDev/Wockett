@@ -3,7 +3,8 @@ import SwiftUI
 // MARK: - Preview
 
 #Preview("Badge Earned") {
-    BadgeEarnedView(badge: walkBadges.first!)
+    // swiftlint:disable:next force_unwrapping
+    BadgeEarnedView(badge: walkBadges.first!) // preview only; walkBadges is a non-empty literal
 }
 
 struct BadgeEarnedView: View {

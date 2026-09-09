@@ -18,13 +18,13 @@ struct MonthCalendarView: View {
     }()
 
     private var monthStart: Date {
-        Calendar.current.date(from: Calendar.current.dateComponents([.year, .month], from: displayMonth))!
+        Calendar.current.date(from: Calendar.current.dateComponents([.year, .month], from: displayMonth)) ?? displayMonth
     }
 
     private var daysInGrid: [Date?] {
         let cal          = Calendar.current
         let firstWeekday = cal.component(.weekday, from: monthStart)
-        let range        = cal.range(of: .day, in: .month, for: monthStart)!
+        guard let range = cal.range(of: .day, in: .month, for: monthStart) else { return [] }
         var grid: [Date?] = Array(repeating: nil, count: firstWeekday - 1)
         for day in range {
             grid.append(cal.date(byAdding: .day, value: day - 1, to: monthStart))

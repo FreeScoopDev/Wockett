@@ -61,7 +61,7 @@ struct StepWidgetProvider: TimelineProvider {
     func getTimeline(in context: Context, completion: @escaping (Timeline<StepEntry>) -> Void) {
         let entry = currentEntry()
         // Refresh at the start of the next hour (or sooner if BGAppRefresh fires)
-        let nextHour = Calendar.current.nextDate(after: .now, matching: DateComponents(minute: 0), matchingPolicy: .nextTime)!
+        let nextHour = Calendar.current.nextDate(after: .now, matching: DateComponents(minute: 0), matchingPolicy: .nextTime) ?? .now.addingTimeInterval(3600)
         completion(Timeline(entries: [entry], policy: .after(nextHour)))
     }
 

@@ -218,7 +218,7 @@ private struct TrendChartSection: View {
     private func load() async {
         let cal   = Calendar.current
         let today = cal.startOfDay(for: Date())
-        let start = cal.date(byAdding: .day, value: -29, to: today)!
+        let start = cal.date(byAdding: .day, value: -29, to: today) ?? today
         let counts = await stepManager.fetchStepCounts(from: start, to: Date())
         let goal   = stepManager.currentGoal
 
