@@ -45,21 +45,28 @@ While `continue-on-error` is set, **the job shows a green tick even when
 SwiftLint exits non-zero.** Do not read that tick as "no violations" — open the
 job log and read the `Found N violations, M serious` line instead.
 
-Baseline on 2026-09-07 with SwiftLint 0.65.1 (80 files):
+**Current, as of 2026-09-08** (SwiftLint 0.65.1, run via `scripts/lint.sh`):
 
 ```
-863 violations, 33 serious
-  top rules: 387 comma · 282 colon · 47 implicit_optional_initialization
-             38 opening_brace · 26 force_unwrapping · 16 switch_case_alignment
+191 violations, 32 at error severity
+  errors: 26 force_unwrapping · 3 large_tuple · 1 function_parameter_count
+          1 force_try · 1 force_cast
 ```
 
-Two thirds of that total is `comma` + `colon`, which in this codebase is almost
-entirely deliberate column alignment in property blocks. Disabling those two
-rules drops the count to 127 and puts the crash-class violations
-(`force_unwrapping`, `force_cast`, `force_try`) at the top where they belong.
+Those 32 are the triage list. Once they are cleared, delete `continue-on-error`
+from the job and it starts gating — `.swiftlint.yml` already sets the
+force-unwrap rules to `error`, so that deletion is the whole change.
 
-Once the serious ones are triaged, delete `continue-on-error` and the job
-starts gating.
+The pre-tuning baseline was **863 violations, 33 serious**, of which 669 were
+`comma` + `colon` — in this codebase almost entirely deliberate column alignment
+in property blocks. Those two rules were disabled in the 2026-09-08 config pass,
+which is what took the count to 191.
+
+> An earlier version of this file predicted 127 rather than 191. That figure was
+> measured with `swiftlint --config /tmp/…`, which silently disabled the
+> `excluded:` paths and linted `WockettTests` as well. Always measure with
+> `scripts/lint.sh`, which refuses to report numbers unless it can prove the
+> exclusions took effect.
 
 ### Do not run `swiftlint --fix` on this codebase without verifying the build
 
@@ -72,10 +79,11 @@ Tried on 2026-09-07. It broke compilation twice, on two different rules:
 - **`empty_count`** rewrote `alert.buttons.count > 0` to
   `!alert.buttons.isEmpty` in the UI tests. `XCUIElementQuery` has no `isEmpty`.
 
-The second one matters beyond autofix: `empty_count` is an opt-in rule set to
-`error`, and at least one of its violations **cannot be fixed the way the rule
-wants**. Disable it, or exclude `WockettUITests`, before making the job
-blocking — otherwise it gates merges on correct code.
+The second one mattered beyond autofix: `empty_count` was an opt-in rule set to
+`error`, and at least one of its violations **could not be fixed the way the
+rule wants**, so it would have gated merges on correct code the moment the job
+stopped being advisory. It was dropped from `opt_in_rules` in the 2026-09-08
+config pass, along with `colon`, `comma` and `redundant_discardable_let`.
 
 Autofix is not free here. Any run needs a full build and test afterwards.
 
