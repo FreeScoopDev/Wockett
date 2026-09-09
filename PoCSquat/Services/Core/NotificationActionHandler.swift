@@ -92,7 +92,10 @@ final class AppNotificationDelegate: NSObject, UNUserNotificationCenterDelegate 
         switch actionID {
         case NotificationAction.snooze10:
             // Re-schedule the same notification 10 minutes from now
-            let content = response.notification.request.content.mutableCopy() as! UNMutableNotificationContent
+            // mutableCopy() is documented to return UNMutableNotificationContent. If it
+            // somehow doesn't, skip the snooze rather than trap — `break` still reaches
+            // completionHandler() below, which iOS requires us to call.
+            guard let content = response.notification.request.content.mutableCopy() as? UNMutableNotificationContent else { break }
             let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 600, repeats: false)
             let req = UNNotificationRequest(identifier: "\(notifID)-snooze", content: content, trigger: trigger)
             Task { try? await center.add(req) }

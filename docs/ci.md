@@ -87,6 +87,27 @@ config pass, along with `colon`, `comma` and `redundant_discardable_let`.
 
 Autofix is not free here. Any run needs a full build and test afterwards.
 
+### When CI fails and local passes
+
+It happens at the same SwiftLint version. On 2026-09-09, 0.65.1 on macOS said
+0 error-severity violations; 0.65.1 in the Linux container said 1. The line was
+`HomeWeatherView.swift:91`, a `URL(string:)!` — a plain force-unwrap that the
+macOS run simply did not report. CI is the arbiter.
+
+Finding the line: the job log shows `##[error]Force unwrapping should be
+avoided` with **no file or line**, and fetching the raw log through the API
+does not restore them. The **check-run annotations** do:
+
+    gh api repos/FreeScoopDev/Wockett/check-runs/<job id>/annotations \
+      --jq '.[] | select(.annotation_level=="failure") | "\(.path):\(.start_line) \(.message)"'
+
+The job id is the `id` of the check run on the commit
+(`gh api repos/FreeScoopDev/Wockett/commits/<sha>/check-runs`).
+
+Fixing it: remove the unwrap. Do not add a `swiftlint:disable` comment — an
+annotation is precisely the thing the two platforms may honour differently,
+and it was the wrong first guess here.
+
 ## Xcode Cloud
 
 Configured at App Store Connect → Wockett → Xcode Cloud → Manage Workflows. Team

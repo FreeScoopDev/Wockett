@@ -20,7 +20,15 @@ struct ActiveSessionView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(ActiveWalkStore.self) private var walkStore
 
+    // Both unwraps are guarded by `body`, which renders nothing unless
+    // `walkStore.session != nil`, and ActiveWalkStore writes/clears `session` and
+    // `activeRoute` together at every site (beginSession, restoreIfNeeded,
+    // endSession). The store is @MainActor and body evaluates synchronously on it,
+    // so there is no window between the check and these reads. The invariant is
+    // real; it just wasn't written down until 2026-09-08.
+    // swiftlint:disable:next force_unwrapping
     private var session: NavigationSessionManager { walkStore.session! }
+    // swiftlint:disable:next force_unwrapping
     private var route: NavigableRoute { walkStore.activeRoute! }
     private var isGuided: Bool { !(walkStore.activeRoute?.waypoints.isEmpty ?? true) }
 

@@ -87,19 +87,30 @@ extension HomeWeatherLocator: CLLocationManagerDelegate {
 // MARK: - Apple Weather Attribution (required by WeatherKit terms)
 
 struct WeatherAttributionLink: View {
-    // Apple's required attribution URL for WeatherKit
-    private let url = URL(string: "https://weatherkit.apple.com/legal-attribution.html")!
+    // Apple's required attribution URL for WeatherKit. Optional rather than
+    // force-unwrapped: SwiftLint on the Linux CI runner flags the `!` here while the
+    // same version on macOS does not, so the gate cannot be satisfied by an
+    // annotation. A literal https URL cannot fail to parse; the else branch exists so
+    // the attribution — required by WeatherKit's terms — is present structurally,
+    // not only when the parse succeeds. Same shape as WeatherDeniedChip below.
+    private let url = URL(string: "https://weatherkit.apple.com/legal-attribution.html")
 
     var body: some View {
-        Link(destination: url) {
-            HStack(spacing: 3) {
-                Image(wkt: .appleLogo)
-                    .font(.system(size: 9, weight: .semibold))
-                Text("Weather")
-                    .font(.system(size: 10))
-            }
-            .foregroundStyle(.secondary)
+        if let url {
+            Link(destination: url) { label }
+        } else {
+            label
         }
+    }
+
+    private var label: some View {
+        HStack(spacing: 3) {
+            Image(wkt: .appleLogo)
+                .font(.system(size: 9, weight: .semibold))
+            Text("Weather")
+                .font(.system(size: 10))
+        }
+        .foregroundStyle(.secondary)
     }
 }
 

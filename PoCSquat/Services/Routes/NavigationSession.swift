@@ -42,8 +42,9 @@ struct StopTracker {
             breakPromptFired  = false
             return nil
         }
-        if stoppedSince == nil { stoppedSince = now }
-        let elapsed = now.timeIntervalSince(stoppedSince!)
+        let stoppedAt = stoppedSince ?? now
+        stoppedSince = stoppedAt
+        let elapsed = now.timeIntervalSince(stoppedAt)
 
         if elapsed >= breakThreshold && !breakPromptFired {
             breakPromptFired = true
@@ -89,8 +90,9 @@ struct DrivingDetector {
     mutating func tick(speed: Double, isAutomotiveHigh: Bool, now: Date = Date()) -> Event? {
         let overThreshold = (speed >= 0 && speed > speedCeiling) || isAutomotiveHigh
         if overThreshold {
-            if episodeStart == nil { episodeStart = now }
-            let elapsed = now.timeIntervalSince(episodeStart!)
+            let episodeBegan = episodeStart ?? now
+            episodeStart = episodeBegan
+            let elapsed = now.timeIntervalSince(episodeBegan)
             if episodeCount >= 1 { return .drivingSuspected }          // second episode
             if elapsed >= sustainedThreshold { return .drivingSuspected } // sustained first
         } else if let start = episodeStart {

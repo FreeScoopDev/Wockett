@@ -31,7 +31,7 @@ struct ConfettiOverlay: View {
                 drift:     .random(in: -70...70),
                 rotStart:  .random(in: 0...360),
                 rotEnd:    .random(in: -720...720),
-                color:     palette.randomElement()!,
+                color:     palette.randomElement() ?? .yellow,
                 width:     .random(in: 7...13),
                 height:    golden ? .random(in: 7...13) : .random(in: 4...7),
                 isRound:   golden ? Bool.random() : false,

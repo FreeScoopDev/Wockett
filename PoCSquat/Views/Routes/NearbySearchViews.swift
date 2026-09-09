@@ -486,10 +486,12 @@ private struct MiniRouteShape: View {
         let mkPts = pl.points()
         for i in 0..<ptCount { raw.append(mkPts[i].coordinate) }
 
-        let minLat = raw.map(\.latitude).min()!
-        let maxLat = raw.map(\.latitude).max()!
-        let minLon = raw.map(\.longitude).min()!
-        let maxLon = raw.map(\.longitude).max()!
+        // `raw` has >= 2 points (guarded above), but let the compiler see it rather
+        // than force-unwrap: an empty polyline is exactly the coordAlong crash class.
+        guard let minLat = raw.map(\.latitude).min(),
+              let maxLat = raw.map(\.latitude).max(),
+              let minLon = raw.map(\.longitude).min(),
+              let maxLon = raw.map(\.longitude).max() else { return }
         let latSpan = max(maxLat - minLat, 1e-6)
         let lonSpan = max(maxLon - minLon, 1e-6)
         let pad: Double = 6

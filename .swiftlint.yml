@@ -13,6 +13,11 @@ disabled_rules:
   - file_length
   - cyclomatic_complexity
   - todo
+  # Same family as the four size rules above — style, not crash-class. They were
+  # SwiftLint defaults that escalate to `error` past a threshold, never opted in,
+  # and had 4 hits (3 large_tuple in dev seed data, 1 function_parameter_count).
+  - large_tuple
+  - function_parameter_count
   # Both fight this codebase's deliberate column alignment in property blocks
   # (`var sleepHours:      Double?`). Together they were 669 of 863 violations
   # — pure noise that buried the force-unwrap findings this config exists for.

@@ -85,12 +85,14 @@ private enum MapSnapshotService {
     ) -> [CLLocationCoordinate2D] {
         guard waypoints.count >= 2 else { return waypoints }
         var cumulative: [Double] = [0]
+        var running = 0.0
         for i in 1..<waypoints.count {
             let a = CLLocation(latitude: waypoints[i-1].latitude, longitude: waypoints[i-1].longitude)
             let b = CLLocation(latitude: waypoints[i].latitude,   longitude: waypoints[i].longitude)
-            cumulative.append(cumulative.last! + a.distance(from: b))
+            running += a.distance(from: b)
+            cumulative.append(running)
         }
-        let total = cumulative.last!
+        let total = running
         guard total > cropMeters * 3 else { return waypoints }
         return zip(waypoints, cumulative).compactMap { coord, d in
             (d >= cropMeters && d <= total - cropMeters) ? coord : nil

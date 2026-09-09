@@ -194,7 +194,7 @@ final class StepManager: ObservableObject {
         // Fetch HealthKit counts for any past portion of the window
         let hkCounts: [Date: Int]
         if trackingMode == .healthKit, range.lowerBound < 0 {
-            let qStart = cal.date(byAdding: .day, value: range.lowerBound, to: today)!
+            let qStart = cal.date(byAdding: .day, value: range.lowerBound, to: today) ?? today
             // +1 so qEnd is the start of the day AFTER the last wanted day,
             // ensuring enumerateStatistics includes yesterday's bucket (weekOffset=0).
             let qEnd   = cal.date(byAdding: .day, value: min(range.upperBound + 1, 0), to: today)

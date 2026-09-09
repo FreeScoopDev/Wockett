@@ -30,7 +30,7 @@ struct DevSeedStore {
                 let dist = i < count - 1 ? remaining * Double.random(in: 0.4...0.6) : remaining
                 remaining -= dist
                 let date = day.addingTimeInterval(TimeInterval(i) * 3600 + Double.random(in: 0...600))
-                toAdd.append(session(name: goalNames.randomElement()!, date: date, distance: dist))
+                toAdd.append(session(name: goalNames.randomElement() ?? "[TEST] Morning Loop", date: date, distance: dist))
             }
         }
 
@@ -40,8 +40,8 @@ struct DevSeedStore {
             let roll = Int.random(in: 0...2)
             if roll == 0 { continue } // rest day
             let (dist, name): (Double, String) = roll == 1
-                ? (Double.random(in: 8500...12000), goalNames.randomElement()!)
-                : (Double.random(in: 2000...5000),  lightNames.randomElement()!)
+                ? (Double.random(in: 8500...12000), goalNames.randomElement() ?? "[TEST] Morning Loop")
+                : (Double.random(in: 2000...5000),  lightNames.randomElement() ?? "[TEST] Quick Stroll")
             let date = day.addingTimeInterval(Double.random(in: 3600...72000))
             toAdd.append(session(name: name, date: date, distance: dist))
         }

@@ -127,7 +127,7 @@ final class RecoveryService {
     private func fetchSleepLastNight() async -> Double? {
         let cal    = Calendar.current
         let today  = cal.startOfDay(for: Date())
-        let yest   = cal.date(byAdding: .day, value: -1, to: today)!
+        let yest   = cal.date(byAdding: .day, value: -1, to: today) ?? today
         let wStart = cal.date(bySettingHour: 17, minute: 0, second: 0, of: yest) ?? yest
         let wEnd   = cal.date(bySettingHour: 12, minute: 0, second: 0, of: today) ?? today
         let pred   = HKQuery.predicateForSamples(withStart: wStart, end: wEnd)
@@ -151,7 +151,7 @@ final class RecoveryService {
     private func fetchSleepHistory() async -> [RecoveryEntry] {
         let cal    = Calendar.current
         let today  = cal.startOfDay(for: Date())
-        let start  = cal.date(byAdding: .day, value: -31, to: today)!
+        let start  = cal.date(byAdding: .day, value: -31, to: today) ?? today
         let pred   = HKQuery.predicateForSamples(withStart: start, end: Date())
 
         return await withCheckedContinuation { cont in
@@ -173,7 +173,7 @@ final class RecoveryService {
                     let endDay  = cal.startOfDay(for: s.endDate)
                     let endHour = cal.component(.hour, from: s.endDate)
                     let night   = endHour < 12
-                        ? cal.date(byAdding: .day, value: -1, to: endDay)!
+                        ? cal.date(byAdding: .day, value: -1, to: endDay) ?? endDay
                         : endDay
                     buckets[night, default: []].append((s.startDate, s.endDate))
                 }
@@ -200,7 +200,7 @@ final class RecoveryService {
     ) async -> [RecoveryEntry] {
         let cal   = Calendar.current
         let today = cal.startOfDay(for: Date())
-        let start = cal.date(byAdding: .day, value: -days, to: today)!
+        let start = cal.date(byAdding: .day, value: -days, to: today) ?? today
         let pred  = HKQuery.predicateForSamples(withStart: start, end: Date())
 
         return await withCheckedContinuation { cont in
@@ -257,7 +257,7 @@ final class RecoveryService {
     }
 
     private func fetch30dAvg(_ id: HKQuantityTypeIdentifier, unit: HKUnit) async -> Double? {
-        let start = Calendar.current.date(byAdding: .day, value: -30, to: Date())!
+        let start = Calendar.current.date(byAdding: .day, value: -30, to: Date()) ?? Date()
         return await withCheckedContinuation { cont in
             let q = HKStatisticsQuery(
                 quantityType: HKQuantityType(id),
