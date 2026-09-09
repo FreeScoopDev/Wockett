@@ -8,9 +8,9 @@ expressed as a file in this repo** — Xcode Cloud has no workflow-as-code forma
 Without this document, the definition of what gates `main` lives in one web UI
 and nowhere else.
 
-## The two required checks on `main`
+## The three required checks on `main`
 
-`main` is protected: no direct pushes, no force-push, no deletion, and these two
+`main` is protected: no direct pushes, no force-push, no deletion, and these three
 checks must pass before a PR can merge.
 
 **The protection is a repository *ruleset*, not legacy branch protection.** This
@@ -25,6 +25,7 @@ was read as "protection was removed" on 2026-09-08. Use this instead:
 | --- | --- | --- | --- |
 | `Wockett \| CI Tests \| Test - iOS` | Xcode Cloud | macOS | Included in Developer Program (25 h/month) |
 | `Language-consistency guard` | GitHub Actions | `ubuntu-latest` | 1× |
+| `SwiftLint` | GitHub Actions | `ubuntu-latest`, `ghcr.io/realm/swiftlint` container | 1× |
 
 Anything else reported on a PR is advisory and does not gate the merge.
 
@@ -37,25 +38,27 @@ test job cost 140 of the 2,000 free minutes a month.
 | Job | Required? | What it does |
 | --- | --- | --- |
 | `language-guard` | **Yes** | Greps `Views/`, `Intents/` and `WocketWidget` for hardcoded walk-specific copy (`"End Walk"`, `"Walk History"`, …). Fails the build if any reappear — user-facing copy must read the session's `ActivityMode`. |
-| `swiftlint` | No | Runs SwiftLint from `ghcr.io/realm/swiftlint` against `.swiftlint.yml`. Currently `continue-on-error: true`, so it reports without gating. |
+| `swiftlint` | **Yes** (since 2026-09-09) | Runs SwiftLint 0.65.1 from `ghcr.io/realm/swiftlint` against `.swiftlint.yml`. Fails on any error-severity violation. |
 
-### Reading the SwiftLint result correctly
+### Reading the SwiftLint result
 
-While `continue-on-error` is set, **the job shows a green tick even when
-SwiftLint exits non-zero.** Do not read that tick as "no violations" — open the
-job log and read the `Found N violations, M serious` line instead.
+The job fails on any error-severity violation and is a required check, so red
+is red. Warnings do not fail it; read the `Found N violations, M serious` line
+in the job log for those. (Until 2026-09-09 the job ran with
+`continue-on-error` and its green tick meant nothing — that caveat is gone.)
 
-**Current, as of 2026-09-08** (SwiftLint 0.65.1, run via `scripts/lint.sh`):
+**Current, as of 2026-09-09** (SwiftLint 0.65.1, `scripts/lint.sh`):
 
 ```
-191 violations, 32 at error severity
-  errors: 26 force_unwrapping · 3 large_tuple · 1 function_parameter_count
-          1 force_try · 1 force_cast
+151 violations, 0 at error severity
 ```
 
-Those 32 are the triage list. Once they are cleared, delete `continue-on-error`
-from the job and it starts gating — `.swiftlint.yml` already sets the
-force-unwrap rules to `error`, so that deletion is the whole change.
+The 32 error-severity violations that stood on 2026-09-08 (26 `force_unwrapping`,
+3 `large_tuple`, 1 `function_parameter_count`, 1 `force_try`, 1 `force_cast`)
+were cleared in #17 and `continue-on-error` removed the same day. `large_tuple`
+and `function_parameter_count` were disabled rather than fixed — style rules from
+the same family as the four size rules already off. The remaining 151 are
+warnings and do not fail the job.
 
 The pre-tuning baseline was **863 violations, 33 serious**, of which 669 were
 `comma` + `colon` — in this codebase almost entirely deliberate column alignment

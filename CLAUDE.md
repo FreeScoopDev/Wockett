@@ -89,9 +89,10 @@ way unless there's a strong reason; adding the first one is a real decision.
 
 ## Process
 
-`main` is protected: no direct pushes, no force-push, no deletion, and two
+`main` is protected: no direct pushes, no force-push, no deletion, and three
 required checks (`Wockett | CI Tests | Test - iOS`, `Language-consistency
-guard`). One change per branch; `feat/`, `fix/` or `chore/` prefix. Merge
+guard`, and `SwiftLint` — the last added 2026-09-09 once its error-severity
+backlog reached zero). One change per branch; `feat/`, `fix/` or `chore/` prefix. Merge
 `origin/main` into the branch *before* opening the PR. Squash-merge.
 
 Testing runs on **Xcode Cloud** (25 hours/month, included in the Developer
