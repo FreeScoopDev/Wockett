@@ -136,6 +136,9 @@ struct NotificationSnapshot: Sendable {
     let threadIdentifier: String
     let interruptionLevel: UNNotificationInterruptionLevel
     let hasSound: Bool
+    /// The string-keyed part of `userInfo`, which is all this app puts there and
+    /// all that is safe to carry across an isolation boundary.
+    let userInfo: [String: String]
 
     init(_ content: UNNotificationContent) {
         title = content.title
@@ -144,6 +147,9 @@ struct NotificationSnapshot: Sendable {
         threadIdentifier = content.threadIdentifier
         interruptionLevel = content.interruptionLevel
         hasSound = content.sound != nil
+        userInfo = content.userInfo.reduce(into: [:]) { result, pair in
+            if let key = pair.key as? String, let value = pair.value as? String { result[key] = value }
+        }
     }
 }
 
@@ -159,6 +165,12 @@ final class NotificationService {
     /// Set by the delegate when the user taps an action that needs the app to
     /// navigate. The app root observes and consumes it.
     private(set) var pendingAction: String?
+
+    /// The walk a "Save it" tap asked for. Persisted as well as published: the
+    /// delegate can fire before the app root exists on a cold launch, and a walk
+    /// the user asked to keep must not be lost to that race.
+    private(set) var pendingUntrackedWalk: UntrackedWalkCandidate?
+    static let pendingUntrackedWalkKey = "pendingUntrackedWalk"
 
     /// Every walk reminder the user has set, in the order they were added.
     /// Persisted so Settings can list and delete them; the system holds the
@@ -176,6 +188,10 @@ final class NotificationService {
         if let data = defaults.data(forKey: Self.walkRemindersKey),
            let saved = try? JSONDecoder().decode([WalkReminder].self, from: data) {
             walkReminders = saved
+        }
+        if let data = defaults.data(forKey: Self.pendingUntrackedWalkKey),
+           let saved = try? JSONDecoder().decode(UntrackedWalkCandidate.self, from: data) {
+            pendingUntrackedWalk = saved
         }
     }
 
@@ -232,7 +248,8 @@ final class NotificationService {
                   title: String,
                   body: String,
                   trigger: UNNotificationTrigger?,
-                  sound: Bool = true) async -> Bool {
+                  sound: Bool = true,
+                  userInfo: [String: String] = [:]) async -> Bool {
         center.removePending(withIdentifiers: [kind.identifier])
         guard isEnabled(kind) else { return false }
         await refreshStatus()
@@ -245,6 +262,7 @@ final class NotificationService {
         if let category = kind.category { content.categoryIdentifier = category }
         content.threadIdentifier = kind.threadIdentifier
         content.interruptionLevel = kind.interruptionLevel
+        if !userInfo.isEmpty { content.userInfo = userInfo }
 
         let request = UNNotificationRequest(identifier: kind.identifier, content: content, trigger: trigger)
         do { try await center.add(request); return true } catch { return false }
@@ -266,6 +284,9 @@ final class NotificationService {
         let snooze    = UNNotificationAction(identifier: NotificationAction.snooze10,  title: "Snooze 10 min", options: [])
         let markDone  = UNNotificationAction(identifier: NotificationAction.markDone,  title: "Done",          options: [])
         let startWalk = UNNotificationAction(identifier: NotificationAction.startWalk, title: "Start Walk",    options: [.foreground])
+        // Foreground on purpose: saving needs the live history store, and the user
+        // should see the walk land rather than trust that it did.
+        let saveWalk  = UNNotificationAction(identifier: NotificationAction.saveWalk,  title: "Save it",       options: [.foreground])
         let dismiss   = UNNotificationAction(identifier: NotificationAction.dismiss,   title: "Dismiss",       options: [])
         center.setCategories([
             UNNotificationCategory(identifier: NotificationCategory.waterBreak,  actions: [snooze, markDone],  intentIdentifiers: [], options: []),
@@ -273,7 +294,7 @@ final class NotificationService {
             UNNotificationCategory(identifier: NotificationCategory.petNudge,    actions: [startWalk, dismiss], intentIdentifiers: [], options: []),
             UNNotificationCategory(identifier: NotificationCategory.hydration,   actions: [markDone, dismiss],  intentIdentifiers: [], options: []),
             UNNotificationCategory(identifier: NotificationCategory.walkReminder, actions: [startWalk, dismiss], intentIdentifiers: [], options: []),
-            UNNotificationCategory(identifier: NotificationCategory.untrackedWalk, actions: [startWalk, dismiss], intentIdentifiers: [], options: [])
+            UNNotificationCategory(identifier: NotificationCategory.untrackedWalk, actions: [saveWalk, startWalk, dismiss], intentIdentifiers: [], options: [])
         ])
     }
 
@@ -298,6 +319,16 @@ final class NotificationService {
             center.removePending(withIdentifiers: ["\(id)-snooze"])
         case NotificationAction.startWalk:
             pendingAction = NotificationAction.startWalk
+        case NotificationAction.saveWalk:
+            // No candidate means nothing to save — an old notification from before
+            // this shipped, or one whose payload did not survive. Say nothing
+            // rather than saving a walk made up of zeroes.
+            guard let candidate = UntrackedWalkCandidate(userInfo: snapshot.userInfo) else { break }
+            pendingUntrackedWalk = candidate
+            if let data = try? JSONEncoder().encode(candidate) {
+                defaults.set(data, forKey: Self.pendingUntrackedWalkKey)
+            }
+            pendingAction = NotificationAction.saveWalk
         default:
             break
         }
@@ -306,6 +337,14 @@ final class NotificationService {
     func consumePendingAction() -> String? {
         defer { pendingAction = nil }
         return pendingAction
+    }
+
+    func consumePendingUntrackedWalk() -> UntrackedWalkCandidate? {
+        defer {
+            pendingUntrackedWalk = nil
+            defaults.removeObject(forKey: Self.pendingUntrackedWalkKey)
+        }
+        return pendingUntrackedWalk
     }
 
     // MARK: Walk reminders
