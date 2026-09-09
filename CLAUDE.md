@@ -113,6 +113,17 @@ way unless there's a strong reason; adding the first one is a real decision.
   demand. Real-time would need continuous background location outside a session:
   "Always" permission, battery, the location indicator. Considered and rejected
   2026-09-09. Write the copy for the delay.
+- **A notification tap that launches the app runs the delegate before the app
+  root exists**, so `onChange` never sees what it set. Anything a tap leaves
+  pending must be consumed in `.task` at launch as well, and anything the user
+  would lose by the race (a walk they asked to save) persisted, not held in
+  memory. Cost: "Start Walk" silently did nothing on a cold launch until
+  2026-09-09.
+- **A walk with no route is an established shape**, not a special case:
+  `waypoints: []` ships as Indoor Walks (`StationaryWalkView`) and manually
+  added Past Walks (`WalkHistoryView`), and now saved untracked walks. Give it a
+  `routeName` that explains itself — a detail screen with no map should not look
+  broken.
 
 ## Process
 

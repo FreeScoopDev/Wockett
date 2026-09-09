@@ -190,6 +190,48 @@ struct NotificationServiceTests {
         #expect(content.interruptionLevel == .active, "must not break through a Focus")
     }
 
+    @Test func saveItRemembersTheWalkAcrossAColdLaunch() async {
+        let (svc, center, defaults) = make()
+        defaults.set(true, forKey: "notif_untrackedWalk")
+        let candidate = UntrackedWalkCandidate(date: Date(timeIntervalSince1970: 1_757_000_000),
+                                               elapsedTime: 1_320, distanceMeters: 1_800,
+                                               steps: 2_400, activityType: ActivityMode.walking.rawValue)
+        await svc.schedule(.untrackedWalk, title: "t", body: "b", trigger: nil, userInfo: candidate.userInfo)
+        let snapshot = NotificationSnapshot(center.added[0].content)
+
+        await svc.handle(actionIdentifier: NotificationAction.saveWalk,
+                         notificationIdentifier: "untracked-walk", snapshot: snapshot)
+
+        #expect(svc.pendingUntrackedWalk == candidate)
+        #expect(svc.pendingAction == NotificationAction.saveWalk)
+        // The delegate can fire before the app root exists; a walk the user asked
+        // to keep must survive that.
+        #expect(NotificationService(center: center, defaults: defaults).pendingUntrackedWalk == candidate)
+
+        #expect(svc.consumePendingUntrackedWalk() == candidate)
+        #expect(svc.consumePendingUntrackedWalk() == nil)
+        #expect(NotificationService(center: center, defaults: defaults).pendingUntrackedWalk == nil)
+    }
+
+    @Test func saveItWithNoPayloadSavesNothing() async {
+        let (svc, _, _) = make()
+        let content = UNMutableNotificationContent()
+        content.title = "You went for a walk"
+        await svc.handle(actionIdentifier: NotificationAction.saveWalk,
+                         notificationIdentifier: "untracked-walk", snapshot: NotificationSnapshot(content))
+        // A notification from before this shipped must not become a walk of zeroes.
+        #expect(svc.pendingUntrackedWalk == nil)
+        #expect(svc.pendingAction == nil)
+    }
+
+    @Test func theUntrackedWalkCategoryOffersSaveFirstThenStartWalk() {
+        let (svc, center, _) = make()
+        svc.registerCategories()
+        let category = center.categories.first { $0.identifier == NotificationCategory.untrackedWalk }
+        #expect(category?.actions.map(\.identifier) ==
+                [NotificationAction.saveWalk, NotificationAction.startWalk, NotificationAction.dismiss])
+    }
+
     // MARK: Walk reminders
 
     @Test func addingAReminderSchedulesUnderItsIdAndPersists() async {

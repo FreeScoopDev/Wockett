@@ -19,6 +19,7 @@ enum NotificationAction {
     static let snooze10      = "SNOOZE_10"
     static let markDone      = "MARK_DONE"
     static let startWalk     = "START_WALK"
+    static let saveWalk      = "SAVE_WALK"
     static let dismiss       = "DISMISS"
 }
 

@@ -51,6 +51,62 @@ struct ActivityWindow: Equatable, Sendable {
     var dominant: MotionSample.Kind = .other
 }
 
+// MARK: Candidate
+
+/// The walk the nudge is offering to save. It travels in the notification's
+/// `userInfo`, so tapping "Save it" days later still saves the right walk
+/// rather than whatever the app last measured. No waypoints: this came from the
+/// pedometer, so there is no route — the same shape as an Indoor Walk or a
+/// manually added Past Walk, both of which have shipped since 1.7.
+struct UntrackedWalkCandidate: Codable, Equatable, Sendable {
+    let date: Date
+    let elapsedTime: TimeInterval
+    let distanceMeters: Double
+    let steps: Int
+    /// `ActivityMode` raw value: walking, running or cycling.
+    let activityType: String
+
+    static let userInfoKey = "untrackedWalk"
+
+    /// JSON in a string-keyed dictionary, because that is what survives a round
+    /// trip through `UNNotificationContent.userInfo` as Sendable data.
+    var userInfo: [String: String] {
+        guard let data = try? JSONEncoder().encode(self),
+              let json = String(data: data, encoding: .utf8) else { return [:] }
+        return [Self.userInfoKey: json]
+    }
+
+    init(date: Date, elapsedTime: TimeInterval, distanceMeters: Double, steps: Int, activityType: String) {
+        self.date = date
+        self.elapsedTime = elapsedTime
+        self.distanceMeters = distanceMeters
+        self.steps = steps
+        self.activityType = activityType
+    }
+
+    init?(userInfo: [String: String]) {
+        guard let json = userInfo[Self.userInfoKey],
+              let data = json.data(using: .utf8),
+              let decoded = try? JSONDecoder().decode(Self.self, from: data) else { return nil }
+        self = decoded
+    }
+
+    /// The history entry. `routeName` says plainly where it came from, so a walk
+    /// with no map on its detail screen is explained rather than puzzling.
+    func toWalkSession() -> WalkSession {
+        WalkSession(id: UUID(),
+                    routeName: "Untracked Walk",
+                    date: date,
+                    elapsedTime: elapsedTime,
+                    totalDistance: distanceMeters,
+                    waypoints: [],
+                    lapCount: 1,
+                    isLoop: false,
+                    activityType: activityType,
+                    steps: steps)
+    }
+}
+
 // MARK: Policy
 
 enum UntrackedWalkPolicy {
@@ -103,6 +159,23 @@ enum UntrackedWalkPolicy {
 
     // MARK: Copy
 
+    /// What the nudge would save. `start` is when the queried window opened, so
+    /// the walk is dated to the movement, not to the moment iOS happened to wake
+    /// the app; duration is the active time, not the whole window.
+    static func candidate(window: ActivityWindow, start: Date, steps: Int) -> UntrackedWalkCandidate {
+        let activityType: ActivityMode
+        switch window.dominant {
+        case .running: activityType = .running
+        case .cycling: activityType = .cycling
+        default:       activityType = .walking
+        }
+        return UntrackedWalkCandidate(date: start,
+                                      elapsedTime: window.activeSeconds,
+                                      distanceMeters: window.distanceMeters,
+                                      steps: steps,
+                                      activityType: activityType.rawValue)
+    }
+
     static func title(for window: ActivityWindow) -> String {
         switch window.dominant {
         case .running: return "You went for a run"
@@ -113,6 +186,7 @@ enum UntrackedWalkPolicy {
 
     /// "About 1.8 km this morning — want to track the next one?" The distance is
     /// deliberately approximate: this came from the pedometer, not a GPS track.
+    /// "About 1.8 km this morning, untracked. Save it, or track the next one?"
     static func body(for window: ActivityWindow,
                      now: Date,
                      locale: Locale = .current,
@@ -129,7 +203,7 @@ enum UntrackedWalkPolicy {
         case 12..<17: partOfDay = "this afternoon"
         default:      partOfDay = "this evening"
         }
-        return "About \(distance) \(partOfDay), untracked. Want to track the next one?"
+        return "About \(distance) \(partOfDay), untracked. Save it, or track the next one?"
     }
 }
 
@@ -169,17 +243,20 @@ final class UntrackedWalkDetector {
         let samples = await queryActivity(from: start, to: now)
         var window = UntrackedWalkPolicy.summarize(samples, endingAt: now)
         guard window.activeSeconds >= UntrackedWalkPolicy.minimumActiveSeconds else { return }
-        window.distanceMeters = await queryDistance(from: start, to: now)
+        let pedometer = await queryPedometer(from: start, to: now)
+        window.distanceMeters = pedometer.distance
 
         guard UntrackedWalkPolicy.shouldNotify(window: window,
                                                isSessionActive: ActiveWalkStore.shared.isActive,
                                                lastNotified: defaults.object(forKey: Self.lastNotifiedKey) as? Date,
                                                now: now) else { return }
 
+        let candidate = UntrackedWalkPolicy.candidate(window: window, start: start, steps: pedometer.steps)
         let scheduled = await notifications.schedule(.untrackedWalk,
                                                      title: UntrackedWalkPolicy.title(for: window),
                                                      body: UntrackedWalkPolicy.body(for: window, now: now),
-                                                     trigger: nil)
+                                                     trigger: nil,
+                                                     userInfo: candidate.userInfo)
         if scheduled { defaults.set(now, forKey: Self.lastNotifiedKey) }
     }
 
@@ -193,10 +270,11 @@ final class UntrackedWalkDetector {
         }
     }
 
-    private func queryDistance(from start: Date, to end: Date) async -> Double {
+    private func queryPedometer(from start: Date, to end: Date) async -> (distance: Double, steps: Int) {
         await withCheckedContinuation { continuation in
             pedometer.queryPedometerData(from: start, to: end) { data, _ in
-                continuation.resume(returning: data?.distance?.doubleValue ?? 0)
+                continuation.resume(returning: (data?.distance?.doubleValue ?? 0,
+                                                data?.numberOfSteps.intValue ?? 0))
             }
         }
     }

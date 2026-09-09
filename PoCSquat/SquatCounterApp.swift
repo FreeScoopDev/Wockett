@@ -124,13 +124,8 @@ struct SquatCounterApp: App {
             .environmentObject(routeStore)
             .environmentObject(historyStore)
             .environmentObject(tabRouter)
-            .onChange(of: NotificationService.shared.pendingAction) { _, action in
-                // "Start Walk" on a streak or pet nudge: land on Home, and if a
-                // session is already running, reopen it instead of starting over.
-                guard action == NotificationAction.startWalk,
-                      NotificationService.shared.consumePendingAction() != nil else { return }
-                tabRouter.selected = .home
-                if ActiveWalkStore.shared.isActive { ActiveWalkStore.shared.requestReopen() }
+            .onChange(of: NotificationService.shared.pendingAction) { _, _ in
+                handleNotificationAction()
             }
             .modelContainer(container)
             .task {
@@ -148,6 +143,10 @@ struct SquatCounterApp: App {
                     return
                 }
                 #endif
+                // Before anything else: a notification tapped while the app was not
+                // running sets this from the delegate, which can happen before this
+                // view exists — `onChange` would never see it.
+                handleNotificationAction()
                 ActivityDetectionService.shared.startDetection()
                 NotificationService.shared.registerCategories()
                 NotificationService.shared.pruneExpiredWalkReminders()
@@ -155,6 +154,30 @@ struct SquatCounterApp: App {
                 await NotificationService.shared.requestQuietDeliveryIfNeverAsked()
                 await scheduleWeeklySummaryNotification()
             }
+        }
+    }
+
+    /// Acts on whatever a notification tap left pending. Called from `.task` at
+    /// launch as well as `onChange`, because a tap that launches the app runs the
+    /// delegate before this view exists and `onChange` only sees later changes.
+    @MainActor
+    private func handleNotificationAction() {
+        let service = NotificationService.shared
+        guard let action = service.consumePendingAction() else { return }
+        switch action {
+        case NotificationAction.startWalk:
+            // Land on Home, and if a session is already running, reopen it
+            // instead of starting over.
+            tabRouter.selected = .home
+            if ActiveWalkStore.shared.isActive { ActiveWalkStore.shared.requestReopen() }
+        case NotificationAction.saveWalk:
+            // Save the walk the nudge described and show it, so the user can see
+            // it landed — and rename or retype it from history if they want.
+            guard let candidate = service.consumePendingUntrackedWalk() else { return }
+            historyStore.add(candidate.toWalkSession())
+            tabRouter.selected = .health
+        default:
+            break
         }
     }
 

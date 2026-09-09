@@ -108,16 +108,63 @@ struct UntrackedWalkPolicyTests {
         #expect(UntrackedWalkPolicy.title(for: window(activeMinutes: 20, metres: 2_000, kind: .walking)) == "You went for a walk")
     }
 
+    // MARK: candidate
+
+    @Test func theCandidateIsDatedToTheMovementNotTheWakeUp() {
+        let window = ActivityWindow(activeSeconds: 22 * 60, distanceMeters: 1_800, dominant: .walking)
+        let candidate = UntrackedWalkPolicy.candidate(window: window, start: start, steps: 2_400)
+        #expect(candidate.date == start, "dated to when the window opened, not when iOS woke the app")
+        #expect(candidate.elapsedTime == 22 * 60, "active time, not the whole window")
+        #expect(candidate.distanceMeters == 1_800)
+        #expect(candidate.steps == 2_400)
+        #expect(candidate.activityType == ActivityMode.walking.rawValue)
+    }
+
+    @Test func theCandidateCarriesTheActivityTheyActuallyDid() {
+        func type(_ kind: MotionSample.Kind) -> String {
+            UntrackedWalkPolicy.candidate(window: ActivityWindow(activeSeconds: 600, distanceMeters: 900, dominant: kind),
+                                          start: start, steps: 100).activityType
+        }
+        #expect(type(.running) == ActivityMode.running.rawValue)
+        #expect(type(.cycling) == ActivityMode.cycling.rawValue)
+        #expect(type(.walking) == ActivityMode.walking.rawValue)
+        #expect(type(.other)   == ActivityMode.walking.rawValue)
+    }
+
+    @Test func theCandidateSurvivesARoundTripThroughNotificationUserInfo() {
+        let original = UntrackedWalkCandidate(date: start, elapsedTime: 1_320, distanceMeters: 1_800,
+                                              steps: 2_400, activityType: ActivityMode.running.rawValue)
+        let recovered = UntrackedWalkCandidate(userInfo: original.userInfo)
+        #expect(recovered == original)
+        #expect(UntrackedWalkCandidate(userInfo: [:]) == nil)
+        #expect(UntrackedWalkCandidate(userInfo: ["untrackedWalk": "not json"]) == nil)
+    }
+
+    @Test func theSavedWalkHasNoRouteAndSaysWhereItCameFrom() {
+        let candidate = UntrackedWalkCandidate(date: start, elapsedTime: 1_320, distanceMeters: 1_800,
+                                               steps: 2_400, activityType: ActivityMode.cycling.rawValue)
+        let session = candidate.toWalkSession()
+        #expect(session.waypoints.isEmpty, "pedometer data has no route")
+        #expect(session.routeName == "Untracked Walk")
+        #expect(session.date == start)
+        #expect(session.elapsedTime == 1_320)
+        #expect(session.totalDistance == 1_800)
+        #expect(session.steps == 2_400)
+        #expect(session.activityType == ActivityMode.cycling.rawValue)
+        #expect(session.customRouteId == nil, "must not be attributed to a saved route")
+        #expect(session.activePetIds.isEmpty, "no way to know which pet came along")
+    }
+
     @Test func bodyStatesDistanceAndTimeOfDayInTheReadersUnits() {
         let cal = Calendar(identifier: .gregorian)
         let morning = cal.date(from: DateComponents(year: 2026, month: 9, day: 9, hour: 9))!
         let metric = UntrackedWalkPolicy.body(for: window(activeMinutes: 20, metres: 1_800),
                                               now: morning, locale: Locale(identifier: "en_GB"), calendar: cal)
-        #expect(metric == "About 1.8 km this morning, untracked. Want to track the next one?")
+        #expect(metric == "About 1.8 km this morning, untracked. Save it, or track the next one?")
 
         let evening = cal.date(from: DateComponents(year: 2026, month: 9, day: 9, hour: 19))!
         let imperial = UntrackedWalkPolicy.body(for: window(activeMinutes: 20, metres: 1_609.34),
                                                 now: evening, locale: Locale(identifier: "en_US"), calendar: cal)
-        #expect(imperial == "About 1.0 mi this evening, untracked. Want to track the next one?")
+        #expect(imperial == "About 1.0 mi this evening, untracked. Save it, or track the next one?")
     }
 }
