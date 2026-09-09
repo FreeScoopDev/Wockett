@@ -1,7 +1,6 @@
 import SwiftUI
 import UserNotifications
 import UIKit
-import EventKit
 
 // MARK: - Settings View
 
@@ -171,25 +170,30 @@ struct SettingsView: View {
 
                 // ── Walk Reminders ────────────────────────────────
                 Section("Walk Reminders") {
-                    let scheduler = WalkSchedulerService.shared
-                    if scheduler.scheduledWalkEventIDs.isEmpty {
-                        Text("Add recurring walk reminders to your Calendar with a 10-minute heads-up alert.")
+                    let notifications = NotificationService.shared
+                    if notifications.walkReminders.isEmpty {
+                        Text("Get a notification when it's time to walk — once, daily, or on a chosen day each week.")
                             .font(.caption).foregroundColor(.earthMuted)
                             .listRowBackground(Color.earthCard)
                     } else {
-                        ForEach(Array(scheduler.scheduledWalkEventIDs.enumerated()), id: \.element) { idx, eventID in
+                        ForEach(notifications.walkReminders) { reminder in
                             HStack {
-                                Label { Text("Walk Reminder \(idx + 1)") } icon: { Image(wkt: .calendarClock).wktIcon(.row, tint: .earthCream) }
-                                    .foregroundColor(.earthCream)
+                                Label {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(reminder.title).foregroundColor(.earthCream)
+                                        Text(reminder.scheduleSummary())
+                                            .font(.caption).foregroundColor(.earthMuted)
+                                    }
+                                } icon: { Image(wkt: .calendarClock).wktIcon(.row, tint: .earthCream) }
                                 Spacer()
                                 Button {
-                                    scheduler.removeWalk(eventID: eventID)
+                                    notifications.removeWalkReminder(id: reminder.id)
                                 } label: {
                                     Image(wkt: .discard)
                                         .wktIcon(.inline, tint: .red.opacity(0.7))
                                 }
                                 .buttonStyle(.plain)
-                                .accessibilityLabel("Delete walk reminder \(idx + 1)")
+                                .accessibilityLabel("Delete \(reminder.title) reminder")
                             }
                             .listRowBackground(Color.earthCard)
                         }
@@ -201,6 +205,35 @@ struct SettingsView: View {
                             .foregroundColor(.earthGreen)
                     }
                     .listRowBackground(Color.earthCard)
+                }
+
+                // Reminders an earlier version put in the user's Calendar. Shown only
+                // while any remain, so they can still be deleted from here.
+                let legacy = WalkSchedulerService.shared
+                if !legacy.scheduledWalkEventIDs.isEmpty {
+                    Section {
+                        ForEach(Array(legacy.scheduledWalkEventIDs.enumerated()), id: \.element) { idx, eventID in
+                            HStack {
+                                Label { Text("Calendar Reminder \(idx + 1)") } icon: { Image(wkt: .calendar).wktIcon(.row, tint: .earthCream) }
+                                    .foregroundColor(.earthCream)
+                                Spacer()
+                                Button {
+                                    legacy.removeWalk(eventID: eventID)
+                                } label: {
+                                    Image(wkt: .discard)
+                                        .wktIcon(.inline, tint: .red.opacity(0.7))
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("Delete calendar reminder \(idx + 1)")
+                            }
+                            .listRowBackground(Color.earthCard)
+                        }
+                    } header: {
+                        Text("Calendar Reminders")
+                    } footer: {
+                        Text("Added to your Calendar by an earlier version of Wockett. New reminders are notifications; these stay until you delete them.")
+                            .font(.caption).foregroundColor(.earthMuted)
+                    }
                 }
 
                 // ── Motivational Banner ───────────────────────────
@@ -341,7 +374,10 @@ struct SettingsView: View {
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $showScheduleSheet) { WalkReminderSheet() }
-        .task { await refreshNotificationStatus() }
+        .task {
+            NotificationService.shared.pruneExpiredWalkReminders()
+            await refreshNotificationStatus()
+        }
         .onChange(of: [weeklySummaryEnabled, hydrationEnabled, streakProtectionEnabled, petNudgeEnabled]) { old, new in
             // A toggle switched on while delivery is only quiet is the user asking
             // for alerts — the moment for the real prompt.
@@ -374,8 +410,8 @@ private struct WalkReminderSheet: View {
         Calendar.current.date(bySettingHour: 7, minute: 30, second: 0, of: Date()) ?? Date()
     }()
     @State private var repeatOption: RepeatOption = .daily
-    @State private var selectedWeekday: EKWeekday = .monday
-    @State private var durationMinutes = 30
+    /// `Calendar` weekday numbering: 1 = Sunday … 7 = Saturday.
+    @State private var selectedWeekday = 2
     @State private var isScheduling = false
     @State private var scheduleFailed = false
 
@@ -386,10 +422,8 @@ private struct WalkReminderSheet: View {
         var id: String { rawValue }
     }
 
-    private let durations = [15, 20, 30, 45, 60, 90]
-    private let weekdays: [(String, EKWeekday)] = [
-        ("Mon", .monday), ("Tue", .tuesday), ("Wed", .wednesday),
-        ("Thu", .thursday), ("Fri", .friday), ("Sat", .saturday), ("Sun", .sunday)
+    private let weekdays: [(String, Int)] = [
+        ("Mon", 2), ("Tue", 3), ("Wed", 4), ("Thu", 5), ("Fri", 6), ("Sat", 7), ("Sun", 1)
     ]
 
     var body: some View {
@@ -423,14 +457,6 @@ private struct WalkReminderSheet: View {
                             .listRowBackground(Color.earthCard)
                         }
                     }
-
-                    Section("Duration") {
-                        Picker("Duration", selection: $durationMinutes) {
-                            ForEach(durations, id: \.self) { Text("\($0) min").tag($0) }
-                        }
-                        .pickerStyle(.segmented)
-                        .listRowBackground(Color.earthCard)
-                    }
                 }
                 .scrollContentBackground(.hidden)
             }
@@ -457,39 +483,31 @@ private struct WalkReminderSheet: View {
             .alert("Could not add reminder", isPresented: $scheduleFailed) {
                 Button("OK", role: .cancel) {}
             } message: {
-                Text("Please grant Wockett access to Calendar in iOS Settings → Privacy → Calendars.")
+                Text("Turn on notifications for Wockett in iOS Settings → Notifications.")
             }
         }
     }
 
     private func schedule() async {
         isScheduling = true
-        let scheduler = WalkSchedulerService.shared
-
-        // Resolve date: apply chosen time to today, roll to tomorrow if already past
         let comps = Calendar.current.dateComponents([.hour, .minute], from: startTime)
-        var target = Calendar.current.dateComponents([.year, .month, .day], from: Date())
-        target.hour   = comps.hour
-        target.minute = comps.minute
-        target.second = 0
-        var date = Calendar.current.date(from: target) ?? Date()
-        if date < Date() {
-            date = Calendar.current.date(byAdding: .day, value: 1, to: date) ?? date
-        }
+        let hour = comps.hour ?? 7, minute = comps.minute ?? 30
 
-        let rule: EKRecurrenceRule?
+        let schedule: WalkReminder.Schedule
         switch repeatOption {
-        case .once:   rule = nil
-        case .daily:  rule = WalkSchedulerService.dailyRule()
-        case .weekly: rule = WalkSchedulerService.weeklyRule(on: selectedWeekday)
+        case .once:
+            // The chosen time today, or tomorrow if that has already passed.
+            var date = Calendar.current.date(bySettingHour: hour, minute: minute, second: 0, of: Date()) ?? Date()
+            if date < Date() { date = Calendar.current.date(byAdding: .day, value: 1, to: date) ?? date }
+            schedule = .once(date)
+        case .daily:
+            schedule = .daily(hour: hour, minute: minute)
+        case .weekly:
+            schedule = .weekly(weekday: selectedWeekday, hour: hour, minute: minute)
         }
 
-        let success = await scheduler.scheduleWalk(
-            title: title.trimmingCharacters(in: .whitespaces),
-            startDate: date,
-            durationMinutes: durationMinutes,
-            recurrenceRule: rule
-        )
+        let reminder = WalkReminder(title: title.trimmingCharacters(in: .whitespaces), schedule: schedule)
+        let success = await NotificationService.shared.addWalkReminder(reminder)
         isScheduling = false
         if success { dismiss() } else { scheduleFailed = true }
     }

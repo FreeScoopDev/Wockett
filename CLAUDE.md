@@ -100,6 +100,10 @@ way unless there's a strong reason; adding the first one is a real decision.
   the user asks for something — a Settings toggle, water breaks, a route
   reminder. Any guard on delivery must accept `.provisional`, or quiet delivery
   is a no-op; that was the dead-end fixed on 2026-09-09.
+- **Walk reminders are notifications** (`WalkReminder`, owned by
+  `NotificationService`), not calendar events — since 2026-09-09.
+  `WalkSchedulerService` exists only to delete the `EKEvent`s that 1.7–1.10
+  created; it must never add one.
 
 ## Process
 

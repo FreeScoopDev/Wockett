@@ -113,7 +113,7 @@ struct NotificationServiceTests {
         let (svc, center, defaults) = make()
         defaults.set(true, forKey: "notif_hydration")
         let inWalk: [NotificationKind] = [.waterBreak(1), .checkpoint("50%"), .autoPause, .routeEvent("offRoute"), .hydration]
-        let elsewhere: [NotificationKind] = [.streakNudge, .petNudge, .scheduledRoute("Loop")]
+        let elsewhere: [NotificationKind] = [.streakNudge, .petNudge, .walkReminder(UUID())]
         for kind in inWalk + elsewhere {
             #expect(await svc.schedule(kind, title: "t", body: "b", trigger: nil), "\(kind) should schedule")
         }
@@ -158,19 +158,115 @@ struct NotificationServiceTests {
         #expect(svc.consumePendingAction() == nil)
     }
 
-    @Test func registersAllFourCategories() {
+    @Test func registersAllFiveCategories() {
         let (svc, center, _) = make()
         svc.registerCategories()
         #expect(center.categories.map(\.identifier).sorted() ==
-                [NotificationCategory.hydration, NotificationCategory.petNudge,
-                 NotificationCategory.streakNudge, NotificationCategory.waterBreak].sorted())
+                [NotificationCategory.hydration, NotificationCategory.petNudge, NotificationCategory.streakNudge,
+                 NotificationCategory.walkReminder, NotificationCategory.waterBreak].sorted())
+        let reminder = center.categories.first { $0.identifier == NotificationCategory.walkReminder }
+        #expect(reminder?.actions.map(\.identifier) == [NotificationAction.startWalk, NotificationAction.dismiss])
     }
 
-    @Test func scheduledRouteReminderIsKeyedByRouteNameSoItCanBeReplaced() async {
+    // MARK: Walk reminders
+
+    @Test func addingAReminderSchedulesUnderItsIdAndPersists() async {
+        let (svc, center, defaults) = make()
+        let reminder = WalkReminder(title: "Morning Walk", schedule: .daily(hour: 7, minute: 30))
+        #expect(await svc.addWalkReminder(reminder))
+
+        #expect(center.added.map(\.identifier) == ["walkReminder-\(reminder.id.uuidString)"])
+        let content = center.added[0].content
+        #expect(content.categoryIdentifier == NotificationCategory.walkReminder)
+        #expect(content.threadIdentifier == "wkt.reminders")
+        #expect(content.body == "Morning Walk — lace up!")
+        let trigger = center.added[0].trigger as? UNCalendarNotificationTrigger
+        #expect(trigger?.repeats == true)
+        #expect(trigger?.dateComponents.hour == 7)
+        #expect(trigger?.dateComponents.minute == 30)
+        #expect(trigger?.dateComponents.weekday == nil)
+
+        #expect(svc.walkReminders == [reminder])
+        let reloaded = NotificationService(center: center, defaults: defaults)
+        #expect(reloaded.walkReminders == [reminder], "a fresh service must read the same list back")
+    }
+
+    @Test func weeklyAndOneOffTriggersMatchTheRightComponents() async {
         let (svc, center, _) = make()
-        await svc.schedule(.scheduledRoute("Park Loop"), title: "t", body: "b", trigger: nil)
-        await svc.schedule(.scheduledRoute("Park Loop"), title: "t", body: "b", trigger: nil)
-        #expect(center.added.map(\.identifier) == ["scheduledRoute-Park Loop", "scheduledRoute-Park Loop"])
-        #expect(center.removedPending.allSatisfy { $0 == ["scheduledRoute-Park Loop"] })
+        let cal = Calendar.current
+        let once = cal.date(from: DateComponents(year: 2026, month: 9, day: 12, hour: 18, minute: 0))!
+        await svc.addWalkReminder(WalkReminder(title: "w", schedule: .weekly(weekday: 2, hour: 6, minute: 15)))
+        await svc.addWalkReminder(WalkReminder(title: "o", schedule: .once(once)))
+
+        let weekly = center.added[0].trigger as? UNCalendarNotificationTrigger
+        #expect(weekly?.repeats == true)
+        #expect(weekly?.dateComponents.weekday == 2)
+        #expect(weekly?.dateComponents.hour == 6)
+        #expect(weekly?.dateComponents.minute == 15)
+
+        let oneOff = center.added[1].trigger as? UNCalendarNotificationTrigger
+        #expect(oneOff?.repeats == false)
+        #expect(oneOff?.dateComponents.year == 2026)
+        #expect(oneOff?.dateComponents.month == 9)
+        #expect(oneOff?.dateComponents.day == 12)
+        #expect(oneOff?.dateComponents.hour == 18)
+        #expect(oneOff?.dateComponents.minute == 0)
+    }
+
+    @Test func removingAReminderCancelsItsRequestAndForgetsIt() async {
+        let (svc, center, defaults) = make()
+        let reminder = WalkReminder(title: "Evening Walk", schedule: .daily(hour: 19, minute: 0))
+        await svc.addWalkReminder(reminder)
+        // schedule() already removes-then-adds under the same id, so "contains" would
+        // pass without removeWalkReminder cancelling anything. Count the cancels.
+        let cancelsFromAdd = center.removedPending.count
+        svc.removeWalkReminder(id: reminder.id)
+
+        #expect(center.removedPending.count == cancelsFromAdd + 1)
+        #expect(center.removedPending.last == ["walkReminder-\(reminder.id.uuidString)"])
+        #expect(svc.walkReminders.isEmpty)
+        #expect(NotificationService(center: center, defaults: defaults).walkReminders.isEmpty)
+    }
+
+    @Test func aRouteReminderReplacesTheEarlierOneForTheSameRoute() async {
+        let (svc, center, _) = make()
+        let first  = WalkReminder(title: "Park Loop", routeName: "Park Loop", schedule: .once(Date().addingTimeInterval(3600)))
+        let second = WalkReminder(title: "Park Loop", routeName: "Park Loop", schedule: .once(Date().addingTimeInterval(7200)))
+        await svc.addWalkReminder(first)
+        let cancelsAfterFirst = center.removedPending.count
+        await svc.addWalkReminder(second)
+
+        #expect(svc.walkReminders == [second])
+        // Adding `second` must cancel `first` explicitly, on top of its own replace-first remove.
+        let cancelsDuringSecond = center.removedPending.dropFirst(cancelsAfterFirst)
+        #expect(cancelsDuringSecond.contains(["walkReminder-\(first.id.uuidString)"]))
+        #expect(cancelsDuringSecond.count == 2)
+        #expect(center.added.map(\.identifier) == ["walkReminder-\(first.id.uuidString)", "walkReminder-\(second.id.uuidString)"])
+    }
+
+    @Test func addingPromptsForRealAlertsWhenDeliveryIsOnlyQuiet() async {
+        let (svc, center, _) = make(status: .provisional)
+        #expect(await svc.addWalkReminder(WalkReminder(title: "w", schedule: .daily(hour: 8, minute: 0))))
+        #expect(center.authRequests == [[.alert, .sound]])
+        #expect(center.added.count == 1)
+    }
+
+    @Test func deniedAddFailsAndStoresNothing() async {
+        let (svc, center, defaults) = make(status: .denied)
+        center.grant = false
+        #expect(await svc.addWalkReminder(WalkReminder(title: "w", schedule: .daily(hour: 8, minute: 0))) == false)
+        #expect(center.added.isEmpty)
+        #expect(svc.walkReminders.isEmpty)
+        #expect(defaults.data(forKey: NotificationService.walkRemindersKey) == nil)
+    }
+
+    @Test func expiredOneOffRemindersArePrunedRepeatingOnesAreNot() async {
+        let (svc, _, _) = make()
+        let past  = WalkReminder(title: "p", schedule: .once(Date().addingTimeInterval(-60)))
+        let daily = WalkReminder(title: "d", schedule: .daily(hour: 7, minute: 0))
+        await svc.addWalkReminder(past)
+        await svc.addWalkReminder(daily)
+        svc.pruneExpiredWalkReminders()
+        #expect(svc.walkReminders == [daily])
     }
 }

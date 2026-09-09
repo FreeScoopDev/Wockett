@@ -43,7 +43,7 @@ enum NotificationKind: Hashable {
     case routeEvent(String)
     case checkpoint(String)
     case waterBreak(Int)
-    case scheduledRoute(String)
+    case walkReminder(UUID)
 
     static let waterBreakMax = 12
     static let sessionThread = "wkt.session"
@@ -58,7 +58,7 @@ enum NotificationKind: Hashable {
         case .routeEvent(let key):      return "nav-\(key)"
         case .checkpoint(let label):    return "checkpoint-\(label)"
         case .waterBreak(let i):        return "waterBreak-\(i)"
-        case .scheduledRoute(let name): return "scheduledRoute-\(name)"
+        case .walkReminder(let id):     return "walkReminder-\(id.uuidString)"
         }
     }
 
@@ -80,6 +80,7 @@ enum NotificationKind: Hashable {
         case .petNudge:    return NotificationCategory.petNudge
         case .hydration:   return NotificationCategory.hydration
         case .waterBreak:  return NotificationCategory.waterBreak
+        case .walkReminder: return NotificationCategory.walkReminder
         default:           return nil
         }
     }
@@ -91,7 +92,7 @@ enum NotificationKind: Hashable {
         case .weeklySummary:                                              return "wkt.digest"
         case .streakNudge, .petNudge:                                     return "wkt.nudges"
         case .hydration, .autoPause, .routeEvent, .checkpoint, .waterBreak: return NotificationKind.sessionThread
-        case .scheduledRoute:                                             return "wkt.reminders"
+        case .walkReminder:                                               return "wkt.reminders"
         }
     }
 
@@ -105,7 +106,7 @@ enum NotificationKind: Hashable {
         switch self {
         case .weeklySummary:                                                return .passive
         case .hydration, .autoPause, .routeEvent, .checkpoint, .waterBreak: return .timeSensitive
-        case .streakNudge, .petNudge, .scheduledRoute:                      return .active
+        case .streakNudge, .petNudge, .walkReminder:                        return .active
         }
     }
 
@@ -147,6 +148,12 @@ final class NotificationService {
     /// navigate. The app root observes and consumes it.
     private(set) var pendingAction: String?
 
+    /// Every walk reminder the user has set, in the order they were added.
+    /// Persisted so Settings can list and delete them; the system holds the
+    /// matching pending requests.
+    private(set) var walkReminders: [WalkReminder] = []
+    static let walkRemindersKey = "walkReminders"
+
     private let center: NotificationCentering
     private let defaults: UserDefaults
 
@@ -154,6 +161,10 @@ final class NotificationService {
          defaults: UserDefaults = .standard) {
         self.center = center
         self.defaults = defaults
+        if let data = defaults.data(forKey: Self.walkRemindersKey),
+           let saved = try? JSONDecoder().decode([WalkReminder].self, from: data) {
+            walkReminders = saved
+        }
     }
 
     // MARK: Authorization
@@ -248,7 +259,8 @@ final class NotificationService {
             UNNotificationCategory(identifier: NotificationCategory.waterBreak,  actions: [snooze, markDone],  intentIdentifiers: [], options: []),
             UNNotificationCategory(identifier: NotificationCategory.streakNudge, actions: [startWalk, dismiss], intentIdentifiers: [], options: []),
             UNNotificationCategory(identifier: NotificationCategory.petNudge,    actions: [startWalk, dismiss], intentIdentifiers: [], options: []),
-            UNNotificationCategory(identifier: NotificationCategory.hydration,   actions: [markDone, dismiss],  intentIdentifiers: [], options: [])
+            UNNotificationCategory(identifier: NotificationCategory.hydration,   actions: [markDone, dismiss],  intentIdentifiers: [], options: []),
+            UNNotificationCategory(identifier: NotificationCategory.walkReminder, actions: [startWalk, dismiss], intentIdentifiers: [], options: [])
         ])
     }
 
@@ -281,5 +293,50 @@ final class NotificationService {
     func consumePendingAction() -> String? {
         defer { pendingAction = nil }
         return pendingAction
+    }
+
+    // MARK: Walk reminders
+
+    /// The user asked for something, so this is a moment for the real prompt if
+    /// delivery is only quiet. Returns false when alerts are denied (iOS will not
+    /// re-prompt; Settings is the only way back) or the request could not be
+    /// added. One reminder per route: a second for the same route replaces it.
+    @discardableResult
+    func addWalkReminder(_ reminder: WalkReminder) async -> Bool {
+        await refreshStatus()
+        if !isFullyAuthorized {
+            guard await requestFullAuthorization() else { return false }
+        }
+        if let route = reminder.routeName,
+           let existing = walkReminders.first(where: { $0.routeName == route }) {
+            removeWalkReminder(id: existing.id)
+        }
+        let added = await schedule(.walkReminder(reminder.id), title: reminder.notificationTitle,
+                                   body: reminder.notificationBody, trigger: reminder.trigger)
+        guard added else { return false }
+        walkReminders.append(reminder)
+        persistWalkReminders()
+        return true
+    }
+
+    func removeWalkReminder(id: UUID) {
+        cancel(.walkReminder(id))
+        walkReminders.removeAll { $0.id == id }
+        persistWalkReminders()
+    }
+
+    /// One-off reminders whose time has passed have fired (or been missed) and
+    /// only clutter the list. Called at launch and when Settings appears.
+    func pruneExpiredWalkReminders(now: Date = Date()) {
+        let expired = walkReminders.filter { $0.isExpired(at: now) }
+        guard !expired.isEmpty else { return }
+        walkReminders.removeAll { $0.isExpired(at: now) }
+        persistWalkReminders()
+    }
+
+    private func persistWalkReminders() {
+        if let data = try? JSONEncoder().encode(walkReminders) {
+            defaults.set(data, forKey: Self.walkRemindersKey)
+        }
     }
 }

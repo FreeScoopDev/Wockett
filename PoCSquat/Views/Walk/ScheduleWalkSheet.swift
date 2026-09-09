@@ -53,17 +53,11 @@ struct ScheduleWalkSheet: View {
     }
 
     private func schedule() async {
-        // The user tapped "Set Reminder" — the right moment for the real prompt.
-        let notifications = NotificationService.shared
-        await notifications.refreshStatus()
-        if !notifications.isFullyAuthorized {
-            guard await notifications.requestFullAuthorization() else { notifDenied = true; return }
-        }
-        let comps = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: scheduledDate)
-        let trigger = UNCalendarNotificationTrigger(dateMatching: comps, repeats: false)
-        // One reminder per route: scheduling the same route again replaces the earlier one.
-        await notifications.schedule(.scheduledRoute(routeName), title: "Time for your walk!",
-                                     body: "Your \(routeName) walk is scheduled — lace up!", trigger: trigger)
+        // Same mechanism as Settings' walk reminders: the service prompts for real
+        // alerts if delivery is only quiet (the user just asked for something) and
+        // keeps one reminder per route, so scheduling again replaces the earlier one.
+        let reminder = WalkReminder(title: routeName, routeName: routeName, schedule: .once(scheduledDate))
+        guard await NotificationService.shared.addWalkReminder(reminder) else { notifDenied = true; return }
         dismiss()
     }
 }
