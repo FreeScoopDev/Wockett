@@ -106,6 +106,28 @@ struct NotificationServiceTests {
         #expect(weekly.threadIdentifier == "wkt.digest")
     }
 
+    /// Every kind on the session thread is time-sensitive; nothing off it is.
+    /// Driven through `schedule` so the level on the *request* is what is checked,
+    /// not just the enum property.
+    @Test func inWalkKindsAreTimeSensitiveAndNothingElseIs() async {
+        let (svc, center, defaults) = make()
+        defaults.set(true, forKey: "notif_hydration")
+        let inWalk: [NotificationKind] = [.waterBreak(1), .checkpoint("50%"), .autoPause, .routeEvent("offRoute"), .hydration]
+        let elsewhere: [NotificationKind] = [.streakNudge, .petNudge, .scheduledRoute("Loop")]
+        for kind in inWalk + elsewhere {
+            #expect(await svc.schedule(kind, title: "t", body: "b", trigger: nil), "\(kind) should schedule")
+        }
+        #expect(center.added.count == inWalk.count + elsewhere.count)
+        for (kind, request) in zip(inWalk, center.added.prefix(inWalk.count)) {
+            #expect(request.content.interruptionLevel == .timeSensitive, "\(kind)")
+            #expect(request.content.threadIdentifier == NotificationKind.sessionThread, "\(kind)")
+        }
+        for (kind, request) in zip(elsewhere, center.added.suffix(elsewhere.count)) {
+            #expect(request.content.interruptionLevel == .active, "\(kind)")
+            #expect(request.content.threadIdentifier != NotificationKind.sessionThread, "\(kind)")
+        }
+    }
+
     @Test func cancelWaterBreaksRemovesTheWholeSeries() {
         let (svc, center, _) = make()
         svc.cancelWaterBreaks()
