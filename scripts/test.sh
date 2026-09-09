@@ -11,6 +11,13 @@
 #      Xcode Cloud's Test action uses "Use Scheme Setting" — so it runs both.
 #      Running only -only-testing:WockettTests locally is a different, smaller
 #      suite than CI, and will not catch what CI catches.
+#   3. With stdout and stderr merged, xcodebuild's own diagnostics can land on
+#      the same line as a test result and eat its "passed" suffix. On
+#      2026-09-09 that silently undercounted a full run by one and cost three
+#      rounds of investigation. Streams are kept separate, and the script now
+#      warns whenever the number of result lines disagrees with passed+failed.
+#      The verdict is always xcodebuild's own ** TEST SUCCEEDED ** line; the
+#      counts are a convenience and say so when they cannot be trusted.
 #
 # Usage:
 #   scripts/test.sh              # full scheme — same as CI. Use before pushing.
@@ -28,8 +35,10 @@ fi
 
 SIM="$(bash scripts/ci_pick_simulator.sh)"
 LOG="$(mktemp -t wockett-test)"
+ERRLOG="${LOG}.stderr"
 echo "Running: $LABEL"
 echo "Log:     $LOG"
+echo "Stderr:  $ERRLOG"
 echo
 
 set +e
@@ -38,18 +47,25 @@ xcodebuild test \
   -scheme PoCSquat \
   -destination "id=$SIM" \
   $ONLY \
-  > "$LOG" 2>&1
+  > "$LOG" 2> "$ERRLOG"
 XC_EXIT=$?
 set -e
 
 PASSED=$(grep -cE "' passed on " "$LOG" || true)
 FAILED=$(grep -cE "' failed on " "$LOG" || true)
-ERRORS=$(grep -cE " error: " "$LOG" || true)
+RESULTS=$(grep -cE "^Test case '[^']+'" "$LOG" || true)   # every result line, whatever its verdict
+ERRORS=$(cat "$LOG" "$ERRLOG" | grep -cE " error: " || true)
 
 echo "xcodebuild exit : $XC_EXIT"
 echo "tests passed    : $PASSED"
 echo "tests failed    : $FAILED"
 echo "compile errors  : $ERRORS"
+if [[ $((PASSED + FAILED)) -ne "$RESULTS" ]]; then
+  echo
+  echo "WARNING: $RESULTS test-result lines, but only $((PASSED + FAILED)) parsed as passed/failed."
+  echo "         A result line is corrupted or has an unexpected verdict. The counts above are"
+  echo "         not reliable; the verdict below is xcodebuild's own. Inspect: $LOG"
+fi
 echo
 
 if grep -q '\*\* TEST SUCCEEDED \*\*' "$LOG" && [[ "$XC_EXIT" -eq 0 ]]; then
@@ -63,4 +79,5 @@ echo "--- failures ---"
 grep -E "' failed on |: error: " "$LOG" | head -25 || true
 echo
 echo "Full log: $LOG"
+echo "Stderr:   $ERRLOG"
 exit 1

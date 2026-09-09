@@ -180,6 +180,16 @@ number from App Store Connect and the file was never reconciled.
 
 ## Running the tests locally before pushing
 
+Use the script. It runs the full scheme (unit + UI — the same suite CI runs),
+keeps xcodebuild's stderr out of the result lines, checks for the literal
+`** TEST SUCCEEDED **`, and warns when its own pass/fail counts cannot be
+trusted rather than quietly reporting a wrong number:
+
+    scripts/test.sh              # what CI runs
+    scripts/test.sh --unit-only  # faster; NOT what CI runs
+
+The raw invocation it wraps, for reference:
+
 ```
 xcodebuild test -project PoCSquat.xcodeproj -scheme PoCSquat \
   -destination "id=$(bash scripts/ci_pick_simulator.sh)"
