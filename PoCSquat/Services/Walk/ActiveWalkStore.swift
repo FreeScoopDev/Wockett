@@ -51,9 +51,7 @@ final class ActiveWalkStore {
         let saved          = buildAndSaveSession(isCommunityRoute: route.isCommunityRoute)
         session.stop()
         endSession()
-        UNUserNotificationCenter.current().removePendingNotificationRequests(
-            withIdentifiers: (1...12).map { "waterBreak-\($0)" }
-        )
+        NotificationService.shared.cancelWaterBreaks()
         Task {
             await WalkLiveActivityManager.shared.end(distanceCovered: dist, elapsedSeconds: elapsed, pausedDuration: pausedDuration)
             await capturedSession.finishWorkoutSession()

@@ -722,10 +722,8 @@ struct ActiveSessionView: View {
         guard isGuided else { return }
 
         walkStore.markStarted()
-        let center = UNUserNotificationCenter.current()
-        if await center.notificationSettings().authorizationStatus == .notDetermined {
-            _ = try? await center.requestAuthorization(options: [.alert, .sound])
-        }
+        // Quiet delivery only — the real prompt is Settings' job now.
+        await NotificationService.shared.requestQuietDeliveryIfNeverAsked()
         for pet in petStore.activePets {
             petActiveSinceDistance[pet.id] = 0
             allSessionPetIds.insert(pet.id)
@@ -839,16 +837,10 @@ struct ActiveSessionView: View {
     private func handleCheckpoint(_ label: String) {
         UINotificationFeedbackGenerator().notificationOccurred(.success)
         guard checkpointsEnabled else { return }
-        let content = UNMutableNotificationContent()
-        content.title = "Checkpoint \(label) 🎯"
-        content.body = "Keep it up!"
-        content.sound = .default
-        let req = UNNotificationRequest(
-            identifier: "checkpoint-\(label)",
-            content: content,
-            trigger: UNTimeIntervalNotificationTrigger(timeInterval: 0.5, repeats: false)
-        )
-        Task { try? await UNUserNotificationCenter.current().add(req) }
+        Task {
+            await NotificationService.shared.schedule(.checkpoint(label), title: "Checkpoint \(label) 🎯", body: "Keep it up!",
+                                                      trigger: UNTimeIntervalNotificationTrigger(timeInterval: 0.5, repeats: false))
+        }
     }
 
     // MARK: - Pet Count Change
@@ -899,21 +891,14 @@ struct ActiveSessionView: View {
     }
 
     private func scheduleHydrationNudge(distanceMeters: Double) {
-        guard UserDefaults.standard.object(forKey: "notif_hydration") as? Bool ?? true else { return }
-        let content = UNMutableNotificationContent()
-        content.categoryIdentifier = NotificationCategory.hydration
-        content.title = "Time to rehydrate! 💧"
         let distKm = distanceMeters / 1000
-        content.body = distKm >= 5
+        let body = distKm >= 5
             ? "Great \(String(format: "%.1f", distKm))km \(route.activityMode.noun) — drink at least 500ml of water to recover well."
             : "Good \(route.activityMode.noun) — remember to drink some water to keep your energy up."
-        content.sound = .default
-        let req = UNNotificationRequest(
-            identifier: "hydration-\(UUID().uuidString)",
-            content: content,
-            trigger: UNTimeIntervalNotificationTrigger(timeInterval: 300, repeats: false)
-        )
-        Task { try? await UNUserNotificationCenter.current().add(req) }
+        Task {
+            await NotificationService.shared.schedule(.hydration, title: "Time to rehydrate! 💧", body: body,
+                                                      trigger: UNTimeIntervalNotificationTrigger(timeInterval: 300, repeats: false))
+        }
     }
 
     // MARK: - Water Breaks
@@ -926,36 +911,27 @@ struct ActiveSessionView: View {
     }
 
     private func scheduleWaterBreakReminders() async {
-        let center = UNUserNotificationCenter.current()
-        let status = await center.notificationSettings().authorizationStatus
-        if status == .notDetermined {
-            guard (try? await center.requestAuthorization(options: [.alert, .sound])) == true else { return }
-        } else if status != .authorized { return }
+        // The user asked for these — a legitimate moment for the real prompt.
+        let notifications = NotificationService.shared
+        await notifications.refreshStatus()
+        if !notifications.isFullyAuthorized {
+            guard await notifications.requestFullAuthorization() else { return }
+        }
         let intervalSecs = Double(waterBreakIntervalMinutes) * 60
         let durationMins = route.totalDistance > 0 ? route.totalDistance / 1.4 / 60 : 60
         let count = min(12, max(1, Int(ceil(durationMins / Double(waterBreakIntervalMinutes)))))
         scheduledBreakCount = count
+        let body = petStore.activePets.isEmpty
+            ? "Time for a water break."
+            : "Time to hydrate — your \(petStore.activePets.count == 1 ? "pup" : "pups") need water too."
         for i in 1...count {
-            let content = UNMutableNotificationContent()
-            content.title = "Water break! 💧"
-            content.body = petStore.activePets.isEmpty
-                ? "Time for a water break."
-                : "Time to hydrate — your \(petStore.activePets.count == 1 ? "pup" : "pups") need water too."
-            content.sound = .default
-            content.categoryIdentifier = NotificationCategory.waterBreak
-            try? await center.add(UNNotificationRequest(
-                identifier: "waterBreak-\(i)",
-                content: content,
-                trigger: UNTimeIntervalNotificationTrigger(timeInterval: Double(i) * intervalSecs, repeats: false)
-            ))
+            await notifications.schedule(.waterBreak(i), title: "Water break! 💧", body: body,
+                                         trigger: UNTimeIntervalNotificationTrigger(timeInterval: Double(i) * intervalSecs, repeats: false))
         }
     }
 
     private func cancelWaterBreakReminders() {
-        let count = max(scheduledBreakCount, 12)
-        UNUserNotificationCenter.current().removePendingNotificationRequests(
-            withIdentifiers: (1...count).map { "waterBreak-\($0)" }
-        )
+        NotificationService.shared.cancelWaterBreaks()
         scheduledBreakCount = 0
     }
 

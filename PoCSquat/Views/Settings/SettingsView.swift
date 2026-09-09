@@ -16,8 +16,11 @@ struct SettingsView: View {
     @AppStorage("notif_weeklySummary")     private var weeklySummaryEnabled = true
     @AppStorage("notif_hydration")         private var hydrationEnabled = true
     @AppStorage("notif_streakProtection")  private var streakProtectionEnabled = true
+    @AppStorage("notif_petNudge")          private var petNudgeEnabled = true
     @AppStorage("walk_breakPromptMinutes") private var breakPromptMinutes = 3
     @State private var notifAuthorized = false
+    @State private var notifQuiet = false
+    @State private var notifDenied = false
     @State private var showScheduleSheet = false
 
     #if DEBUG
@@ -87,22 +90,34 @@ struct SettingsView: View {
                         Label { Text("Status") } icon: { Image(wkt: .notifications).wktIcon(.row, tint: .earthCream) }
                             .foregroundColor(.earthCream)
                         Spacer()
-                        Text(notifAuthorized ? "Enabled" : "Disabled")
+                        Text(notifAuthorized ? "Enabled" : notifQuiet ? "Quiet — no alerts" : "Disabled")
                             .font(.caption)
-                            .foregroundColor(notifAuthorized ? .earthGreen : .orange)
+                            .foregroundColor(notifAuthorized ? .earthGreen : notifQuiet ? .earthMuted : .orange)
                     }
                     .listRowBackground(Color.earthCard)
 
                     if !notifAuthorized {
-                        Button {
-                            if let url = URL(string: UIApplication.openNotificationSettingsURLString) {
-                                UIApplication.shared.open(url)
+                        if notifDenied {
+                            // Only iOS Settings can reverse a denial.
+                            Button {
+                                if let url = URL(string: UIApplication.openNotificationSettingsURLString) {
+                                    UIApplication.shared.open(url)
+                                }
+                            } label: {
+                                Label { Text("Enable in iOS Settings") } icon: { Image(wkt: .openExternal).wktIcon(.row, tint: .earthGreen) }
+                                    .foregroundColor(.earthGreen)
                             }
-                        } label: {
-                            Label { Text("Enable in iOS Settings") } icon: { Image(wkt: .openExternal).wktIcon(.row, tint: .earthGreen) }
-                                .foregroundColor(.earthGreen)
+                            .listRowBackground(Color.earthCard)
+                        } else {
+                            // Never asked, or quiet delivery only: Wockett can prompt from here.
+                            Button {
+                                Task { await promptForAlerts() }
+                            } label: {
+                                Label { Text("Turn On Alerts") } icon: { Image(wkt: .notifications).wktIcon(.row, tint: .earthGreen) }
+                                    .foregroundColor(.earthGreen)
+                            }
+                            .listRowBackground(Color.earthCard)
                         }
-                        .listRowBackground(Color.earthCard)
                     }
 
                     Toggle(isOn: $weeklySummaryEnabled) {
@@ -114,7 +129,7 @@ struct SettingsView: View {
                         }
                     }
                     .tint(.earthGreenFill)
-                    .disabled(!notifAuthorized)
+                    .disabled(!(notifAuthorized || notifQuiet))
                     .listRowBackground(Color.earthCard)
 
                     Toggle(isOn: $hydrationEnabled) {
@@ -126,7 +141,7 @@ struct SettingsView: View {
                         }
                     }
                     .tint(.earthGreenFill)
-                    .disabled(!notifAuthorized)
+                    .disabled(!(notifAuthorized || notifQuiet))
                     .listRowBackground(Color.earthCard)
 
                     Toggle(isOn: $streakProtectionEnabled) {
@@ -138,7 +153,19 @@ struct SettingsView: View {
                         }
                     }
                     .tint(.earthGreenFill)
-                    .disabled(!notifAuthorized)
+                    .disabled(!(notifAuthorized || notifQuiet))
+                    .listRowBackground(Color.earthCard)
+
+                    Toggle(isOn: $petNudgeEnabled) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Pet Walk Nudge")
+                                .foregroundColor(.earthCream)
+                            Text("9 AM reminder when a pet hasn't been on a walk in a couple of days")
+                                .font(.caption).foregroundColor(.earthMuted)
+                        }
+                    }
+                    .tint(.earthGreenFill)
+                    .disabled(!(notifAuthorized || notifQuiet))
                     .listRowBackground(Color.earthCard)
                 }
 
@@ -314,10 +341,26 @@ struct SettingsView: View {
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $showScheduleSheet) { WalkReminderSheet() }
-        .task {
-            let status = await UNUserNotificationCenter.current().notificationSettings().authorizationStatus
-            notifAuthorized = status == .authorized || status == .provisional
+        .task { await refreshNotificationStatus() }
+        .onChange(of: [weeklySummaryEnabled, hydrationEnabled, streakProtectionEnabled, petNudgeEnabled]) { old, new in
+            // A toggle switched on while delivery is only quiet is the user asking
+            // for alerts — the moment for the real prompt.
+            if zip(old, new).contains(where: { !$0 && $1 }) { Task { await promptForAlerts() } }
         }
+    }
+
+    private func refreshNotificationStatus() async {
+        let svc = NotificationService.shared
+        await svc.refreshStatus()
+        notifAuthorized = svc.isFullyAuthorized
+        notifQuiet      = svc.authorizationStatus == .provisional
+        notifDenied     = svc.authorizationStatus == .denied
+    }
+
+    private func promptForAlerts() async {
+        guard !notifAuthorized else { return }
+        await NotificationService.shared.requestFullAuthorization()
+        await refreshNotificationStatus()
     }
 }
 

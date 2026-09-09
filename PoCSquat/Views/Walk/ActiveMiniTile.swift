@@ -39,9 +39,7 @@ struct ActiveMiniTileContainer: View {
                 session.discardWorkoutSession()
                 session.stop()
                 walkStore.endSession()
-                UNUserNotificationCenter.current().removePendingNotificationRequests(
-                    withIdentifiers: (1...12).map { "waterBreak-\($0)" }
-                )
+                NotificationService.shared.cancelWaterBreaks()
                 Task { await WalkLiveActivityManager.shared.end(distanceCovered: dist, elapsedSeconds: elapsed, pausedDuration: pausedDuration) }
             }
             Button("Cancel", role: .cancel) {}

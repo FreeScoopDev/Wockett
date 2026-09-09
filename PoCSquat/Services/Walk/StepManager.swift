@@ -415,9 +415,11 @@ final class StepManager: ObservableObject {
     /// Schedules a 4:30 PM nudge if the user is still short of their goal.
     /// Safe to call every time the app foregrounds — cancels itself if goal is met.
     func scheduleStreakNudge(currentStreak: Int) async {
-        guard UserDefaults.standard.object(forKey: "notif_streakProtection") as? Bool ?? true else { return }
-        let center = UNUserNotificationCenter.current()
-        center.removePendingNotificationRequests(withIdentifiers: ["streak-protection"])
+        let notifications = NotificationService.shared
+        // Cancel first so an early return below (goal met, window passed) still
+        // clears an earlier pending nudge — the previous code did this too.
+        notifications.cancel(.streakNudge)
+        guard notifications.isEnabled(.streakNudge) else { return }
 
         let remaining = remainingSteps
         guard remaining > 500 else { return }
@@ -428,24 +430,16 @@ final class StepManager: ObservableObject {
         comps.hour = 16; comps.minute = 30
         guard let fireDate = Calendar.current.date(from: comps), fireDate > now else { return }
 
-        let settings = await center.notificationSettings()
-        guard settings.authorizationStatus == .authorized else { return }
-
         let walkMins = max(5, Int(Double(remaining) * 0.762 / 84))
-        let content = UNMutableNotificationContent()
-        content.title = currentStreak > 1
+        let title = currentStreak > 1
             ? "Keep your \(currentStreak)-day streak alive! 🔥"
             : "Don't break your streak today! 🔥"
-        content.body = "You're \(remaining.formatted()) steps away — a \(walkMins)-min walk closes the gap."
-        content.sound = .default
-        content.categoryIdentifier = NotificationCategory.streakNudge
+        let body = "You're \(remaining.formatted()) steps away — a \(walkMins)-min walk closes the gap."
 
         let trigger = UNCalendarNotificationTrigger(
             dateMatching: Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: fireDate),
             repeats: false
         )
-        try? await center.add(UNNotificationRequest(
-            identifier: "streak-protection", content: content, trigger: trigger
-        ))
+        await notifications.schedule(.streakNudge, title: title, body: body, trigger: trigger)
     }
 }
