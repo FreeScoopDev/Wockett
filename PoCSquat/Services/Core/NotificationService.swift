@@ -95,11 +95,18 @@ enum NotificationKind: Hashable {
         }
     }
 
-    /// Only the weekly recap is demoted. `.timeSensitive` for in-walk kinds needs
-    /// the Time Sensitive entitlement enabled in App Store Connect first — that is
-    /// a later step, not this one.
+    /// In-walk kinds break through Focus. The user started the walk, and a water
+    /// break, checkpoint, auto-pause or route event is only useful in the moment
+    /// it fires. Requires the Time Sensitive entitlement (#21); without it iOS
+    /// delivers these at `.active` and says nothing. Nudges and route reminders
+    /// stay `.active` — they are Wockett interrupting, not the walk. The weekly
+    /// recap is `.passive`. Exhaustive on purpose: a new kind must choose.
     var interruptionLevel: UNNotificationInterruptionLevel {
-        self == .weeklySummary ? .passive : .active
+        switch self {
+        case .weeklySummary:                                                return .passive
+        case .hydration, .autoPause, .routeEvent, .checkpoint, .waterBreak: return .timeSensitive
+        case .streakNudge, .petNudge, .scheduledRoute:                      return .active
+        }
     }
 
     /// True for kinds that should still banner while the app is in the foreground.
