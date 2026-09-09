@@ -107,7 +107,7 @@ xcrun xcresulttool get test-results summary --path "$BUNDLE" 2>/dev/null \
   | python3 -c 'import sys, json
 try:
     for f in json.load(sys.stdin).get("testFailures", [])[:25]:
-        print(f"  {f.get(\"testName\", \"?\")}: {f.get(\"failureText\", \"\")}")
+        print("  %s: %s" % (f.get("testName", "?"), f.get("failureText", "")))
 except Exception:
     pass' || true
 grep -E "' failed on |: error: " "$LOG" | head -25 || true
