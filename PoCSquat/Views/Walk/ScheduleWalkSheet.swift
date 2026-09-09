@@ -53,21 +53,17 @@ struct ScheduleWalkSheet: View {
     }
 
     private func schedule() async {
-        let center = UNUserNotificationCenter.current()
-        let status = await center.notificationSettings().authorizationStatus
-        if status == .notDetermined {
-            let granted = (try? await center.requestAuthorization(options: [.alert, .sound])) ?? false
-            if !granted { notifDenied = true; return }
-        } else if status == .denied {
-            notifDenied = true; return
+        // The user tapped "Set Reminder" — the right moment for the real prompt.
+        let notifications = NotificationService.shared
+        await notifications.refreshStatus()
+        if !notifications.isFullyAuthorized {
+            guard await notifications.requestFullAuthorization() else { notifDenied = true; return }
         }
-        let content = UNMutableNotificationContent()
-        content.title = "Time for your walk!"
-        content.body = "Your \(routeName) walk is scheduled — lace up!"
-        content.sound = .default
         let comps = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: scheduledDate)
         let trigger = UNCalendarNotificationTrigger(dateMatching: comps, repeats: false)
-        try? await center.add(UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: trigger))
+        // One reminder per route: scheduling the same route again replaces the earlier one.
+        await notifications.schedule(.scheduledRoute(routeName), title: "Time for your walk!",
+                                     body: "Your \(routeName) walk is scheduled — lace up!", trigger: trigger)
         dismiss()
     }
 }

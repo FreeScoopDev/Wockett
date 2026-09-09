@@ -20,63 +20,11 @@ enum NotificationAction {
     static let dismiss       = "DISMISS"
 }
 
-// MARK: - Registration
-
-extension UNUserNotificationCenter {
-    static func registerActionCategories() {
-        let snooze = UNNotificationAction(
-            identifier: NotificationAction.snooze10,
-            title: "Snooze 10 min",
-            options: []
-        )
-        let markDone = UNNotificationAction(
-            identifier: NotificationAction.markDone,
-            title: "Done",
-            options: [.destructive]
-        )
-        let startWalk = UNNotificationAction(
-            identifier: NotificationAction.startWalk,
-            title: "Open App",
-            options: [.foreground]
-        )
-        let dismiss = UNNotificationAction(
-            identifier: NotificationAction.dismiss,
-            title: "Dismiss",
-            options: []
-        )
-
-        let waterBreakCategory = UNNotificationCategory(
-            identifier: NotificationCategory.waterBreak,
-            actions: [snooze, markDone],
-            intentIdentifiers: [],
-            options: []
-        )
-        let streakCategory = UNNotificationCategory(
-            identifier: NotificationCategory.streakNudge,
-            actions: [startWalk, dismiss],
-            intentIdentifiers: [],
-            options: []
-        )
-        let petCategory = UNNotificationCategory(
-            identifier: NotificationCategory.petNudge,
-            actions: [startWalk, dismiss],
-            intentIdentifiers: [],
-            options: []
-        )
-        let hydrationCategory = UNNotificationCategory(
-            identifier: NotificationCategory.hydration,
-            actions: [markDone, dismiss],
-            intentIdentifiers: [],
-            options: []
-        )
-
-        UNUserNotificationCenter.current().setNotificationCategories([
-            waterBreakCategory, streakCategory, petCategory, hydrationCategory
-        ])
-    }
-}
-
 // MARK: - App delegate notification handler
+//
+// Callbacks may arrive on any queue. Everything stateful lives on
+// NotificationService (main actor); this class snapshots what is Sendable and
+// hops. The completion handler is called synchronously, as iOS requires.
 
 final class AppNotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
     static let shared = AppNotificationDelegate()
@@ -86,37 +34,23 @@ final class AppNotificationDelegate: NSObject, UNUserNotificationCenterDelegate 
         didReceive response: UNNotificationResponse,
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
-        let actionID    = response.actionIdentifier
-        let notifID     = response.notification.request.identifier
-
-        switch actionID {
-        case NotificationAction.snooze10:
-            // Re-schedule the same notification 10 minutes from now
-            // mutableCopy() is documented to return UNMutableNotificationContent. If it
-            // somehow doesn't, skip the snooze rather than trap — `break` still reaches
-            // completionHandler() below, which iOS requires us to call.
-            guard let content = response.notification.request.content.mutableCopy() as? UNMutableNotificationContent else { break }
-            let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 600, repeats: false)
-            let req = UNNotificationRequest(identifier: "\(notifID)-snooze", content: content, trigger: trigger)
-            Task { try? await center.add(req) }
-
-        case NotificationAction.startWalk:
-            // App is foregrounded by the .foreground option on the action; nothing extra needed
-            break
-
-        default:
-            break
+        let actionID = response.actionIdentifier
+        let id       = response.notification.request.identifier
+        let snapshot = NotificationSnapshot(response.notification.request.content)
+        Task { @MainActor in
+            await NotificationService.shared.handle(actionIdentifier: actionID, notificationIdentifier: id, snapshot: snapshot)
         }
-
         completionHandler()
     }
 
-    // Show notifications even when the app is in the foreground (during a walk)
+    // In-session kinds still banner while the app is open; everything else goes
+    // quietly to the list, so a Sunday recap never pops over the dashboard.
     func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
-        completionHandler([.banner, .sound])
+        let inSession = notification.request.content.threadIdentifier == NotificationKind.sessionThread
+        completionHandler(inSession ? [.banner, .sound] : [.list, .sound])
     }
 }
