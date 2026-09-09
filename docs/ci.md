@@ -180,6 +180,20 @@ number from App Store Connect and the file was never reconciled.
 
 ## Running the tests locally before pushing
 
+Use the script. It runs the full scheme (unit + UI — the same suite CI runs)
+and takes its pass/fail counts from the **xcresult bundle**, not the log. The
+xcodebuild log is not a reliable counter: during parallel testing, session-level
+output can be written mid-way through a test-result line and eat its verdict —
+it happened on 2026-09-09 with stderr split off and to a line that was not last,
+so neither of the obvious explanations holds. The bundle is what Xcode Cloud
+reads; the log is for humans. The verdict requires xcodebuild's exit code, its
+literal `** TEST SUCCEEDED **`, and the bundle's `result` to all agree:
+
+    scripts/test.sh              # what CI runs
+    scripts/test.sh --unit-only  # faster; NOT what CI runs
+
+The raw invocation it wraps, for reference:
+
 ```
 xcodebuild test -project PoCSquat.xcodeproj -scheme PoCSquat \
   -destination "id=$(bash scripts/ci_pick_simulator.sh)"

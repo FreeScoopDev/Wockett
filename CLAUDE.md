@@ -189,6 +189,13 @@ non-obvious ways.
 - **Fast-forward `main` before branching.** `git fetch` alone leaves local `main`
   stale, and a branch cut from it silently omits merged work — once nearly
   reverting a shipped build setting.
+- **Never count tests from the xcodebuild log.** During parallel testing it
+  can write session-level output mid-way through a result line and eat the
+  verdict; on 2026-09-09 that undercounted a clean run by one, and two
+  plausible explanations (stderr, last-line truncation) were each disproved
+  by the next run. `scripts/test.sh` counts from the xcresult bundle via
+  `xcrun xcresulttool get test-results summary`. The verdict is xcodebuild's
+  exit code, its `** TEST SUCCEEDED **` line, and the bundle's result, together.
 
 ## Working with Joe
 
