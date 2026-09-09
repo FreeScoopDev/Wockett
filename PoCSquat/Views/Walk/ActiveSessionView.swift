@@ -722,8 +722,13 @@ struct ActiveSessionView: View {
         guard isGuided else { return }
 
         walkStore.markStarted()
-        // Quiet delivery only — the real prompt is Settings' job now.
-        await NotificationService.shared.requestQuietDeliveryIfNeverAsked()
+        // Quiet delivery only — the real prompt is Settings' job now. Skipped under
+        // -WKTUITest for the same reason as at launch: a granted (even provisional)
+        // status lets session banners render in the simulator, and a banner wakes
+        // the smoke tests' interruption monitor mid-tap (Xcode Cloud, 2026-09-09).
+        if !isWKTUITestMode {
+            await NotificationService.shared.requestQuietDeliveryIfNeverAsked()
+        }
         for pet in petStore.activePets {
             petActiveSinceDistance[pet.id] = 0
             allSessionPetIds.insert(pet.id)
