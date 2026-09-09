@@ -104,6 +104,15 @@ way unless there's a strong reason; adding the first one is a real decision.
   `NotificationService`), not calendar events — since 2026-09-09.
   `WalkSchedulerService` exists only to delete the `EKEvent`s that 1.7–1.10
   created; it must never add one.
+- **The app cannot detect activity while suspended.** `ActivityDetectionService`
+  streams Core Motion only while Wockett has CPU time, and iOS suspends it
+  seconds after it leaves the foreground; the only background lifetime it has is
+  during a session, via `allowsBackgroundLocationUpdates`. Anything "detect and
+  notify" therefore runs in the background-refresh task after the fact
+  (`UntrackedWalkDetector`), on iOS's schedule — a few times a day, not on
+  demand. Real-time would need continuous background location outside a session:
+  "Always" permission, battery, the location indicator. Considered and rejected
+  2026-09-09. Write the copy for the delay.
 
 ## Process
 

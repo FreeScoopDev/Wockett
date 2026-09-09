@@ -158,14 +158,36 @@ struct NotificationServiceTests {
         #expect(svc.consumePendingAction() == nil)
     }
 
-    @Test func registersAllFiveCategories() {
+    @Test func registersAllSixCategories() {
         let (svc, center, _) = make()
         svc.registerCategories()
         #expect(center.categories.map(\.identifier).sorted() ==
                 [NotificationCategory.hydration, NotificationCategory.petNudge, NotificationCategory.streakNudge,
-                 NotificationCategory.walkReminder, NotificationCategory.waterBreak].sorted())
+                 NotificationCategory.untrackedWalk, NotificationCategory.walkReminder,
+                 NotificationCategory.waterBreak].sorted())
         let reminder = center.categories.first { $0.identifier == NotificationCategory.walkReminder }
         #expect(reminder?.actions.map(\.identifier) == [NotificationAction.startWalk, NotificationAction.dismiss])
+    }
+
+    @Test func theUntrackedWalkNudgeIsOffUntilTheUserAsksForIt() async {
+        let (svc, center, defaults) = make()
+        // Everything shipped earlier is on before the user touches a toggle...
+        #expect(svc.isEnabled(.streakNudge))
+        #expect(svc.isEnabled(.petNudge))
+        // ...this one is not: it is the first notification about something the
+        // user neither asked for nor configured.
+        #expect(svc.isEnabled(.untrackedWalk) == false)
+        #expect(await svc.schedule(.untrackedWalk, title: "t", body: "b", trigger: nil) == false)
+        #expect(center.added.isEmpty)
+
+        defaults.set(true, forKey: "notif_untrackedWalk")
+        #expect(svc.isEnabled(.untrackedWalk))
+        #expect(await svc.schedule(.untrackedWalk, title: "t", body: "b", trigger: nil))
+        #expect(center.added.map(\.identifier) == ["untracked-walk"])
+        let content = center.added[0].content
+        #expect(content.categoryIdentifier == NotificationCategory.untrackedWalk)
+        #expect(content.threadIdentifier == "wkt.nudges")
+        #expect(content.interruptionLevel == .active, "must not break through a Focus")
     }
 
     // MARK: Walk reminders

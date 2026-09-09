@@ -16,6 +16,7 @@ struct SettingsView: View {
     @AppStorage("notif_hydration")         private var hydrationEnabled = true
     @AppStorage("notif_streakProtection")  private var streakProtectionEnabled = true
     @AppStorage("notif_petNudge")          private var petNudgeEnabled = true
+    @AppStorage("notif_untrackedWalk")     private var untrackedWalkEnabled = false
     @AppStorage("walk_breakPromptMinutes") private var breakPromptMinutes = 3
     @State private var notifAuthorized = false
     @State private var notifQuiet = false
@@ -160,6 +161,18 @@ struct SettingsView: View {
                             Text("Pet Walk Nudge")
                                 .foregroundColor(.earthCream)
                             Text("9 AM reminder when a pet hasn't been on a walk in a couple of days")
+                                .font(.caption).foregroundColor(.earthMuted)
+                        }
+                    }
+                    .tint(.earthGreenFill)
+                    .disabled(!(notifAuthorized || notifQuiet))
+                    .listRowBackground(Color.earthCard)
+
+                    Toggle(isOn: $untrackedWalkEnabled) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Untracked Walk Nudge")
+                                .foregroundColor(.earthCream)
+                            Text("When you've walked without tracking it. Wockett checks a few times a day, so this arrives after the walk, not during it.")
                                 .font(.caption).foregroundColor(.earthMuted)
                         }
                     }
@@ -378,7 +391,7 @@ struct SettingsView: View {
             NotificationService.shared.pruneExpiredWalkReminders()
             await refreshNotificationStatus()
         }
-        .onChange(of: [weeklySummaryEnabled, hydrationEnabled, streakProtectionEnabled, petNudgeEnabled]) { old, new in
+        .onChange(of: [weeklySummaryEnabled, hydrationEnabled, streakProtectionEnabled, petNudgeEnabled, untrackedWalkEnabled]) { old, new in
             // A toggle switched on while delivery is only quiet is the user asking
             // for alerts — the moment for the real prompt.
             if zip(old, new).contains(where: { !$0 && $1 }) { Task { await promptForAlerts() } }

@@ -5,7 +5,8 @@ import SwiftData
 // MARK: - BackgroundTaskManager
 //
 // Registers and handles BGTaskScheduler tasks:
-//   • healthkit-refresh  — updates today's step count (BGAppRefreshTask, fast)
+//   • healthkit-refresh  — updates today's step count and looks for a walk the
+//                          user did without tracking (BGAppRefreshTask, fast)
 //   • cloudkit-sync      — CloudKit reconciliation after a walk finishes (BGProcessingTask, longer-running)
 //
 // Both tasks are triggered by the system opportunistically. The app schedules
@@ -32,6 +33,11 @@ final class BackgroundTaskManager {
             guard let self, let task = task as? BGProcessingTask else { return }
             self.handleCloudKitSync(task: task)
         }
+        // Start the rolling schedule. Each handler submits the next request, but
+        // nothing submitted the first one, so the refresh task had no way to ever
+        // run. Submitting an identifier that already has a pending request just
+        // replaces it, so doing this at every launch is safe.
+        scheduleHealthKitRefresh()
     }
 
     // MARK: - Scheduling
@@ -58,6 +64,7 @@ final class BackgroundTaskManager {
 
         let fetchTask = Task {
             await refreshStepCount()
+            await UntrackedWalkDetector.shared.check()
             task.setTaskCompleted(success: true)
         }
 

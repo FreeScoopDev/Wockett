@@ -44,6 +44,7 @@ enum NotificationKind: Hashable {
     case checkpoint(String)
     case waterBreak(Int)
     case walkReminder(UUID)
+    case untrackedWalk
 
     static let waterBreakMax = 12
     static let sessionThread = "wkt.session"
@@ -59,6 +60,7 @@ enum NotificationKind: Hashable {
         case .checkpoint(let label):    return "checkpoint-\(label)"
         case .waterBreak(let i):        return "waterBreak-\(i)"
         case .walkReminder(let id):     return "walkReminder-\(id.uuidString)"
+        case .untrackedWalk:            return "untracked-walk"
         }
     }
 
@@ -70,8 +72,17 @@ enum NotificationKind: Hashable {
         case .streakNudge:   return "notif_streakProtection"
         case .petNudge:      return "notif_petNudge"
         case .hydration:     return "notif_hydration"
+        case .untrackedWalk: return "notif_untrackedWalk"
         default:             return nil
         }
+    }
+
+    /// What a toggle reads before the user has touched it. Everything shipped
+    /// before 2026-09-09 is on by default; the untracked-walk nudge is not,
+    /// because it is the first notification the app sends about something the
+    /// user did not ask for or configure.
+    var isOnByDefault: Bool {
+        self != .untrackedWalk
     }
 
     var category: String? {
@@ -81,6 +92,7 @@ enum NotificationKind: Hashable {
         case .hydration:   return NotificationCategory.hydration
         case .waterBreak:  return NotificationCategory.waterBreak
         case .walkReminder: return NotificationCategory.walkReminder
+        case .untrackedWalk: return NotificationCategory.untrackedWalk
         default:           return nil
         }
     }
@@ -90,7 +102,7 @@ enum NotificationKind: Hashable {
     var threadIdentifier: String {
         switch self {
         case .weeklySummary:                                              return "wkt.digest"
-        case .streakNudge, .petNudge:                                     return "wkt.nudges"
+        case .streakNudge, .petNudge, .untrackedWalk:                     return "wkt.nudges"
         case .hydration, .autoPause, .routeEvent, .checkpoint, .waterBreak: return NotificationKind.sessionThread
         case .walkReminder:                                               return "wkt.reminders"
         }
@@ -106,7 +118,7 @@ enum NotificationKind: Hashable {
         switch self {
         case .weeklySummary:                                                return .passive
         case .hydration, .autoPause, .routeEvent, .checkpoint, .waterBreak: return .timeSensitive
-        case .streakNudge, .petNudge, .walkReminder:                        return .active
+        case .streakNudge, .petNudge, .walkReminder, .untrackedWalk:        return .active
         }
     }
 
@@ -206,7 +218,7 @@ final class NotificationService {
 
     func isEnabled(_ kind: NotificationKind) -> Bool {
         guard let key = kind.preferenceKey else { return true }
-        return defaults.object(forKey: key) as? Bool ?? true
+        return defaults.object(forKey: key) as? Bool ?? kind.isOnByDefault
     }
 
     // MARK: Scheduling
@@ -260,7 +272,8 @@ final class NotificationService {
             UNNotificationCategory(identifier: NotificationCategory.streakNudge, actions: [startWalk, dismiss], intentIdentifiers: [], options: []),
             UNNotificationCategory(identifier: NotificationCategory.petNudge,    actions: [startWalk, dismiss], intentIdentifiers: [], options: []),
             UNNotificationCategory(identifier: NotificationCategory.hydration,   actions: [markDone, dismiss],  intentIdentifiers: [], options: []),
-            UNNotificationCategory(identifier: NotificationCategory.walkReminder, actions: [startWalk, dismiss], intentIdentifiers: [], options: [])
+            UNNotificationCategory(identifier: NotificationCategory.walkReminder, actions: [startWalk, dismiss], intentIdentifiers: [], options: []),
+            UNNotificationCategory(identifier: NotificationCategory.untrackedWalk, actions: [startWalk, dismiss], intentIdentifiers: [], options: [])
         ])
     }
 

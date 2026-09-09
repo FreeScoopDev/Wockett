@@ -12,6 +12,7 @@ enum NotificationCategory {
     static let petNudge      = "PET_NUDGE"
     static let hydration     = "HYDRATION"
     static let walkReminder  = "WALK_REMINDER"
+    static let untrackedWalk = "UNTRACKED_WALK"
 }
 
 enum NotificationAction {
