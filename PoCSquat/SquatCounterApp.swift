@@ -150,6 +150,7 @@ struct SquatCounterApp: App {
                 #endif
                 ActivityDetectionService.shared.startDetection()
                 NotificationService.shared.registerCategories()
+                NotificationService.shared.pruneExpiredWalkReminders()
                 // Quiet delivery, once, only if never asked. The real prompt is Settings' job.
                 await NotificationService.shared.requestQuietDeliveryIfNeverAsked()
                 await scheduleWeeklySummaryNotification()
