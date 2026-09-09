@@ -156,6 +156,15 @@ non-obvious ways.
 - **SwiftLint resolves `excluded:` relative to the config file's own directory.**
   `swiftlint --config /tmp/x.yml` silently lints the excluded test targets and
   inflates every count, with output that looks completely normal.
+- **Local and CI SwiftLint can disagree on `force_unwrapping` at the same
+  version.** On 2026-09-09, 0.65.1 on macOS reported 0 error-severity violations
+  while 0.65.1 in the Linux CI container reported 1 (`HomeWeatherView.swift:91`,
+  a `URL(string:)!`). CI is the arbiter. To find the line, read the check-run
+  **annotations** — `gh api repos/FreeScoopDev/Wockett/check-runs/<id>/annotations`
+  — because the job log, and the raw log via the API, both strip `file=`/`line=`
+  from the reporter's output. Never fix a CI-only lint failure with a
+  `swiftlint:disable` comment: the two platforms are exactly what may treat
+  those differently. Remove the unwrap.
 - **`swiftlint --fix` has broken this build twice** — `redundant_discardable_let`
   inside a `@ViewBuilder`, and `empty_count` against `XCUIElementQuery`. Both
   rules are disabled now. Any autofix run must be followed by `scripts/test.sh`.
