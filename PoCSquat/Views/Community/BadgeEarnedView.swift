@@ -3,8 +3,14 @@ import SwiftUI
 // MARK: - Preview
 
 #Preview("Badge Earned") {
-    // swiftlint:disable:next force_unwrapping
-    BadgeEarnedView(badge: walkBadges.first!) // preview only; walkBadges is a non-empty literal
+    // Plain `if let` rather than a lint-suppression comment. The suppression was
+    // honoured by SwiftLint on macOS and not by the same version on the Linux CI
+    // runner (2026-09-09). Code that needs no exemption can't lose one to a
+    // platform difference. (Don't name the directive here either — SwiftLint
+    // parses that token inside ordinary comment text and flags it as malformed.)
+    if let badge = walkBadges.first {
+        BadgeEarnedView(badge: badge)
+    }
 }
 
 struct BadgeEarnedView: View {
