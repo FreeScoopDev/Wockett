@@ -13,6 +13,14 @@ and nowhere else.
 `main` is protected: no direct pushes, no force-push, no deletion, and these two
 checks must pass before a PR can merge.
 
+**The protection is a repository *ruleset*, not legacy branch protection.** This
+matters when checking it: `gh api repos/FreeScoopDev/Wockett/branches/main/protection`
+returns **404 "Branch not protected"** even though `main` very much is. That 404
+was read as "protection was removed" on 2026-09-08. Use this instead:
+
+    gh api repos/FreeScoopDev/Wockett/rulesets
+    gh api repos/FreeScoopDev/Wockett/rulesets/22245839
+
 | Required check | Provider | Runner | Bills at |
 | --- | --- | --- | --- |
 | `Wockett \| CI Tests \| Test - iOS` | Xcode Cloud | macOS | Included in Developer Program (25 h/month) |
@@ -37,21 +45,28 @@ While `continue-on-error` is set, **the job shows a green tick even when
 SwiftLint exits non-zero.** Do not read that tick as "no violations" — open the
 job log and read the `Found N violations, M serious` line instead.
 
-Baseline on 2026-09-07 with SwiftLint 0.65.1 (80 files):
+**Current, as of 2026-09-08** (SwiftLint 0.65.1, run via `scripts/lint.sh`):
 
 ```
-863 violations, 33 serious
-  top rules: 387 comma · 282 colon · 47 implicit_optional_initialization
-             38 opening_brace · 26 force_unwrapping · 16 switch_case_alignment
+191 violations, 32 at error severity
+  errors: 26 force_unwrapping · 3 large_tuple · 1 function_parameter_count
+          1 force_try · 1 force_cast
 ```
 
-Two thirds of that total is `comma` + `colon`, which in this codebase is almost
-entirely deliberate column alignment in property blocks. Disabling those two
-rules drops the count to 127 and puts the crash-class violations
-(`force_unwrapping`, `force_cast`, `force_try`) at the top where they belong.
+Those 32 are the triage list. Once they are cleared, delete `continue-on-error`
+from the job and it starts gating — `.swiftlint.yml` already sets the
+force-unwrap rules to `error`, so that deletion is the whole change.
 
-Once the serious ones are triaged, delete `continue-on-error` and the job
-starts gating.
+The pre-tuning baseline was **863 violations, 33 serious**, of which 669 were
+`comma` + `colon` — in this codebase almost entirely deliberate column alignment
+in property blocks. Those two rules were disabled in the 2026-09-08 config pass,
+which is what took the count to 191.
+
+> An earlier version of this file predicted 127 rather than 191. That figure was
+> measured with `swiftlint --config /tmp/…`, which silently disabled the
+> `excluded:` paths and linted `WockettTests` as well. Always measure with
+> `scripts/lint.sh`, which refuses to report numbers unless it can prove the
+> exclusions took effect.
 
 ### Do not run `swiftlint --fix` on this codebase without verifying the build
 
@@ -64,10 +79,11 @@ Tried on 2026-09-07. It broke compilation twice, on two different rules:
 - **`empty_count`** rewrote `alert.buttons.count > 0` to
   `!alert.buttons.isEmpty` in the UI tests. `XCUIElementQuery` has no `isEmpty`.
 
-The second one matters beyond autofix: `empty_count` is an opt-in rule set to
-`error`, and at least one of its violations **cannot be fixed the way the rule
-wants**. Disable it, or exclude `WockettUITests`, before making the job
-blocking — otherwise it gates merges on correct code.
+The second one mattered beyond autofix: `empty_count` was an opt-in rule set to
+`error`, and at least one of its violations **could not be fixed the way the
+rule wants**, so it would have gated merges on correct code the moment the job
+stopped being advisory. It was dropped from `opt_in_rules` in the 2026-09-08
+config pass, along with `colon`, `comma` and `redundant_discardable_let`.
 
 Autofix is not free here. Any run needs a full build and test afterwards.
 
@@ -87,6 +103,7 @@ which is the other half of why this file exists.
 | Start condition | **Pull Request Changes** — source `Any Branches`, target `main`, starts if any file changes |
 | Auto-cancel | On. A newer push to the same source branch cancels the running build. |
 | Action | **Test - iOS** — platform iOS, scheme `PoCSquat`, **Required to Pass**, Test Option `Test (Use Scheme Setting)`, 1 destination |
+| Environment | Xcode **26.6 (17F113)**, macOS **Tahoe 26.6.2 (25G83)** — pinned explicitly, not `Latest Release` |
 | Clean | **Off** — restores derived data and caches, so runs stay fast |
 | Notifies | Slack `#ci_tests`, all successes and failures. No email recipients. |
 
@@ -101,8 +118,9 @@ run?"
 
 | | |
 | --- | --- |
-| Start condition | **Manual Start** only — branch `Any Branches`; Pull Request and Tag both **Not Enabled** |
+| Start condition | **Manual Start** only, restricted to **`main`**; Pull Request and Tag both **Not Enabled** |
 | Action | **Archive - iOS** — platform iOS, scheme `PoCSquat`, Distribution Preparation **TestFlight (Internal Testing Only)** |
+| Environment | Xcode **26.6 (17F113)**, macOS **Tahoe 26.6.2 (25G83)** — pinned explicitly, not `Latest Release` |
 | Clean | **On** — no cache restore, slower but reproducible. Correct for a release build. |
 | Notifies | Slack `#wockett_release_updates`, all successes and failures. No email recipients. |
 
@@ -112,18 +130,23 @@ auto-increment, this is the most likely explanation for 1.10 shipping as build
 24 while `Versions.xcconfig` read 23 — a manual Release Flow run took the next
 number from App Store Connect and the file was never reconciled.
 
-**Two things worth changing when convenient:**
+### Two settings that were deliberately changed on 2026-09-08
 
-1. **Xcode and macOS are not pinned.** Both workflows are set to
-   `Latest Release` (currently Xcode 26.6 / macOS Tahoe 26.6.2). A new Xcode
-   ships and the toolchain under CI changes with no commit in this repo —
-   builds can start failing, or behaviour can shift, with nothing in `git log`
-   to explain it. Pinning an explicit version makes toolchain upgrades a
-   deliberate, revertible act.
-2. **`Release Flow` can archive from any branch.** Start condition is
-   `Any Branches`, so a mis-click can push a feature branch to TestFlight
-   internal testing. Restricting it to `main` costs nothing and removes the
-   footgun.
+1. **Xcode and macOS are pinned**, on both workflows. They previously tracked
+   `Latest Release`, which meant a new Xcode could change the CI toolchain with
+   no commit in this repo — a build starts failing, or behaviour shifts, and
+   nothing in `git log` explains it. Pinned, a toolchain upgrade becomes a
+   dated, revertible decision.
+
+   The cost is that upgrades are now manual, and Apple retires older Xcode
+   versions from Xcode Cloud periodically. Expect to move the pin forward a
+   couple of times a year; worth folding into the weekly QA pass so it is not
+   something to remember.
+
+2. **`Release Flow` is restricted to `main`.** It previously accepted
+   `Any Branches`, so a mis-click on the Start dialog could archive a feature
+   branch straight to TestFlight internal testing. There is no longer a branch
+   to pick but the one that ships.
 
 ### Still unrecorded
 
