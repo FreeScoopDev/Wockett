@@ -578,25 +578,18 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
     }
 
     private func postAutoPauseNotification() {
-        let content = UNMutableNotificationContent()
-        content.title = "Session paused"
-        content.body = "You've been stopped for a while, so we paused your session to keep your stats honest. Resume anytime."
-        content.sound = .default
-        let request = UNNotificationRequest(identifier: "autoPause", content: content, trigger: nil)
-        UNUserNotificationCenter.current().add(request)
+        Task {
+            await NotificationService.shared.schedule(.autoPause, title: "Session paused",
+                body: "You've been stopped for a while, so we paused your session to keep your stats honest. Resume anytime.",
+                trigger: nil)
+        }
     }
 
     private func fireBackgroundNotification(title: String, body: String) {
-        let content = UNMutableNotificationContent()
-        content.title = title
-        content.body = body
-        content.sound = .default
-        let req = UNNotificationRequest(
-            identifier: "nav-\(UUID().uuidString)",
-            content: content,
-            trigger: UNTimeIntervalNotificationTrigger(timeInterval: 0.5, repeats: false)
-        )
-        Task { try? await UNUserNotificationCenter.current().add(req) }
+        Task {
+            await NotificationService.shared.schedule(.routeEvent(UUID().uuidString), title: title, body: body,
+                                                      trigger: UNTimeIntervalNotificationTrigger(timeInterval: 0.5, repeats: false))
+        }
     }
 }
 

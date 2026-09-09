@@ -207,12 +207,9 @@ final class PetStore: ObservableObject {
     }
 
     func schedulePetNudge(sessions: [WalkSession]) async {
-        guard UserDefaults.standard.object(forKey: "notif_petNudge") as? Bool ?? true else { return }
-        let center = UNUserNotificationCenter.current()
-        center.removePendingNotificationRequests(withIdentifiers: ["pet-nudge"])
-
-        let settings = await center.notificationSettings()
-        guard settings.authorizationStatus == .authorized else { return }
+        let notifications = NotificationService.shared
+        notifications.cancel(.petNudge)
+        guard notifications.isEnabled(.petNudge) else { return }
 
         let cal = Calendar.current
         let twoDaysAgo = cal.date(byAdding: .day, value: -2, to: Date()) ?? Date()
@@ -235,21 +232,14 @@ final class PetStore: ObservableObject {
 
         let names = overduePets.prefix(2).map(\.name).joined(separator: " & ")
         let extra = overduePets.count > 2 ? " +\(overduePets.count - 2)" : ""
-        let content = UNMutableNotificationContent()
-        content.title = "\(names)\(extra) could use a walk! 🐾"
-        content.body = overduePets.count == 1
+        let body = overduePets.count == 1
             ? "\(overduePets[0].name) hasn't been on a walk in a couple of days."
             : "Your pets haven't walked in a couple of days."
-        content.sound = .default
-
-        try? await center.add(UNNotificationRequest(
-            identifier: "pet-nudge",
-            content: content,
-            trigger: UNCalendarNotificationTrigger(
-                dateMatching: cal.dateComponents([.year, .month, .day, .hour, .minute], from: fireDate),
-                repeats: false
-            )
-        ))
+        let trigger = UNCalendarNotificationTrigger(
+            dateMatching: cal.dateComponents([.year, .month, .day, .hour, .minute], from: fireDate),
+            repeats: false
+        )
+        await notifications.schedule(.petNudge, title: "\(names)\(extra) could use a walk! 🐾", body: body, trigger: trigger)
     }
 
     // MARK: - Private helpers

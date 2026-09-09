@@ -29,7 +29,6 @@ struct SquatCounterApp: App {
     init() {
         BackgroundTaskManager.shared.registerTasks()
         UNUserNotificationCenter.current().delegate = AppNotificationDelegate.shared
-        UNUserNotificationCenter.registerActionCategories()
         try? Tips.configure([.displayFrequency(.weekly), .datastoreLocation(.applicationDefault)])
         // Construct all shared stores before @StateObject wraps them — same pattern as PetStore.
         _petStore     = StateObject(wrappedValue: PetStore(context: AppModelContainer.shared.mainContext))
@@ -125,6 +124,14 @@ struct SquatCounterApp: App {
             .environmentObject(routeStore)
             .environmentObject(historyStore)
             .environmentObject(tabRouter)
+            .onChange(of: NotificationService.shared.pendingAction) { _, action in
+                // "Start Walk" on a streak or pet nudge: land on Home, and if a
+                // session is already running, reopen it instead of starting over.
+                guard action == NotificationAction.startWalk,
+                      NotificationService.shared.consumePendingAction() != nil else { return }
+                tabRouter.selected = .home
+                if ActiveWalkStore.shared.isActive { ActiveWalkStore.shared.requestReopen() }
+            }
             .modelContainer(container)
             .task {
                 // Boot ordering: configure + salvage run synchronously (no suspension)
@@ -142,23 +149,19 @@ struct SquatCounterApp: App {
                 }
                 #endif
                 ActivityDetectionService.shared.startDetection()
+                NotificationService.shared.registerCategories()
+                // Quiet delivery, once, only if never asked. The real prompt is Settings' job.
+                await NotificationService.shared.requestQuietDeliveryIfNeverAsked()
                 await scheduleWeeklySummaryNotification()
             }
         }
     }
 
     // Moved from StepCounterView so it runs once at launch, not on every Home tab appear.
+    @MainActor
     private func scheduleWeeklySummaryNotification() async {
-        let center = UNUserNotificationCenter.current()
         let sessions = historyStore.sessions
         let streak   = StreakStore.shared.currentStreak
-        let status   = await center.notificationSettings().authorizationStatus
-        guard status == .authorized else { return }
-        let enabled = UserDefaults.standard.object(forKey: "notif_weeklySummary") as? Bool ?? true
-        guard enabled else {
-            center.removePendingNotificationRequests(withIdentifiers: ["wkt-weekly-summary"])
-            return
-        }
 
         let cal        = Calendar.current
         let weekStart  = cal.date(from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: Date())) ?? Date()
@@ -166,22 +169,18 @@ struct SquatCounterApp: App {
         let weekSteps  = weekSessions.reduce(0)   { $0 + $1.estimatedSteps }
         let weekKm     = weekSessions.reduce(0.0) { $0 + $1.totalDistance } / 1000
 
-        let content        = UNMutableNotificationContent()
-        content.title      = "Your week in review 📊"
-        content.sound      = .default
+        let body: String
         if weekSteps > 0 {
             let streakSuffix = streak > 0 ? " · \(streak)-day streak 🔥" : ""
-            content.body = "This week: \(weekSteps.formatted()) steps · \(String(format: "%.1f", weekKm)) km\(streakSuffix). Keep it up!"
+            body = "This week: \(weekSteps.formatted()) steps · \(String(format: "%.1f", weekKm)) km\(streakSuffix). Keep it up!"
         } else {
-            content.body = "A new week starts today — lace up and start strong! 💪"
+            body = "A new week starts today — lace up and start strong! 💪"
         }
 
         var comps      = DateComponents()
         comps.weekday  = 1; comps.hour = 20; comps.minute = 0
         let trigger    = UNCalendarNotificationTrigger(dateMatching: comps, repeats: true)
-        center.removePendingNotificationRequests(withIdentifiers: ["wkt-weekly-summary"])
-        try? await center.add(UNNotificationRequest(identifier: "wkt-weekly-summary",
-                                                    content: content, trigger: trigger))
+        await NotificationService.shared.schedule(.weeklySummary, title: "Your week in review 📊", body: body, trigger: trigger)
     }
 }
 

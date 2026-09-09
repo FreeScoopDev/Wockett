@@ -86,6 +86,14 @@ way unless there's a strong reason; adding the first one is a real decision.
   `routes.routeCard`, `routes.startWalk`, `routes.weatherTile`.
 - **Tab bar buttons are addressed by visible title**, not identifier — iOS 26
   discards `.accessibilityIdentifier` on `Tab`.
+- **Notifications go through `NotificationService`.** It owns permission,
+  categories, and every schedule/cancel, each behind a stable identifier in
+  `NotificationKind`. Don't call `UNUserNotificationCenter` directly outside it;
+  the one exception is the delegate assignment at launch. Quiet (`.provisional`)
+  delivery is requested once at first launch. The real prompt belongs to moments
+  the user asks for something — a Settings toggle, water breaks, a route
+  reminder. Any guard on delivery must accept `.provisional`, or quiet delivery
+  is a no-op; that was the dead-end fixed on 2026-09-09.
 
 ## Process
 
