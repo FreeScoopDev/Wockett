@@ -37,6 +37,15 @@ struct SquatCounterApp: App {
         _routeStore   = StateObject(wrappedValue: CustomRouteStore())
         _historyStore = StateObject(wrappedValue: WalkHistoryStore())
         _tabRouter    = StateObject(wrappedValue: TabRouter())
+        // Tip jar. Starts the Transaction.updates listener and reconciles the
+        // supporter ledger against StoreKit's history. Must run for the whole
+        // process or a transaction completing outside a purchase call — Ask to
+        // Buy approval, an interrupted purchase, a tip made on another device —
+        // is never recorded. Skipped under test for the same reason CloudKit is:
+        // test runs should not touch a real StoreKit session.
+        if !AppModelContainer.isRunningUnderTests {
+            TipJarStore.shared.start()
+        }
         #if DEBUG
         if isWKTUITestMode { UIView.setAnimationsEnabled(false) }
         #endif
