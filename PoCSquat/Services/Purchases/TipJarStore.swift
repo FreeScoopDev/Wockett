@@ -179,6 +179,25 @@ final class TipJarStore: ObservableObject {
         }
     }
 
+    // MARK: Restore
+
+    /// The user-initiated restore behind the "Restore tips" row.
+    ///
+    /// `AppStore.sync()` asks StoreKit to refresh transaction history from the
+    /// App Store — it may prompt for the Apple Account password, which is why it
+    /// only runs on an explicit tap and never at launch. The launch-time
+    /// `reconcileWithStoreKitHistory()` already covers the common case; this is
+    /// for the user who reinstalled and wants to see their tips *now*, and for
+    /// the reviewer who expects a restore path to exist.
+    ///
+    /// A failed sync is not surfaced as an error: the reconcile that follows still
+    /// runs against whatever history is cached, and "nothing new found" is an
+    /// honest answer either way.
+    func restore() async {
+        try? await AppStore.sync()
+        await reconcileWithStoreKitHistory()
+    }
+
     // MARK: History reconciliation
 
     /// Rebuilds the ledger from StoreKit's own transaction history.

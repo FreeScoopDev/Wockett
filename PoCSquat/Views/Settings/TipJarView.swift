@@ -9,8 +9,16 @@ import StoreKit
 // no guilt, no pre-selected tier, and a plain statement that tipping buys
 // nothing the free app withholds.
 //
-// The one promise this screen makes is the Pro one, and it is a real commitment:
-// see `SupporterLedger` for how it is kept across reinstalls and devices.
+// The one promise this screen makes is that tips are remembered, and it is a
+// real commitment: see `SupporterLedger` for how it is kept across reinstalls
+// and devices. The wording is deliberately conditional ("if Wockett ever adds
+// paid features") and names no product, price or date. Consumable tips that buy
+// a durable entitlement read to App Review as a non-consumable sold through
+// consumable SKUs, and copy about an unreleased product is "coming soon"
+// content under guideline 2.3.1 — either is a rejection on a screen that is
+// otherwise exactly the kind of tip jar Apple allows. No currency appears here
+// for the same reason it does not appear in `TipProduct`: prices are
+// per-storefront.
 
 struct TipJarView: View {
 
@@ -19,6 +27,7 @@ struct TipJarView: View {
 
     @State private var banner: String?
     @State private var showThanks = false
+    @State private var restoring = false
 
     var body: some View {
         ZStack {
@@ -140,7 +149,7 @@ struct TipJarView: View {
         } header: {
             Text("Tip jar")
         } footer: {
-            Text("Tip about ten dollars in total — in one go or across several tips — and Wockett Pro is yours free when it arrives in a future update. Pro is a one-time purchase; there's no subscription, now or later.")
+            Text("Tips are remembered. If Wockett ever adds paid features, supporters who've tipped roughly the Big Supporter amount in total will get them at no charge.")
                 .font(.caption)
                 .foregroundColor(.earthMuted)
         }
@@ -152,18 +161,16 @@ struct TipJarView: View {
                 Text(ledger.tipCount == 1 ? "You've tipped once." : "You've tipped \(ledger.tipCount) times.")
                     .foregroundColor(.earthCream)
 
+                // No "one more tip and…" nudge in the not-yet case. The status
+                // card reports; it does not sell.
                 if ledger.hasEarnedPro {
                     Label {
-                        Text("Wockett Pro is yours when it ships.")
+                        Text("You're a supporter. Any future paid features are yours at no charge.")
                             .font(.subheadline)
                     } icon: {
                         Image(wkt: .supportHeart).wktIcon(.row, tint: .earthGreen)
                     }
                     .foregroundColor(.earthGreen)
-                } else {
-                    Text("Another tip or two and Pro will be yours when it ships.")
-                        .font(.subheadline)
-                        .foregroundColor(.earthMuted)
                 }
 
                 Text("Thank you. Genuinely.")
@@ -177,6 +184,22 @@ struct TipJarView: View {
 
     private var smallPrintSection: some View {
         Section {
+            // Guideline 3.1.1 expects a visible way to restore. Reconciliation
+            // also runs at every launch, so this is belt-and-braces — but a
+            // reviewer looking for the button should find one.
+            Button {
+                Task { await restore() }
+            } label: {
+                HStack {
+                    Text("Restore tips")
+                        .foregroundColor(.earthGreen)
+                    Spacer()
+                    if restoring { ProgressView() }
+                }
+            }
+            .disabled(restoring)
+            .listRowBackground(Color.earthCard)
+
             Text("Tips are one-off payments handled by Apple. They aren't refundable through Wockett — contact Apple Support for that.")
                 .font(.caption)
                 .foregroundColor(.earthMuted)
@@ -199,9 +222,20 @@ struct TipJarView: View {
         }
     }
 
+    private func restore() async {
+        restoring = true
+        defer { restoring = false }
+        let before = ledger.tipCount
+        await store.restore()
+        let added = ledger.tipCount - before
+        banner = added > 0
+            ? (added == 1 ? "Found 1 tip that wasn't recorded here. Thank you." : "Found \(added) tips that weren't recorded here. Thank you.")
+            : (ledger.hasTipped ? "Your tips are all accounted for." : "No tips found for this Apple Account.")
+    }
+
     private var thanksMessage: String {
         ledger.hasEarnedPro
-            ? "That's Wockett Pro secured for you — it'll unlock automatically when Pro ships, on any device signed in to the same Apple Account."
+            ? "You're a supporter now. Any future paid features are yours at no charge, on any device signed in to the same Apple Account."
             : "That genuinely helps keep Wockett running."
     }
 }
