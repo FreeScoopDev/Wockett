@@ -10,6 +10,7 @@ enum WktSymbol {
     // Navigation / Tab
     case home               // custom asset: wkt.home.pin
     case health             // heart
+    case supportHeart       // heart.circle.fill (tip jar / supporter)
     case community          // pawprint
     case settings           // slider.horizontal.3
     case routes             // map
@@ -142,6 +143,7 @@ enum WktSymbol {
         switch self {
         case .home:           return "wkt.home.pin"
         case .health:         return "heart"
+        case .supportHeart:   return "heart.circle.fill"
         case .community:      return "pawprint"
         case .settings:       return "slider.horizontal.3"
         case .routes:         return "map"

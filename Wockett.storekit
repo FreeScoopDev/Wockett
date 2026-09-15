@@ -1,0 +1,61 @@
+{
+  "identifier" : "A1F3C2D4-9B77-4E21-8C55-WOCKETTTIPJAR",
+  "nonRenewingSubscriptions" : [ ],
+  "products" : [
+    {
+      "displayPrice" : "2.99",
+      "familyShareable" : false,
+      "internalID" : "6100000001",
+      "localizations" : [
+        {
+          "description" : "A small thank-you that helps keep Wockett running.",
+          "displayName" : "Small tip",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "wockett.tip.small",
+      "referenceName" : "Small tip",
+      "type" : "Consumable"
+    },
+    {
+      "displayPrice" : "4.99",
+      "familyShareable" : false,
+      "internalID" : "6100000002",
+      "localizations" : [
+        {
+          "description" : "Covers a good chunk of Wockett's yearly running costs.",
+          "displayName" : "Medium tip",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "wockett.tip.medium",
+      "referenceName" : "Medium tip",
+      "type" : "Consumable"
+    },
+    {
+      "displayPrice" : "19.99",
+      "familyShareable" : false,
+      "internalID" : "6100000003",
+      "localizations" : [
+        {
+          "description" : "Covers Wockett's running costs for the year, and then some.",
+          "displayName" : "Big supporter",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "wockett.tip.large",
+      "referenceName" : "Big supporter",
+      "type" : "Consumable"
+    }
+  ],
+  "settings" : {
+    "_askToBuyEnabled" : false,
+    "_billingIssuesEnabled" : false,
+    "_storeKitErrors" : [ ]
+  },
+  "subscriptionGroups" : [ ],
+  "version" : {
+    "major" : 3,
+    "minor" : 0
+  }
+}

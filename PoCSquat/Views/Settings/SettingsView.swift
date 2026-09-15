@@ -293,6 +293,25 @@ struct SettingsView: View {
                     }
                 }
 
+                // ── Support ───────────────────────────────────────
+                Section("Support") {
+                    NavigationLink {
+                        TipJarView()
+                    } label: {
+                        Label {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Support Wockett")
+                                Text("Optional tip jar. Unlocks nothing that's free today.")
+                                    .font(.caption).foregroundColor(.earthMuted)
+                            }
+                        } icon: {
+                            Image(wkt: .supportHeart).wktIcon(.row, tint: .earthGreen)
+                        }
+                        .foregroundColor(.earthGreen)
+                    }
+                    .listRowBackground(Color.earthCard)
+                }
+
                 // ── About ─────────────────────────────────────────
                 Section("About") {
                     HStack {
