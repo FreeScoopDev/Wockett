@@ -207,6 +207,13 @@ non-obvious ways.
 - **`swiftlint --fix` has broken this build twice** — `redundant_discardable_let`
   inside a `@ViewBuilder`, and `empty_count` against `XCUIElementQuery`. Both
   rules are disabled now. Any autofix run must be followed by `scripts/test.sh`.
+- **An Xcode Cloud run that fails in seconds is the environment pin, not
+  the code.** The `Wockett | CI Tests` status goes queued → failed before the
+  `… | Test - iOS` child check-run exists on GitHub; nothing compiled. Apple
+  had retired the pinned macOS (2026-09-15: 26.6.2 gone, re-pinned to 26.5.1
+  on both workflows). Fix it in App Store Connect → Xcode Cloud → Manage
+  Workflows → Environment, on *both* workflows, then Rebuild. Details in
+  `docs/ci.md`.
 - **In multi-step shell, `set -euo pipefail`.** A guard script that fails does not
   stop a `&&` chain on the next line; this shipped a commit without its changelog
   entry, twice.

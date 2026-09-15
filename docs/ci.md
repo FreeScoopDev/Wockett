@@ -127,7 +127,7 @@ which is the other half of why this file exists.
 | Start condition | **Pull Request Changes** — source `Any Branches`, target `main`, starts if any file changes |
 | Auto-cancel | On. A newer push to the same source branch cancels the running build. |
 | Action | **Test - iOS** — platform iOS, scheme `PoCSquat`, **Required to Pass**, Test Option `Test (Use Scheme Setting)`, 1 destination |
-| Environment | Xcode **26.6 (17F113)**, macOS **Tahoe 26.6.2 (25G83)** — pinned explicitly, not `Latest Release` |
+| Environment | Xcode **26.6 (17F113)**, macOS **Tahoe 26.5.1** — pinned explicitly, not `Latest Release`. macOS moved from 26.6.2 (25G83) on 2026-09-15, see below. |
 | Clean | **Off** — restores derived data and caches, so runs stay fast |
 | Notifies | Slack `#ci_tests`, all successes and failures. No email recipients. |
 
@@ -144,7 +144,7 @@ run?"
 | --- | --- |
 | Start condition | **Manual Start** only, restricted to **`main`**; Pull Request and Tag both **Not Enabled** |
 | Action | **Archive - iOS** — platform iOS, scheme `PoCSquat`, Distribution Preparation **TestFlight (Internal Testing Only)** |
-| Environment | Xcode **26.6 (17F113)**, macOS **Tahoe 26.6.2 (25G83)** — pinned explicitly, not `Latest Release` |
+| Environment | Xcode **26.6 (17F113)**, macOS **Tahoe 26.5.1** — pinned explicitly, not `Latest Release`. macOS moved from 26.6.2 (25G83) on 2026-09-15, see below. |
 | Clean | **On** — no cache restore, slower but reproducible. Correct for a release build. |
 | Notifies | Slack `#wockett_release_updates`, all successes and failures. No email recipients. |
 
@@ -166,6 +166,20 @@ number from App Store Connect and the file was never reconciled.
    versions from Xcode Cloud periodically. Expect to move the pin forward a
    couple of times a year; worth folding into the weekly QA pass so it is not
    something to remember.
+
+   **This happened on 2026-09-15.** PR #28's `CI Tests` run went queued →
+   failed in 14 seconds, before the `Test - iOS` action check-run was ever
+   created on GitHub — no source was compiled. Cause: the pinned macOS
+   **26.6.2 (25G83)** was no longer offered by Xcode Cloud; 26.5.1 was the
+   newest available. Both workflows were re-pinned to **macOS 26.5.1** (Xcode
+   26.6 unchanged) and the build was re-run green.
+
+   How to recognise it next time: the parent `Wockett | CI Tests` status
+   fails within seconds of the PR event and the child `… | Test - iOS`
+   check-run never appears. A real test or build failure creates the child
+   check-run and takes minutes. GitHub carries no detail either way — the
+   error is a banner on the build's Overview page in App Store Connect, and
+   Xcode Cloud's Slack post in `#ci_tests` says only "Build N failed".
 
 2. **`Release Flow` is restricted to `main`.** It previously accepted
    `Any Branches`, so a mis-click on the Start dialog could archive a feature
