@@ -28,8 +28,9 @@ enum TipProduct: String, CaseIterable, Identifiable, Sendable {
     //
     // Why points and not dollars.
     //
-    // The Pro-for-tippers promise is "tip $9.99 or more in total and Pro is yours
-    // when it ships". Summing actual money cannot express that correctly:
+    // The promise is "tip roughly the Big Supporter amount in total and any
+    // future paid features are yours". Summing actual money cannot express that
+    // correctly:
     //
     //   * App Store prices are per-storefront. A US $19.99 tip is some other
     //     number in GBP, EUR or AUD, and there is no reliable client-side way to
