@@ -87,3 +87,12 @@ Temporary Items
 *.swo
 *~
 .vscode/
+
+# ===========================
+# Python (tools/ data-pipeline scripts)
+# ===========================
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
