@@ -6,6 +6,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Internal
+- `Versions.xcconfig` build number reconciled to 84: 1.11 re-archived as build 82 (the TestFlight candidate, superseding 77), and the shared Xcode Cloud counter then reached 83 with #38's CI run.
 - `docs/ci.md` and `CLAUDE.md` record that Xcode Cloud's build number is a single per-app counter shared by every workflow — each PR `CI Tests` run consumes one — which is why the 1.11 re-archive came out as build 82 rather than 78. Also records the merge-conflict failure signature (child check-run present, `action_required` in ~30 s) next to the retired-pin one, since both were met today.
 - Removed the scheme's Archive pre-action that ran `agvtool next-version -all`. Added 2026-08-28, it bypassed `Versions.xcconfig` entirely: on every local Product → Archive it bumped the *test* targets' `CURRENT_PROJECT_VERSION` and hardcoded `CFBundleVersion` into `Info.plist`, leaving two dirty files that were twice mistaken for a hand edit on 2026-09-15. The archives it produced still carried the xcconfig number (25), so it never even did the one thing it was for. Build numbers come from `Versions.xcconfig` for manual archives and from Xcode Cloud for Release Flow, as documented in both places.
 - `Versions.xcconfig` build number reconciled to 78 after 1.11 shipped as build 77 from Xcode Cloud (the file read 25). This is the post-release step the file's own comment prescribes, so a manual archive can never reuse a number App Store Connect already has.
