@@ -15,7 +15,14 @@ struct TrailDataCreditsView: View {
     private var library: TrailPackLibrary { .shared }
     private var registry: TrailAttributionRegistry { .shared }
 
-    private static let builtFormat: Date.FormatStyle = .dateTime.day().month(.abbreviated).year()
+    // A pack's build date is a calendar day of the data, stamped in UTC by the
+    // builder. Shown in UTC too, or 2026-09-16T00:00Z reads as "Sep 15" on the
+    // US east coast — seen on the simulator on 2026-09-16.
+    private static let builtFormat: Date.FormatStyle = {
+        var style: Date.FormatStyle = .dateTime.day().month(.abbreviated).year()
+        style.timeZone = TimeZone(identifier: "UTC") ?? .current
+        return style
+    }()
 
     var body: some View {
         if !library.packInfos.isEmpty || !registry.attributions.isEmpty {
