@@ -367,6 +367,8 @@ struct SettingsView: View {
                             .foregroundColor(.earthGreen)
                     }
                     .listRowBackground(Color.earthCard)
+
+                    TrailDataCreditsView()
                 }
 
 

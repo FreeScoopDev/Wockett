@@ -52,7 +52,7 @@ from typing import Any, Iterable, Iterator, Optional, Sequence
 # ---------------------------------------------------------------------------
 
 SCHEMA_VERSION = 1
-BUILDER_VERSION = "1.0.0"
+BUILDER_VERSION = "1.1.0"
 
 # ---------------------------------------------------------------------------
 # Source registry. Attribution lives here and is copied into every pack, so a
@@ -285,10 +285,18 @@ class Trail:
     allows_horse: int
     is_loop: int
     tags_json: str
+    # Assigned in input order when the way is read, before any merging, so a
+    # trail's id does not depend on whether it was merged or on write order.
+    # A merged row takes the smallest id among its members.
+    id: int = 0
 
 
 @dataclass
 class Stats:
+    merged_ways: int = 0
+    merge_groups: int = 0
+    merge_groups_left: int = 0
+    skipped_unnamed: int = 0
     read: int = 0
     written: int = 0
     skipped_geometry: int = 0
@@ -327,7 +335,7 @@ def normalize_feature(
     source_id: str,
     tolerance_deg: float,
     stats: Stats,
-) -> Optional[Trail]:
+) -> Optional[tuple[Trail, list[list[float]]]]:
     geom = feature.get("geometry") or {}
     gtype = geom.get("type")
     raw = geom.get("coordinates") or []
@@ -385,7 +393,7 @@ def normalize_feature(
     highway = (tags.get("highway") or "").lower()
     kept = {k: tags[k] for k in KEPT_TAGS if k in tags}
 
-    return Trail(
+    return (Trail(
         source_id=source_id,
         source_ref=source_ref,
         name=str(name) if name else None,
@@ -404,7 +412,148 @@ def normalize_feature(
                            or highway == "bridleway") else 0,
         is_loop=is_loop,
         tags_json=json.dumps(kept, separators=(",", ":"), sort_keys=True),
+    ), simplified)
+
+
+# ---------------------------------------------------------------------------
+# Way merging. OSM maps a long trail as many ways — the Mountains-to-Sea Trail
+# is 266 of them, the Appalachian Trail 181 — and a directory that lists a
+# trail 266 times is not a directory. Merging happens here, in the builder,
+# because baked data is the cheap place to do it: query-time aggregation is
+# paid on every device, forever (decided 2026-09-16).
+#
+# Ways chain through every endpoint that exactly two same-named ways share.
+# At a junction — three or more ways meeting — the chain stops and the other
+# ways start their own: a park's branching network keeps its branches, while
+# the main line of a long trail merges even where a same-named spur hangs off
+# it. (The first cut refused any component containing a junction; on real
+# data one spur left the Mountains-to-Sea Trail in 151 pieces.) Identity of a
+# merged row is the smallest member ref, so a rebuild reassigns nothing.
+# ---------------------------------------------------------------------------
+
+# Endpoints within this distance are the same node. OSM ways that meet share a
+# node exactly; after simplification the endpoints are untouched, so this only
+# needs to absorb float noise. 1e-5 deg is about 1 m.
+_ENDPOINT_KEY_DECIMALS = 5
+
+
+def _endpoint_key(coord: Sequence[float]) -> tuple[float, float]:
+    return (round(coord[0], _ENDPOINT_KEY_DECIMALS), round(coord[1], _ENDPOINT_KEY_DECIMALS))
+
+
+_DOG_CONSERVATIVE_ORDER = (DOG_NOT_PERMITTED, DOG_LEASHED, DOG_OFF_LEASH, DOG_UNKNOWN)
+
+
+def merge_named_ways(
+    members: list[tuple[Trail, list[list[float]]]],
+    stats: Stats,
+) -> list[tuple[Trail, list[list[float]]]]:
+    """Chain one name's ways end to end wherever exactly two of them meet.
+
+    `members` are (trail, simplified coords) for every way sharing a name and
+    a source. Returns the rows to write — merged chains plus untouched ways —
+    in a deterministic order.
+    """
+    if len(members) < 2:
+        return members
+
+    members = sorted(members, key=lambda m: m[0].source_ref)
+    at: dict[tuple[float, float], list[int]] = {}
+    for i, (_, coords) in enumerate(members):
+        at.setdefault(_endpoint_key(coords[0]), []).append(i)
+        at.setdefault(_endpoint_key(coords[-1]), []).append(i)
+    if any(len(v) > 2 for v in at.values()):
+        stats.merge_groups_left += 1  # has at least one junction
+
+    def neighbour(node: tuple[float, float], current: int, used: set[int]) -> Optional[int]:
+        """The one other unused way at `node`, if exactly two ways meet there."""
+        ways = at.get(node, [])
+        if len(ways) != 2:
+            return None
+        other = ways[0] if ways[1] == current else ways[1]
+        return None if other in used or other == current else other
+
+    def oriented(i: int, from_node: tuple[float, float]) -> list[list[float]]:
+        c = members[i][1]
+        return list(c) if _endpoint_key(c[0]) == from_node else list(reversed(c))
+
+    used: set[int] = set()
+    out: list[tuple[Trail, list[list[float]]]] = []
+    for seed in range(len(members)):
+        if seed in used:
+            continue
+        used.add(seed)
+        coords = list(members[seed][1])
+        parts = [seed]
+
+        # Walk forward from the seed's end, then backward from its start.
+        for direction in ("forward", "backward"):
+            if direction == "backward":
+                coords.reverse()
+            while True:
+                node = _endpoint_key(coords[-1])
+                nxt = neighbour(node, parts[-1] if direction == "forward" else parts[0], used)
+                if nxt is None:
+                    break
+                used.add(nxt)
+                coords.extend(oriented(nxt, node)[1:])
+                parts.append(nxt) if direction == "forward" else parts.insert(0, nxt)
+        coords.reverse()  # undo the backward flip: chain now runs start -> end
+
+        if len(parts) == 1:
+            out.append(members[seed])
+        else:
+            out.append(_merged_row([members[i] for i in parts], coords))
+            stats.merged_ways += len(parts)
+            stats.merge_groups += 1
+    return out
+
+
+def _merged_row(parts, coords: list[list[float]]):
+    """One Trail from several, with the most conservative dog access."""
+    first = parts[0][0]
+    refs = sorted(t.source_ref for t, _ in parts)
+    length_m = line_length_m(coords)
+    lats = [c[1] for c in coords]
+    lons = [c[0] for c in coords]
+
+    tagged = [(t.dog_access, t.dog_access_provenance) for t, _ in parts if t.dog_access_provenance != "default"]
+    if tagged:
+        dog_access = min((d for d, _ in tagged), key=_DOG_CONSERVATIVE_ORDER.index)
+        provenance = "tagged" if any(p == "tagged" and d == dog_access for d, p in tagged) else "inferred"
+    else:
+        dog_access, provenance = DOG_UNKNOWN, "default"
+
+    def majority(values):
+        values = [v for v in values if v]
+        if not values:
+            return None
+        return max(sorted(set(values)), key=values.count)
+
+    tags = json.loads(first.tags_json)
+    tags["merged_ways"] = len(parts)
+    is_loop = 1 if haversine_m(coords[0], coords[-1]) < 50 and length_m > 200 else 0
+
+    trail = Trail(
+        source_id=first.source_id,
+        source_ref=refs[0],
+        name=first.name,
+        polyline=encode_polyline(coords),
+        point_count=len(coords),
+        length_m=round(length_m, 1),
+        min_lat=min(lats), min_lon=min(lons), max_lat=max(lats), max_lon=max(lons),
+        surface=majority(t.surface for t, _ in parts),
+        difficulty=majority(t.difficulty for t, _ in parts),
+        dog_access=dog_access,
+        dog_access_provenance=provenance,
+        allows_foot=1 if all(t.allows_foot for t, _ in parts) else 0,
+        allows_bike=1 if all(t.allows_bike for t, _ in parts) else 0,
+        allows_horse=1 if all(t.allows_horse for t, _ in parts) else 0,
+        is_loop=is_loop,
+        tags_json=json.dumps(tags, separators=(",", ":"), sort_keys=True),
+        id=min(t.id for t, _ in parts),
     )
+    return trail, coords
 
 
 # ---------------------------------------------------------------------------
@@ -510,6 +659,9 @@ def build_pack(
     region_name: str,
     tolerance_deg: float,
     min_length_m: float,
+    merge_ways: bool = True,
+    named_only: bool = False,
+    built_at: Optional[str] = None,
 ) -> Stats:
     if os.path.exists(out_path):
         os.remove(out_path)
@@ -533,39 +685,69 @@ def build_pack(
 
         batch: list[tuple] = []
         rtree_batch: list[tuple] = []
+        # Named ways wait here until the whole input is read, so same-named
+        # ways can be chained. Unnamed ones are written as they come.
+        pool: dict[str, list[tuple[Trail, list[list[float]]]]] = {}
 
-        for feature in read_features(path):
-            stats.read += 1
-            trail = normalize_feature(feature, source_id, tolerance_deg, stats)
-            if trail is None:
-                continue
-            if trail.length_m < min_length_m:
-                stats.skipped_short += 1
-                continue
-
-            key = (trail.source_id, trail.source_ref)
-            if key in seen:
-                stats.skipped_duplicate += 1
-                continue
-            seen.add(key)
+        def write(trail: Trail) -> None:
+            nonlocal batch, rtree_batch
             stats.dog[trail.dog_access] = stats.dog.get(trail.dog_access, 0) + 1
-
             batch.append((
-                next_id, trail.source_id, trail.source_ref, trail.name, trail.polyline,
+                trail.id, trail.source_id, trail.source_ref, trail.name, trail.polyline,
                 trail.point_count, trail.length_m, trail.min_lat, trail.min_lon,
                 trail.max_lat, trail.max_lon, trail.surface, trail.difficulty,
                 trail.dog_access, trail.dog_access_provenance, trail.allows_foot,
                 trail.allows_bike, trail.allows_horse, trail.is_loop, trail.tags_json,
             ))
             rtree_batch.append(
-                (next_id, trail.min_lat, trail.max_lat, trail.min_lon, trail.max_lon)
+                (trail.id, trail.min_lat, trail.max_lat, trail.min_lon, trail.max_lon)
             )
-            next_id += 1
             stats.written += 1
 
             if len(batch) >= 5000:
                 _flush(conn, batch, rtree_batch)
                 batch, rtree_batch = [], []
+
+        for feature in read_features(path):
+            stats.read += 1
+            normalized = normalize_feature(feature, source_id, tolerance_deg, stats)
+            if normalized is None:
+                continue
+            trail, coords = normalized
+            key = (trail.source_id, trail.source_ref)
+            if key in seen:
+                stats.skipped_duplicate += 1
+                continue
+            seen.add(key)
+            trail.id = next_id
+            next_id += 1
+
+            if not trail.name:
+                if named_only:
+                    stats.skipped_unnamed += 1
+                    continue
+                if trail.length_m < min_length_m:
+                    stats.skipped_short += 1
+                    continue
+                write(trail)
+            elif merge_ways:
+                # The length floor is applied AFTER merging: a 12 m connector
+                # way is exactly what joins two long pieces of a named trail,
+                # and dropping it first left the Mountains-to-Sea Trail with
+                # 246 of 300 endpoints touching nothing.
+                pool.setdefault(trail.name, []).append((trail, coords))
+            elif trail.length_m < min_length_m:
+                stats.skipped_short += 1
+            else:
+                write(trail)
+
+        # Deterministic: names in sorted order, members sorted inside.
+        for name in sorted(pool):
+            for trail, _ in merge_named_ways(pool[name], stats):
+                if trail.length_m < min_length_m:
+                    stats.skipped_short += 1
+                    continue
+                write(trail)
 
         _flush(conn, batch, rtree_batch)
 
@@ -582,10 +764,14 @@ def build_pack(
         "builder_version": BUILDER_VERSION,
         "region": region,
         "region_name": region_name,
-        "built_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        # Overridable so a rebuild from unchanged input is byte-identical —
+        # a fixture or a published pack should not churn for a timestamp.
+        "built_at": built_at or time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "trail_count": str(stats.written),
         "simplify_tolerance_deg": str(tolerance_deg),
         "min_length_m": str(min_length_m),
+        "merge_ways": "1" if merge_ways else "0",
+        "named_only": "1" if named_only else "0",
         "sources": ",".join(sorted(used_sources)),
     }.items():
         conn.execute("INSERT INTO meta VALUES (?,?)", (key, value))
@@ -707,6 +893,14 @@ def main(argv: Optional[list[str]] = None) -> int:
                              "(default 0.00002, roughly 2 m). 0 disables.")
     parser.add_argument("--min-length", type=float, default=30.0,
                         help="Drop trails shorter than this many metres (default 30)")
+    parser.add_argument("--no-merge-ways", action="store_true",
+                        help="Keep same-named ways as separate rows instead of "
+                             "chaining them end to end (default: merge)")
+    parser.add_argument("--named-only", action="store_true",
+                        help="Drop unnamed trails. For a trimmed bundled pack.")
+    parser.add_argument("--built-at", metavar="ISO8601",
+                        help="Stamp this build time instead of now, so a rebuild "
+                             "from unchanged input is byte-identical")
     parser.add_argument("--inspect", metavar="PACK", help="Print a pack's metadata and exit")
 
     args = parser.parse_args(argv)
@@ -725,7 +919,10 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     started = time.time()
     stats = build_pack(inputs, args.out, args.region, args.region_name,
-                       args.simplify, args.min_length)
+                       args.simplify, args.min_length,
+                       merge_ways=not args.no_merge_ways,
+                       named_only=args.named_only,
+                       built_at=args.built_at)
     elapsed = time.time() - started
 
     size_mb = os.path.getsize(args.out) / 1e6
@@ -740,6 +937,9 @@ def main(argv: Optional[list[str]] = None) -> int:
     print(f"  skipped geometry   {stats.skipped_geometry:,}")
     print(f"  skipped too short  {stats.skipped_short:,}")
     print(f"  skipped duplicate  {stats.skipped_duplicate:,}")
+    print(f"  skipped unnamed    {stats.skipped_unnamed:,}")
+    print(f"  merged             {stats.merged_ways:,} ways -> {stats.merge_groups:,} trails; "
+          f"{stats.merge_groups_left:,} same-name groups left unmerged (branching)")
     print(f"  points {stats.points_before:,} -> {stats.points_after:,} "
           f"({reduction:.1f}% removed)")
     print(f"  dog access         " + ", ".join(

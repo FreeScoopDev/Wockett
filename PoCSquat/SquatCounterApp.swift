@@ -43,6 +43,9 @@ struct SquatCounterApp: App {
         // Buy approval, an interrupted purchase, a tip made on another device —
         // is never recorded. Skipped under test for the same reason CloudKit is:
         // test runs should not touch a real StoreKit session.
+        // Trail region packs. The home region ships in the bundle so trails
+        // work on a first launch with no network; opening is milliseconds.
+        TrailPackLibrary.shared.loadBundled()
         if !AppModelContainer.isRunningUnderTests {
             TipJarStore.shared.start()
             // Pro entitlement. Reads StoreKit and the supporter ledger, records
