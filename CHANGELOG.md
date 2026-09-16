@@ -7,6 +7,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Internal
 - Removed the scheme's Archive pre-action that ran `agvtool next-version -all`. Added 2026-08-28, it bypassed `Versions.xcconfig` entirely: on every local Product → Archive it bumped the *test* targets' `CURRENT_PROJECT_VERSION` and hardcoded `CFBundleVersion` into `Info.plist`, leaving two dirty files that were twice mistaken for a hand edit on 2026-09-15. The archives it produced still carried the xcconfig number (25), so it never even did the one thing it was for. Build numbers come from `Versions.xcconfig` for manual archives and from Xcode Cloud for Release Flow, as documented in both places.
+- `Versions.xcconfig` build number reconciled to 78 after 1.11 shipped as build 77 from Xcode Cloud (the file read 25). This is the post-release step the file's own comment prescribes, so a manual archive can never reuse a number App Store Connect already has.
 
 ## [1.11] - 2026-09-15
 
