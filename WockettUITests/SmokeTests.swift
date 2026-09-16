@@ -205,4 +205,32 @@ final class SmokeTests: XCTestCase {
         // gap is uncovered, and it is better to say so here than to leave an
         // assertion that looks like protection and isn't.
     }
+
+    // MARK: - 6. Trail data credits
+
+    /// The bundled trail pack opened at launch and Settings → About credits its
+    /// source. This is the first user-visible piece of Trails, and the ODbL
+    /// credit is a licence obligation, so its presence is a smoke check. Under
+    /// -WKTUITest the pack still loads — it is local data, nothing to stub.
+    func testSettingsShowsTrailDataCredits() {
+        XCTAssertTrue(el("home.statCard").waitForExistence(timeout: 10))
+        tab("Settings").tap()
+        XCTAssertTrue(el("settings.root").waitForExistence(timeout: 30))
+
+        // About is near the bottom of a long list.
+        let credits = el("settings.trailData")
+        var swipes = 0
+        while !credits.exists && swipes < 12 {
+            app.swipeUp()
+            swipes += 1
+        }
+        XCTAssertTrue(credits.waitForExistence(timeout: 10), "Trail data rows missing from Settings → About")
+
+        // The pack's region line and the OSM credit both come from the data, not copy.
+        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS 'North Carolina:'")).firstMatch.exists,
+                      "Bundled North Carolina pack should be described")
+        XCTAssertTrue(app.descendants(matching: .any)
+                        .matching(NSPredicate(format: "label CONTAINS 'OpenStreetMap'")).firstMatch.exists,
+                      "ODbL attribution line missing")
+    }
 }
