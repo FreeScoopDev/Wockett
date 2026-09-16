@@ -44,10 +44,10 @@
 	</array>
 	<key>NSMotionUsageDescription</key>
 	<string>Wockett counts your steps using the device motion sensor for an accurate step count, and also uses motion data during a walk to check that you're still on foot rather than in a vehicle.</string>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>Wockett only uses your calendar to find and delete the walk reminders an earlier version added. It no longer creates calendar events.</string>
 	<key>NSCalendarsUsageDescription</key>
-	<string>Wockett can add recurring walk reminders to your calendar so you never miss a walk.</string>
-	<key>NSCalendarsWriteOnlyAccessUsageDescription</key>
-	<string>Wockett can add recurring walk reminders to your calendar so you never miss a walk.</string>
+	<string>Wockett only uses your calendar to find and delete the walk reminders an earlier version added. It no longer creates calendar events.</string>
 	<key>NSRemindersFullAccessUsageDescription</key>
 	<string>Wockett adds walk reminders to your Reminders app to help you hit your daily step goal.</string>
 	<key>NSRemindersUsageDescription</key>
