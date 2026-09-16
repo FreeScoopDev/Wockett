@@ -38,6 +38,10 @@ way unless there's a strong reason; adding the first one is a real decision.
   `project.pbxproj` — twice mistaken for a hand edit. Removed. If those two
   files show up modified with no one editing them, check the scheme's
   pre-actions first (`xcshareddata/xcschemes/PoCSquat.xcscheme`).
+- **Xcode Cloud's build number is one counter across all workflows.** Every
+  PR `CI Tests` run consumes a number, so a Release Flow archive after a few
+  PRs jumps by that many (77 → 82 on 2026-09-15). Never predict the next
+  number; read it off the finished archive.
 - **Xcode Cloud ignores the build number** and auto-increments its own. A manual
   Xcode archive uses the file's value verbatim. App Store Connect is
   authoritative for what shipped. 1.10 went out as build 24 while the file said

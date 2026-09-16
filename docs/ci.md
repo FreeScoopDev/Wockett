@@ -154,6 +154,28 @@ auto-increment, this is the most likely explanation for 1.10 shipping as build
 24 while `Versions.xcconfig` read 23 — a manual Release Flow run took the next
 number from App Store Connect and the file was never reconciled.
 
+### The build number is one counter for the whole app
+
+Xcode Cloud's "Build N" is a single sequence per app, shared by **every**
+workflow. A `CI Tests` run on a pull request consumes a number exactly as a
+`Release Flow` archive does, and so does a run that fails in 14 seconds.
+The archive's `CFBundleVersion` is whatever number Release Flow happened to
+draw. On 2026-09-15 build 77 shipped to TestFlight; the re-archive for the
+same version, after two PRs (four CI runs) and one local archive attempt,
+came out as **82**. Nothing was wrong.
+
+Consequences:
+
+- "The next build will be N" is never a safe statement. Read the number off
+  the finished archive in App Store Connect, then write it into the Notion
+  Releases row and `Versions.xcconfig`.
+- Gaps in the TestFlight build list are normal and carry no information.
+- The two failure signatures are still recognisable regardless of number:
+  parent status fails in seconds with no child check-run → environment pin
+  retired; child check-run appears, `action_required` in ~30 s, message
+  "conflict with changes made on the pull request target branch" → merge
+  `main` into the branch and push (seen on #33 and #36).
+
 ### Two settings that were deliberately changed on 2026-09-08
 
 1. **Xcode and macOS are pinned**, on both workflows. They previously tracked
