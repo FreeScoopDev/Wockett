@@ -19,7 +19,8 @@
 // one up if that number is already taken. That keeps a manual archive from
 // colliding with a number Xcode Cloud has already used.
 //
-// Last shipped: v1.10, build 24, released to the App Store 2026-09-04. Set to 25
-// because 23 and 24 are both used and Apple rejects a repeat on upload.
+// Last shipped: v1.11, build 77, archived by Release Flow 2026-09-15 (the file
+// read 25 at the time — Xcode Cloud had been counting on its own). Set to 78 so a
+// manual archive cannot collide with a number already in App Store Connect.
 MARKETING_VERSION = 1.11
-CURRENT_PROJECT_VERSION = 25
+CURRENT_PROJECT_VERSION = 78
