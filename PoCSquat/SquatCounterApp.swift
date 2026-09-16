@@ -45,6 +45,10 @@ struct SquatCounterApp: App {
         // test runs should not touch a real StoreKit session.
         if !AppModelContainer.isRunningUnderTests {
             TipJarStore.shared.start()
+            // Pro entitlement. Reads StoreKit and the supporter ledger, records
+            // the answer to the app group, and listens for changes. Feature-
+            // flagged off, so it gates nothing yet — see ProGating.
+            ProEntitlementStore.shared.start()
         }
         #if DEBUG
         if isWKTUITestMode { UIView.setAnimationsEnabled(false) }

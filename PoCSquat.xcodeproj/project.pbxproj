@@ -12,6 +12,8 @@
 		60062A92303AA71B002D5E94 /* WocketWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 60062A7D303AA71A002D5E94 /* WocketWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		603BC82E30466FCA00A6174E /* DesignSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 603BC82D30466FCA00A6174E /* DesignSystem.swift */; };
 		603BC82F30466FCA00A6174E /* DesignSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 603BC82D30466FCA00A6174E /* DesignSystem.swift */; };
+		60A1B2C3D4E5F60000000102 /* ProEntitlement.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60A1B2C3D4E5F60000000101 /* ProEntitlement.swift */; };
+		60A1B2C3D4E5F60000000103 /* ProEntitlement.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60A1B2C3D4E5F60000000101 /* ProEntitlement.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -61,6 +63,7 @@
 		6064430C303FCB7B004C8A82 /* WockettTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = WockettTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		60831CE73049136F00851D94 /* WockettUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = WockettUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		6093BCDE3011AB1C00AD5E15 /* PoCSquat.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PoCSquat.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		60A1B2C3D4E5F60000000101 /* ProEntitlement.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProEntitlement.swift; sourceTree = "<group>"; };
 		60EB4F953043B2500003AD6B /* Versions.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Versions.xcconfig; sourceTree = "<group>"; };
 		60F70CC63059EB7000F28D44 /* Wockett.storekit */ = {isa = PBXFileReference; lastKnownFileType = text; path = Wockett.storekit; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -159,6 +162,7 @@
 			children = (
 				60F70CC63059EB7000F28D44 /* Wockett.storekit */,
 				603BC82D30466FCA00A6174E /* DesignSystem.swift */,
+				60A1B2C3D4E5F60000000101 /* ProEntitlement.swift */,
 				60EB4F953043B2500003AD6B /* Versions.xcconfig */,
 				60062A9F303AAAA3002D5E94 /* WocketWidgetExtension.entitlements */,
 				6093BCE03011AB1C00AD5E15 /* PoCSquat */,
@@ -373,6 +377,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				603BC82F30466FCA00A6174E /* DesignSystem.swift in Sources */,
+				60A1B2C3D4E5F60000000103 /* ProEntitlement.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -395,6 +400,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				603BC82E30466FCA00A6174E /* DesignSystem.swift in Sources */,
+				60A1B2C3D4E5F60000000102 /* ProEntitlement.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
