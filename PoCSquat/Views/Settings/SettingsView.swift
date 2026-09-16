@@ -22,6 +22,8 @@ struct SettingsView: View {
     @State private var notifQuiet = false
     @State private var notifDenied = false
     @State private var showScheduleSheet = false
+    // Set when a legacy calendar-reminder delete could not do what the user asked.
+    @State private var legacyRemovalProblem: LegacyReminderRemoval?
 
     #if DEBUG
     @EnvironmentObject private var petStore:      PetStore
@@ -231,7 +233,12 @@ struct SettingsView: View {
                                     .foregroundColor(.earthCream)
                                 Spacer()
                                 Button {
-                                    legacy.removeWalk(eventID: eventID)
+                                    Task {
+                                        let outcome = await legacy.removeWalk(eventID: eventID)
+                                        if outcome == .accessDenied || outcome == .failed {
+                                            legacyRemovalProblem = outcome
+                                        }
+                                    }
                                 } label: {
                                     Image(wkt: .discard)
                                         .wktIcon(.inline, tint: .red.opacity(0.7))
@@ -248,7 +255,7 @@ struct SettingsView: View {
                     } header: {
                         Text("Calendar Reminders")
                     } footer: {
-                        Text("Added to your Calendar by an earlier version of Wockett. New reminders are notifications; these stay until you delete them.")
+                        Text("Added to your Calendar by an earlier version of Wockett. New reminders are notifications; these stay until you delete them. Deleting one needs access to your calendar, so the first tap will ask.")
                             .font(.caption).foregroundColor(.earthMuted)
                     }
                 }
@@ -424,6 +431,26 @@ struct SettingsView: View {
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $showScheduleSheet) { WalkReminderSheet() }
+        .alert(
+            legacyRemovalProblem == .accessDenied ? "Calendar access needed" : "Could not delete reminder",
+            isPresented: Binding(
+                get: { legacyRemovalProblem != nil },
+                set: { if !$0 { legacyRemovalProblem = nil } }
+            )
+        ) {
+            if legacyRemovalProblem == .accessDenied,
+               let url = URL(string: UIApplication.openSettingsURLString) {
+                // Only iOS Settings can reverse a denial.
+                Button("Open Settings") { UIApplication.shared.open(url) }
+            }
+            Button("OK", role: .cancel) {}
+        } message: {
+            if legacyRemovalProblem == .accessDenied {
+                Text("Wockett needs full calendar access to find and remove this reminder. Allow it in iOS Settings, or delete the event in the Calendar app.")
+            } else {
+                Text("The reminder may still be in your Calendar. You can delete it from the Calendar app.")
+            }
+        }
         .task {
             NotificationService.shared.pruneExpiredWalkReminders()
             await refreshNotificationStatus()
