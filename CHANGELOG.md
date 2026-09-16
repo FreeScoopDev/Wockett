@@ -5,6 +5,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Internal
+- `Versions.xcconfig` build number reconciled to 78 after 1.11 shipped as build 77 from Xcode Cloud (the file read 25). This is the post-release step the file's own comment prescribes, so a manual archive can never reuse a number App Store Connect already has.
+
 ## [1.11] - 2026-09-15
 
 ### Internal
