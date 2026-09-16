@@ -21,7 +21,7 @@
 <body>
 
 <h1>Privacy Policy</h1>
-<p class="updated">Last updated: August 30, 2026</p>
+<p class="updated">Last updated: September 15, 2026</p>
 
 <p>This Privacy Policy describes how Wockett ("the App", "We", "Us") handles your information when you use our iOS application. We are committed to being transparent and collecting only what is necessary to make the app work.</p>
 
@@ -39,7 +39,7 @@
     <tr>
         <td>Location (while using the app)</td>
         <td>Generate nearby walking route suggestions; track your position during navigation; calculate distance walked</td>
-        <td>Your live position is used on-device only during active walks. Route generation and street-level previews send coordinate data to Apple's Maps services — no personal information is included. Wockett itself never receives or stores your location. A GPS track may be saved temporarily to your device (see Walk Resume below).</td>
+        <td>Your live position is used on-device only during active walks. Route generation and street-level previews send coordinate data to Apple's Maps services, and the elevation chart for a selected route sends that route's coordinates to OpenTopoData (see Third-Party Services) — no personal information, account, or device identifier is included with either. Wockett itself never receives or stores your location. A GPS track may be saved temporarily to your device (see Walk Resume below).</td>
     </tr>
     <tr>
         <td>Walk history</td>
@@ -86,12 +86,13 @@
 </ul>
 
 <h2>Third-Party Services</h2>
-<p>Wockett uses the following Apple platform services. All are governed by <a href="https://www.apple.com/legal/privacy/" target="_blank">Apple's Privacy Policy</a>:</p>
+<p>Wockett uses the following Apple platform services, governed by <a href="https://www.apple.com/legal/privacy/" target="_blank">Apple's Privacy Policy</a>, and one non-Apple service, listed last:</p>
 <ul>
     <li><strong>Apple Maps (MapKit)</strong> — used for route generation, on-screen directions, and street-level Look Around previews. Coordinate data is sent to Apple's servers to power these features.</li>
     <li><strong>Apple WeatherKit</strong> — provides weather conditions based on your approximate location.</li>
     <li><strong>Apple HealthKit</strong> — step count is read from and completed workouts are written to your Health app. This data is not shared with any third party.</li>
     <li><strong>Apple iCloud / CloudKit</strong> — syncs your walk history, badges, and streaks between your own devices through your private iCloud database, and stores community content you choose to publish in a shared public database. Wockett cannot read your private database.</li>
+    <li><strong>OpenTopoData</strong> (<a href="https://www.opentopodata.org/" target="_blank">opentopodata.org</a>) — provides the elevation chart shown for a selected route. When you pick a route, up to 100 points along its path are sent to OpenTopoData over an encrypted connection to look up ground elevation. No account, identifier, name, or other data is sent with them, and Wockett does not use a key or token that could tie requests to you. This is the only non-Apple service Wockett talks to.</li>
 </ul>
 
 <h2>Children's Privacy</h2>
