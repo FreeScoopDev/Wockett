@@ -237,6 +237,8 @@ struct TipJarView: View {
         defer { restoring = false }
         let before = ledger.tipCount
         await store.restore()
+        // The same sync restores a Pro purchase; keep the entitlement current.
+        await ProEntitlementStore.shared.refresh()
         let added = ledger.tipCount - before
         banner = added > 0
             ? (added == 1 ? "Found 1 tip that wasn't recorded here. Thank you." : "Found \(added) tips that weren't recorded here. Thank you.")

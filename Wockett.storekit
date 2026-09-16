@@ -46,6 +46,21 @@
       "productID" : "wockett.tip.large",
       "referenceName" : "Big supporter",
       "type" : "Consumable"
+    },
+    {
+      "displayPrice" : "9.99",
+      "familyShareable" : true,
+      "internalID" : "6100000010",
+      "localizations" : [
+        {
+          "description" : "Buy once, yours forever. No subscription.",
+          "displayName" : "Wockett Pro",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "wockett.pro.lifetime",
+      "referenceName" : "Wockett Pro (lifetime)",
+      "type" : "NonConsumable"
     }
   ],
   "settings" : {

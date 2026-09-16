@@ -9,8 +9,10 @@ import StoreKit
 //
 // Scope note: this deliberately knows nothing about Pro. Tips are consumables
 // with no entitlement attached; the only lasting consequence of a tip is the row
-// it writes to `SupporterLedger`. When Pro arrives in 1.12,
-// `ProEntitlementStore` reads that ledger — it does not reach in here.
+// it writes to `SupporterLedger`. `ProEntitlementStore` reads that ledger — it
+// does not reach in here. Both stores listen to `Transaction.updates` and each
+// finishes its own product; `handle` below finishes everything it sees, which
+// also covers Pro today, but do not rely on that — `finish()` twice is a no-op.
 //
 // Failure posture is fail-open throughout. A tip jar that cannot reach the App
 // Store should say so quietly and leave the rest of the app alone; it must never
