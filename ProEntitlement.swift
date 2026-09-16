@@ -47,7 +47,9 @@ enum ProFeature: String, CaseIterable, Codable {
 /// invisible. Flip it with the paywall, once two or three Pro features are
 /// genuinely good; never before. Nothing that is free today moves behind Pro.
 enum ProGating {
-    static let isEnabled = false
+    // `nonisolated`: read as a default argument in `ProEntitlementStore.init`,
+    // and default arguments are evaluated in a nonisolated context.
+    nonisolated static let isEnabled = false
 }
 
 /// How the user came to be Pro. Kept so the UI can say the right thing —
@@ -64,7 +66,11 @@ enum ProEntitlementSource: String, Codable {
 /// open" means in practice: when StoreKit cannot be reached, the app keeps
 /// showing whatever it last knew, and a paying customer is never locked out
 /// because the network is down.
-struct ProEntitlementSnapshot: Codable, Equatable {
+// `nonisolated`: a plain value read and written from wherever the caller is —
+// the app's main actor, the widget's timeline provider. Nothing here needs an
+// actor, and opting the type out of the app target's MainActor default keeps
+// its members callable from `Codable` and other nonisolated paths.
+nonisolated struct ProEntitlementSnapshot: Codable, Equatable {
     var isPro: Bool
     var source: ProEntitlementSource
     var updatedAt: Date

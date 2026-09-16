@@ -26,7 +26,10 @@ import StoreKit
 /// carry a `wockett.` prefix rather than the bundle ID (`Scoops.PoCSquat`) —
 /// decided 2026-09-15.
 enum ProProduct {
-    static let lifetime = "wockett.pro.lifetime"
+    // `nonisolated`: the StoreKit reader is a nonisolated closure and this is a
+    // constant. Under the project's MainActor default isolation a plain static
+    // is actor-isolated, and reading it there is an error in Swift 6 mode.
+    nonisolated static let lifetime = "wockett.pro.lifetime"
 }
 
 @MainActor
