@@ -53,7 +53,9 @@ struct TipJarView: View {
         }
         .navigationTitle("Support Wockett")
         .navigationBarTitleDisplayMode(.inline)
-        .task { await store.loadProducts() }
+        // Fetch on appear only while something is still missing: with all three
+        // prices known there is nothing to gain and a spinner flash to lose.
+        .task { if !store.hasAllProducts { await store.loadProducts() } }
         .alert("Thank you", isPresented: $showThanks) {
             Button("You're welcome") { }
         } message: {
