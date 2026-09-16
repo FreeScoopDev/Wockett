@@ -14,9 +14,8 @@
 # real output and hid two bugs. The builder arrived in PR #43; this script
 # needs that merged (or checked out) to run.
 #
-# Note the builder stamps `built_at`, so a rebuild from unchanged input still
-# changes the file. Only commit a rebuilt fixture when the input or the
-# builder changed.
+# `--built-at` is pinned so a rebuild from unchanged input is byte-identical;
+# `git status` stays clean unless the input or the builder actually changed.
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 if [[ ! -f tools/build_trail_pack.py ]]; then
@@ -26,5 +25,6 @@ fi
 python3 tools/build_trail_pack.py \
   --region fixture --region-name "Test Fixture" \
   --input scripts/trail-fixture/trails-fixture.geojsonseq:osm \
+  --built-at 2026-09-16T00:00:00Z \
   --out WockettTests/Fixtures/fixture.wktpack
 python3 tools/build_trail_pack.py --inspect WockettTests/Fixtures/fixture.wktpack
