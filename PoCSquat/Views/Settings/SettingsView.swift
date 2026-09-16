@@ -369,6 +369,14 @@ struct SettingsView: View {
                     .listRowBackground(Color.earthCard)
 
                     TrailDataCreditsView()
+
+                    NavigationLink {
+                        TrailRegionsView()
+                    } label: {
+                        Label { Text("Trail Regions") } icon: { Image(wkt: .cloudDownload).wktIcon(.row, tint: .earthGreen) }
+                            .foregroundColor(.earthGreen)
+                    }
+                    .listRowBackground(Color.earthCard)
                 }
 
 

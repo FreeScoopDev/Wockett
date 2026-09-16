@@ -126,6 +126,7 @@ enum WktSymbol {
     case camera             // camera (debug screenshot)
     case appleLogo          // apple.logo (WeatherKit attribution)
     case cloudOff           // cloud.slash
+    case cloudDownload      // icloud.and.arrow.down (trail region packs)
     case lightning          // bolt.fill (PR / achievement flash)
     case tip                // lightbulb.fill (onboarding tips)
     case phone              // phone.fill
@@ -231,6 +232,7 @@ enum WktSymbol {
         case .camera:         return "camera"
         case .appleLogo:      return "apple.logo"
         case .cloudOff:       return "cloud.slash"
+        case .cloudDownload:  return "icloud.and.arrow.down"
         case .lightning:      return "bolt.fill"
         case .tip:            return "lightbulb.fill"
         case .phone:          return "phone.fill"
