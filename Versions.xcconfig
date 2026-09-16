@@ -12,7 +12,10 @@
 //   - Xcode Cloud IGNORES this value and auto-increments from the highest build
 //     already in App Store Connect. That is why shipped builds ran 20, 21, 22, 23
 //     while this file still read 19.
-//   - A manual archive from Xcode uses THIS value verbatim.
+//   - A manual archive from Xcode uses THIS value verbatim. (Until 2026-09-15 the
+//     scheme had an Archive pre-action running `agvtool next-version -all`, which
+//     ignored this file, bumped the *test* targets' numbers, and hardcoded
+//     CFBundleVersion into Info.plist as a dirty working-tree change. Removed.)
 //   - App Store Connect is authoritative for what actually shipped.
 //
 // So: after each release, set this to the last shipped build number — or the next
