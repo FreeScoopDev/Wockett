@@ -48,6 +48,8 @@
 	<string>Wockett can add recurring walk reminders to your calendar so you never miss a walk.</string>
 	<key>NSCalendarsWriteOnlyAccessUsageDescription</key>
 	<string>Wockett can add recurring walk reminders to your calendar so you never miss a walk.</string>
+	<key>NSRemindersFullAccessUsageDescription</key>
+	<string>Wockett adds walk reminders to your Reminders app to help you hit your daily step goal.</string>
 	<key>NSRemindersUsageDescription</key>
 	<string>Wockett adds walk reminders to your Reminders app to help you hit your daily step goal.</string>
 	<key>NSSupportsLiveActivities</key>
@@ -69,5 +71,7 @@
 	</array>
 	<key>SKIncludeConsumableInAppPurchaseHistory</key>
 	<true/>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 </dict>
 </plist>
