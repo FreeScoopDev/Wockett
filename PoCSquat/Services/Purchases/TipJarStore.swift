@@ -44,14 +44,39 @@ final class TipJarStore: ObservableObject {
     /// Set while a purchase is in flight so the UI can disable the tier buttons.
     @Published private(set) var purchasing: TipProduct?
 
+    /// Fetches StoreKit products for a set of IDs. Injectable so the retry
+    /// logic below can be unit-tested with a fake; the default is StoreKit.
+    typealias ProductFetcher = @Sendable ([String]) async throws -> [Product]
+
+    /// How many extra fetches to make when StoreKit returns fewer products
+    /// than the tip jar defines. Seen against the local StoreKit configuration
+    /// on 2026-09-15 — one product of three on first load, all three a moment
+    /// later — and reported against the App Store under load. Two retries with
+    /// a growing pause is enough to cover "not yet", without making a genuine
+    /// misconfiguration take long to admit.
+    static let partialLoadRetries = 2
+
+    /// Pause before retry `attempt` (1-based). Grows so the second retry gives
+    /// a slow store a real chance rather than hammering it.
+    static func retryDelay(attempt: Int) -> Duration { .milliseconds(500 * attempt) }
+
     private let ledger: SupporterLedger
+    private let fetch: ProductFetcher
     private var updatesTask: Task<Void, Never>?
+
+    /// Number of product fetches made so far. Exposed for the retry tests only.
+    private(set) var fetchCount = 0
 
     // `.shared` is resolved in the body, not as a default argument, for the
     // same reason as `SupporterLedger.init`: default arguments are nonisolated.
-    init(ledger: SupporterLedger? = nil) {
+    init(ledger: SupporterLedger? = nil, fetch: ProductFetcher? = nil) {
         self.ledger = ledger ?? .shared
+        self.fetch = fetch ?? { ids in try await Product.products(for: ids) }
     }
+
+    /// True once every tier has a product. The view uses this to decide whether
+    /// reopening the screen should fetch again.
+    var hasAllProducts: Bool { products.count == TipProduct.allCases.count }
 
     // No deinit cancelling `updatesTask`: `deinit` is nonisolated, so reading a
     // MainActor-isolated stored property from it is an error under the strict
@@ -84,13 +109,23 @@ final class TipJarStore: ObservableObject {
     // MARK: Products
 
     func loadProducts() async {
-        loadState = .loading
+        // Keep whatever is already showing while we refresh: a spinner over
+        // three known prices helps nobody, and a flaky refetch must never take
+        // away a price the user has already seen.
+        if products.isEmpty { loadState = .loading }
         do {
-            let fetched = try await Product.products(for: TipProduct.allCases.map(\.rawValue))
+            var byTier = products
+            byTier.merge(try await fetchByTier()) { _, new in new }
 
-            var byTier: [TipProduct: Product] = [:]
-            for product in fetched {
-                if let tier = TipProduct.from(productID: product.id) { byTier[tier] = product }
+            // StoreKit can answer with a subset of the products asked for and
+            // call it success. Displaying that as final showed "$2.99 / — / —"
+            // on 2026-09-15 — a screen a reviewer would fairly call broken.
+            // Ask again, briefly, before believing it.
+            var attempt = 0
+            while byTier.count < TipProduct.allCases.count, attempt < Self.partialLoadRetries {
+                attempt += 1
+                try? await Task.sleep(for: Self.retryDelay(attempt: attempt))
+                byTier.merge(try await fetchByTier()) { _, new in new }
             }
             products = byTier
 
@@ -103,8 +138,20 @@ final class TipJarStore: ObservableObject {
                 ? .unavailable("The tip jar isn't available right now.")
                 : .loaded
         } catch {
-            loadState = .unavailable("Couldn't reach the App Store.")
+            // A thrown error with prices already on screen is not worth an
+            // "unavailable" takeover; only report it when there is nothing to show.
+            if products.isEmpty { loadState = .unavailable("Couldn't reach the App Store.") }
         }
+    }
+
+    private func fetchByTier() async throws -> [TipProduct: Product] {
+        fetchCount += 1
+        let fetched = try await fetch(TipProduct.allCases.map(\.rawValue))
+        var byTier: [TipProduct: Product] = [:]
+        for product in fetched {
+            if let tier = TipProduct.from(productID: product.id) { byTier[tier] = product }
+        }
+        return byTier
     }
 
     /// Localised, storefront-correct price for a tier. Nil until products load.
