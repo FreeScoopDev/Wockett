@@ -1,0 +1,3 @@
+# Region packs are SQLite files. Never merge them textually.
+*.wktpack binary
+*.wktgraph binary
