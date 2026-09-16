@@ -22,8 +22,10 @@
 // one up if that number is already taken. That keeps a manual archive from
 // colliding with a number Xcode Cloud has already used.
 //
-// Last shipped: v1.11, build 77, archived by Release Flow 2026-09-15 (the file
-// read 25 at the time — Xcode Cloud had been counting on its own). Set to 78 so a
-// manual archive cannot collide with a number already in App Store Connect.
+// Last shipped: v1.11, build 82, archived by Release Flow 2026-09-15 and the
+// TestFlight / App Store candidate (build 77 the same day was superseded). The
+// counter then reached 83 with the next PR's CI run — every workflow draws from
+// the same sequence. Set to 84 so a manual archive cannot collide with a number
+// already in App Store Connect.
 MARKETING_VERSION = 1.11
-CURRENT_PROJECT_VERSION = 78
+CURRENT_PROJECT_VERSION = 84
