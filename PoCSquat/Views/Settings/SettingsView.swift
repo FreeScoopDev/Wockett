@@ -326,7 +326,7 @@ struct SettingsView: View {
                         Group {
                             Text("• Steps not updating? Try switching Data Source to App Only and back to Apple Health.")
                             Text("• If Health permission was denied, go to Settings → Privacy → Health → Wockett to re-enable.")
-                            Text("• Walk history and goals are stored on this device only.")
+                            Text("• Walk history syncs between your own devices through your private iCloud. Wockett never sees it.")
                         }
                         .font(.caption).foregroundColor(.earthMuted)
                     }
@@ -339,6 +339,20 @@ struct SettingsView: View {
                         }
                     } label: {
                         Label { Text("Send Feedback") } icon: { Image(wkt: .envelope).wktIcon(.row, tint: .earthGreen) }
+                            .foregroundColor(.earthGreen)
+                    }
+                    .listRowBackground(Color.earthCard)
+
+                    // Guideline 5.1.1(i) wants the policy reachable from inside
+                    // the app, not only from the App Store listing. Same URL as
+                    // App Store Connect should hold; the site is GitHub Pages
+                    // serving `docs/` under the wockett.app CNAME.
+                    Button {
+                        if let url = URL(string: "https://wockett.app/privacy-policy.html") {
+                            openURL(url)
+                        }
+                    } label: {
+                        Label { Text("Privacy Policy") } icon: { Image(wkt: .lock).wktIcon(.row, tint: .earthGreen) }
                             .foregroundColor(.earthGreen)
                     }
                     .listRowBackground(Color.earthCard)
