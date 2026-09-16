@@ -119,6 +119,7 @@ struct TipJarView: View {
                 } label: {
                     HStack(alignment: .center, spacing: 12) {
                         Image(wkt: .supportHeart).wktIcon(.row, tint: .earthGreen)
+                            .accessibilityHidden(true) // decorative; the button already reads title, blurb, price
 
                         VStack(alignment: .leading, spacing: 2) {
                             Text(tip.title)
@@ -136,9 +137,16 @@ struct TipJarView: View {
                             // Always StoreKit's own localised price — never a
                             // hardcoded figure, which would be wrong in every
                             // storefront outside the US.
+                            // fixedSize + layoutPriority: at accessibility text
+                            // sizes the wrapping blurb would otherwise take the
+                            // width and squeeze "$19.99" — which has no break
+                            // point — down to an ellipsis. The blurb wraps to
+                            // another line instead.
                             Text(store.displayPrice(for: tip) ?? "—")
                                 .font(.body.monospacedDigit())
                                 .foregroundColor(.earthGreen)
+                                .fixedSize()
+                                .layoutPriority(1)
                         }
                     }
                     .padding(.vertical, 2)

@@ -235,6 +235,10 @@ struct SettingsView: View {
                                 } label: {
                                     Image(wkt: .discard)
                                         .wktIcon(.inline, tint: .red.opacity(0.7))
+                                        // A 16pt glyph is the visual; the tap
+                                        // target has to be 44pt regardless.
+                                        .frame(minWidth: 44, minHeight: 44)
+                                        .contentShape(Rectangle())
                                 }
                                 .buttonStyle(.plain)
                                 .accessibilityLabel("Delete calendar reminder \(idx + 1)")
