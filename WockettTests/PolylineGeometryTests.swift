@@ -2,8 +2,11 @@ import Testing
 import MapKit
 @testable import PoCSquat
 
-/// Regression guard for `coordAlong`, which walks a route line to find the
-/// coordinate a given fraction along it.
+/// Regression guard for `MKPolyline.coordinate(atFraction:)`, which walks a
+/// route line to find the coordinate a given fraction along it. Until 1.12 this
+/// lived as two identical `coordAlong` copies in `RouteFinderMapView` and
+/// `NavigationMapView`; both callers now share the one implementation, so a
+/// single set of assertions covers both the route preview and live navigation.
 ///
 /// The original guard read
 ///
@@ -33,16 +36,14 @@ struct PolylineGeometryTests {
     func emptyPolylineReturnsNil() {
         let empty = MKPolyline()
         #expect(empty.pointCount == 0, "Precondition: this polyline should hold no points")
-        #expect(RouteFinderMapView.coordAlong(empty, fraction: 0.5) == nil)
-        #expect(NavigationMapView.coordAlong(empty, fraction: 0.5) == nil)
+        #expect(empty.coordinate(atFraction: 0.5) == nil)
     }
 
     @Test("A single-point polyline returns that point")
     func singlePointReturnsThatPoint() {
         let only = CLLocationCoordinate2D(latitude: 40.7589, longitude: -73.9851)
         let one  = line([only])
-        #expect(approxEqual(RouteFinderMapView.coordAlong(one, fraction: 0.5), only))
-        #expect(approxEqual(NavigationMapView.coordAlong(one, fraction: 0.5), only))
+        #expect(approxEqual(one.coordinate(atFraction: 0.5), only))
     }
 
     @Test("A fraction of 1 or more returns the final point")
@@ -50,8 +51,8 @@ struct PolylineGeometryTests {
         let start = CLLocationCoordinate2D(latitude: 40.0, longitude: -73.0)
         let end   = CLLocationCoordinate2D(latitude: 41.0, longitude: -73.0)
         let two   = line([start, end])
-        #expect(approxEqual(RouteFinderMapView.coordAlong(two, fraction: 1.0), end))
-        #expect(approxEqual(NavigationMapView.coordAlong(two, fraction: 1.5), end))
+        #expect(approxEqual(two.coordinate(atFraction: 1.0), end))
+        #expect(approxEqual(two.coordinate(atFraction: 1.5), end))
     }
 
     @Test("A fraction of zero returns the starting point")
@@ -59,8 +60,7 @@ struct PolylineGeometryTests {
         let start = CLLocationCoordinate2D(latitude: 40.0, longitude: -73.0)
         let end   = CLLocationCoordinate2D(latitude: 41.0, longitude: -73.0)
         let two   = line([start, end])
-        #expect(approxEqual(RouteFinderMapView.coordAlong(two, fraction: 0), start))
-        #expect(approxEqual(NavigationMapView.coordAlong(two, fraction: 0), start))
+        #expect(approxEqual(two.coordinate(atFraction: 0), start))
     }
 
     @Test("A midpoint fraction lands between the endpoints")
@@ -68,7 +68,7 @@ struct PolylineGeometryTests {
         let start = CLLocationCoordinate2D(latitude: 40.0, longitude: -73.0)
         let end   = CLLocationCoordinate2D(latitude: 41.0, longitude: -73.0)
         let two   = line([start, end])
-        let mid   = RouteFinderMapView.coordAlong(two, fraction: 0.5)
+        let mid   = two.coordinate(atFraction: 0.5)
         #expect(mid != nil)
         if let mid {
             #expect(mid.latitude > start.latitude && mid.latitude < end.latitude)

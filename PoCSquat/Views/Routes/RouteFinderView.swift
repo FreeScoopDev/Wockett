@@ -836,7 +836,7 @@ struct RouteFinderMapView: UIViewRepresentable {
             map.removeOverlays(map.overlays.filter { $0 is MarkerCircle })
             if let sel = selectedRoute {
                 for fraction in [0.25, 0.5, 0.75] {
-                    if let c = Self.coordAlong(sel.polyline, fraction: fraction) {
+                    if let c = sel.polyline.coordinate(atFraction: fraction) {
                         let circle = MarkerCircle(center: c, radius: 22)
                         map.addOverlay(circle, level: .aboveRoads)
                     }
@@ -893,41 +893,6 @@ struct RouteFinderMapView: UIViewRepresentable {
                 }
             }
         }
-    }
-
-    static func coordAlong(_ polyline: MKPolyline, fraction: Double) -> CLLocationCoordinate2D? {
-        let n = polyline.pointCount
-        // An empty polyline has no point 0 to fall back on, and points()[0] is an
-        // unchecked C-array read — it traps the process rather than returning nil.
-        // MKDirections can hand back a degenerate route (no walkable path, a bad
-        // fix, poor connectivity), so this is reachable in ordinary use.
-        guard n > 0 else { return nil }
-        guard n > 1, fraction > 0 else { return polyline.points()[0].coordinate }
-        if fraction >= 1 { return polyline.points()[n - 1].coordinate }
-        let pts = polyline.points()
-        var total = 0.0
-        var lens = [Double]()
-        for i in 0..<n - 1 {
-            let a = CLLocation(latitude: pts[i].coordinate.latitude, longitude: pts[i].coordinate.longitude)
-            let b = CLLocation(latitude: pts[i + 1].coordinate.latitude, longitude: pts[i + 1].coordinate.longitude)
-            let d = a.distance(from: b)
-            lens.append(d); total += d
-        }
-        let target = total * fraction
-        var accum = 0.0
-        for i in 0..<lens.count {
-            guard lens[i] > 0 else { accum += lens[i]; continue }
-            if accum + lens[i] >= target {
-                let t = (target - accum) / lens[i]
-                let a = pts[i].coordinate, b = pts[i + 1].coordinate
-                return CLLocationCoordinate2D(
-                    latitude: a.latitude + (b.latitude - a.latitude) * t,
-                    longitude: a.longitude + (b.longitude - a.longitude) * t
-                )
-            }
-            accum += lens[i]
-        }
-        return pts[n - 1].coordinate
     }
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
