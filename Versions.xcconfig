@@ -22,10 +22,14 @@
 // one up if that number is already taken. That keeps a manual archive from
 // colliding with a number Xcode Cloud has already used.
 //
-// Last shipped: v1.11, build 82, archived by Release Flow 2026-09-15 and the
-// TestFlight / App Store candidate (build 77 the same day was superseded). The
-// counter then reached 83 with the next PR's CI run — every workflow draws from
-// the same sequence. Set to 84 so a manual archive cannot collide with a number
-// already in App Store Connect.
+// Last shipped: v1.11, build 82, archived by Release Flow 2026-09-15.
+//
+// Last uploaded: v1.12, build 84, a MANUAL Xcode archive (not Release Flow)
+// made 2026-09-23 ~18:03 EDT and submitted for App Store review. It was built
+// from main at 337f39c (#55): #53 landed in the working tree seconds after the
+// archive started and is NOT in it — the archive's dSYM places the trail
+// download closure at the pre-#53 lines 163-164. #53 changed no behaviour.
+// 84 is now taken in App Store Connect, so this reads 85; Xcode Cloud's own
+// counter is already past that after the day's CI runs.
 MARKETING_VERSION = 1.12
-CURRENT_PROJECT_VERSION = 84
+CURRENT_PROJECT_VERSION = 85
