@@ -61,8 +61,27 @@ struct ProEntitlementStoreTests {
         return (store, fake, d)
     }
 
-    /// Lets the debounced ledger subscription (50 ms) and the Task hop settle.
-    private func settle() async {
+    /// Waits until `condition` holds, polling, for up to `timeout`. Returns
+    /// whether it did. A fixed sleep here was a race: the debounce (50 ms)
+    /// plus the refresh Task had to finish inside 250 ms of wall-clock time,
+    /// and on a loaded Xcode Cloud runner it sometimes didn't (PR #53, three
+    /// failures in a PR that never touched Purchases).
+    @discardableResult
+    private func eventually(timeout: Duration = .seconds(5),
+                            _ condition: () -> Bool) async -> Bool {
+        let deadline = ContinuousClock.now + timeout
+        while !condition() {
+            if ContinuousClock.now >= deadline { return false }
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        return true
+    }
+
+    /// A quiet period after the expected work has arrived, so an *extra*
+    /// refresh has time to show up before a test asserts an exact count. If
+    /// this is too short on a slow machine the test can only miss an extra
+    /// read, never fail a correct build.
+    private func quietPeriod() async {
         try? await Task.sleep(for: .milliseconds(250))
     }
 
@@ -173,15 +192,14 @@ struct ProEntitlementStoreTests {
         let store = ProEntitlementStore(ledger: ledger, entitlements: fake.reader,
                                         defaults: freshDefaults(), gatingEnabled: false, listensToStoreKit: false)
         store.start()
-        await settle()
+        #expect(await eventually { fake.reads >= 1 }, "start() never refreshed")
         #expect(!store.isPro)
 
         for i in 0..<SupporterLedger.proThresholdPoints {
             ledger.record(transactionID: UInt64(i + 1), productID: TipProduct.small.rawValue,
                           date: base.addingTimeInterval(Double(i)))
         }
-        await settle()
-        #expect(store.isPro)
+        #expect(await eventually { store.isPro })
         #expect(store.source == .supporter)
     }
 
@@ -192,7 +210,8 @@ struct ProEntitlementStoreTests {
         let store = ProEntitlementStore(ledger: ledger, entitlements: fake.reader,
                                         defaults: freshDefaults(), gatingEnabled: false, listensToStoreKit: false)
         store.start()
-        await settle()
+        #expect(await eventually { fake.reads >= 1 }, "start() never refreshed")
+        await quietPeriod()
         let afterStart = fake.reads
         #expect(afterStart == 1)
 
@@ -202,7 +221,8 @@ struct ProEntitlementStoreTests {
             ledger.record(transactionID: UInt64(100 + i), productID: TipProduct.small.rawValue,
                           date: base.addingTimeInterval(Double(i)))
         }
-        await settle()
+        #expect(await eventually { fake.reads >= afterStart + 1 }, "the ledger burst never triggered a refresh")
+        await quietPeriod()
         #expect(fake.reads == afterStart + 1)
     }
 
@@ -211,7 +231,8 @@ struct ProEntitlementStoreTests {
         let (store, fake, _) = make(owned: [])
         store.start()
         store.start()
-        await settle()
+        #expect(await eventually { fake.reads >= 1 })
+        await quietPeriod()
         #expect(fake.reads == 1)
     }
 
