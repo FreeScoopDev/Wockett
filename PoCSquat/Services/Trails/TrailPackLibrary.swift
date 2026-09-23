@@ -160,8 +160,11 @@ final class TrailPackLibrary {
         }
         transient[record.region] = .downloading(progress: 0)
         do {
-            let temp = try await remote.downloadPack(record) { [weak self] fraction in
-                Task { @MainActor in self?.transient[record.region] = .downloading(progress: fraction) }
+            // The weak capture goes on the inner Task, not the outer closure: a
+            // `[weak self]` there is a captured *var*, and reading it from the
+            // concurrently-executing Task is a Swift 6 error.
+            let temp = try await remote.downloadPack(record) { fraction in
+                Task { @MainActor [weak self] in self?.transient[record.region] = .downloading(progress: fraction) }
             }
             defer { try? fileManager.removeItem(at: temp) }
 
