@@ -27,5 +27,5 @@
 // counter then reached 83 with the next PR's CI run — every workflow draws from
 // the same sequence. Set to 84 so a manual archive cannot collide with a number
 // already in App Store Connect.
-MARKETING_VERSION = 1.11
+MARKETING_VERSION = 1.12
 CURRENT_PROJECT_VERSION = 84
