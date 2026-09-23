@@ -179,13 +179,22 @@ Consequences:
 
 ### Xcode Cloud never received the pull-request event
 
-The third shape, met twice on 2026-09-16 (#42 and #44). The two GitHub
-Actions checks run within seconds of the PR opening, and Xcode Cloud posts
-**nothing**: no `Wockett | CI Tests` parent status, not even `pending`, and no
-`Test - iOS` child check-run. The PR sits at "1 expected, 2 successful checks"
-indefinitely — 51 minutes on #42, 1 h 47 m on #44 — while other PRs opened
-minutes either side get their `pending` status within seconds. The workflow's
-start condition is *Pull Request Changes*, so no event means no build.
+The third shape, met three times: #42 and #44 on 2026-09-16, #55 on
+2026-09-23. The two GitHub Actions checks run within seconds of the PR
+opening, and Xcode Cloud posts **nothing**: no `Wockett | CI Tests` parent
+status, not even `pending`, and no `Test - iOS` child check-run. The PR sits
+at "1 expected, 2 successful checks" indefinitely — 51 minutes on #42,
+1 h 47 m on #44, 5 m 20 s on #55 before it was re-fired — while other PRs
+opened minutes either side get their `pending` status within seconds. The
+workflow's start condition is *Pull Request Changes*, so no event means no
+build.
+
+**Not this: a PR whose base is not `main`.** The start condition's target is
+`main`, so a stacked PR (base = another feature branch) gets no Xcode Cloud
+status *by design*, and looks identical. #53 and #54 on 2026-09-23 were
+stacked on `chore/cut-1.12` and stayed silent for over half an hour; each got
+`pending` about 20 s after #52 merged and GitHub retargeted them to `main`.
+Check the PR's base before re-firing anything.
 
 Tell it apart from the pin failure by the parent status: the pin failure
 *posts* a parent status and fails it; this one never posts. Tell it apart from
@@ -193,8 +202,8 @@ a slow queue by comparing with a neighbouring PR: a queued run still shows
 `pending — queued` immediately.
 
 Fix: re-fire the event. Closing and reopening the PR is enough and adds no
-commit — both times the parent status appeared as `pending — queued` within
-seconds of the reopen. From a terminal:
+commit — all three times the parent status appeared as `pending — queued`
+within seconds of the reopen (8 s on #55). From a terminal:
 
     gh pr close <N> && gh pr reopen <N>
 
@@ -203,11 +212,27 @@ the squash merge has to absorb. Starting the build by hand in App Store
 Connect works too, but only if someone notices; the point of writing this down
 is that the wait itself is the symptom.
 
-Cause not established. Both cases were PRs opened with `gh pr create` within
-about a minute of the branch being pushed; whether that timing matters is
-unknown. If it recurs, check the webhook deliveries under the repository's
-Settings → Webhooks for the App Store Connect endpoint before assuming the
-same fix.
+Cause not established, and not diagnosable from our side:
+
+- **Opening the PR right after the push is not the cause on its own.** All
+  three cases were PRs opened with `gh pr create` within about a minute of
+  the branch push — #55 one second after it. But #52, opened by the same
+  kind of command block within seconds of its push, got `pending` 15 s later.
+  Fast opening happens on PRs that work fine too, so on today's evidence it
+  may not matter at all.
+- **There is no webhook to inspect.** The repository has no webhooks
+  (`gh api repos/FreeScoopDev/Wockett/hooks` returns an empty list). Xcode
+  Cloud is connected as a GitHub App — statuses are posted by
+  `xcode-cloud[bot]` — and an App's delivery log is visible only to the App's
+  owner, which is Apple. An earlier version of this section said to check
+  Settings → Webhooks; there is nothing there.
+
+So the defence is detection, not prevention: after opening a PR that targets
+`main`, confirm a `Wockett | CI Tests` status appears within a couple of
+minutes, and re-fire if it doesn't:
+
+    gh api repos/FreeScoopDev/Wockett/commits/$(gh pr view <N> --json headRefOid -q .headRefOid)/status \
+      -q '.statuses[] | "\(.context) \(.state)"'
 
 ### Two settings that were deliberately changed on 2026-09-08
 

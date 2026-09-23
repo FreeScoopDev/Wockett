@@ -5,6 +5,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Internal
+- `docs/ci.md` records a third case of Xcode Cloud never receiving a PR event (#55, 2026-09-23; re-fired by close/reopen, `pending` in 8 s) and corrects two things. Opening a PR within seconds of the push is not the cause on its own: #52 was opened the same way and got `pending` in 15 s. And the earlier advice to check Settings → Webhooks led nowhere: the repository has no webhooks, because Xcode Cloud connects as a GitHub App (`xcode-cloud[bot]`) whose delivery log only Apple can see. It also records the look-alike that is not a fault: a stacked PR whose base is not `main` gets no Xcode Cloud status by design (#53, #54) until it is retargeted.
+
 ## [1.12] - 2026-09-23
 
 ### Fixed
