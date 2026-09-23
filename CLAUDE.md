@@ -248,5 +248,18 @@ non-obvious ways.
 - **He pushes; Claude never pushes.** Don't run `git commit` or `git push` on his
   machine without asking — past sessions left `.git/index.lock` files behind.
   Read-only git only, with `--no-optional-locks`.
+- **Never move what is checked out in `~/Desktop/PoCSquat`.** That folder is
+  Joe's, and a manual Xcode archive builds whatever is on disk there. Do
+  branch work in a separate worktree (`git worktree add
+  ~/Desktop/PoCSquat-claude -b <branch> origin/main`), and remove it once the
+  PR merges. No `switch`, `checkout`, `merge` or `pull` in Joe's folder. If it
+  needs updating before an archive, give Joe the command instead. Cost: on
+  2026-09-23 a fast-forward landed 14 s into Joe's 1.12 archive, and build 84
+  shipped without #53. It was proved from the archive's dSYM; see
+  `Versions.xcconfig`.
+- **Anything Joe has to do is written as numbered steps**: where to click,
+  what to type, what he should see, and what to do if he doesn't. "Be careful
+  when X" is not a step. If a risk can be removed on Claude's side instead,
+  remove it rather than handing Joe a rule to remember.
 - Tracking lives in Notion, "Scoops Dev Command Center": Releases, Testing/QA,
   Dev Session Notes, SOP Usage Log.
