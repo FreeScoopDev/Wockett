@@ -6,9 +6,10 @@ import MapKit
 // The Trails side of the Routes | Trails switch (design agreed 2026-09-23,
 // option A of the "Trails in Routes" canvas). Everything here reads the
 // region packs on the phone, so the list appears instantly and works with no
-// signal. Walking a trail and saving one come with trail-following
-// navigation: today every walk is routed between waypoints by MKDirections,
-// which would pull a trail walk onto the streets.
+// signal. Start Walk appears at the trail and follows the trail's own line
+// (`TrailWalkPlanner`); saving a trail to My Routes is a separate change,
+// because saved routes sync through CloudKit and a trail's line needs a field
+// there.
 
 struct TrailsPanel: View {
     @Bindable var finder: TrailFinder
@@ -19,6 +20,7 @@ struct TrailsPanel: View {
     let activityMode: ActivityMode
     let containerHeight: CGFloat
     let modePicker: AnyView
+    let onStart: (TrailWalkPlan) -> Void
 
     var body: some View {
         VStack(spacing: 0) {
@@ -29,7 +31,8 @@ struct TrailsPanel: View {
                 .padding(.bottom, 14)
 
             if let item = selected {
-                TrailDetailView(item: item, userLocation: userLocation, activityMode: activityMode) {
+                TrailDetailView(item: item, userLocation: userLocation, activityMode: activityMode,
+                                onStart: onStart) {
                     withAnimation(.spring(response: 0.3)) { selected = nil }
                 }
             } else {
@@ -225,7 +228,15 @@ struct TrailDetailView: View {
     let item: TrailListItem
     let userLocation: CLLocationCoordinate2D?
     let activityMode: ActivityMode
+    let onStart: (TrailWalkPlan) -> Void
     let onBack: () -> Void
+
+    /// A walk from where the person stands, when they are at the trail.
+    private var startPlan: TrailWalkPlan? {
+        guard let userLocation,
+              let section = TrailWalkPlanner.section(of: item, at: userLocation) else { return nil }
+        return TrailWalkPlanner.plan(for: section, name: item.name, from: userLocation)
+    }
 
     var body: some View {
         ScrollView(showsIndicators: false) {
@@ -264,22 +275,13 @@ struct TrailDetailView: View {
 
                 dogRule
 
-                if item.isGroup { sectionList }
-
-                Button(action: openDirections) {
-                    Label {
-                        Text("Directions to the trail")
-                    } icon: {
-                        Image(wkt: .openInMaps).wktIcon(.row, tint: .white, onFill: true)
-                    }
-                    .font(.headline)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 18)
-                    .background(Color.earthGreenFill)
-                    .foregroundColor(.white)
-                    .cornerRadius(14)
+                if let plan = startPlan {
+                    startButton(plan)
+                } else {
+                    directionsButton
                 }
-                .accessibilityIdentifier("routes.trailDirections")
+
+                if item.isGroup { sectionList }
 
                 TrailCreditLine()
                     .frame(maxWidth: .infinity)
@@ -290,6 +292,50 @@ struct TrailDetailView: View {
             // lands on the first scroll view inside it and would replace this.
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("routes.trailDetail")
+        }
+    }
+
+    private func startButton(_ plan: TrailWalkPlan) -> some View {
+        VStack(spacing: 8) {
+            Button { onStart(plan) } label: {
+                Label("Start \(activityMode.sessionLabel)", systemImage: activityMode.icon)
+                    .font(.headline)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 18)
+                    .background(Color.earthGreenFill)
+                    .foregroundColor(.white)
+                    .cornerRadius(14)
+            }
+            .accessibilityIdentifier("routes.trailStart")
+            Text(TrailText.startCaption(for: plan, grouped: item.isGroup))
+                .font(.caption)
+                .foregroundColor(.earthMuted)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity)
+        }
+    }
+
+    private var directionsButton: some View {
+        VStack(spacing: 8) {
+            Button(action: openDirections) {
+                Label {
+                    Text("Directions to the trail")
+                } icon: {
+                    Image(wkt: .openInMaps).wktIcon(.row, tint: .white, onFill: true)
+                }
+                .font(.headline)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 18)
+                .background(Color.earthGreenFill)
+                .foregroundColor(.white)
+                .cornerRadius(14)
+            }
+            .accessibilityIdentifier("routes.trailDirections")
+            Text("Start \(activityMode.sessionLabel) appears here when you're at the trail.")
+                .font(.caption)
+                .foregroundColor(.earthMuted)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity)
         }
     }
 
@@ -389,6 +435,14 @@ enum TrailText {
 
     static func distance(_ meters: Double) -> String {
         MKDistanceFormatter.abbreviated.string(fromDistance: meters)
+    }
+
+    /// "Starts where you are and goes round the loop · 1.1 mi"
+    static func startCaption(for plan: TrailWalkPlan, grouped: Bool) -> String {
+        let route = plan.isLoop ? "goes round the loop" : "follows the trail to its far end"
+        let scope = grouped ? "On the section you're at: starts where you are and \(route)"
+                            : "Starts where you are and \(route)"
+        return "\(scope) · \(distance(plan.distanceMeters))"
     }
 
     static func walkingTime(_ meters: Double) -> String {

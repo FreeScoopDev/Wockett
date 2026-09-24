@@ -18,6 +18,8 @@ struct PendingGuidedWalk: Codable, Identifiable {
     let petDistances: [String: Double]
     let activePetIds: [UUID]
     let savedAt: Date
+    /// A trail walk's line; absent in anything saved before trail walks.
+    var path: [WaypointCoord]?
 
     func toNavigableRoute() -> NavigableRoute {
         NavigableRoute(
@@ -27,7 +29,8 @@ struct PendingGuidedWalk: Codable, Identifiable {
             isLoop: isLoop,
             totalDistance: totalDistance,
             isCustomRoute: isCustomRoute,
-            activityMode: ActivityMode(rawValue: activityMode) ?? .walking
+            activityMode: ActivityMode(rawValue: activityMode) ?? .walking,
+            path: path?.map(\.clCoordinate)
         )
     }
 }
@@ -71,7 +74,8 @@ final class WalkPersistenceStore {
             elapsedTime: elapsedTime,
             petDistances: petDistances,
             activePetIds: activePetIds,
-            savedAt: Date()
+            savedAt: Date(),
+            path: route.path?.map { WaypointCoord($0) }
         )
         pendingGuidedWalk = pending
         if let data = try? JSONEncoder().encode(pending) {

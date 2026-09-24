@@ -108,7 +108,15 @@ struct RouteFinderContentView: View {
                             userLocation: trailCenter,
                             activityMode: activityMode,
                             containerHeight: geo.size.height,
-                            modePicker: AnyView(modePicker)
+                            modePicker: AnyView(modePicker),
+                            onStart: { plan in
+                                let nav = plan.navigableRoute(activityMode: activityMode)
+                                guard ActiveWalkStore.shared.beginSession(route: nav) != nil else {
+                                    showActiveSessionAlert = true
+                                    return
+                                }
+                                onNavigateAway?()
+                            }
                         )
                         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { trailPanelHeight = $0 }
                         .transition(.move(edge: .bottom).combined(with: .opacity))

@@ -21,6 +21,9 @@ struct ActiveWalkSnapshot: Codable {
         let isCommunityRoute: Bool
         let activityMode: String
         let customRouteId: UUID?
+        /// A trail walk's line. Optional, so snapshots written before trail
+        /// walks existed still decode (as a route without one).
+        let path: [WaypointCoord]?
 
         init(_ route: NavigableRoute) {
             name = route.name
@@ -32,6 +35,7 @@ struct ActiveWalkSnapshot: Codable {
             isCommunityRoute = route.isCommunityRoute
             activityMode = route.activityMode.rawValue
             customRouteId = route.customRouteId
+            path = route.path?.map { WaypointCoord($0) }
         }
 
         var navigableRoute: NavigableRoute {
@@ -44,7 +48,8 @@ struct ActiveWalkSnapshot: Codable {
                 isCustomRoute: isCustomRoute,
                 isCommunityRoute: isCommunityRoute,
                 activityMode: ActivityMode(rawValue: activityMode) ?? .walking,
-                customRouteId: customRouteId
+                customRouteId: customRouteId,
+                path: path?.map(\.clCoordinate)
             )
         }
     }
