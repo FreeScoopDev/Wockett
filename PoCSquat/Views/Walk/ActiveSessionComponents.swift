@@ -122,6 +122,10 @@ struct PauseResumeControl: View {
 struct SessionEndDialog: ViewModifier {
     @Binding var isPresented: Bool
     let activityMode: ActivityMode
+    /// False for a trail walk: a saved route is joined by MKDirections, which
+    /// would put a trail back on the streets, until trails can be saved with
+    /// their own line.
+    var canSaveRoute = true
     let onSaveAndEnd: () -> Void
     let onEnd: () -> Void
     let onDiscard: () -> Void
@@ -129,12 +133,16 @@ struct SessionEndDialog: ViewModifier {
     func body(content: Content) -> some View {
         content
             .alert("End \(activityMode.sessionLabel)?", isPresented: $isPresented) {
-                Button("Save Route & End \(activityMode.sessionLabel)") { onSaveAndEnd() }
+                if canSaveRoute {
+                    Button("Save Route & End \(activityMode.sessionLabel)") { onSaveAndEnd() }
+                }
                 Button("End \(activityMode.sessionLabel)") { onEnd() }
                 Button("Discard \(activityMode.sessionLabel)", role: .destructive) { onDiscard() }
                 Button("Keep \(activityMode.gerund.capitalized)", role: .cancel) {}
             } message: {
-                Text("Save this \(activityMode.noun) to your history? You can also save the route to My Routes so you can \(activityMode.noun) it again.")
+                Text(canSaveRoute
+                     ? "Save this \(activityMode.noun) to your history? You can also save the route to My Routes so you can \(activityMode.noun) it again."
+                     : "Save this \(activityMode.noun) to your history?")
             }
     }
 }
