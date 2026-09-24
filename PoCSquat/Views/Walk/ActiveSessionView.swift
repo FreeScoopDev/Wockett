@@ -176,6 +176,7 @@ struct ActiveSessionView: View {
                 .modifier(SessionEndDialog(
                     isPresented: $showStopAlert,
                     activityMode: route.activityMode,
+                    canSaveRoute: route.path == nil,
                     onSaveAndEnd: {
                         saveCurrentRoute()
                         let pets = finalizePetDistances()
