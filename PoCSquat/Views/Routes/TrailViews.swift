@@ -14,6 +14,7 @@ struct TrailsPanel: View {
     @Bindable var finder: TrailFinder
     @Binding var selected: TrailListItem?
     @Binding var groupSections: Bool
+    @Binding var includeShortPaths: Bool
     let userLocation: CLLocationCoordinate2D?
     let activityMode: ActivityMode
     let containerHeight: CGFloat
@@ -62,6 +63,11 @@ struct TrailsPanel: View {
                             Text("Group sections").tag(true)
                             Text("List sections separately").tag(false)
                         }
+                        Toggle(isOn: $includeShortPaths) {
+                            Text(Locale.current.measurementSystem == .us
+                                 ? "Show short paths (under 0.25 mi)"
+                                 : "Show short paths (under 400 m)")
+                        }
                     } label: {
                         HStack(spacing: 4) {
                             Text(groupSections ? "Grouped" : "Sections")
@@ -70,8 +76,9 @@ struct TrailsPanel: View {
                         .font(.footnote.bold())
                         .foregroundColor(.earthGreen)
                     }
-                    .accessibilityLabel("Trail sections")
-                    .accessibilityValue(groupSections ? "Grouped" : "Listed separately")
+                    .accessibilityLabel("List options")
+                    .accessibilityValue((groupSections ? "Grouped" : "Listed separately")
+                                        + (includeShortPaths ? ", short paths shown" : ""))
                     .accessibilityIdentifier("routes.trailGrouping")
                 }
                 .padding(.horizontal, 20)

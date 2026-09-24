@@ -62,6 +62,15 @@ struct TrailFilters: Hashable {
     /// "Under 2 mi" where distances read in miles, "Under 3 km" elsewhere.
     static func shortThresholdMeters(usesMiles: Bool) -> Double { usesMiles ? 3_218.69 : 3_000 }
 
+    /// Rows shorter than this are hidden unless the person asks for short
+    /// paths. The packs keep every named way, and sorted by distance the top
+    /// of downtown Raleigh's list was cemetery drives (500 ft) and 250 ft
+    /// connectors; 304 of the 530 sections within ten miles are under a
+    /// quarter mile. Joe chose 0.25 mi, with an option to show them
+    /// (2026-09-24). Compared with the row's shown length, so a short piece
+    /// of a long grouped trail still counts toward it.
+    static func minimumLengthMeters(usesMiles: Bool) -> Double { usesMiles ? 402.34 : 400 }
+
     /// The part of the filtering the pack can do in SQL. Length is applied
     /// after grouping (see `shortOnly`).
     func query(cycling: Bool) -> TrailQuery {
@@ -119,6 +128,7 @@ enum TrailListBuilder {
     /// `maxLengthMeters` drops rows whose shown length is longer.
     static func items(from ranked: [(trail: TrailFeature, distance: Double)],
                       grouped: Bool,
+                      minLengthMeters: Double? = nil,
                       maxLengthMeters: Double? = nil) -> [TrailListItem] {
         var items: [TrailListItem]
         if grouped {
@@ -126,6 +136,9 @@ enum TrailListBuilder {
         } else {
             items = ranked.map { TrailListItem(id: "t\($0.trail.id)", name: $0.trail.displayName,
                                                sections: [$0.trail], distanceMeters: $0.distance) }
+        }
+        if let minLengthMeters {
+            items = items.filter { $0.lengthMeters >= minLengthMeters }
         }
         if let maxLengthMeters {
             items = items.filter { $0.lengthMeters <= maxLengthMeters }
@@ -224,7 +237,8 @@ final class TrailFinder {
         self.library = library ?? .shared
     }
 
-    func refresh(near center: CLLocationCoordinate2D?, grouped: Bool, cycling: Bool, usesMiles: Bool) {
+    func refresh(near center: CLLocationCoordinate2D?, grouped: Bool, cycling: Bool, usesMiles: Bool,
+                 includeShortPaths: Bool = false) {
         hasSearched = true
         failure = nil
         guard let center else { items = []; return }
@@ -243,6 +257,7 @@ final class TrailFinder {
         items = TrailListBuilder.items(
             from: Array(ranked.prefix(Self.sectionLimit)),
             grouped: grouped,
+            minLengthMeters: includeShortPaths ? nil : TrailFilters.minimumLengthMeters(usesMiles: usesMiles),
             maxLengthMeters: filters.shortOnly ? TrailFilters.shortThresholdMeters(usesMiles: usesMiles) : nil
         )
     }

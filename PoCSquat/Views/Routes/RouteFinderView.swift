@@ -55,6 +55,7 @@ struct RouteFinderContentView: View {
     @State private var trailFinder = TrailFinder()
     @State private var selectedTrail: TrailListItem?
     @AppStorage("wkt_trails_groupSections_v1") private var groupTrailSections = true
+    @AppStorage("wkt_trails_showShortPaths_v1") private var showShortTrailPaths = false
 
     private let intentKey = "wkt_lastWalkIntent_v1"
 
@@ -95,6 +96,7 @@ struct RouteFinderContentView: View {
                             finder: trailFinder,
                             selected: $selectedTrail,
                             groupSections: $groupTrailSections,
+                            includeShortPaths: $showShortTrailPaths,
                             userLocation: trailCenter,
                             activityMode: activityMode,
                             containerHeight: geo.size.height,
@@ -124,6 +126,7 @@ struct RouteFinderContentView: View {
             selectedTrail = nil
             refreshTrails()
         }
+        .onChange(of: showShortTrailPaths) { _, _ in refreshTrails() }
         .onChange(of: routeManager.lastLocation) { _, _ in
             if mode == .trails { refreshTrails() }
         }
@@ -246,7 +249,8 @@ struct RouteFinderContentView: View {
         trailFinder.refresh(near: trailCenter,
                             grouped: groupTrailSections,
                             cycling: activityMode == .cycling,
-                            usesMiles: Locale.current.measurementSystem == .us)
+                            usesMiles: Locale.current.measurementSystem == .us,
+                            includeShortPaths: showShortTrailPaths)
         if let current = selectedTrail, !trailFinder.items.contains(where: { $0.id == current.id }) {
             selectedTrail = nil
         }

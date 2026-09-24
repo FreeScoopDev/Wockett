@@ -114,6 +114,22 @@ struct TrailListTests {
                 "each 2 km section is")
     }
 
+    @Test("Rows under a quarter mile are hidden, judged on the grouped total")
+    func minimumLength() {
+        let min = TrailFilters.minimumLengthMeters(usesMiles: true)
+        let rows = ranked([
+            section(1, "Morgan Drive", lat: 35.70, length: 150),                  // a cemetery drive
+            section(2, "Rocky Branch Trail", lon: -78.640, length: 300),          // short piece...
+            section(3, "Rocky Branch Trail", lon: -78.638, length: 300)           // ...of a longer trail
+        ])
+        let grouped = TrailListBuilder.items(from: rows, grouped: true, minLengthMeters: min)
+        #expect(grouped.map(\.name) == ["Rocky Branch Trail"], "600 m in total clears 0.25 mi; 150 m does not")
+        #expect(TrailListBuilder.items(from: rows, grouped: false, minLengthMeters: min).isEmpty,
+                "listed separately, each section is judged on its own")
+        #expect(TrailListBuilder.items(from: rows, grouped: true, minLengthMeters: nil).count == 2,
+                "with short paths shown, nothing is dropped")
+    }
+
     // MARK: Row properties
 
     @Test("Surface shows only when every section that states one agrees")
@@ -199,7 +215,7 @@ struct TrailListTests {
     @Test("The finder searches ten miles, nearest first, and leaves out the far trail")
     func finderRadius() throws {
         let finder = TrailFinder(library: try fixtureLibrary())
-        finder.refresh(near: raleigh, grouped: true, cycling: false, usesMiles: true)
+        finder.refresh(near: raleigh, grouped: true, cycling: false, usesMiles: true, includeShortPaths: true)
         let ids = finder.items.flatMap { $0.sections.map(\.id) }
         #expect(!ids.contains(5), "Far Ridge Trail is outside ten miles")
         #expect(ids.contains(1) && ids.contains(2) && ids.contains(3))
@@ -223,6 +239,19 @@ struct TrailListTests {
         finder.filters = TrailFilters()
         finder.refresh(near: raleigh, grouped: true, cycling: true, usesMiles: true)
         #expect(finder.items.flatMap { $0.sections.map(\.id) } == [2], "only Riverside Greenway allows bikes")
+    }
+
+    @Test("Short paths are hidden by default and shown on request")
+    func finderShortPaths() throws {
+        let finder = TrailFinder(library: try fixtureLibrary())
+        finder.refresh(near: raleigh, grouped: true, cycling: false, usesMiles: true)
+        let hidden = finder.items.flatMap { $0.sections.map(\.id) }
+        #expect(!hidden.contains(3) && !hidden.contains(6), "Dog Park Path (220 m) and the 120 m path are under 0.25 mi")
+        #expect(hidden.contains(1) && hidden.contains(2))
+
+        finder.refresh(near: raleigh, grouped: true, cycling: false, usesMiles: true, includeShortPaths: true)
+        let shown = finder.items.flatMap { $0.sections.map(\.id) }
+        #expect(shown.contains(3) && shown.contains(6))
     }
 
     @Test("No location means no rows and no error")
