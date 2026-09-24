@@ -146,6 +146,7 @@ run?"
 | Action | **Archive - iOS** — platform iOS, scheme `PoCSquat`, Distribution Preparation **TestFlight and App Store** (changed by Joe 2026-09-23; was TestFlight (Internal Testing Only)) |
 | Environment | Xcode **26.6 (17F113)**, macOS **Tahoe 26.5.1** — pinned explicitly, not `Latest Release`. macOS moved from 26.6.2 (25G83) on 2026-09-15, see below. |
 | Clean | **On** — no cache restore, slower but reproducible. Correct for a release build. |
+| Post-action | **TestFlight Internal Testing** to the internal tester group. Added by Joe 2026-09-23; before that there was none, so a finished build sat in App Store Connect without reaching the TestFlight app. Step 4 of the ship path (test on a phone) depends on it. |
 | Notifies | Slack `#wockett_release_updates`, all successes and failures. No email recipients. |
 
 Releases are therefore never automatic: nothing archives on a tag or a merge,
@@ -286,9 +287,6 @@ minutes, and re-fire if it doesn't:
 
 ### Still unrecorded
 
-- Whether `Release Flow` has a **TestFlight Internal Testing** post-action.
-  Without one, a finished build is in App Store Connect but is not pushed to
-  the internal testers' TestFlight app. Step 4 of the ship path assumes it is.
 - The single test **destination** for `CI Tests` (simulator model / OS) is shown
   only as "1 destination" on the workflow page. Worth writing down here, since
   it determines what device CI actually tests on.
