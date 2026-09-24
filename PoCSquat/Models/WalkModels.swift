@@ -591,6 +591,10 @@ struct NavigableRoute: Identifiable, Hashable {
     var isCommunityRoute: Bool = false
     var activityMode: ActivityMode = .walking
     var customRouteId: UUID? = nil
+    /// The exact line to follow, when the route has one (a trail). Without it
+    /// the session asks MKDirections for each leg between waypoints, which
+    /// follows streets; with it, the waypoints are only checkpoints.
+    var path: [CLLocationCoordinate2D]?
 
     static func == (l: NavigableRoute, r: NavigableRoute) -> Bool { l.id == r.id }
     func hash(into hasher: inout Hasher) { hasher.combine(id) }

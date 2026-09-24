@@ -129,7 +129,10 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
     private(set) var startTime = Date()
     private var timer: Timer?
     private var lastLocation: CLLocation?
-    private let arrivalRadius = 30.0
+    /// A trail walk gets more room: its checkpoints come from trail data that
+    /// can sit tens of metres from where the path runs on the ground
+    /// (2026-09-24), and a missed checkpoint stalls the session.
+    private var arrivalRadius: Double { route.path == nil ? 30 : 60 }
     private var triggeredCheckpoints: Set<Int> = []
     private let checkpointFractions = [0.2, 0.4, 0.6, 0.8]
     private var workoutWriter: HealthWorkoutWriter?
@@ -454,6 +457,10 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
             date: startTime,
             elapsedTime: elapsedTime,
             totalDistance: totalDistanceCovered,
+            // A trail walk records its checkpoints, like every guided walk,
+            // not its full line: the summary's "Save as Custom Route" saves
+            // these points for MKDirections to join, and a trail's dozens of
+            // vertices would come back routed on streets, one request each.
             waypoints: route.waypoints.isEmpty
                 ? trackPoints.map { WaypointCoord($0) }
                 : route.waypoints.map { WaypointCoord($0) },
@@ -608,7 +615,7 @@ final class MilestoneAnnotation: NSObject, MKAnnotation {
 
 struct NavigationMapView: UIViewRepresentable {
     let route: NavigableRoute
-    let computedLegs: [MKRoute]
+    let computedLegs: [RouteLeg]
     let currentWaypointIndex: Int
     let checkpointsEnabled: Bool
     var distanceCoveredMeters: Double = 0
@@ -686,7 +693,7 @@ struct NavigationMapView: UIViewRepresentable {
         }
     }
 
-    static func addCheckpointMarkers(on map: MKMapView, legs: [MKRoute]) {
+    static func addCheckpointMarkers(on map: MKMapView, legs: [RouteLeg]) {
         var allCoords: [CLLocationCoordinate2D] = []
         for leg in legs {
             let pts = leg.polyline.points()
@@ -762,5 +769,24 @@ struct NavigationMapView: UIViewRepresentable {
             view.canShowCallout = false
             return view
         }
+    }
+}
+
+// MARK: - Route leg
+
+/// One drawn stretch of a guided route: a leg MKDirections computed, or a
+/// trail's own line. The navigation map needs only these two things from either.
+struct RouteLeg {
+    let polyline: MKPolyline
+    let distance: CLLocationDistance
+
+    init(_ route: MKRoute) {
+        polyline = route.polyline
+        distance = route.distance
+    }
+
+    init(path: [CLLocationCoordinate2D]) {
+        polyline = MKPolyline(coordinates: path, count: path.count)
+        distance = TrailWalkPlanner.length(path)
     }
 }

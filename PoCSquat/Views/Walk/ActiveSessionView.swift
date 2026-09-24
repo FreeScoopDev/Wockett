@@ -46,7 +46,7 @@ struct ActiveSessionView: View {
     @State private var walkWeather: RouteWeather? = nil
     @State private var petCompletions: [PetCompletion] = []
     @State private var completedPetNames: [String] = []
-    @State private var computedLegs: [MKRoute] = []
+    @State private var computedLegs: [RouteLeg] = []
     @State private var petActiveSinceDistance: [UUID: Double] = [:]
     @State private var petAccumulatedDistances: [UUID: Double] = [:]
     @State private var allSessionPetIds: Set<UUID> = []
@@ -942,10 +942,13 @@ struct ActiveSessionView: View {
 
     // MARK: - Route Computation
 
-    private func computeWalkingLegs() async -> [MKRoute] {
+    private func computeWalkingLegs() async -> [RouteLeg] {
+        // A trail walk follows its own line; MKDirections would route it on
+        // the streets beside the trail.
+        if let path = route.path, path.count >= 2 { return [RouteLeg(path: path)] }
         let wps = route.waypoints
         guard wps.count >= 2 else { return [] }
-        var legs: [MKRoute] = []
+        var legs: [RouteLeg] = []
         let legCount = route.isLoop ? wps.count : wps.count - 1
         for i in 0..<legCount {
             let from = wps[i], to = wps[(i + 1) % wps.count]
@@ -954,7 +957,7 @@ struct ActiveSessionView: View {
             req.destination   = MKMapItem(location: CLLocation(latitude: to.latitude, longitude: to.longitude), address: nil)
             req.transportType = route.activityMode.transportType
             if let r = try? await MKDirections(request: req).calculate().routes.first {
-                legs.append(r)
+                legs.append(RouteLeg(r))
             }
         }
         return legs
