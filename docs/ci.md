@@ -138,18 +138,33 @@ action, CI coverage changes with no visible edit to this workflow or to CI
 config. Check the scheme, not this page, when asking "what does CI actually
 run?"
 
-### `Release Flow` — manual TestFlight archive
+### `Release Flow` — the only release path
 
 | | |
 | --- | --- |
 | Start condition | **Manual Start** only, restricted to **`main`**; Pull Request and Tag both **Not Enabled** |
-| Action | **Archive - iOS** — platform iOS, scheme `PoCSquat`, Distribution Preparation **TestFlight (Internal Testing Only)** |
+| Action | **Archive - iOS** — platform iOS, scheme `PoCSquat`, Distribution Preparation **TestFlight and App Store** (changed by Joe 2026-09-23; was TestFlight (Internal Testing Only)) |
 | Environment | Xcode **26.6 (17F113)**, macOS **Tahoe 26.5.1** — pinned explicitly, not `Latest Release`. macOS moved from 26.6.2 (25G83) on 2026-09-15, see below. |
 | Clean | **On** — no cache restore, slower but reproducible. Correct for a release build. |
 | Notifies | Slack `#wockett_release_updates`, all successes and failures. No email recipients. |
 
 Releases are therefore never automatic: nothing archives on a tag or a merge,
-only when someone presses Start. Combined with Xcode Cloud's build-number
+only when someone presses Start. Since 2026-09-23 this is the **only** release
+path; the steps are in `CLAUDE.md` → Process → "Shipping a version".
+
+**Until 2026-09-23 Release Flow could not produce an App Store build.**
+Distribution Preparation "TestFlight (Internal Testing Only)" marks the build
+as internal-only, and Apple never accepts such a build for App Store review or
+external testing. So 1.11 (builds 77 and 82) never reached the public store,
+which went from 1.10 to 1.12. It is also why 1.12 was a manual Xcode archive.
+That archive built Joe's working tree, and a fast-forward 14 s into it left #53
+out of build 84. A manual archive is now emergency-only (Xcode Cloud itself
+down).
+
+Joe named the setting "TestFlight and App Store" on 2026-09-23. A parallel
+session reported the same change as "App Store Connect". Whatever the label,
+the check that matters: a Release Flow build must appear under **Add Build** on
+an App Store version page. Combined with Xcode Cloud's build-number
 auto-increment, this is the most likely explanation for 1.10 shipping as build
 24 while `Versions.xcconfig` read 23 — a manual Release Flow run took the next
 number from App Store Connect and the file was never reconciled.
@@ -167,8 +182,10 @@ came out as **82**. Nothing was wrong.
 Consequences:
 
 - "The next build will be N" is never a safe statement. Read the number off
-  the finished archive in App Store Connect, then write it into the Notion
-  Releases row and `Versions.xcconfig`.
+  the finished archive (Slack `#wockett_release_updates` or App Store Connect)
+  and give it to Claude, which writes it into the Notion Releases row.
+  `Versions.xcconfig` is **not** updated: Release Flow ignores its build
+  number, and only an emergency manual archive reads it.
 - Gaps in the TestFlight build list are normal and carry no information.
 - The three failure signatures are still recognisable regardless of number:
   parent status fails in seconds with no child check-run → environment pin
@@ -189,7 +206,8 @@ opened minutes either side get their `pending` status within seconds. The
 workflow's start condition is *Pull Request Changes*, so no event means no
 build.
 
-**Not this: a PR whose base is not `main`.** The start condition's target is
+**Not this: a PR whose base is not `main`.** (Stacked PRs are no longer
+made, as of 2026-09-23, for exactly this reason.) The start condition's target is
 `main`, so a stacked PR (base = another feature branch) gets no Xcode Cloud
 status *by design*, and looks identical. #53 and #54 on 2026-09-23 were
 stacked on `chore/cut-1.12` and stayed silent for over half an hour; each got
@@ -268,6 +286,9 @@ minutes, and re-fire if it doesn't:
 
 ### Still unrecorded
 
+- Whether `Release Flow` has a **TestFlight Internal Testing** post-action.
+  Without one, a finished build is in App Store Connect but is not pushed to
+  the internal testers' TestFlight app. Step 4 of the ship path assumes it is.
 - The single test **destination** for `CI Tests` (simulator model / OS) is shown
   only as "1 destination" on the workflow page. Worth writing down here, since
   it determines what device CI actually tests on.
