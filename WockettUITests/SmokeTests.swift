@@ -114,7 +114,20 @@ final class SmokeTests: XCTestCase {
         )
         wait(for: [timerTicked], timeout: 5)
 
-        app.buttons["session.finish"].tap()
+        // Finish is protected (2026-09-24): a plain tap must not end the
+        // session, a one-second hold opens a confirmation, and only
+        // "Finish and save" ends it.
+        let finish = el("session.finish")
+        XCTAssertTrue(finish.waitForExistence(timeout: 5))
+        finish.tap()
+        XCTAssertFalse(el("session.confirmFinish").waitForExistence(timeout: 2),
+                       "A plain tap on Finish must not ask to end the session")
+        XCTAssertTrue(el("session.root").exists, "A plain tap on Finish must not end the session")
+
+        finish.press(forDuration: 1.4)
+        let confirm = app.buttons["session.confirmFinish"]
+        XCTAssertTrue(confirm.waitForExistence(timeout: 5), "Holding Finish must open the confirmation")
+        confirm.tap()
         XCTAssertTrue(el("summary.root").waitForExistence(timeout: 10),
                       "Summary screen must appear after finishing")
 
@@ -152,7 +165,10 @@ final class SmokeTests: XCTestCase {
         XCTAssertTrue(el("session.root").waitForExistence(timeout: 20),
                       "Tapping the mini tile must reopen the session")
 
-        app.buttons["session.finish"].tap()
+        el("session.finish").press(forDuration: 1.4)
+        let confirm = app.buttons["session.confirmFinish"]
+        XCTAssertTrue(confirm.waitForExistence(timeout: 5))
+        confirm.tap()
         XCTAssertTrue(el("summary.root").waitForExistence(timeout: 10))
         app.buttons["summary.done"].tap()
 

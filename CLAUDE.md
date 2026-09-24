@@ -111,7 +111,8 @@ way unless there's a strong reason; adding the first one is a real decision.
 - **Accessibility identifiers** on marker views need
   `.accessibilityElement(children: .contain)` or they never reach the
   accessibility tree. UI tests depend on: `home.statCard`, `home.tile.walk`,
-  `session.root`, `session.minimize`, `session.finish`, `summary.root`,
+  `session.root`, `session.minimize`, `session.finish` (hold 1 s, then
+  `session.confirmFinish`), `summary.root`,
   `summary.done`, `accessory.miniTile`, `health.root`, `community.root`,
   `settings.root`, `routes.findRoutes`, `routes.resultsPanel`,
   `routes.routeCard`, `routes.startWalk`, `routes.weatherTile`.

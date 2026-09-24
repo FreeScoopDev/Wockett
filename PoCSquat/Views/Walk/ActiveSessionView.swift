@@ -38,7 +38,6 @@ struct ActiveSessionView: View {
     @State private var summarySession: WalkSession?
     @State private var summaryPRs: [PRType]   = []
     @State private var summarySplits: [(label: String, elapsed: TimeInterval)] = []
-    @State private var showStopAlert          = false
     @State private var waterBreakEnabled      = false
     @State private var checkpointsEnabled     = false
     @State private var scheduledBreakCount    = 0
@@ -60,6 +59,17 @@ struct ActiveSessionView: View {
     @State private var ownerUpdateRecipient: String? = nil
     @State private var ownerUpdateBody        = ""
     @State private var ownerUpdatePickerPets: [PetProfile] = []
+    // Panel, finish and map orientation — redesign of 2026-09-24 (option B
+    // of the "Active Walk Screen" canvas).
+    @State private var panelExpanded          = false
+    @State private var showFinishConfirm      = false
+    @State private var pendingFinish: FinishChoice?
+    @State private var headingUp              = false
+    @State private var recenterToken          = 0
+    @State private var headingTracker         = HeadingTracker()
+    @State private var freeMapHeading: Double = 0
+
+    private enum FinishChoice { case save, saveWithRoute, discard }
 
     // MARK: - Body
 
@@ -173,64 +183,6 @@ struct ActiveSessionView: View {
                         if session.autoPausedForInactivity { session.resume() }
                     }
                 ))
-                .modifier(SessionEndDialog(
-                    isPresented: $showStopAlert,
-                    activityMode: route.activityMode,
-                    canSaveRoute: route.path == nil,
-                    onSaveAndEnd: {
-                        saveCurrentRoute()
-                        let pets = finalizePetDistances()
-                        let prev = historyStore.sessions
-                        let saved = walkStore.buildAndSaveSession(
-                            petDistances: pets.distances,
-                            activePetIds: pets.activePetIds,
-                            isCommunityRoute: route.isCommunityRoute
-                        )
-                        let cap = session
-                        let dist = cap.totalDistanceCovered
-                        let elapsed = Int(cap.elapsedTime)
-                        let paused = cap.totalPausedDuration
-                        Task {
-                            await WalkLiveActivityManager.shared.end(distanceCovered: dist, elapsedSeconds: elapsed, pausedDuration: paused)
-                            await cap.finishWorkoutSession()
-                        }
-                        let prs = saved.map { checkNewPRs(newSession: $0, against: prev) } ?? []
-                        finishAndShowSummary(saved: saved, prList: prs)
-                    },
-                    onEnd: {
-                        let pets = finalizePetDistances()
-                        let prev = historyStore.sessions
-                        let saved = walkStore.buildAndSaveSession(
-                            petDistances: pets.distances,
-                            activePetIds: pets.activePetIds,
-                            isCommunityRoute: route.isCommunityRoute
-                        )
-                        let cap = session
-                        let dist = cap.totalDistanceCovered
-                        let elapsed = Int(cap.elapsedTime)
-                        let paused = cap.totalPausedDuration
-                        Task {
-                            await WalkLiveActivityManager.shared.end(distanceCovered: dist, elapsedSeconds: elapsed, pausedDuration: paused)
-                            await cap.finishWorkoutSession()
-                        }
-                        let prs = saved.map { checkNewPRs(newSession: $0, against: prev) } ?? []
-                        finishAndShowSummary(saved: saved, prList: prs)
-                    },
-                    onDiscard: {
-                        let cap = session
-                        let dist = cap.totalDistanceCovered
-                        let elapsed = Int(cap.elapsedTime)
-                        let paused = cap.totalPausedDuration
-                        cap.discardWorkoutSession()
-                        cap.stop()
-                        cancelWaterBreakReminders()
-                        endSessionOnDismiss = true
-                        Task {
-                            await WalkLiveActivityManager.shared.end(distanceCovered: dist, elapsedSeconds: elapsed, pausedDuration: paused)
-                        }
-                        dismiss()
-                    }
-                ))
         } else {
             // Session was cleared externally (Live Activity End) — or this is a new free session
             // that hasn't started yet.
@@ -284,16 +236,41 @@ struct ActiveSessionView: View {
             hudPanel
         }
         .overlay(alignment: .topLeading) {
-            Button { dismiss() } label: {
-                Image(wkt: .chevronDown)
-                    .wktIcon(.row, tint: .earthCream)
-                    .padding(10)
-                    .background(.ultraThinMaterial)
-                    .clipShape(Circle())
+            VStack(alignment: .leading, spacing: 10) {
+                Button { dismiss() } label: {
+                    Image(wkt: .chevronDown)
+                        .wktIcon(.row, tint: .earthCream)
+                        .padding(10)
+                        .background(.ultraThinMaterial)
+                        .clipShape(Circle())
+                }
+                .accessibilityLabel("Minimize session")
+                .accessibilityIdentifier("session.minimize")
+                MapOrientationControls(headingUp: $headingUp) { recenterToken += 1 }
             }
-            .accessibilityLabel("Minimize session")
-            .accessibilityIdentifier("session.minimize")
             .padding(.top, 60).padding(.leading, 16)
+        }
+        .onAppear { headingTracker.start() }
+        .onDisappear { headingTracker.stop() }
+        .onChange(of: headingUp) { _, up in
+            position = .userLocation(followsHeading: up, fallback: .automatic)
+        }
+        .onChange(of: recenterToken) { _, _ in
+            position = .userLocation(followsHeading: headingUp, fallback: .automatic)
+        }
+        .sheet(isPresented: $showFinishConfirm, onDismiss: runPendingFinish) {
+            FinishConfirmationView(
+                activityMode: route.activityMode,
+                summary: finishSummary,
+                onKeepGoing: { showFinishConfirm = false },
+                onFinish: { pendingFinish = .save; showFinishConfirm = false },
+                // A trail walk can't be saved as a route yet: MKDirections
+                // would join its checkpoints on the streets (#63).
+                onFinishAndSaveRoute: isGuided && route.path == nil
+                    ? { pendingFinish = .saveWithRoute; showFinishConfirm = false }
+                    : nil,
+                onDiscard: { pendingFinish = .discard; showFinishConfirm = false }
+            )
         }
         .overlay(alignment: .topTrailing) {
             if !isGuided {
@@ -344,7 +321,10 @@ struct ActiveSessionView: View {
                 computedLegs: computedLegs,
                 currentWaypointIndex: session.currentWaypointIndex,
                 checkpointsEnabled: checkpointsEnabled,
-                distanceCoveredMeters: session.totalDistanceCovered
+                distanceCoveredMeters: session.totalDistanceCovered,
+                headingDegrees: headingTracker.direction(track: session.trackPoints),
+                headingUp: headingUp,
+                recenterToken: recenterToken
             )
             .ignoresSafeArea()
         } else {
@@ -354,7 +334,10 @@ struct ActiveSessionView: View {
                     MapPolyline(coordinates: session.trackPoints)
                         .stroke(route.activityMode.tileColor, lineWidth: 5)
                 }
-                UserAnnotation()
+                UserAnnotation {
+                    UserHeadingDot(angle: headingTracker.direction(track: session.trackPoints)
+                        .map { $0 - freeMapHeading })
+                }
                 ForEach(poiManager.pois) { poi in
                     Annotation("", coordinate: poi.coordinate, anchor: .bottom) {
                         Button {
@@ -381,6 +364,10 @@ struct ActiveSessionView: View {
                 }
             }
             .mapStyle(.standard)
+            .mapControls { MapCompass() }
+            .onMapCameraChange(frequency: .continuous) { context in
+                freeMapHeading = context.camera.heading
+            }
             .ignoresSafeArea()
         }
     }
@@ -486,131 +473,7 @@ struct ActiveSessionView: View {
                     .transition(.opacity)
             }
 
-            HStack {
-                VStack(alignment: .leading, spacing: 3) {
-                    HStack(spacing: 6) {
-                        Image(wkt: route.activityMode.wktSymbol)
-                            .wktIcon(.inline, tint: .earthGreen)
-                        Text(isGuided ? route.name : route.activityMode.sessionLabel)
-                            .font(.wktHeading(15)).foregroundColor(.earthCream).lineLimit(1)
-                    }
-                    if isGuided {
-                        Text(session.progressText)
-                            .font(.wktBody(12)).foregroundColor(.earthGreen)
-                    }
-                }
-                Spacer()
-                if !petStore.pets.isEmpty {
-                    HStack(spacing: 2) {
-                        ForEach(petStore.pets) { pet in
-                            Button {
-                                let willActivate = !pet.isActiveOnWalk
-                                let walked = session.totalDistanceCovered
-                                petStore.setActive(pet.id, active: willActivate)
-                                if willActivate {
-                                    petActiveSinceDistance[pet.id] = walked
-                                    allSessionPetIds.insert(pet.id)
-                                } else {
-                                    if let since = petActiveSinceDistance[pet.id] {
-                                        petAccumulatedDistances[pet.id, default: 0] += max(0, walked - since)
-                                    }
-                                    petActiveSinceDistance.removeValue(forKey: pet.id)
-                                }
-                            } label: {
-                                Text(pet.displayEmoji)
-                                    .font(.title2)
-                                    .opacity(pet.isActiveOnWalk ? 1.0 : 0.3)
-                                    .scaleEffect(pet.isActiveOnWalk ? 1.0 : 0.85)
-                                    .animation(.spring(duration: 0.2), value: pet.isActiveOnWalk)
-                            }
-                            .accessibilityLabel(pet.isActiveOnWalk
-                                ? "Remove \(pet.name) from \(route.activityMode.noun)"
-                                : "Add \(pet.name) to \(route.activityMode.noun)")
-                        }
-                    }
-                    .padding(.trailing, 6)
-                }
-                if !isGuided {
-                    let activePetsWithOwner = petStore.activePets.filter { $0.ownerPhone != nil }
-                    if !activePetsWithOwner.isEmpty && MFMessageComposeViewController.canSendText() {
-                        Button {
-                            if activePetsWithOwner.count == 1 {
-                                composeOwnerUpdate(for: activePetsWithOwner[0])
-                            } else {
-                                ownerUpdatePickerPets = activePetsWithOwner
-                            }
-                        } label: {
-                            Image(wkt: .chat)
-                                .wktIcon(.row, tint: .earthGreen)
-                        }
-                        .padding(.trailing, 10)
-                        .accessibilityLabel("Send owner update")
-                    }
-                }
-                Button {
-                    WalkAudioCueService.shared.isEnabled.toggle()
-                } label: {
-                    Image(wkt: WalkAudioCueService.shared.isEnabled ? .speakerOn : .speakerOff)
-                        .wktIcon(.row, tint: WalkAudioCueService.shared.isEnabled ? .earthGreen : .earthMuted,
-                                 filled: WalkAudioCueService.shared.isEnabled)
-                }
-                .accessibilityLabel(WalkAudioCueService.shared.isEnabled ? "Mute audio cues" : "Enable audio cues")
-                .padding(.trailing, 10)
-                Button {
-                    waterBreakEnabled.toggle()
-                    if !waterBreakEnabled { cancelWaterBreakReminders() }
-                } label: {
-                    VStack(spacing: 1) {
-                        Image(wkt: .hydration)
-                            .wktIcon(.row, tint: waterBreakEnabled ? .accentInfo : .earthMuted,
-                                     filled: waterBreakEnabled)
-                        if waterBreakEnabled {
-                            Text("/ \(waterBreakIntervalMinutes)m")
-                                .wktTechnical(8)
-                                .foregroundColor(Color.accentInfo)
-                        }
-                    }
-                    .animation(.spring(duration: 0.2), value: waterBreakEnabled)
-                }
-                .accessibilityLabel("Toggle water break reminders")
-                .padding(.trailing, 10)
-                if isGuided {
-                    Button { checkpointsEnabled.toggle() } label: {
-                        VStack(spacing: 1) {
-                            Image(wkt: .finish)
-                                .wktIcon(.row, tint: checkpointsEnabled ? checkpointAccent : .earthMuted,
-                                         filled: checkpointsEnabled)
-                            if checkpointsEnabled {
-                                Text(route.isCustomRoute ? "WP" : "20%")
-                                    .wktTechnical(8)
-                                    .foregroundColor(checkpointAccent)
-                            }
-                        }
-                        .animation(.spring(duration: 0.2), value: checkpointsEnabled)
-                    }
-                    .accessibilityLabel("Toggle checkpoint markers")
-                    .padding(.trailing, 10)
-                }
-                Button {
-                    if session.isPaused { session.resume() } else { session.pause() }
-                } label: {
-                    Image(wkt: session.isPaused ? .playCircle : .pauseCircle)
-                        .wktIcon(.row, tint: session.isPaused ? .earthGreen : .earthMuted,
-                                 filled: session.isPaused)
-                }
-                .accessibilityLabel(session.isPaused
-                    ? "Resume \(route.activityMode.noun)"
-                    : "Pause \(route.activityMode.noun)")
-                .padding(.trailing, 10)
-                Button {
-                    if isGuided { showStopAlert = true } else { endFreeSession() }
-                } label: {
-                    Image(wkt: .stopCircle)
-                        .wktIcon(.row, tint: .red.opacity(0.85), filled: true)
-                }
-                .accessibilityLabel("End \(route.activityMode.noun)")
-            }
-            .padding(.horizontal, 20).padding(.top, 20)
+            panelHeader
 
             if session.isPaused {
                 PauseResumeControl(
@@ -619,14 +482,16 @@ struct ActiveSessionView: View {
                 )
             }
 
-            Rectangle()
-                .frame(height: 0.5)
-                .foregroundColor(Color.earthMuted.opacity(0.25))
-                .padding(.top, session.isPaused ? 0 : 14)
-
-            SessionStatsBar(session: session,
-                            activityIcon: route.activityMode.wktSymbol,
-                            showsRemaining: isGuided)
+            if panelExpanded {
+                ScrollView(showsIndicators: false) {
+                    expandedDetails
+                }
+                .frame(maxHeight: 430)
+                .transition(.opacity)
+            } else {
+                glanceStats
+                    .transition(.opacity)
+            }
 
             if !isGuided {
                 if let poi = poiManager.selectedPOI {
@@ -671,32 +536,305 @@ struct ActiveSessionView: View {
                     .padding(14)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
-
-                Button { endFreeSession() } label: {
-                    Label {
-                        Text("Finish \(route.activityMode.sessionLabel)")
-                    } icon: {
-                        Image(wkt: .success)
-                            .wktIcon(.row, tint: .white, filled: true, onFill: true)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 18)
-                    .background(route.activityMode.tileFillColor)
-                    .foregroundColor(.white)
-                    .font(.headline)
-                    .cornerRadius(14)
-                    .padding(.horizontal, 24)
-                }
-                .padding(.top, 12).padding(.bottom, 48)
-                .accessibilityIdentifier("session.finish")
             }
+
+            actionRow
         }
         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: showDrivingBanner)
         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: showHeatBanner)
         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: session.isPaused)
         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: session.estimatedSteps > 0)
         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: poiManager.selectedPOI?.id)
-        .background(.ultraThinMaterial)
+        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: panelExpanded)
+        .background(.ultraThinMaterial, ignoresSafeAreaEdges: .bottom)
+    }
+
+    // MARK: - Panel parts
+
+    private var panelHeader: some View {
+        VStack(spacing: 8) {
+            Capsule()
+                .fill(Color.secondary.opacity(0.35))
+                .frame(width: 36, height: 5)
+            HStack(spacing: 8) {
+                Image(wkt: route.activityMode.wktSymbol)
+                    .wktIcon(.inline, tint: .earthGreen)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(isGuided ? route.name : route.activityMode.sessionLabel)
+                        .font(.wktHeading(15)).foregroundColor(.earthCream).lineLimit(1)
+                    if isGuided {
+                        Text(session.progressText)
+                            .font(.wktBody(12)).foregroundColor(.earthGreen)
+                    }
+                }
+                Spacer()
+                Button {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { panelExpanded.toggle() }
+                } label: {
+                    HStack(spacing: 4) {
+                        Text(panelExpanded ? "Less" : "More")
+                        Image(wkt: panelExpanded ? .chevronDown : .chevronUp)
+                            .wktIcon(.inline, tint: .earthGreen)
+                    }
+                    .font(.subheadline.bold())
+                    .foregroundColor(.earthGreen)
+                    .frame(minHeight: 44)
+                }
+                .accessibilityLabel(panelExpanded ? "Show fewer details" : "Show all stats and controls")
+                .accessibilityIdentifier("session.more")
+            }
+        }
+        .padding(.horizontal, 18)
+        .padding(.top, 8)
+        .contentShape(Rectangle())
+        .gesture(DragGesture(minimumDistance: 12).onEnded { value in
+            let expand = value.translation.height < -30
+            let collapse = value.translation.height > 30
+            guard expand != panelExpanded, expand || collapse else { return }
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { panelExpanded = expand }
+        })
+    }
+
+    /// The default view: three numbers that matter mid-walk, so the map keeps the screen.
+    private var glanceStats: some View {
+        VStack(spacing: 10) {
+            HStack(spacing: 8) {
+                SessionStatTile(value: session.distanceText(session.totalDistanceCovered),
+                                label: "distance", prominent: true)
+                SessionStatTile(value: session.elapsedText, label: "time", prominent: true)
+                    .accessibilityIdentifier("session.elapsed")
+                SessionStatTile(value: session.paceText, label: session.paceLabel, prominent: true)
+            }
+            if isGuided { routeProgress }
+        }
+        .padding(.horizontal, 18)
+        .padding(.top, 10)
+    }
+
+    /// Pulled up: every stat the session tracks, and each control with what it does.
+    private var expandedDetails: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            if isGuided { routeProgress }
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3), spacing: 8) {
+                SessionStatTile(value: session.distanceText(session.totalDistanceCovered), label: "distance")
+                if isGuided {
+                    SessionStatTile(value: session.distanceText(session.remainingDistance), label: "remaining")
+                }
+                SessionStatTile(value: session.elapsedText, label: "time")
+                    .accessibilityIdentifier("session.elapsed")
+                SessionStatTile(value: session.paceText, label: session.paceLabel)
+                if session.estimatedSteps > 0 {
+                    SessionStatTile(value: session.estimatedSteps.formatted(), label: "steps")
+                }
+                if let cadence = session.cadence, cadence > 0 {
+                    SessionStatTile(value: "\(Int(cadence))", label: "steps / min")
+                }
+                if isGuided {
+                    SessionStatTile(value: session.distanceText(session.distanceToNextWaypoint), label: "to next")
+                }
+                if isGuided, let eta = session.estimatedSecondsRemaining {
+                    SessionStatTile(value: durationText(eta), label: "est. left")
+                }
+                SessionStatTile(value: "\(session.stopCount)", label: "stops")
+            }
+
+            VStack(spacing: 2) {
+                SessionToggleRow(icon: .speakerOn, tint: .earthGreen, title: "Voice cues",
+                                 detail: "Announces each \(Locale.current.measurementSystem == .us ? "mile" : "kilometer") and your pace",
+                                 isOn: Binding(get: { WalkAudioCueService.shared.isEnabled },
+                                               set: { WalkAudioCueService.shared.isEnabled = $0 }))
+                SessionToggleRow(icon: .hydration, tint: .accentInfo, title: "Water breaks",
+                                 detail: "A reminder to drink every \(waterBreakIntervalMinutes) min",
+                                 isOn: Binding(get: { waterBreakEnabled },
+                                               set: { on in
+                                                   waterBreakEnabled = on
+                                                   if !on { cancelWaterBreakReminders() }
+                                               }))
+                if isGuided {
+                    SessionToggleRow(icon: .finish, tint: checkpointAccent, title: "Checkpoint markers",
+                                     detail: route.isCustomRoute ? "Marks each waypoint on the map"
+                                                                 : "Marks every 20% of the route on the map",
+                                     isOn: $checkpointsEnabled)
+                }
+            }
+
+            if !petStore.pets.isEmpty { crewSection }
+
+            if !isGuided {
+                let activePetsWithOwner = petStore.activePets.filter { $0.ownerPhone != nil }
+                if !activePetsWithOwner.isEmpty && MFMessageComposeViewController.canSendText() {
+                    Button {
+                        if activePetsWithOwner.count == 1 {
+                            composeOwnerUpdate(for: activePetsWithOwner[0])
+                        } else {
+                            ownerUpdatePickerPets = activePetsWithOwner
+                        }
+                    } label: {
+                        Label {
+                            Text("Send the owner an update")
+                        } icon: {
+                            Image(wkt: .chat).wktIcon(.row, tint: .earthGreen)
+                        }
+                        .font(.subheadline.bold())
+                        .foregroundColor(.earthGreen)
+                        .frame(minHeight: 44)
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, 18)
+        .padding(.top, 10)
+        .padding(.bottom, 4)
+    }
+
+    private var routeProgress: some View {
+        let total = route.totalDistance * Double(max(1, route.lapCount))
+        let covered = max(0, total - session.remainingDistance)
+        return SessionProgressBar(covered: covered, total: total,
+                                  coveredText: "\(session.distanceText(covered)) done",
+                                  totalText: session.distanceText(total))
+    }
+
+    private var crewSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Crew on this \(route.activityMode.noun)")
+                .font(.subheadline.bold())
+                .foregroundColor(.earthCream)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(petStore.pets) { pet in
+                        Button { togglePet(pet) } label: {
+                            HStack(spacing: 6) {
+                                Text(pet.displayEmoji)
+                                Text(pet.name).font(.subheadline.bold())
+                            }
+                            .foregroundColor(pet.isActiveOnWalk ? .earthCream : .earthMuted)
+                            .padding(.horizontal, 12)
+                            .frame(height: 40)
+                            .background(pet.isActiveOnWalk ? Color.earthGreen.opacity(0.15) : Color.earthCard)
+                            .overlay(Capsule().stroke(pet.isActiveOnWalk ? Color.earthGreen : Color.clear, lineWidth: 1.5))
+                            .clipShape(Capsule())
+                        }
+                        .accessibilityLabel(pet.isActiveOnWalk
+                            ? "Remove \(pet.name) from \(route.activityMode.noun)"
+                            : "Add \(pet.name) to \(route.activityMode.noun)")
+                        .accessibilityAddTraits(pet.isActiveOnWalk ? .isSelected : [])
+                    }
+                }
+            }
+        }
+    }
+
+    /// Pause is the big, easy target; Finish needs a hold, then a confirmation.
+    private var actionRow: some View {
+        HStack(spacing: 10) {
+            Button {
+                if session.isPaused { session.resume() } else { session.pause() }
+            } label: {
+                Label {
+                    Text(session.isPaused ? "Resume" : "Pause")
+                } icon: {
+                    Image(wkt: session.isPaused ? .play : .pause)
+                        .wktIcon(.row, tint: .white, filled: true, onFill: true)
+                }
+                .font(.headline)
+                .frame(maxWidth: .infinity)
+                .frame(height: 56)
+                .background(Color.earthGreenFill)
+                .foregroundColor(.white)
+                .cornerRadius(14)
+            }
+            .accessibilityLabel(session.isPaused
+                ? "Resume \(route.activityMode.noun)"
+                : "Pause \(route.activityMode.noun)")
+            .accessibilityIdentifier("session.pause")
+
+            HoldToFinishButton(activityMode: route.activityMode) { showFinishConfirm = true }
+                .frame(width: 140)
+                .accessibilityIdentifier("session.finish")
+        }
+        .padding(.horizontal, 18)
+        .padding(.top, 12)
+        .padding(.bottom, 12)
+    }
+
+    private func togglePet(_ pet: PetProfile) {
+        let willActivate = !pet.isActiveOnWalk
+        let walked = session.totalDistanceCovered
+        petStore.setActive(pet.id, active: willActivate)
+        if willActivate {
+            petActiveSinceDistance[pet.id] = walked
+            allSessionPetIds.insert(pet.id)
+        } else {
+            if let since = petActiveSinceDistance[pet.id] {
+                petAccumulatedDistances[pet.id, default: 0] += max(0, walked - since)
+            }
+            petActiveSinceDistance.removeValue(forKey: pet.id)
+        }
+    }
+
+    private func durationText(_ t: TimeInterval) -> String {
+        let s = Int(t); let m = s / 60
+        return m < 60 ? "\(m)m \(s % 60)s" : "\(m / 60)h \(m % 60)m"
+    }
+
+    // MARK: - Finishing
+
+    private var finishSummary: String {
+        var parts = [session.distanceText(session.totalDistanceCovered), session.elapsedText]
+        if session.estimatedSteps > 0 { parts.append("\(session.estimatedSteps.formatted()) steps") }
+        return parts.joined(separator: " · ")
+    }
+
+    /// Runs after the confirmation sheet has gone, so the summary's
+    /// full-screen cover is not presented on top of a dismissing sheet.
+    private func runPendingFinish() {
+        guard let choice = pendingFinish else { return }
+        pendingFinish = nil
+        switch choice {
+        case .save:
+            if isGuided { finishGuided(saveRoute: false) } else { endFreeSession() }
+        case .saveWithRoute:
+            finishGuided(saveRoute: true)
+        case .discard:
+            discardSession()
+        }
+    }
+
+    private func finishGuided(saveRoute: Bool) {
+        if saveRoute { saveCurrentRoute() }
+        let pets = finalizePetDistances()
+        let prev = historyStore.sessions
+        let saved = walkStore.buildAndSaveSession(
+            petDistances: pets.distances,
+            activePetIds: pets.activePetIds,
+            isCommunityRoute: route.isCommunityRoute
+        )
+        let cap = session
+        let dist = cap.totalDistanceCovered
+        let elapsed = Int(cap.elapsedTime)
+        let paused = cap.totalPausedDuration
+        Task {
+            await WalkLiveActivityManager.shared.end(distanceCovered: dist, elapsedSeconds: elapsed, pausedDuration: paused)
+            await cap.finishWorkoutSession()
+        }
+        let prs = saved.map { checkNewPRs(newSession: $0, against: prev) } ?? []
+        finishAndShowSummary(saved: saved, prList: prs)
+    }
+
+    private func discardSession() {
+        let cap = session
+        let dist = cap.totalDistanceCovered
+        let elapsed = Int(cap.elapsedTime)
+        let paused = cap.totalPausedDuration
+        cap.discardWorkoutSession()
+        cap.stop()
+        cancelWaterBreakReminders()
+        endSessionOnDismiss = true
+        Task {
+            await WalkLiveActivityManager.shared.end(distanceCovered: dist, elapsedSeconds: elapsed, pausedDuration: paused)
+        }
+        dismiss()
     }
 
     // MARK: - Session Start

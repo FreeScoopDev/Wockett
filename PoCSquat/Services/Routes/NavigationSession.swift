@@ -619,12 +619,21 @@ struct NavigationMapView: UIViewRepresentable {
     let currentWaypointIndex: Int
     let checkpointsEnabled: Bool
     var distanceCoveredMeters: Double = 0
+    /// Which way the person faces, degrees from north, for the beam; nil hides it.
+    var headingDegrees: Double?
+    /// The map turns with the person instead of staying north up.
+    var headingUp = false
+    /// Bumped by the recentre button; each new value re-follows the person.
+    var recenterToken = 0
 
     func makeUIView(context: Context) -> MKMapView {
         let map = MKMapView()
         map.delegate = context.coordinator
         map.showsUserLocation = true
         map.userTrackingMode = .follow
+        // Two-finger rotation, with the compass to get back to north.
+        map.isRotateEnabled = true
+        map.showsCompass = true
         map.overrideUserInterfaceStyle = .unspecified
         // Allow zooming from street-level (30 m) to neighbourhood-level (50 km)
         map.setCameraZoomRange(
@@ -644,6 +653,23 @@ struct NavigationMapView: UIViewRepresentable {
     }
 
     func updateUIView(_ map: MKMapView, context: Context) {
+        let coordinator = context.coordinator
+        if coordinator.lastHeadingUp != headingUp || coordinator.lastRecenterToken != recenterToken {
+            coordinator.lastHeadingUp = headingUp
+            coordinator.lastRecenterToken = recenterToken
+            if headingUp {
+                map.setUserTrackingMode(.followWithHeading, animated: true)
+            } else {
+                // Back to north first; .follow keeps whatever rotation it finds.
+                let camera = map.camera.copy() as? MKMapCamera ?? map.camera
+                camera.heading = 0
+                map.setCamera(camera, animated: true)
+                map.setUserTrackingMode(.follow, animated: true)
+            }
+        }
+        coordinator.headingDegrees = headingDegrees
+        coordinator.updateBeam(on: map)
+
         if !computedLegs.isEmpty, !context.coordinator.hasAddedLegs {
             context.coordinator.hasAddedLegs = true
             for leg in computedLegs { map.addOverlay(leg.polyline) }
@@ -730,6 +756,20 @@ struct NavigationMapView: UIViewRepresentable {
         var lastWaypointIndex = 0
         var hasAddedCheckpoints = false
         var lastMilestoneKm = 0
+        var lastHeadingUp = false
+        var lastRecenterToken = 0
+        var headingDegrees: Double?
+
+        /// Points the beam where the person faces, relative to the map's own
+        /// rotation, so it stays right while the map turns.
+        func updateBeam(on map: MKMapView) {
+            guard let view = map.view(for: map.userLocation) as? UserHeadingAnnotationView else { return }
+            view.beam.angle = headingDegrees.map { $0 - map.camera.heading }
+        }
+
+        func mapViewDidChangeVisibleRegion(_ map: MKMapView) {
+            updateBeam(on: map)
+        }
 
         func mapView(_ map: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
             if let circle = overlay as? NavCheckpointCircle {
@@ -754,6 +794,14 @@ struct NavigationMapView: UIViewRepresentable {
         }
 
         func mapView(_ map: MKMapView, viewFor annotation: MKAnnotation) -> MKAnnotationView? {
+            if annotation is MKUserLocation {
+                let view = (map.dequeueReusableAnnotationView(withIdentifier: UserHeadingAnnotationView.reuseID)
+                            as? UserHeadingAnnotationView)
+                    ?? UserHeadingAnnotationView(annotation: annotation, reuseIdentifier: UserHeadingAnnotationView.reuseID)
+                view.annotation = annotation
+                view.beam.angle = headingDegrees.map { $0 - map.camera.heading }
+                return view
+            }
             if let milestone = annotation as? MilestoneAnnotation {
                 let view = MKMarkerAnnotationView(annotation: milestone, reuseIdentifier: "milestone")
                 view.glyphImage = UIImage(systemName: WktSymbol.finish.name)
