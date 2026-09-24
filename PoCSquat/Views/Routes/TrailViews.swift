@@ -233,11 +233,12 @@ struct TrailDetailView: View {
                 Button(action: onBack) {
                     HStack(spacing: 4) {
                         Image(wkt: .chevronLeft).wktIcon(.inline, tint: .earthGreen)
-                        Text("All trails")
+                        Text("Back")
                     }
                     .font(.subheadline.bold())
                     .foregroundColor(.earthGreen)
                 }
+                .accessibilityLabel("Back to trails")
                 .accessibilityIdentifier("routes.trailBack")
 
                 VStack(alignment: .leading, spacing: 4) {
