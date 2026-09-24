@@ -139,6 +139,8 @@ enum WktSymbol {
     case timer              // timer
     case target             // target (goal)
     case percent            // percent (progress)
+    case northUp            // location.north.line (map: north up)
+    case headingUp          // location.north.line.fill (map: turns with you)
 
     var name: String {
         switch self {
@@ -245,6 +247,8 @@ enum WktSymbol {
         case .timer:          return "timer"
         case .target:         return "target"
         case .percent:        return "percent"
+        case .northUp:        return "location.north.line"
+        case .headingUp:      return "location.north.line.fill"
         }
     }
 
