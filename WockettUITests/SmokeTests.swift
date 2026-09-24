@@ -233,4 +233,28 @@ final class SmokeTests: XCTestCase {
                         .matching(NSPredicate(format: "label CONTAINS 'OpenStreetMap'")).firstMatch.exists,
                       "ODbL attribution line missing")
     }
+
+    // MARK: - 7. Trails list
+
+    /// Routes → Trails lists real trails from the bundled pack, a card opens
+    /// its detail, and "All trails" comes back. Under -WKTUITest the list
+    /// searches from downtown Raleigh (RouteManager's stub location, Times
+    /// Square, has no pack), so this runs against the North Carolina data the
+    /// app ships.
+    func testTrailsList() {
+        XCTAssertTrue(el("home.statCard").waitForExistence(timeout: 10))
+        tab("Routes").tap()
+        let picker = el("routes.modePicker")
+        XCTAssertTrue(picker.waitForExistence(timeout: 30))
+        picker.buttons["Trails"].tap()
+
+        let firstCard = app.buttons["routes.trailCard"].firstMatch
+        XCTAssertTrue(firstCard.waitForExistence(timeout: 15), "No trails listed near downtown Raleigh")
+        firstCard.tap()
+
+        XCTAssertTrue(el("routes.trailDetail").waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["routes.trailDirections"].exists)
+        app.buttons["routes.trailBack"].tap()
+        XCTAssertTrue(firstCard.waitForExistence(timeout: 10))
+    }
 }
