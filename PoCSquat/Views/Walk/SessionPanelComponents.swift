@@ -386,3 +386,43 @@ struct FinishConfirmationView: View {
         .presentationDragIndicator(.visible)
     }
 }
+
+// MARK: - Off trail
+
+/// Shown while the person is off the trail they are walking. The arrow points
+/// the way to go relative to where they face, when that is known; the words
+/// always say it by compass direction.
+struct OffTrailBanner: View {
+    let trailName: String
+    let detail: String?
+    /// Degrees clockwise from straight ahead, or nil when their facing is unknown.
+    let arrowAngle: Double?
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(wkt: .directionArrow)
+                .wktIcon(.row, tint: .earthOrange, filled: true)
+                .rotationEffect(.degrees(arrowAngle ?? 0))
+                .opacity(arrowAngle == nil ? 0.35 : 1)
+                .animation(.easeOut(duration: 0.25), value: arrowAngle)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("You're off \(trailName)")
+                    .font(.subheadline.bold())
+                    .foregroundColor(.earthCream)
+                    .lineLimit(1)
+                if let detail {
+                    Text(detail)
+                        .font(.caption)
+                        .foregroundColor(.earthMuted)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 10)
+        .background(Color.earthOrange.opacity(0.14))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("You're off \(trailName). \(detail ?? "")")
+        .accessibilityIdentifier("session.offTrail")
+    }
+}

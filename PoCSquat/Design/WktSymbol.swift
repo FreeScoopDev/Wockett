@@ -141,6 +141,7 @@ enum WktSymbol {
     case percent            // percent (progress)
     case northUp            // location.north.line (map: north up)
     case headingUp          // location.north.line.fill (map: turns with you)
+    case directionArrow     // arrow.up.circle.fill (which way to go)
 
     var name: String {
         switch self {
@@ -249,6 +250,7 @@ enum WktSymbol {
         case .percent:        return "percent"
         case .northUp:        return "location.north.line"
         case .headingUp:      return "location.north.line.fill"
+        case .directionArrow: return "arrow.up.circle.fill"
         }
     }
 
