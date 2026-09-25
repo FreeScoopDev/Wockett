@@ -255,8 +255,15 @@ struct ActiveSessionView: View {
             }
             .padding(.top, 60).padding(.leading, 16)
         }
-        .onAppear { headingTracker.start() }
-        .onDisappear { headingTracker.stop() }
+        .onAppear {
+            headingTracker.start()
+            walkStore.session?.isSessionScreenVisible = true
+        }
+        .onDisappear {
+            headingTracker.stop()
+            // Optional: the session may already be over when the screen goes.
+            walkStore.session?.isSessionScreenVisible = false
+        }
         .onChange(of: headingUp) { _, up in
             position = .userLocation(followsHeading: up, fallback: .automatic)
         }
