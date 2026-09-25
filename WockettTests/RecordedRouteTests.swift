@@ -84,6 +84,16 @@ struct RecordedRouteTests {
         #expect(NavigationSessionManager(route: trail).completedSession.waypoints.count == 3)
     }
 
+    @Test("Off-line guidance calls a recording a route and a trail a trail, and measures along it")
+    func guidanceOnRecordedLine() throws {
+        let route = navigable(try recording()).followingRecordedLine()
+        #expect(route.lineNoun == "route")
+        var trail = route
+        trail.pathIsRecording = false
+        #expect(trail.lineNoun == "trail")
+        #expect(TrailProgress(route: route) != nil)   // #65's along-the-line progress applies
+    }
+
     @Test("A crash snapshot keeps the recording flag; older snapshots read as a trail")
     func snapshotKeepsFlag() throws {
         let route = navigable(try recording()).followingRecordedLine()

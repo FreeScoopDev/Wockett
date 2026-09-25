@@ -600,6 +600,10 @@ struct NavigableRoute: Identifiable, Hashable {
     /// again, so it comes back followed, not routed on streets.
     var pathIsRecording: Bool = false
 
+    /// What the line is called in off-line guidance: a trail, or the route
+    /// someone recorded.
+    var lineNoun: String { pathIsRecording ? "route" : "trail" }
+
     static func == (l: NavigableRoute, r: NavigableRoute) -> Bool { l.id == r.id }
     func hash(into hasher: inout Hasher) { hasher.combine(id) }
 }

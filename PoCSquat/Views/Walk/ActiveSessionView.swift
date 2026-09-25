@@ -671,8 +671,8 @@ struct ActiveSessionView: View {
                                      isOn: $checkpointsEnabled)
                 }
                 if route.path != nil {
-                    SessionToggleRow(icon: .directionArrow, tint: .earthOrange, title: "Off-trail alerts",
-                                     detail: "Tells you when you're more than \(session.distanceText(OffTrailMonitor.leaveMeters)) from the trail, and which way it is",
+                    SessionToggleRow(icon: .directionArrow, tint: .earthOrange, title: "Off-\(route.lineNoun) alerts",
+                                     detail: "Tells you when you're more than \(session.distanceText(OffTrailMonitor.leaveMeters)) from the \(route.lineNoun), and which way it is",
                                      isOn: $offTrailAlerts)
                 }
             }
