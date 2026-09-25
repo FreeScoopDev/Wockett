@@ -222,8 +222,6 @@ struct TrailProgress {
     private(set) var isWalkingBackward = false
     /// Where the person is on the reversed line, once `isWalkingBackward`.
     private(set) var reversedAlong: Double?
-    /// The session declined to turn the route round; it is not asked again.
-    private var reverseDeclined = false
 
     /// One guess at where the person is.
     private struct Guess {
@@ -232,14 +230,17 @@ struct TrailProgress {
         /// Distance walked along the line to get there, signed: a backward
         /// start on a closed line goes negative.
         var walked: Double
-        /// The furthest `walked` has been on the way to this guess.
-        var furthest: Double
         /// Accumulated cost; lower is likelier.
         var cost: Double
     }
     private var guesses: [Guess]
     /// Where the last fix that counted was (the planned start before any).
     private var lastFix: CLLocationCoordinate2D
+    /// `walked` where the walk really began, at its furthest back: after the
+    /// first fix, or the position resumed at. The planner starts a trail at its nearest data
+    /// point, which can be 50 m or more from the person, so a walk can begin
+    /// a little ahead of the start or a little behind it.
+    private var baseline: Double?
 
     /// A checkpoint counts this far before its exact position, so the last
     /// few metres of GPS noise never hold a session up.
@@ -258,10 +259,14 @@ struct TrailProgress {
     /// Guesses kept, and how much costlier than the best one may be.
     static let maxGuesses = 10
     static let keepWithin = 100.0
-    /// Walked this far backwards from the start of a closed line, without
-    /// having gone further than `startBand` forwards: set off the other way.
+    /// This far behind the start of a closed line — and behind where the walk
+    /// began, if that was behind it — the person is going round the other
+    /// way. It depends only on where the likeliest guess is now, never on
+    /// where a guess has been: the first version also required never having
+    /// gone 15 m forwards, and a change of mind, or a start a few metres past
+    /// the planned start, left progress at 0 for the rest of the walk (138 of
+    /// 1,035 backward walks on real loops; 2026-09-25 review of the rebuild).
     static let backwardTrigger = 25.0
-    static let startBand = 15.0
 
     init?(route: NavigableRoute) {
         guard let path = route.path, path.count >= 2 else { return nil }
@@ -280,16 +285,17 @@ struct TrailProgress {
         isClosed = path.count > 2 && TrailWalkPlanner.meters(path[0], path[path.count - 1]) <= Self.closedMeters
         // The walk starts at the start of the line: the planner begins a trail
         // walk where the person is, and a recording begins where it began.
-        guesses = [Guess(at: 0, walked: 0, furthest: 0, cost: 0)]
+        guesses = [Guess(at: 0, walked: 0, cost: 0)]
         lastFix = path[0]
     }
 
-    /// Picks up from a known position: a restored session, or a route just
-    /// turned round.
+    /// Picks up from a known distance walked: a restored session, or a route
+    /// just turned round.
     mutating func resume(at along: Double) {
         let at = min(max(0, along), guide.length)
         self.along = at
-        guesses = [Guess(at: at, walked: at, furthest: at, cost: 0)]
+        guesses = [Guess(at: at, walked: at, cost: 0)]
+        baseline = at
         lastFix = guide.point(atAlong: at)
     }
 
@@ -376,8 +382,7 @@ struct TrailProgress {
                     : abs(-step - moved) / Self.travelScale + Self.backwardCost
                 let cost = guess.cost + travel + fit
                 if best == nil || cost < best?.cost ?? .infinity {
-                    let walked = guess.walked + step
-                    best = Guess(at: candidate.along, walked: walked, furthest: max(guess.furthest, walked), cost: cost)
+                    best = Guess(at: candidate.along, walked: guess.walked + step, cost: cost)
                 }
             }
             if let best { next.append(best) }
@@ -389,8 +394,17 @@ struct TrailProgress {
             .map { var g = $0; g.cost -= leader.cost; return g }
         lastFix = location
         along = min(max(0, leader.walked), guide.length)
-        if isClosed, !reverseDeclined, leader.walked <= -Self.backwardTrigger, leader.furthest <= Self.startBand {
+        // Where the walk began is the furthest-back guess after the first fix,
+        // not the likeliest: where a loop's first and last stretches run side
+        // by side, the first fix can't tell 4 m past the start from 53 m
+        // before it, and taking the likeliest turned a forward walk round as
+        // soon as the truth won (Rob Wallace Park loop, 2026-09-25).
+        let began = baseline ?? guesses.map(\.walked).min() ?? leader.walked
+        if baseline == nil { baseline = began }
+        if isClosed, leader.walked <= min(began, 0) - Self.backwardTrigger {
             isWalkingBackward = true
+            // On the line walked the other way, they are as far past its
+            // start as they are behind this one's.
             reversedAlong = -leader.walked
         }
     }
@@ -416,14 +430,6 @@ struct TrailProgress {
         monitor.reset()
         offset = nil
         alertOffset = nil
-    }
-
-    /// The session could not turn the route round (it had already passed a
-    /// checkpoint). Forget the request, and do not ask again.
-    mutating func declineReverse() {
-        isWalkingBackward = false
-        reversedAlong = nil
-        reverseDeclined = true
     }
 }
 

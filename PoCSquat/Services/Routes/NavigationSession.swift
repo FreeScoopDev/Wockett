@@ -652,18 +652,21 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
         distanceToNextWaypoint = progress.distanceAlong(toWaypoint: index)
     }
 
-    /// The person set off round a closed line the other way. Only happens
-    /// before the first checkpoint, so nothing already counted changes.
+    /// The person is going round a closed line the other way: they are back
+    /// behind its start, so the walk restarts on the reversed route.
     private func turnRouteRound(at along: Double) {
-        guard currentWaypointIndex == 1, currentLap == 1,
-              let reversed = route.reversedAlongLine(),
-              var progress = TrailProgress(route: reversed) else {
-            trailProgress?.declineReverse()
-            return
-        }
+        // A route with trail progress has a line, so it can always be turned.
+        guard let reversed = route.reversedAlongLine(),
+              var progress = TrailProgress(route: reversed) else { return }
         progress.resume(at: along)
         route = reversed
         trailProgress = progress
+        // The person is back behind the start, going the other way: the walk
+        // starts over on the reversed route. On a small loop they may have
+        // passed checkpoint 1 on the way out; declining here used to leave
+        // progress stuck at 0 (2026-09-25 review of the rebuild).
+        currentWaypointIndex = 1
+        currentLap = 1
         onRouteReversed?(reversed)
         writeSnapshot()
     }

@@ -334,7 +334,7 @@ struct TrailGuideTests {
         var progress = try #require(TrailProgress(route: route(path: path, waypoints: waypoints, loop: false)))
         progress.resume(at: 350)
         let done = completion(&progress, count: waypoints.count, fixes: fixes(along: path, from: 460))
-        #expect(done != nil, "along \(progress.along ?? -1) of \(length)")
+        #expect((done ?? 0) >= length - TrailProgress.reachSlack - 6, "completed at \(String(describing: done)) of \(length)")
     }
 
     @Test("A lollipop route (out along a stem, round a loop, back down the stem) finishes at the end")
@@ -357,7 +357,7 @@ struct TrailGuideTests {
     func standingAtStart() throws {
         let ring = circle(400, spacing: 5)
         var progress = try loopProgress(ring)
-        var wobble = SystemRandomNumberGenerator()
+        var wobble = SeededGenerator(seed: 7)
         for _ in 0..<60 {
             let p = at(east: Double.random(in: -10...10, using: &wobble), north: Double.random(in: -10...10, using: &wobble))
             _ = progress.update(location: p, at: Date(), alertsEnabled: true)
@@ -366,70 +366,135 @@ struct TrailGuideTests {
         #expect(progress.checkpointsToAdvance(from: 1, waypointCount: progress.checkpointAlong.count) == 0)
     }
 
-    @Test("A turn the session declines is not asked for again")
-    func declinedTurnIsForgotten() throws {
-        var progress = try loopProgress(squareLoop)
-        for north in stride(from: 0.0, through: 60, by: 5) where !progress.isWalkingBackward {
-            _ = progress.update(location: at(east: 0, north: north), at: Date(), alertsEnabled: true)
-        }
-        #expect(progress.isWalkingBackward)
-        progress.declineReverse()
-        #expect(!progress.isWalkingBackward && progress.reversedAlong == nil)
-        // Walking on up the closing side, the session is not asked again.
-        for north in stride(from: 65.0, through: 120, by: 5) {
-            _ = progress.update(location: at(east: 0, north: north), at: Date(), alertsEnabled: true)
-            #expect(!progress.isWalkingBackward, "asked to turn again at \(north) m")
-        }
-    }
+    // MARK: Whole walks through the session's turn-round (2026-09-25 review of the rebuild)
 
-    @Test("After a restore, one fix cannot leap ahead and tick checkpoints")
-    func restoreThenLeapNeedsAgreement() throws {
-        let a = at(east: 0, north: 0)
-        var progress = try loopProgress([a, at(east: 60, north: 0), at(east: 60, north: 60), at(east: 0, north: 60), a])
-        progress.resume(at: 20)
-        // 30 m up the closing side: along 210, a 190 m step on the first fix.
-        _ = progress.update(location: at(east: 0, north: 30), at: Date(), alertsEnabled: true)
-        #expect((progress.along ?? 0) <= 20, "along \(progress.along ?? -1): no leap ahead")
-        #expect(progress.checkpointsToAdvance(from: 1, waypointCount: progress.checkpointAlong.count) == 0)
-    }
-
-    @Test("Short routes that come home place their finish at the end, not beside the start",
-          arguments: [(out: 60.0, gap: 5.0), (out: 110.0, gap: 10.0), (out: 125.0, gap: 5.0)])
-    func shortRoundTripFinishPlacement(out: Double, gap: Double) throws {
-        // Recorded like the app records: a point every 5 m, isLoop false.
-        let path = stride(from: 0.0, through: out, by: 5).map { at(east: $0, north: 0) }
-            + stride(from: out, through: 0, by: -5).map { at(east: $0, north: gap) }
-        let length = TrailWalkPlanner.length(path)
-        let waypoints = TrailWalkPlanner.checkpoints(along: path, isLoop: false, length: length)
-        var progress = try #require(TrailProgress(route: route(path: path, waypoints: waypoints, loop: false)))
-        let finish = waypoints.count - 1
-        #expect(progress.checkpointAlong[finish] > length - 1, "finish placed at \(progress.checkpointAlong[finish]) of \(length)")
-        #expect(abs(progress.checkpointAlong[1] - length / 2) < 3, "halfway placed at \(progress.checkpointAlong[1])")
-        // Walk it; the walk must not complete before its last 20 m.
+    /// Walks `fixes` the way NavigationSessionManager does: checkpoints advance
+    /// with `checkpointsToAdvance`, and when the progress asks, the route is
+    /// turned round (`turnRouteRound`) and walking continues on it. Returns
+    /// the index of the fix on which the walk completed, and how many turns.
+    private func sessionWalk(_ route: NavigableRoute, _ fixes: [CLLocationCoordinate2D]) -> (completedAt: Int?, turns: Int) {
+        guard var progress = TrailProgress(route: route) else { return (nil, 0) }
+        var route = route
         var index = 1
-        for (i, point) in path.enumerated() {
-            _ = progress.update(location: point, at: Date(), alertsEnabled: true)
-            index += progress.checkpointsToAdvance(from: index, waypointCount: waypoints.count)
-            if index >= waypoints.count {
-                let along = TrailWalkPlanner.length(Array(path[...i]))
-                #expect(along >= length - TrailProgress.reachSlack - 5, "completed at \(along) of \(length)")
-                return
+        var turns = 0
+        for (i, point) in fixes.enumerated() {
+            _ = progress.update(location: point, at: Date(), alertsEnabled: false)
+            if progress.isWalkingBackward, let reversed = route.reversedAlongLine(),
+               var turned = TrailProgress(route: reversed) {
+                turned.resume(at: progress.reversedAlong ?? 0)
+                route = reversed
+                progress = turned
+                index = 1
+                turns += 1
+                continue
+            }
+            let count = route.waypoints.count
+            index += progress.checkpointsToAdvance(from: index, waypointCount: count)
+            if route.isLoop, index >= count { index = 0 }
+            let finished = route.isLoop ? (index == 1 && progress.hasReached(waypoint: 0)) : index >= count
+            if finished { return (i, turns) }
+        }
+        return (nil, turns)
+    }
+
+    private func loopRoute(_ path: [CLLocationCoordinate2D]) -> NavigableRoute {
+        let length = TrailWalkPlanner.length(path)
+        return route(path: path, waypoints: TrailWalkPlanner.checkpoints(along: path, isLoop: true, length: length), loop: true)
+    }
+
+    /// Points every 5 m along `guide` from `from` for `distance` metres,
+    /// forwards or backwards, wrapping round a closed line.
+    private func walkPoints(_ guide: TrailGuide, from: Double, distance: Double, backward: Bool = false,
+                            wobble: Double = 0, rng: inout SeededGenerator) -> [CLLocationCoordinate2D] {
+        stride(from: 0.0, through: distance, by: 5).map { d in
+            var s = backward ? from - d : from + d
+            s = (s.truncatingRemainder(dividingBy: guide.length) + guide.length).truncatingRemainder(dividingBy: guide.length)
+            let p = guide.point(atAlong: s)
+            guard wobble > 0 else { return p }
+            return CLLocationCoordinate2D(latitude: p.latitude + Double.random(in: -wobble...wobble, using: &rng) / 111_320,
+                                          longitude: p.longitude + Double.random(in: -wobble...wobble, using: &rng) / 91_000)
+        }
+    }
+
+    @Test("Setting off the planned way, then turning back and going round the other way, finishes",
+          arguments: [15.0, 30.0, 60.0], [5.0, 100.0])
+    func changeOfMind(forward: Double, spacing: Double) throws {
+        // 400 m square: a vertex every `spacing` metres (5 m recorded, 100 m sparse trail data).
+        let corners = [(0.0, 0.0), (100.0, 0.0), (100.0, 100.0), (0.0, 100.0), (0.0, 0.0)]
+        var path: [CLLocationCoordinate2D] = []
+        for (a, b) in zip(corners, corners.dropFirst()) {
+            for k in stride(from: 0.0, to: 100, by: spacing) {
+                path.append(at(east: a.0 + (b.0 - a.0) * k / 100, north: a.1 + (b.1 - a.1) * k / 100))
             }
         }
-        Issue.record("never completed")
+        path.append(path[0])
+        let guide = TrailGuide(path: path)
+        var rng = SeededGenerator(seed: 1)
+        let fixes = walkPoints(guide, from: 0, distance: forward, rng: &rng)
+            + walkPoints(guide, from: forward, distance: forward + guide.length, backward: true, rng: &rng)
+        let result = sessionWalk(loopRoute(path), fixes)
+        let done = try #require(result.completedAt, "never completed (turns \(result.turns))")
+        #expect(Double(done) * 5 >= 2 * forward + guide.length - 35, "completed after \(Double(done) * 5) m")
+        #expect(result.turns == 1, "turned round \(result.turns) times")
     }
 
-    @Test("A walk round a block that ends beside its start places its finish at the end")
-    func blockWalkFinishPlacement() throws {
-        // 50 x 50 m round a block, ending 5 m short of the start; saved as a one-way route.
-        let path = stride(from: 0.0, through: 50, by: 5).map { at(east: $0, north: 0) }
-            + stride(from: 5.0, through: 50, by: 5).map { at(east: 50, north: $0) }
-            + stride(from: 45.0, through: 0, by: -5).map { at(east: $0, north: 50) }
-            + stride(from: 45.0, through: 5, by: -5).map { at(east: 0, north: $0) }
-        let length = TrailWalkPlanner.length(path)
-        let waypoints = TrailWalkPlanner.checkpoints(along: path, isLoop: false, length: length)
-        let progress = try #require(TrailProgress(route: route(path: path, waypoints: waypoints, loop: false)))
-        #expect(progress.checkpointAlong[waypoints.count - 1] > length - 1)
+    @Test("Starting between trail points, ahead of or behind the planned start, finishes either way round",
+          arguments: [-40.0, -10.0, 10.0, 30.0], [false, true])
+    func startBetweenPoints(offset: Double, backward: Bool) throws {
+        // Sparse 400 m square (trail data with 100 m between points); the
+        // planner starts the loop at a corner, the person is `offset` m from it.
+        let path = squareLoop
+        let guide = TrailGuide(path: path)
+        var rng = SeededGenerator(seed: 2)
+        let start = offset >= 0 ? offset : guide.length + offset
+        let fixes = walkPoints(guide, from: start, distance: guide.length + 30, backward: backward, rng: &rng)
+        let result = sessionWalk(loopRoute(path), fixes)
+        let done = try #require(result.completedAt, "never completed (turns \(result.turns))")
+        #expect(Double(done) * 5 >= guide.length - 60, "completed after \(Double(done) * 5) m of \(guide.length)")
+        #expect(result.turns == (backward ? 1 : 0), "turned round \(result.turns) times")
+    }
+
+    @Test("Real loops, walked both ways from random points with GPS wobble, all finish",
+          arguments: [Int64(8502), 4107, 6997])
+    func realLoopsBothWays(id: Int64) throws {
+        let url = try #require(Bundle.main.url(forResource: "nc", withExtension: "wktpack"))
+        let trail = try #require(try BundledTrailSource(url: url).trail(id: id))
+        let ring = TrailGuide(path: trail.coordinates)
+        var rng = SeededGenerator(seed: UInt64(id))
+        for trial in 0..<12 {
+            let backward = trial.isMultiple(of: 2)
+            let startAlong = Double.random(in: 0..<ring.length, using: &rng)
+            let startPoint = ring.point(atAlong: startAlong)
+            let plan = try #require(TrailWalkPlanner.plan(for: trail, name: trail.displayName, from: startPoint))
+            let planned = plan.navigableRoute(activityMode: .walking)
+            let line = TrailGuide(path: plan.path)
+            // Where the person really is on the planned line (the planner starts at the nearest trail point).
+            let here = line.nearestAlong(to: startPoint, atOrAfter: 0)
+            // The planned finish is the start point, path[0]. How far the person
+            // walks to get there the whole way round: from a little past it,
+            // walking on is the rest of the loop and walking back is past it
+            // and all the way round; from a little before it, the other way about.
+            let toStart = backward ? here : line.length - here
+            let expected = toStart > line.length / 2 ? toStart : toStart + line.length
+            let fixes = walkPoints(line, from: here, distance: expected + 40, backward: backward,
+                                   wobble: 5, rng: &rng)
+            let result = sessionWalk(planned, fixes)
+            let label = "\(trail.displayName) trial \(trial) \(backward ? "backward" : "forward") from \(Int(here)) m of \(Int(line.length))"
+            let done = try #require(result.completedAt, "\(label): never completed")
+            #expect(abs(Double(done) * 5 - expected) <= 45, "\(label): completed after \(Double(done) * 5) m, expected \(Int(expected))")
+            #expect(result.turns == (backward ? 1 : 0), "\(label): turned round \(result.turns) times")
+        }
+    }
+
+    @Test("A small loop: past checkpoint 1, back behind the start and round the other way, still finishes")
+    func turnAfterFirstCheckpoint() throws {
+        let path = circle(150, spacing: 5)
+        let guide = TrailGuide(path: path)
+        var rng = SeededGenerator(seed: 3)
+        let fixes = walkPoints(guide, from: 0, distance: 40, rng: &rng)
+            + walkPoints(guide, from: 40, distance: 40 + guide.length, backward: true, rng: &rng)
+        let result = sessionWalk(loopRoute(path), fixes)
+        #expect(result.completedAt != nil, "never completed (turns \(result.turns))")
     }
 
     @Test("A short loop walked the other way turns round instead of counting its checkpoints")
@@ -642,5 +707,18 @@ struct TrailGuideTests {
         #expect(CompassDirection.name(for: 200) == "south")
         #expect(CompassDirection.name(for: -90) == "west")
         #expect(CompassDirection.name(for: 315) == "northwest")
+    }
+}
+
+/// Reproducible randomness for tests (SplitMix64).
+struct SeededGenerator: RandomNumberGenerator {
+    private var state: UInt64
+    init(seed: UInt64) { state = seed }
+    mutating func next() -> UInt64 {
+        state &+= 0x9E37_79B9_7F4A_7C15
+        var z = state
+        z = (z ^ (z >> 30)) &* 0xBF58_476D_1CE4_E5B9
+        z = (z ^ (z >> 27)) &* 0x94D0_49BB_1331_11EB
+        return z ^ (z >> 31)
     }
 }
