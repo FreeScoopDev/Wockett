@@ -34,23 +34,15 @@ struct TrailGuideTests {
         #expect(abs(p.offset - 30) < 1)
     }
 
-    @Test("Where the trail doubles back, the stretch being followed wins")
+    @Test("Where the trail doubles back, the stretch being walked wins")
     func hairpinKeepsTheWayOut() throws {
-        let guide = TrailGuide(path: hairpin)
+        var progress = try #require(TrailProgress(route: route(path: hairpin, waypoints: [hairpin[0], hairpin[11]], loop: false)))
+        for east in stride(from: 0.0, through: 240, by: 10) {
+            _ = progress.update(location: at(east: east, north: 0), at: Date(), alertsEnabled: true)
+        }
         // 22 m north of the way out: nearer the way back (18 m) than the way out (22 m).
-        let point = at(east: 250, north: 22)
-        let fresh = try #require(guide.position(of: point))
-        #expect(fresh.along > 500, "with no history, the nearest stretch is the way back")
-        let following = try #require(guide.position(of: point, near: 240))
-        #expect(abs(following.along - 250) < 3, "someone walking out stays on the way out")
-    }
-
-    @Test("A stretch that is clearly closer still wins over the one being followed")
-    func clearShortcutWins() throws {
-        let guide = TrailGuide(path: hairpin)
-        let onTheWayBack = at(east: 200, north: 40)
-        let p = try #require(guide.position(of: onTheWayBack, near: 150))
-        #expect(p.along > 500, "40 m off the way out, 0 m off the way back: that is where they are")
+        _ = progress.update(location: at(east: 250, north: 22), at: Date(), alertsEnabled: true)
+        #expect(abs((progress.along ?? 0) - 250) < 3, "someone walking out stays on the way out")
     }
 
     // MARK: Off-trail alerts
@@ -199,10 +191,11 @@ struct TrailGuideTests {
 
     /// Out `out` metres east and back `gap` metres to the north: a recording
     /// of a walk down a street and home again.
-    private func outAndBack(out: Double, gap: Double) -> [CLLocationCoordinate2D] {
-        let steps = Int(out / 50)
-        return (0...steps).map { at(east: Double($0) * 50, north: 0) }
-            + (0...steps).reversed().map { at(east: Double($0) * 50, north: gap) }
+    /// A point every `spacing` metres; 5 m is what a recording stores.
+    private func outAndBack(out: Double, gap: Double, spacing: Double = 5) -> [CLLocationCoordinate2D] {
+        let steps = Int(out / spacing)
+        return (0...steps).map { at(east: Double($0) * spacing, north: 0) }
+            + (0...steps).reversed().map { at(east: Double($0) * spacing, north: gap) }
     }
 
     @Test("An out-and-back recording counts the way home and finishes",
@@ -231,10 +224,10 @@ struct TrailGuideTests {
         #expect(finished, "gap \(gap) m: ended at along \(progress.along ?? -1) of \(length)")
     }
 
-    /// A round loop of `length` metres, a vertex every 10 m, starting due south.
-    private func circle(_ length: Double) -> [CLLocationCoordinate2D] {
+    /// A round loop of `length` metres, a vertex every `spacing` metres, starting due south.
+    private func circle(_ length: Double, spacing: Double = 10) -> [CLLocationCoordinate2D] {
         let r = length / (2 * .pi)
-        let n = max(12, Int(length / 10))
+        let n = max(12, Int(length / spacing))
         return (0...n).map { i in
             let t = Double(i) / Double(n) * 2 * .pi
             return at(east: r * sin(t), north: r - r * cos(t))
@@ -264,9 +257,11 @@ struct TrailGuideTests {
     }
 
     @Test("Round loops of any size: walked forward they finish once, walked backward they turn round first",
-          arguments: [150.0, 240.0, 300.0, 346.0, 400.0, 1000.0])
-    func loopsBothWays(length: Double) throws {
-        let ring = circle(length)
+          arguments: [150.0, 240.0, 300.0, 346.0, 400.0, 1000.0], [5.0, 10.0])
+    func loopsBothWays(length: Double, spacing: Double) throws {
+        // 5 m is what a recording stores; the #69 version passed at 10 m and
+        // finished a backward walk after 30 m at 5 m (2026-09-25 review).
+        let ring = circle(length, spacing: spacing)
         var forward = try loopProgress(ring)
         let count = forward.checkpointAlong.count
         let there = walk(&forward, along: ring, count: count)
@@ -292,7 +287,86 @@ struct TrailGuideTests {
         #expect(abs((progress.along ?? 0) - 110) < 3)
     }
 
-    @Test("A turn the session declines is forgotten, so position can still move")
+    // MARK: The walk as a sequence (2026-09-25 rebuild)
+
+    /// Walks `fixes` through `progress` as the session does and reports
+    /// where along the line the walk completed, or nil.
+    private func completion(_ progress: inout TrailProgress, count: Int,
+                            fixes: [(CLLocationCoordinate2D, Double)]) -> Double? {
+        var index = 1
+        for (point, truth) in fixes {
+            _ = progress.update(location: point, at: Date(), alertsEnabled: true)
+            index += progress.checkpointsToAdvance(from: index, waypointCount: count)
+            if index >= count { return truth }
+        }
+        return nil
+    }
+
+    /// The fixes of walking `path` at 5 m, with their true distance along it.
+    private func fixes(along path: [CLLocationCoordinate2D], from: Double = 0,
+                       skipping gap: ClosedRange<Double>? = nil) -> [(CLLocationCoordinate2D, Double)] {
+        let guide = TrailGuide(path: path)
+        return stride(from: from, through: guide.length, by: 5).compactMap { s in
+            if let gap, gap.contains(s) { return nil }
+            return (guide.point(atAlong: s), s)
+        }
+    }
+
+    @Test("An out-and-back finishes at the end after dropped fixes around the turnaround",
+          arguments: [2.0, 4.0, 8.0, 12.0], [(15.0, 25.0), (20.0, 30.0), (30.0, 45.0), (60.0, 80.0)])
+    func outAndBackLapseAtTurnaround(gap: Double, lapse: (before: Double, after: Double)) throws {
+        let path = outAndBack(out: 400, gap: gap)
+        let length = TrailWalkPlanner.length(path)
+        let waypoints = TrailWalkPlanner.checkpoints(along: path, isLoop: false, length: length)
+        var progress = try #require(TrailProgress(route: route(path: path, waypoints: waypoints, loop: false)))
+        let turn = 400 + gap / 2
+        let done = completion(&progress, count: waypoints.count,
+                              fixes: fixes(along: path, skipping: (turn - lapse.before)...(turn + lapse.after)))
+        #expect((done ?? 0) >= length - TrailProgress.reachSlack - 6, "completed at \(String(describing: done)) of \(length)")
+    }
+
+    @Test("Restored before an out-and-back's turnaround and reopened on the way home, it still finishes",
+          arguments: [3.0, 6.0, 12.0])
+    func restoredNearTurnaround(gap: Double) throws {
+        let path = outAndBack(out: 400, gap: gap)
+        let length = TrailWalkPlanner.length(path)
+        let waypoints = TrailWalkPlanner.checkpoints(along: path, isLoop: false, length: length)
+        var progress = try #require(TrailProgress(route: route(path: path, waypoints: waypoints, loop: false)))
+        progress.resume(at: 350)
+        let done = completion(&progress, count: waypoints.count, fixes: fixes(along: path, from: 460))
+        #expect(done != nil, "along \(progress.along ?? -1) of \(length)")
+    }
+
+    @Test("A lollipop route (out along a stem, round a loop, back down the stem) finishes at the end")
+    func lollipopFinishes() throws {
+        let r = 200 / (2 * Double.pi)
+        let path = stride(from: 0.0, through: 300, by: 5).map { at(east: $0, north: 0) }
+            + (1...40).map { i -> CLLocationCoordinate2D in
+                let t = Double(i) / 40 * 2 * .pi
+                return at(east: 300 + r * sin(t), north: r - r * cos(t))
+            }
+            + stride(from: 300.0, through: 0, by: -5).map { at(east: $0, north: 4) }
+        let length = TrailWalkPlanner.length(path)
+        let waypoints = TrailWalkPlanner.checkpoints(along: path, isLoop: false, length: length)
+        var progress = try #require(TrailProgress(route: route(path: path, waypoints: waypoints, loop: false)))
+        let done = completion(&progress, count: waypoints.count, fixes: fixes(along: path))
+        #expect((done ?? 0) >= length - TrailProgress.reachSlack - 6, "completed at \(String(describing: done)) of \(length)")
+    }
+
+    @Test("Standing at a loop's start with GPS wobble goes nowhere")
+    func standingAtStart() throws {
+        let ring = circle(400, spacing: 5)
+        var progress = try loopProgress(ring)
+        var wobble = SystemRandomNumberGenerator()
+        for _ in 0..<60 {
+            let p = at(east: Double.random(in: -10...10, using: &wobble), north: Double.random(in: -10...10, using: &wobble))
+            _ = progress.update(location: p, at: Date(), alertsEnabled: true)
+        }
+        #expect((progress.along ?? 0) < 20 && !progress.isWalkingBackward, "along \(progress.along ?? -1)")
+        #expect(progress.checkpointsToAdvance(from: 1, waypointCount: progress.checkpointAlong.count) == 0)
+    }
+
+    @Test("A turn the session declines is not asked for again")
     func declinedTurnIsForgotten() throws {
         var progress = try loopProgress(squareLoop)
         for north in stride(from: 0.0, through: 60, by: 5) where !progress.isWalkingBackward {
@@ -301,12 +375,11 @@ struct TrailGuideTests {
         #expect(progress.isWalkingBackward)
         progress.declineReverse()
         #expect(!progress.isWalkingBackward && progress.reversedAlong == nil)
-        // Walking on up the closing side, position follows instead of asking again.
+        // Walking on up the closing side, the session is not asked again.
         for north in stride(from: 65.0, through: 120, by: 5) {
             _ = progress.update(location: at(east: 0, north: north), at: Date(), alertsEnabled: true)
             #expect(!progress.isWalkingBackward, "asked to turn again at \(north) m")
         }
-        #expect((progress.along ?? 0) > 1400, "along \(progress.along ?? -1)")
     }
 
     @Test("After a restore, one fix cannot leap ahead and tick checkpoints")
@@ -316,7 +389,7 @@ struct TrailGuideTests {
         progress.resume(at: 20)
         // 30 m up the closing side: along 210, a 190 m step on the first fix.
         _ = progress.update(location: at(east: 0, north: 30), at: Date(), alertsEnabled: true)
-        #expect(abs((progress.along ?? 0) - 20) < 1, "along \(progress.along ?? -1)")
+        #expect((progress.along ?? 0) <= 20, "along \(progress.along ?? -1): no leap ahead")
         #expect(progress.checkpointsToAdvance(from: 1, waypointCount: progress.checkpointAlong.count) == 0)
     }
 
@@ -487,11 +560,15 @@ struct TrailGuideTests {
         _ = progress.update(location: at(east: 150, north: 0), at: Date(), alertsEnabled: true)
         // Onto the way back (40 m north), which is 350 m further along.
         _ = progress.update(location: at(east: 150, north: 40), at: Date(), alertsEnabled: true)
-        #expect(abs((progress.along ?? 0) - 150) < 3, "one fix is not enough")
-        _ = progress.update(location: at(east: 145, north: 40), at: Date(), alertsEnabled: true)
-        _ = progress.update(location: at(east: 140, north: 40), at: Date(), alertsEnabled: true)
-        // The way back reaches x = 140 after 500 + 40 + 360 m.
-        #expect(abs((progress.along ?? 0) - 900) < 3, "three agreeing fixes are a shortcut taken")
+        #expect((progress.along ?? 0) < 160, "one fix is not enough")
+        // Walking on along the way back, the shortcut is taken within a few fixes.
+        var fixes = 1
+        for east in stride(from: 145.0, through: 0, by: -5) where (progress.along ?? 0) < 800 {
+            _ = progress.update(location: at(east: east, north: 40), at: Date(), alertsEnabled: true)
+            fixes += 1
+        }
+        // The way back reaches x = 150 after 500 + 40 + 350 m.
+        #expect((progress.along ?? 0) > 800 && fixes <= 8, "along \(progress.along ?? -1) after \(fixes) fixes")
     }
 
     @Test("Setting off round a loop the other way turns the route round instead of counting its checkpoints")

@@ -47,65 +47,18 @@ struct TrailGuide {
         }
     }
 
-    /// How far back and ahead of the last known position to look first.
-    /// Narrow on purpose: a wider window takes in the far side of a trail
-    /// that doubles back on itself, which is exactly the jump it exists to
-    /// prevent. After a gap in fixes the session widens the look-ahead by how
-    /// far the person could have gone meanwhile (`TrailProgress`), so a gap
-    /// does not hand the choice to whichever stretch happens to be nearest.
-    static let windowBehind = 100.0
-    static let windowAhead = 250.0
-    /// How much closer another part of the trail must be to win over the part
-    /// the person has been following.
-    static let switchMargin = 25.0
-    /// Inside the window, points this close to the nearest count as equally
-    /// near, and the one nearest where the person is expected to be along the
-    /// line wins. On a loop shorter than the window both ends are in it, and
-    /// GPS noise alone must not decide between the start and the finish; on
-    /// an out-and-back both sides of the street are, and the way home must
-    /// win once they are past the turn.
-    static let tieMeters = 15.0
-
-    /// The nearest point anywhere on the line, and the point within the window
-    /// around `previousAlong` (nil without one, or when no stretch falls inside
-    /// it): the nearest, or among points about as near, the one closest along
-    /// the line to `expectedAlong` — the previous position plus the distance
-    /// moved since. The previous position alone was the first version
-    /// (#67), and on an out-and-back it always chose the way-out side just
-    /// behind the person, so coming home counted backwards and the walk never
-    /// finished (2026-09-25 review of #67/#68).
-    struct Candidates {
-        let best: Position
-        let inWindow: Position?
-
-        /// The window's point unless another stretch is clearly closer.
-        var preferred: Position {
-            if let inWindow, inWindow.offset <= best.offset + TrailGuide.switchMargin { return inWindow }
-            return best
+    /// The point `along` metres along the line, clamped to its ends.
+    func point(atAlong along: Double) -> CLLocationCoordinate2D {
+        guard let first = path.first else { return CLLocationCoordinate2D() }
+        let s = min(max(0, along), length)
+        for i in 0..<(path.count - 1) where cumulative[i + 1] >= s {
+            let segment = cumulative[i + 1] - cumulative[i]
+            let t = segment > 0 ? (s - cumulative[i]) / segment : 0
+            let a = path[i], b = path[i + 1]
+            return CLLocationCoordinate2D(latitude: a.latitude + (b.latitude - a.latitude) * t,
+                                          longitude: a.longitude + (b.longitude - a.longitude) * t)
         }
-    }
-
-    func candidates(for point: CLLocationCoordinate2D, near previousAlong: Double?,
-                    expectedAlong: Double? = nil, ahead: Double = Self.windowAhead) -> Candidates? {
-        guard path.count >= 2 else { return nil }
-        var best: Position?
-        var inWindow: [Position] = []
-        let lo = (previousAlong ?? 0) - Self.windowBehind
-        let hi = (previousAlong ?? 0) + ahead
-        for i in 0..<(path.count - 1) {
-            let candidate = project(point, onSegment: i)
-            if best == nil || candidate.offset < best?.offset ?? .infinity { best = candidate }
-            if previousAlong != nil, cumulative[i + 1] >= lo, cumulative[i] <= hi {
-                inWindow.append(candidate)
-            }
-        }
-        guard let best else { return nil }
-        let nearestInWindow = inWindow.map(\.offset).min() ?? .infinity
-        let expected = expectedAlong ?? previousAlong ?? 0
-        let chosen = inWindow
-            .filter { $0.offset <= nearestInWindow + Self.tieMeters }
-            .min { abs($0.along - expected) < abs($1.along - expected) }
-        return Candidates(best: best, inWindow: chosen)
+        return path.last ?? first
     }
 
     /// Distance along the line of the point on it nearest `point`, looking
@@ -122,12 +75,34 @@ struct TrailGuide {
         return best?.along ?? minimum
     }
 
-    /// The person's position on the line. With `previousAlong`, the stretch
-    /// near where they were is preferred, so a trail that doubles back beside
-    /// itself does not make progress jump to its other side; a part of the
-    /// trail that is clearly closer still wins (a shortcut, or a wrong start).
-    func position(of point: CLLocationCoordinate2D, near previousAlong: Double? = nil) -> Position? {
-        candidates(for: point, near: previousAlong)?.preferred
+    /// The nearest point anywhere on the line.
+    func position(of point: CLLocationCoordinate2D) -> Position? {
+        guard path.count >= 2 else { return nil }
+        return (0..<(path.count - 1)).map { project(point, onSegment: $0) }.min { $0.offset < $1.offset }
+    }
+
+    /// One point per stretch of the line near `point`: where the distance to
+    /// the line is at a local minimum as you go along it, within `within`
+    /// metres of the nearest. A line recorded every 5 m has dozens of
+    /// segments beside the person, and treating each as a separate place to
+    /// be was how a backward walk crept forward along a loop's first stretch
+    /// (2026-09-25 review of #69). Two stretches — an out-and-back's two
+    /// sides, a loop's start and finish — stay two candidates.
+    func stretches(near point: CLLocationCoordinate2D, within: Double = 60) -> (candidates: [Position], nearest: Position)? {
+        guard path.count >= 2 else { return nil }
+        let projections = (0..<(path.count - 1)).map { project(point, onSegment: $0) }
+        guard let nearest = projections.min(by: { $0.offset < $1.offset }) else { return nil }
+        var result: [Position] = []
+        for (i, p) in projections.enumerated() where p.offset <= nearest.offset + within {
+            let before = i > 0 ? projections[i - 1] : nil
+            let after = i < projections.count - 1 ? projections[i + 1] : nil
+            guard p.offset <= (before?.offset ?? .infinity) + 1e-6,
+                  p.offset <= (after?.offset ?? .infinity) + 1e-6 else { continue }
+            // Two segments meeting at the same nearest vertex are one place.
+            if let before, abs(before.offset - p.offset) < 1e-6, abs(before.along - p.along) < 1e-3 { continue }
+            result.append(p)
+        }
+        return (result, nearest)
     }
 
     /// Nearest point on segment `i`, in a local flat projection (plenty at trail scale).
@@ -207,13 +182,20 @@ struct OffTrailMonitor {
 /// The session's view of a trail walk: position along the line, checkpoints
 /// as distances along it, and the off-trail state.
 ///
-/// Position only moves by being walked (2026-09-25 review of #65/#66). It
-/// starts at the start of the line and follows on from the last position; a
-/// fix that lands on some other stretch counts only after several fixes agree.
-/// Before this, the first fix took the nearest point anywhere, and on a loop —
-/// or a recording that ends at the door it began at — the start is also the
-/// finish: about a third of starts landed on the finish and ended the walk on
-/// the spot.
+/// Position is tracked as a sequence, not fix by fix (rebuilt 2026-09-25).
+/// Three rounds of per-fix rules (#67–#69) each fixed one shape and broke
+/// another: a loop's start read as its finish, an out-and-back's way home
+/// counted backwards, a backward walk crept forward along a densely recorded
+/// line. Now several guesses of where the person is stay alive at once. Each
+/// fix scores every guess by how far the fix is from the line there and by
+/// whether getting there means travelling along the line about as far as the
+/// person actually moved — going backwards costs extra. The cheapest guess
+/// is the answer, and a guess that loses one fix can win the next, so a gap
+/// at a turnaround or a restore on the way home recovers within a few fixes.
+///
+/// Progress is distance walked along the line (`Guess.walked`), not where on
+/// the line the person is: on a loop or a recording that came home, being
+/// beside the finish is not having walked to it.
 struct TrailProgress {
     let guide: TrailGuide
     /// Distance along the line of each of the route's waypoints (checkpoints).
@@ -223,6 +205,8 @@ struct TrailProgress {
     /// Only such a line can be walked the other way from its start.
     let isClosed: Bool
 
+    /// Distance walked along the line, 0...length; nil before the first fix
+    /// on the trail.
     private(set) var along: Double?
     private(set) var offset: Double?
     /// The distance the off-trail clock judges by: `offset`, less the fix's
@@ -238,45 +222,53 @@ struct TrailProgress {
     private(set) var isWalkingBackward = false
     /// Where the person is on the reversed line, once `isWalkingBackward`.
     private(set) var reversedAlong: Double?
-
-    /// Where the last counted position was taken. The look-ahead widens by how
-    /// far the person has moved from it — not by time, which would let someone
-    /// standing at the start of a loop for five minutes reach its finish.
-    private var lastAcceptedLocation: CLLocationCoordinate2D?
-    /// The session declined to turn the route round; far-half positions near
-    /// the start are then ordinary jumps, not a request to turn again.
+    /// The session declined to turn the route round; it is not asked again.
     private var reverseDeclined = false
-    /// A position on another stretch, waiting for more fixes to agree.
-    private var pendingJump: (along: Double, count: Int, location: CLLocationCoordinate2D)?
-    /// Metres along a trail per metre in a straight line, generously: how far
-    /// along the line a gap in fixes can have taken someone.
-    static let windingFactor = 2.0
-    /// A step forward along the line beyond `windingFactor` × the distance
-    /// moved, plus this, is a leap nobody walked, and needs the same
-    /// agreement as a jump to another stretch. On a loop shorter than the
-    /// window, its closing stretch is inside the window from the start, so
-    /// setting off the other way leapt straight to the finish's side and
-    /// ticked every checkpoint (2026-09-25 review of #67/#68).
-    static let leapSlackMeters = 40.0
-    /// Within this far along of the start, the person is still at the start.
-    static let startBandMeters = 15.0
+
+    /// One guess at where the person is.
+    private struct Guess {
+        /// Where on the line.
+        var at: Double
+        /// Distance walked along the line to get there, signed: a backward
+        /// start on a closed line goes negative.
+        var walked: Double
+        /// The furthest `walked` has been on the way to this guess.
+        var furthest: Double
+        /// Accumulated cost; lower is likelier.
+        var cost: Double
+    }
+    private var guesses: [Guess]
+    /// Where the last fix that counted was (the planned start before any).
+    private var lastFix: CLLocationCoordinate2D
 
     /// A checkpoint counts this far before its exact position, so the last
     /// few metres of GPS noise never hold a session up.
     static let reachSlack = 20.0
-    /// Fixes that must agree before position jumps to another stretch.
-    static let jumpConfirmFixes = 3
     /// Start and end this close make a closed line.
     static let closedMeters = 30.0
+    /// GPS error assumed for a fix, at least (metres).
+    static let fixSigma = 8.0
+    /// Metres of mismatch between distance along the line and distance
+    /// moved that cost one unit.
+    static let travelScale = 10.0
+    /// Extra cost of a step backwards along the line.
+    static let backwardCost = 3.0
+    /// A step backwards smaller than this is GPS wobble, not a step back.
+    static let backwardTolerance = 3.0
+    /// Guesses kept, and how much costlier than the best one may be.
+    static let maxGuesses = 10
+    static let keepWithin = 100.0
+    /// Walked this far backwards from the start of a closed line, without
+    /// having gone further than `startBand` forwards: set off the other way.
+    static let backwardTrigger = 25.0
+    static let startBand = 15.0
 
     init?(route: NavigableRoute) {
         guard let path = route.path, path.count >= 2 else { return nil }
         let guide = TrailGuide(path: path)
         // Checkpoints are points on the line (TrailWalkPlanner.checkpoints),
         // so each is placed at its exact nearest point at or after the one
-        // before — never through the walking rules' tie-break, which on a
-        // short route that comes home put the finish beside the start and
-        // ended the walk at the turnaround (2026-09-25 review of #69).
+        // before (2026-09-25 review of #69).
         var previous = 0.0
         checkpointAlong = route.waypoints.map { waypoint in
             let along = guide.nearestAlong(to: waypoint, atOrAfter: previous)
@@ -286,14 +278,19 @@ struct TrailProgress {
         self.guide = guide
         isLoop = route.isLoop
         isClosed = path.count > 2 && TrailWalkPlanner.meters(path[0], path[path.count - 1]) <= Self.closedMeters
+        // The walk starts at the start of the line: the planner begins a trail
+        // walk where the person is, and a recording begins where it began.
+        guesses = [Guess(at: 0, walked: 0, furthest: 0, cost: 0)]
+        lastFix = path[0]
     }
 
     /// Picks up from a known position: a restored session, or a route just
     /// turned round.
     mutating func resume(at along: Double) {
-        self.along = min(max(0, along), guide.length)
-        lastAcceptedLocation = nil
-        pendingJump = nil
+        let at = min(max(0, along), guide.length)
+        self.along = at
+        guesses = [Guess(at: at, walked: at, furthest: at, cost: 0)]
+        lastFix = guide.point(atAlong: at)
     }
 
     var isOffTrail: Bool { monitor.isOffTrail }
@@ -345,42 +342,69 @@ struct TrailProgress {
     /// progress update either way.
     mutating func update(location: CLLocationCoordinate2D, accuracy: Double = 0, at now: Date,
                          alertsEnabled: Bool) -> OffTrailMonitor.Event? {
-        // Look ahead as far as the person could have gone since the last
-        // position counted, so a gap in fixes keeps following the same stretch
-        // instead of taking whichever stretch is nearest (an out-and-back's
-        // way home, 2026-09-25 review).
-        let moved = lastAcceptedLocation.map { TrailWalkPlanner.meters($0, location) } ?? 0
-        let ahead = TrailGuide.windowAhead + Self.windingFactor * moved
-        let current = along ?? 0
-        guard let found = guide.candidates(for: location, near: current, expectedAlong: current + moved,
-                                           ahead: ahead) else { return nil }
-        offset = found.best.offset
-        nearest = found.best.nearest
+        guard let found = guide.stretches(near: location) else { return nil }
+        offset = found.nearest.offset
+        nearest = found.nearest.nearest
         // Leaving has to be beyond doubt; coming back is judged as measured.
-        alertOffset = monitor.isOffTrail ? found.best.offset : max(0, found.best.offset - max(0, accuracy))
+        alertOffset = monitor.isOffTrail ? found.nearest.offset : max(0, found.nearest.offset - max(0, accuracy))
         // Progress only moves while the person is on the trail. Off it, the
-        // nearest point can be a different stretch entirely (on the simulator
-        // it was 35 m further along), and counting that would tick off
-        // checkpoints they never walked. The way back still updates.
-        if found.best.offset <= OffTrailMonitor.leaveMeters {
-            let chosen = found.preferred
-            // Before the first fix there is nothing to judge a leap from. After
-            // a restore there is a position but no fix, so moved counts as 0.
-            let plausible = along == nil
-                || chosen.along - current <= Self.windingFactor * moved + Self.leapSlackMeters
-            if chosen == found.inWindow, plausible, !isSettingOffBackward(to: chosen.along, from: current) {
-                along = chosen.along
-                lastAcceptedLocation = location
-                pendingJump = nil
-            } else {
-                considerJump(to: chosen.along, at: location)
-            }
+        // next fix back on it is judged from the last one that counted, so a
+        // detour that rejoins further on is travel, not a leap.
+        if found.nearest.offset <= OffTrailMonitor.leaveMeters {
+            track(to: found.candidates, at: location, accuracy: accuracy)
         }
         guard alertsEnabled else {
             monitor.reset()
             return nil
         }
-        return monitor.update(offset: alertOffset ?? found.best.offset, at: now)
+        return monitor.update(offset: alertOffset ?? found.nearest.offset, at: now)
+    }
+
+    /// Moves every guess on to each candidate stretch and keeps the likeliest.
+    private mutating func track(to candidates: [TrailGuide.Position], at location: CLLocationCoordinate2D,
+                                accuracy: Double) {
+        let moved = TrailWalkPlanner.meters(lastFix, location)
+        let sigma = max(Self.fixSigma, accuracy)
+        var next: [Guess] = []
+        for candidate in candidates {
+            let fit = candidate.offset * candidate.offset / (2 * sigma * sigma)
+            var best: Guess?
+            for guess in guesses {
+                let step = signedTravel(from: guess.at, to: candidate.along)
+                let travel = step >= -Self.backwardTolerance
+                    ? abs(step - moved) / Self.travelScale
+                    : abs(-step - moved) / Self.travelScale + Self.backwardCost
+                let cost = guess.cost + travel + fit
+                if best == nil || cost < best?.cost ?? .infinity {
+                    let walked = guess.walked + step
+                    best = Guess(at: candidate.along, walked: walked, furthest: max(guess.furthest, walked), cost: cost)
+                }
+            }
+            if let best { next.append(best) }
+        }
+        next.sort { $0.cost < $1.cost }
+        guard let leader = next.first else { return }
+        guesses = next.prefix(Self.maxGuesses)
+            .filter { $0.cost <= leader.cost + Self.keepWithin }
+            .map { var g = $0; g.cost -= leader.cost; return g }
+        lastFix = location
+        along = min(max(0, leader.walked), guide.length)
+        if isClosed, !reverseDeclined, leader.walked <= -Self.backwardTrigger, leader.furthest <= Self.startBand {
+            isWalkingBackward = true
+            reversedAlong = -leader.walked
+        }
+    }
+
+    /// Travel along the line from `a` to `b`. On a closed line the shorter
+    /// way round the join counts: from just past the start, the far side of
+    /// the join is a few metres back, not most of the line ahead.
+    private func signedTravel(from a: Double, to b: Double) -> Double {
+        var d = b - a
+        if isClosed {
+            if d > guide.length / 2 { d -= guide.length }
+            if d < -guide.length / 2 { d += guide.length }
+        }
+        return d
     }
 
     /// Starts the off-trail clock over. The session calls it on pause and
@@ -394,49 +418,12 @@ struct TrailProgress {
         alertOffset = nil
     }
 
-    /// Still by the start of a closed line, and placed in its far half: the
-    /// person has set off round it the other way, since walking forward they
-    /// would have been counted along the first stretch on the way. Always
-    /// needs agreement (`considerJump`), and it is the only way a route is
-    /// turned round. The far half, at most the look-ahead, so a short loop's
-    /// finish side counts; "by the start" rather than "before the first
-    /// checkpoint", so a forward walker whose fixes lapse early on is not
-    /// taken for one going backwards (2026-09-25 review of #67/#68).
-    private func isSettingOffBackward(to candidate: Double, from current: Double) -> Bool {
-        isClosed && !reverseDeclined && current <= Self.startBandMeters
-            && candidate > guide.length - min(TrailGuide.windowAhead, guide.length / 2)
-    }
-
     /// The session could not turn the route round (it had already passed a
-    /// checkpoint). Forget the request, or it is repeated on every fix and
-    /// the position never moves.
+    /// checkpoint). Forget the request, and do not ask again.
     mutating func declineReverse() {
         isWalkingBackward = false
         reversedAlong = nil
         reverseDeclined = true
-    }
-
-    /// Another stretch is clearly nearer than the one being followed: a
-    /// shortcut, a detour that rejoined further on, a start in the middle —
-    /// or a closed line being walked the other way. Wait for agreement.
-    private mutating func considerJump(to candidate: Double, at location: CLLocationCoordinate2D) {
-        if let pending = pendingJump,
-           abs(candidate - pending.along) <= 50 + Self.windingFactor * TrailWalkPlanner.meters(pending.location, location) {
-            pendingJump = (candidate, pending.count + 1, location)
-        } else {
-            pendingJump = (candidate, 1, location)
-        }
-        guard let pending = pendingJump, pending.count >= Self.jumpConfirmFixes else { return }
-        pendingJump = nil
-        if isSettingOffBackward(to: candidate, from: along ?? 0) {
-            // Still by the start, and now steadily on the line's last stretch:
-            // they set off the other way round.
-            isWalkingBackward = true
-            reversedAlong = guide.length - candidate
-            return
-        }
-        along = candidate
-        lastAcceptedLocation = location
     }
 }
 
