@@ -230,17 +230,23 @@ struct TrailProgress {
         /// Distance walked along the line to get there, signed: a backward
         /// start on a closed line goes negative.
         var walked: Double
+        /// `walked` where this guess's walk began: its first fix, or the
+        /// position resumed at. Each guess keeps its own — taken over all
+        /// guesses, one far-fetched first guess 800 m round the loop delayed
+        /// turning round by 800 m (2026-09-25 review of the rebuild).
+        var began: Double?
         /// Accumulated cost; lower is likelier.
         var cost: Double
     }
     private var guesses: [Guess]
     /// Where the last fix that counted was (the planned start before any).
     private var lastFix: CLLocationCoordinate2D
-    /// `walked` where the walk really began, at its furthest back: after the
-    /// first fix, or the position resumed at. The planner starts a trail at its nearest data
-    /// point, which can be 50 m or more from the person, so a walk can begin
-    /// a little ahead of the start or a little behind it.
-    private var baseline: Double?
+    /// Consecutive fixes on which the likeliest guess was behind the start.
+    /// One fix can be a leap — after a restore, a single fix 36 m away on a
+    /// small loop reads as well backwards as forwards — so turning round
+    /// waits for a second (2026-09-25 review of the rebuild).
+    private var fixesBehind = 0
+    static let fixesBehindToTurn = 2
 
     /// A checkpoint counts this far before its exact position, so the last
     /// few metres of GPS noise never hold a session up.
@@ -252,16 +258,20 @@ struct TrailProgress {
     /// Metres of mismatch between distance along the line and distance
     /// moved that cost one unit.
     static let travelScale = 10.0
-    /// Extra cost of a step backwards along the line.
-    static let backwardCost = 3.0
-    /// A step backwards smaller than this is GPS wobble, not a step back.
-    static let backwardTolerance = 3.0
+    /// Extra cost per metre of a step backwards along the line: a long way
+    /// back is less likely than a long way on. After a gap of more than half
+    /// a loop, the shorter way round is backwards, and without this the walk
+    /// turned round and restarted its checkpoints (2026-09-25 review of the
+    /// rebuild). A flat cost per backward step, and a 3 m allowance for
+    /// wobble, were tried with it and changed nothing in 529 scenarios.
+    static let backwardCostPerMeter = 0.18
     /// Guesses kept, and how much costlier than the best one may be.
     static let maxGuesses = 10
     static let keepWithin = 100.0
     /// This far behind the start of a closed line — and behind where the walk
-    /// began, if that was behind it — the person is going round the other
-    /// way. It depends only on where the likeliest guess is now, never on
+    /// began, if that was behind it (the planner starts a trail at its nearest
+    /// data point, which can be 50 m or more from the person) — the person is
+    /// going round the other way. It depends only on where the likeliest guess is now, never on
     /// where a guess has been: the first version also required never having
     /// gone 15 m forwards, and a change of mind, or a start a few metres past
     /// the planned start, left progress at 0 for the rest of the walk (138 of
@@ -285,7 +295,7 @@ struct TrailProgress {
         isClosed = path.count > 2 && TrailWalkPlanner.meters(path[0], path[path.count - 1]) <= Self.closedMeters
         // The walk starts at the start of the line: the planner begins a trail
         // walk where the person is, and a recording begins where it began.
-        guesses = [Guess(at: 0, walked: 0, cost: 0)]
+        guesses = [Guess(at: 0, walked: 0, began: nil, cost: 0)]
         lastFix = path[0]
     }
 
@@ -294,9 +304,9 @@ struct TrailProgress {
     mutating func resume(at along: Double) {
         let at = min(max(0, along), guide.length)
         self.along = at
-        guesses = [Guess(at: at, walked: at, cost: 0)]
-        baseline = at
+        guesses = [Guess(at: at, walked: at, began: at, cost: 0)]
         lastFix = guide.point(atAlong: at)
+        fixesBehind = 0
     }
 
     var isOffTrail: Bool { monitor.isOffTrail }
@@ -376,13 +386,14 @@ struct TrailProgress {
             let fit = candidate.offset * candidate.offset / (2 * sigma * sigma)
             var best: Guess?
             for guess in guesses {
-                let step = signedTravel(from: guess.at, to: candidate.along)
-                let travel = step >= -Self.backwardTolerance
-                    ? abs(step - moved) / Self.travelScale
-                    : abs(-step - moved) / Self.travelScale + Self.backwardCost
-                let cost = guess.cost + travel + fit
-                if best == nil || cost < best?.cost ?? .infinity {
-                    best = Guess(at: candidate.along, walked: guess.walked + step, cost: cost)
+                for step in steps(from: guess.at, to: candidate.along) {
+                    let travel = abs(abs(step) - moved) / Self.travelScale
+                        + max(0, -step) * Self.backwardCostPerMeter
+                    let cost = guess.cost + travel + fit
+                    if best == nil || cost < best?.cost ?? .infinity {
+                        let walked = guess.walked + step
+                        best = Guess(at: candidate.along, walked: walked, began: guess.began ?? walked, cost: cost)
+                    }
                 }
             }
             if let best { next.append(best) }
@@ -394,14 +405,13 @@ struct TrailProgress {
             .map { var g = $0; g.cost -= leader.cost; return g }
         lastFix = location
         along = min(max(0, leader.walked), guide.length)
-        // Where the walk began is the furthest-back guess after the first fix,
-        // not the likeliest: where a loop's first and last stretches run side
-        // by side, the first fix can't tell 4 m past the start from 53 m
-        // before it, and taking the likeliest turned a forward walk round as
-        // soon as the truth won (Rob Wallace Park loop, 2026-09-25).
-        let began = baseline ?? guesses.map(\.walked).min() ?? leader.walked
-        if baseline == nil { baseline = began }
-        if isClosed, leader.walked <= min(began, 0) - Self.backwardTrigger {
+        // Judged on the likeliest guess's own origin: where a loop's first and
+        // last stretches run side by side (Rob Wallace Park), the first fix
+        // can't tell 4 m past the start from 53 m before it, and once the
+        // truth leads, its own origin is 53 m back (2026-09-25).
+        let behind = isClosed && leader.walked <= min(leader.began ?? leader.walked, 0) - Self.backwardTrigger
+        fixesBehind = behind ? fixesBehind + 1 : 0
+        if fixesBehind >= Self.fixesBehindToTurn {
             isWalkingBackward = true
             // On the line walked the other way, they are as far past its
             // start as they are behind this one's.
@@ -409,16 +419,15 @@ struct TrailProgress {
         }
     }
 
-    /// Travel along the line from `a` to `b`. On a closed line the shorter
-    /// way round the join counts: from just past the start, the far side of
-    /// the join is a few metres back, not most of the line ahead.
-    private func signedTravel(from a: Double, to b: Double) -> Double {
-        var d = b - a
-        if isClosed {
-            if d > guide.length / 2 { d -= guide.length }
-            if d < -guide.length / 2 { d += guide.length }
-        }
-        return d
+    /// The ways to travel along the line from `a` to `b`. On a closed line
+    /// both ways round the join: from just past the start, the far side of
+    /// the join is a few metres back; after a long gap it is most of the
+    /// line ahead. Each is scored, not just the shorter.
+    private func steps(from a: Double, to b: Double) -> [Double] {
+        guard isClosed, guide.length > 0 else { return [b - a] }
+        var forward = (b - a).truncatingRemainder(dividingBy: guide.length)
+        if forward < 0 { forward += guide.length }
+        return [forward, forward - guide.length]
     }
 
     /// Starts the off-trail clock over. The session calls it on pause and
@@ -449,6 +458,48 @@ extension TrailProgress {
         }
         guard let offset = alertOffset ?? offset else { return nil }
         return monitor.update(offset: offset, at: now)
+    }
+}
+
+// MARK: - The session's steps, shared with its tests
+
+/// Where a guided session goes when it reaches its current waypoint.
+/// `NavigationSessionManager.advanceWaypoint` applies it and adds the
+/// splits and notifications; the tests walk whole routes through it, so the
+/// state they check is the state the app keeps.
+struct WaypointStep: Equatable {
+    var index: Int
+    var lap: Int
+    var finished: Bool
+
+    static func after(index: Int, lap: Int, count: Int, isLoop: Bool, lapCount: Int) -> WaypointStep {
+        let next = index + 1
+        if isLoop {
+            if next >= count { return WaypointStep(index: 0, lap: lap, finished: false) }
+            if next == 1 { return WaypointStep(index: 1, lap: lap + 1, finished: lap + 1 > lapCount) }
+            return WaypointStep(index: next, lap: lap, finished: false)
+        }
+        return WaypointStep(index: next, lap: lap, finished: next >= count)
+    }
+}
+
+extension TrailProgress {
+    /// A walk turned round because the person is going round a closed line
+    /// the other way: the reversed route, progress resumed where they are on
+    /// it, and the walk starting over at waypoint 1, lap 1 — they are back
+    /// behind the start, even if they passed checkpoint 1 on the way out.
+    struct TurnedRound {
+        let route: NavigableRoute
+        let progress: TrailProgress
+        let index: Int
+        let lap: Int
+    }
+
+    func turnedRound(_ route: NavigableRoute) -> TurnedRound? {
+        guard isWalkingBackward, let reversed = route.reversedAlongLine(),
+              var progress = TrailProgress(route: reversed) else { return nil }
+        progress.resume(at: reversedAlong ?? 0)
+        return TurnedRound(route: reversed, progress: progress, index: 1, lap: 1)
     }
 }
 

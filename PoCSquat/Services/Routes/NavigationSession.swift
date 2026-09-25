@@ -540,7 +540,7 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
                                             at: Date(), alertsEnabled: self.offTrailAlertsEnabled)
                 self.trailProgress = progress
                 if let event { self.handleOffTrail(event) }
-                if progress.isWalkingBackward { self.turnRouteRound(at: progress.reversedAlong ?? 0) }
+                if let turned = progress.turnedRound(self.route) { self.turnRouteRound(turned) }
             }
             self.lastMovementTime = Date()
             self.lastKnownSpeed = loc.speed
@@ -606,19 +606,19 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
 
     private func advanceWaypoint() {
         let arrivedIndex = currentWaypointIndex
-        currentWaypointIndex += 1
+        let step = WaypointStep.after(index: currentWaypointIndex, lap: currentLap, count: route.waypoints.count,
+                                      isLoop: route.isLoop, lapCount: route.lapCount)
+        currentWaypointIndex = step.index
         if route.isCustomRoute, onCheckpointReached != nil {
             let wpNum = min(currentWaypointIndex, route.waypoints.count)
             let label = "WP \(wpNum)/\(route.waypoints.count)"
             splitTimes.append((label: label, elapsed: elapsedTime))
             onCheckpointReached?(label)
         }
+        currentLap = step.lap
         if route.isLoop {
-            if currentWaypointIndex >= route.waypoints.count {
-                currentWaypointIndex = 0
-            } else if currentWaypointIndex == 1 {
-                currentLap += 1
-                if currentLap > route.lapCount {
+            if step.index == 1 {
+                if step.finished {
                     finish()
                 } else {
                     let lapsLeft = route.lapCount - (currentLap - 1)
@@ -628,7 +628,7 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
                     )
                 }
             }
-        } else if currentWaypointIndex >= route.waypoints.count {
+        } else if step.finished {
             finish()
         } else {
             let total = route.waypoints.count - 1
@@ -652,22 +652,14 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
         distanceToNextWaypoint = progress.distanceAlong(toWaypoint: index)
     }
 
-    /// The person is going round a closed line the other way: they are back
-    /// behind its start, so the walk restarts on the reversed route.
-    private func turnRouteRound(at along: Double) {
-        // A route with trail progress has a line, so it can always be turned.
-        guard let reversed = route.reversedAlongLine(),
-              var progress = TrailProgress(route: reversed) else { return }
-        progress.resume(at: along)
-        route = reversed
-        trailProgress = progress
-        // The person is back behind the start, going the other way: the walk
-        // starts over on the reversed route. On a small loop they may have
-        // passed checkpoint 1 on the way out; declining here used to leave
-        // progress stuck at 0 (2026-09-25 review of the rebuild).
-        currentWaypointIndex = 1
-        currentLap = 1
-        onRouteReversed?(reversed)
+    /// The person is going round a closed line the other way: the walk
+    /// restarts on the reversed route (`TrailProgress.turnedRound`).
+    private func turnRouteRound(_ turned: TrailProgress.TurnedRound) {
+        route = turned.route
+        trailProgress = turned.progress
+        currentWaypointIndex = turned.index
+        currentLap = turned.lap
+        onRouteReversed?(turned.route)
         writeSnapshot()
     }
 
