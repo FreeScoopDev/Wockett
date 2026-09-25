@@ -30,12 +30,14 @@ jobs:
 
       # Guard for the activity-aware language layer (Round C, 2026-08-30):
       # user-facing copy must read the session's activity, never a hardcoded
-      # "walk". Fails the build if any of these literals reappear.
+      # "walk". Fails the build if any of these literals reappear. "Run History"
+      # is the same mistake the other way: a route's history said "Run" for
+      # walking routes (2026-09-25), and a route's sessions can mix activities.
       - name: Language-consistency guard
         run: |
-          if grep -rn '"Still walking\|"Walk Paused"\|"End Walk"\|"Walk Complete\|"Walk History"\|"Finish Walk"\|"Resume Your Walk' \
+          if grep -rn '"Still walking\|"Walk Paused"\|"End Walk"\|"Walk Complete\|"Walk History"\|"Finish Walk"\|"Resume Your Walk\|"View Run History"\|"Run History"' \
                PoCSquat/Views PoCSquat/Intents WocketWidget --include="*.swift"; then
-            echo "::error::Hardcoded walk-specific copy found — use ActivityMode.noun/gerund/sessionLabel instead."
+            echo "::error::Hardcoded activity-specific copy found — use ActivityMode.noun/gerund/sessionLabel instead."
             exit 1
           fi
           echo "Language guard passed."
