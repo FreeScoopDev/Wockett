@@ -23,7 +23,7 @@ struct RouteSessionHistoryView: View {
                 if sessions.isEmpty { emptyState } else { sessionList }
             }
         }
-        .navigationTitle("Run History")
+        .navigationTitle("Route History")
         .navigationBarTitleDisplayMode(.inline)
     }
 
