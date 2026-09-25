@@ -1049,7 +1049,7 @@ struct ActiveSessionView: View {
         routeStore.save(CustomRoute(
             id: UUID(),
             name: route.name,
-            waypoints: ((route.pathIsRecording ? route.path : nil) ?? route.waypoints).map { WaypointCoord($0) },
+            waypoints: route.historyWaypoints.map { WaypointCoord($0) },
             totalDistance: route.totalDistance,
             isLoop: route.isLoop,
             createdAt: Date(),

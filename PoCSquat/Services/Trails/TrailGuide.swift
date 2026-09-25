@@ -165,6 +165,11 @@ struct TrailProgress {
 
     private(set) var along: Double?
     private(set) var offset: Double?
+    /// The distance the off-trail clock judges by: `offset`, less the fix's
+    /// uncertainty while the person is still on the trail. Under tree cover a
+    /// fix can be 40 m out, and 20 s of those drifting past 50 m raised the
+    /// alert on someone standing on the trail (2026-09-25 review).
+    private var alertOffset: Double?
     private(set) var nearest: CLLocationCoordinate2D?
     private(set) var monitor = OffTrailMonitor()
 
@@ -206,9 +211,11 @@ struct TrailProgress {
         return along >= targetAlong(forWaypoint: index) - Self.reachSlack
     }
 
-    /// Feeds one location fix. Returns an off-trail event when one happens
-    /// and alerts are on; position and progress update either way.
-    mutating func update(location: CLLocationCoordinate2D, at now: Date, alertsEnabled: Bool) -> OffTrailMonitor.Event? {
+    /// Feeds one location fix, with its horizontal accuracy in metres. Returns
+    /// an off-trail event when one happens and alerts are on; position and
+    /// progress update either way.
+    mutating func update(location: CLLocationCoordinate2D, accuracy: Double = 0, at now: Date,
+                         alertsEnabled: Bool) -> OffTrailMonitor.Event? {
         guard let position = guide.position(of: location, near: along) else { return nil }
         // Progress only moves while the person is on the trail. Off it, the
         // nearest point can be a different stretch entirely (on the simulator
@@ -219,11 +226,22 @@ struct TrailProgress {
         }
         offset = position.offset
         nearest = position.nearest
+        // Leaving has to be beyond doubt; coming back is judged as measured.
+        alertOffset = monitor.isOffTrail ? position.offset : max(0, position.offset - max(0, accuracy))
         guard alertsEnabled else {
             monitor.reset()
             return nil
         }
-        return monitor.update(offset: position.offset, at: now)
+        return monitor.update(offset: alertOffset ?? position.offset, at: now)
+    }
+
+    /// Starts the off-trail clock over. The session calls it on pause and
+    /// resume: time paused is not time spent off the trail, and the last
+    /// distance from before a pause says nothing about where the person is
+    /// after it — they got a false "You've left" on the first tick after
+    /// resuming (2026-09-25 review).
+    mutating func resetOffTrail() {
+        monitor.reset()
     }
 }
 
@@ -235,12 +253,32 @@ extension TrailProgress {
     /// likely to be lost — stopped, unsure which way to go — was never alerted
     /// (found on the simulator, 2026-09-24).
     mutating func tick(at now: Date, alertsEnabled: Bool) -> OffTrailMonitor.Event? {
-        guard alertsEnabled, let offset else { return nil }
+        // Switched off, the banner goes on the next tick rather than waiting
+        // for the person to move 5 m and produce a fix.
+        guard alertsEnabled else {
+            monitor.reset()
+            return nil
+        }
+        guard let offset = alertOffset ?? offset else { return nil }
         return monitor.update(offset: offset, at: now)
     }
 }
 
 // MARK: - Directions in words
+
+/// Turning the off-trail arrow. `rotationEffect` animates the number it is
+/// given, so going from facing 355° to 5° with the trail at 90° (-265° to 85°)
+/// spun the arrow 350° the long way round, just as a lost person was reading it.
+enum ArrowTurn {
+    /// The angle equal to `target` (mod 360) that is nearest `current`, so the
+    /// arrow always turns the short way.
+    static func angle(from current: Double, to target: Double) -> Double {
+        var delta = (target - current).truncatingRemainder(dividingBy: 360)
+        if delta > 180 { delta -= 360 }
+        if delta < -180 { delta += 360 }
+        return current + delta
+    }
+}
 
 enum CompassDirection {
     /// "north", "northeast"… for a bearing in degrees clockwise from north.

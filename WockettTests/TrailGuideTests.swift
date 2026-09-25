@@ -190,6 +190,58 @@ struct TrailGuideTests {
         #expect(event == .left)
     }
 
+    // MARK: Alert timing (2026-09-25 review of #65)
+
+    @Test("Poor-accuracy fixes drifting past 50 m do not raise the alert; accurate ones do")
+    func lowAccuracyDoesNotAlert() throws {
+        let path = straight
+        let start = Date()
+        var fuzzy = try #require(TrailProgress(route: route(path: path, waypoints: [path[0], path[10]], loop: false)))
+        var clear = fuzzy
+        for second in stride(from: 0.0, through: 30, by: 5) {
+            #expect(fuzzy.update(location: at(east: 300, north: 60), accuracy: 40, at: start + second,
+                                 alertsEnabled: true) == nil, "at \(second) s")
+        }
+        #expect(!fuzzy.isOffTrail)
+        var event: OffTrailMonitor.Event?
+        for second in stride(from: 0.0, through: 30, by: 5) where event == nil {
+            event = clear.update(location: at(east: 300, north: 60), accuracy: 5, at: start + second, alertsEnabled: true)
+        }
+        #expect(event == .left, "60 m off, known to within 5 m")
+    }
+
+    @Test("A pause starts the off-trail clock over")
+    func pauseResetsClock() throws {
+        let path = straight
+        var progress = try #require(TrailProgress(route: route(path: path, waypoints: [path[0], path[10]], loop: false)))
+        let start = Date()
+        _ = progress.update(location: at(east: 300, north: 55), at: start, alertsEnabled: true)
+        #expect(progress.tick(at: start + 10, alertsEnabled: true) == nil)
+        progress.resetOffTrail()   // paused, walked back, resumed a minute later
+        #expect(progress.tick(at: start + 70, alertsEnabled: true) == nil, "10 s off before the pause is not 70 s off")
+    }
+
+    @Test("Switching alerts off clears the banner on the next tick, without a new fix")
+    func alertsOffClearsBanner() throws {
+        let path = straight
+        var progress = try #require(TrailProgress(route: route(path: path, waypoints: [path[0], path[10]], loop: false)))
+        let start = Date()
+        _ = progress.update(location: at(east: 300, north: 130), at: start, alertsEnabled: true)
+        #expect(progress.tick(at: start + 21, alertsEnabled: true) == .left)
+        #expect(progress.isOffTrail)
+        _ = progress.tick(at: start + 22, alertsEnabled: false)
+        #expect(!progress.isOffTrail)
+    }
+
+    @Test("The arrow turns the short way, across north too")
+    func arrowTurnsShortWay() {
+        // Facing 355° → 5° with the trail at 90°: -265° → 85° is a 350° spin.
+        #expect(ArrowTurn.angle(from: -265, to: 85) == -275)
+        #expect(ArrowTurn.angle(from: 170, to: -170) == 190)
+        #expect(ArrowTurn.angle(from: 0, to: 90) == 90)
+        #expect(ArrowTurn.angle(from: 720, to: 10) == 730)
+    }
+
     // MARK: Words
 
     @Test("Compass words for bearings, including the wrap at north")

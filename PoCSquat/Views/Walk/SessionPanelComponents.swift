@@ -397,14 +397,22 @@ struct OffTrailBanner: View {
     let detail: String?
     /// Degrees clockwise from straight ahead, or nil when their facing is unknown.
     let arrowAngle: Double?
+    /// What the arrow is drawn at: `arrowAngle`, unwound so each change turns
+    /// the short way (`ArrowTurn`).
+    @State private var shownAngle: Double = 0
 
     var body: some View {
         HStack(spacing: 12) {
             Image(wkt: .directionArrow)
                 .wktIcon(.row, tint: .earthOrange, filled: true)
-                .rotationEffect(.degrees(arrowAngle ?? 0))
+                .rotationEffect(.degrees(shownAngle))
                 .opacity(arrowAngle == nil ? 0.35 : 1)
-                .animation(.easeOut(duration: 0.25), value: arrowAngle)
+                .animation(.easeOut(duration: 0.25), value: shownAngle)
+                .onAppear { shownAngle = ArrowTurn.angle(from: 0, to: arrowAngle ?? 0) }
+                .onChange(of: arrowAngle) { _, angle in
+                    guard let angle else { return }
+                    shownAngle = ArrowTurn.angle(from: shownAngle, to: angle)
+                }
             VStack(alignment: .leading, spacing: 2) {
                 Text("You're off \(trailName)")
                     .font(.subheadline.bold())

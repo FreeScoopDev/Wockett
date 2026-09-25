@@ -35,6 +35,11 @@ extension UNUserNotificationCenter: NotificationCentering {
 // cancelled — that is the one deliberate behaviour change here.
 
 enum NotificationKind: Hashable {
+    /// "Off <trail>", one at a time: each new one replaces the last, and it is
+    /// withdrawn when the person is back. Each used to get a fresh UUID and
+    /// they piled up on the lock screen (2026-09-25 review).
+    static let offTrail = NotificationKind.routeEvent("off-trail")
+
     case weeklySummary
     case streakNudge
     case petNudge
@@ -270,6 +275,14 @@ final class NotificationService {
 
     func cancel(_ kind: NotificationKind) {
         center.removePending(withIdentifiers: [kind.identifier])
+    }
+
+    /// Cancels `kind` and takes it off the lock screen if it was delivered —
+    /// for a notification that stops being true, like "Off the trail" once
+    /// the person is back on it.
+    func withdraw(_ kind: NotificationKind) {
+        center.removePending(withIdentifiers: [kind.identifier])
+        center.removeDelivered(withIdentifiers: [kind.identifier])
     }
 
     func cancelWaterBreaks() {

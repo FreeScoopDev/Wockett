@@ -106,6 +106,30 @@ struct RecordedRouteTests {
         #expect(!(try JSONDecoder().decode(ActiveWalkSnapshot.RouteData.self, from: old).navigableRoute.pathIsRecording))
     }
 
+    @Test("A walk on a recorded route salvaged after a crash keeps its whole line, not its checkpoints")
+    func salvageKeepsLine() throws {
+        let points = try recording()
+        let route = navigable(points).followingRecordedLine()
+        #expect(route.waypoints.count < 10, "checkpoints only")
+        let snapshot = ActiveWalkSnapshot(route: .init(route), startTime: Date(), totalDistanceCovered: 900,
+                                          pausedDuration: 0, isPaused: false, pauseStartDate: nil,
+                                          currentWaypointIndex: 1, currentLap: 1, triggeredCheckpoints: [],
+                                          splitTimes: [], liveSteps: 0,
+                                          checkpointDate: Date().addingTimeInterval(-5 * 3600))
+        let saved = ActiveWalkStore.salvagedWaypoints(for: snapshot).map(\.clCoordinate)
+        #expect(saved.count == 311)
+        #expect(RecordedRoute.isRecorded(saved), "so a restart from Past Walks follows it again")
+
+        // A trail walk keeps its checkpoints, like every other guided walk.
+        var trail = route
+        trail.pathIsRecording = false
+        let trailSnapshot = ActiveWalkSnapshot(route: .init(trail), startTime: Date(), totalDistanceCovered: 900,
+                                               pausedDuration: 0, isPaused: false, pauseStartDate: nil,
+                                               currentWaypointIndex: 1, currentLap: 1, triggeredCheckpoints: [],
+                                               splitTimes: [], liveSteps: 0, checkpointDate: Date())
+        #expect(ActiveWalkStore.salvagedWaypoints(for: trailSnapshot).count == route.waypoints.count)
+    }
+
     @Test("A recorded loop closes its line and keeps two checkpoints past the start")
     func recordedLoop() throws {
         let points = Array(try recording().dropLast(20))   // ends short of the start
