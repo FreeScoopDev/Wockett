@@ -128,7 +128,16 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
 
     // Trail walks: position along the trail's line, and off-trail alerts
     // (2026-09-24). Nil for every other route.
-    private(set) var trailProgress: TrailProgress?
+    private(set) var trailProgress: TrailProgress? {
+        // However the off-trail state clears — back on the trail, alerts
+        // switched off, a pause, the route turned round — the lock-screen
+        // notification saying otherwise goes with it.
+        didSet {
+            if oldValue?.isOffTrail == true, trailProgress?.isOffTrail != true {
+                NotificationService.shared.withdraw(.offTrail)
+            }
+        }
+    }
     /// Off-trail alerts; the session screen's switch sets this.
     var offTrailAlertsEnabled = true
     /// Called with true when the person leaves the trail, false when back.
@@ -648,7 +657,10 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
     private func turnRouteRound(at along: Double) {
         guard currentWaypointIndex == 1, currentLap == 1,
               let reversed = route.reversedAlongLine(),
-              var progress = TrailProgress(route: reversed) else { return }
+              var progress = TrailProgress(route: reversed) else {
+            trailProgress?.declineReverse()
+            return
+        }
         progress.resume(at: along)
         route = reversed
         trailProgress = progress
@@ -688,18 +700,14 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
             }
         case .returned:
             WalkAudioCueService.shared.announce("Back on \(route.name).")
-            NotificationService.shared.withdraw(.offTrail)
         }
         onOffTrailChange?(event == .left)
     }
 
-    /// Clears the off-trail state, and the banner with it.
+    /// Clears the off-trail state, and the banner and notification with it
+    /// (`trailProgress`'s didSet).
     private func resetOffTrail() {
-        guard var progress = trailProgress else { return }
-        let wasOff = progress.isOffTrail
-        progress.resetOffTrail()
-        trailProgress = progress
-        if wasOff { NotificationService.shared.withdraw(.offTrail) }
+        trailProgress?.resetOffTrail()
     }
 
     private func finish() {
