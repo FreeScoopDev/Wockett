@@ -23,7 +23,7 @@ struct CustomRouteBuilderView: View {
         ZStack(alignment: .bottom) {
             CustomRouteMapView(
                 waypoints: builder.waypoints,
-                routeLegs: builder.allLegs,
+                routeLegs: builder.allLegs.map { RouteLeg($0) },
                 onTap:     { builder.addWaypoint($0) }
             )
             .ignoresSafeArea()

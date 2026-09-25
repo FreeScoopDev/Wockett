@@ -125,7 +125,7 @@ final class CustomRouteBuilder: ObservableObject {
 /// Used for both route building (onTap provided) and display (onTap nil).
 struct CustomRouteMapView: UIViewRepresentable {
     let waypoints:  [CLLocationCoordinate2D]
-    let routeLegs:  [MKRoute]
+    let routeLegs:  [RouteLeg]
     var onTap:      ((CLLocationCoordinate2D) -> Void)? = nil
 
     func makeUIView(context: Context) -> MKMapView {
@@ -168,12 +168,14 @@ struct CustomRouteMapView: UIViewRepresentable {
             map.setRegion(region, animated: true)
         }
 
-        // Display mode: zoom to fit all content once legs load
+        // Display mode: zoom to fit all content once legs load. The lines count
+        // too: a recorded route's pins are only its checkpoints.
         if onTap == nil && routeLegs.count > coord.lastLegCount && !waypoints.isEmpty {
-            let rect = waypoints.reduce(MKMapRect.null) { r, c in
+            let pins = waypoints.reduce(MKMapRect.null) { r, c in
                 let p = MKMapPoint(c)
                 return r.union(MKMapRect(x: p.x, y: p.y, width: 0, height: 0))
             }
+            let rect = routeLegs.reduce(pins) { $0.union($1.polyline.boundingMapRect) }
             if !rect.isNull {
                 map.setVisibleMapRect(rect,
                                       edgePadding: UIEdgeInsets(top: 60, left: 40, bottom: 60, right: 40),

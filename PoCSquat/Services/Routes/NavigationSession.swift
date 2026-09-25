@@ -481,9 +481,11 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
             // not its full line: the summary's "Save as Custom Route" saves
             // these points for MKDirections to join, and a trail's dozens of
             // vertices would come back routed on streets, one request each.
+            // A recorded route keeps its line, which RecordedRoute recognises
+            // again when the walk is restarted or saved.
             waypoints: route.waypoints.isEmpty
                 ? trackPoints.map { WaypointCoord($0) }
-                : route.waypoints.map { WaypointCoord($0) },
+                : ((route.pathIsRecording ? route.path : nil) ?? route.waypoints).map { WaypointCoord($0) },
             lapCount: route.lapCount,
             isLoop: route.isLoop,
             activityType: route.activityMode.rawValue,
@@ -640,7 +642,7 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
         let formatter = MKDistanceFormatter()
         formatter.unitStyle = spoken ? .full : .abbreviated
         let distance = formatter.string(fromDistance: max(10, (offset / 10).rounded() * 10))
-        return "The trail is about \(distance) to the \(CompassDirection.name(for: bearing))."
+        return "The \(route.lineNoun) is about \(distance) to the \(CompassDirection.name(for: bearing))."
     }
 
     private func handleOffTrail(_ event: OffTrailMonitor.Event) {
@@ -651,7 +653,7 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
             // In the app the banner and a haptic say it; in a pocket, a notification.
             if UIApplication.shared.applicationState != .active {
                 fireBackgroundNotification(title: "Off \(route.name)",
-                                           body: offTrailDescription(spoken: false) ?? "Head back to the trail.")
+                                           body: offTrailDescription(spoken: false) ?? "Head back to the \(route.lineNoun).")
             }
         case .returned:
             WalkAudioCueService.shared.announce("Back on \(route.name).")
