@@ -304,6 +304,13 @@ non-obvious ways.
 - **Branch from `origin/main` after a `git fetch`, never from a local `main`.**
   A local `main` goes stale, and a branch cut from it silently omits merged
   work. That once nearly reverted a shipped build setting.
+- **`-only-testing:` can match nothing and still pass.** Swift Testing tests
+  are not addressed by their function name alone, so
+  `-only-testing:WockettTests/TrailGuideTests/someTest` ran 0 tests and printed
+  `** TEST SUCCEEDED **` during a break-check on 2026-09-24. Filter to the
+  suite (`WockettTests/TrailGuideTests`) instead, and confirm the count in the
+  bundle (`xcrun xcresulttool get test-results summary`) before believing a
+  green result.
 - **Never count tests from the xcodebuild log.** During parallel testing it
   can write session-level output mid-way through a result line and eat the
   verdict; on 2026-09-09 that undercounted a clean run by one, and two
