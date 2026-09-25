@@ -59,15 +59,21 @@ struct TrailGuide {
     /// the person has been following.
     static let switchMargin = 25.0
     /// Inside the window, points this close to the nearest count as equally
-    /// near, and the one nearest the previous position along the line wins.
-    /// On a loop shorter than the window both ends are in it, and GPS noise
-    /// alone must not decide between the start and the finish.
+    /// near, and the one nearest where the person is expected to be along the
+    /// line wins. On a loop shorter than the window both ends are in it, and
+    /// GPS noise alone must not decide between the start and the finish; on
+    /// an out-and-back both sides of the street are, and the way home must
+    /// win once they are past the turn.
     static let tieMeters = 15.0
 
     /// The nearest point anywhere on the line, and the point within the window
     /// around `previousAlong` (nil without one, or when no stretch falls inside
     /// it): the nearest, or among points about as near, the one closest along
-    /// the line to `previousAlong`.
+    /// the line to `expectedAlong` — the previous position plus the distance
+    /// moved since. The previous position alone was the first version
+    /// (#67), and on an out-and-back it always chose the way-out side just
+    /// behind the person, so coming home counted backwards and the walk never
+    /// finished (2026-09-25 review of #67/#68).
     struct Candidates {
         let best: Position
         let inWindow: Position?
@@ -80,7 +86,7 @@ struct TrailGuide {
     }
 
     func candidates(for point: CLLocationCoordinate2D, near previousAlong: Double?,
-                    ahead: Double = Self.windowAhead) -> Candidates? {
+                    expectedAlong: Double? = nil, ahead: Double = Self.windowAhead) -> Candidates? {
         guard path.count >= 2 else { return nil }
         var best: Position?
         var inWindow: [Position] = []
@@ -95,9 +101,10 @@ struct TrailGuide {
         }
         guard let best else { return nil }
         let nearestInWindow = inWindow.map(\.offset).min() ?? .infinity
+        let expected = expectedAlong ?? previousAlong ?? 0
         let chosen = inWindow
             .filter { $0.offset <= nearestInWindow + Self.tieMeters }
-            .min { abs($0.along - (previousAlong ?? 0)) < abs($1.along - (previousAlong ?? 0)) }
+            .min { abs($0.along - expected) < abs($1.along - expected) }
         return Candidates(best: best, inWindow: chosen)
     }
 
@@ -227,6 +234,15 @@ struct TrailProgress {
     /// Metres along a trail per metre in a straight line, generously: how far
     /// along the line a gap in fixes can have taken someone.
     static let windingFactor = 2.0
+    /// A step forward along the line beyond `windingFactor` × the distance
+    /// moved, plus this, is a leap nobody walked, and needs the same
+    /// agreement as a jump to another stretch. On a loop shorter than the
+    /// window, its closing stretch is inside the window from the start, so
+    /// setting off the other way leapt straight to the finish's side and
+    /// ticked every checkpoint (2026-09-25 review of #67/#68).
+    static let leapSlackMeters = 40.0
+    /// Within this far along of the start, the person is still at the start.
+    static let startBandMeters = 15.0
 
     /// A checkpoint counts this far before its exact position, so the last
     /// few metres of GPS noise never hold a session up.
@@ -313,7 +329,9 @@ struct TrailProgress {
         // way home, 2026-09-25 review).
         let moved = lastAcceptedLocation.map { TrailWalkPlanner.meters($0, location) } ?? 0
         let ahead = TrailGuide.windowAhead + Self.windingFactor * moved
-        guard let found = guide.candidates(for: location, near: along ?? 0, ahead: ahead) else { return nil }
+        let current = along ?? 0
+        guard let found = guide.candidates(for: location, near: current, expectedAlong: current + moved,
+                                           ahead: ahead) else { return nil }
         offset = found.best.offset
         nearest = found.best.nearest
         // Leaving has to be beyond doubt; coming back is judged as measured.
@@ -324,7 +342,10 @@ struct TrailProgress {
         // checkpoints they never walked. The way back still updates.
         if found.best.offset <= OffTrailMonitor.leaveMeters {
             let chosen = found.preferred
-            if chosen == found.inWindow {
+            // Without a previous fix there is no distance moved to judge a leap by.
+            let plausible = lastAcceptedLocation == nil
+                || chosen.along - current <= Self.windingFactor * moved + Self.leapSlackMeters
+            if chosen == found.inWindow, plausible, !isSettingOffBackward(to: chosen.along, from: current) {
                 along = chosen.along
                 lastAcceptedLocation = location
                 pendingJump = nil
@@ -346,6 +367,29 @@ struct TrailProgress {
     /// resuming (2026-09-25 review).
     mutating func resetOffTrail() {
         monitor.reset()
+        offset = nil
+        alertOffset = nil
+    }
+
+    /// Still by the start of a closed line, and placed in its far half: the
+    /// person has set off round it the other way, since walking forward they
+    /// would have been counted along the first stretch on the way. Always
+    /// needs agreement (`considerJump`), and it is the only way a route is
+    /// turned round. The far half, at most the look-ahead, so a short loop's
+    /// finish side counts; "by the start" rather than "before the first
+    /// checkpoint", so a forward walker whose fixes lapse early on is not
+    /// taken for one going backwards (2026-09-25 review of #67/#68).
+    private func isSettingOffBackward(to candidate: Double, from current: Double) -> Bool {
+        isClosed && current <= Self.startBandMeters
+            && candidate > guide.length - min(TrailGuide.windowAhead, guide.length / 2)
+    }
+
+    /// The session could not turn the route round (it had already passed a
+    /// checkpoint). Forget the request, or it is repeated on every fix and
+    /// the position never moves.
+    mutating func declineReverse() {
+        isWalkingBackward = false
+        reversedAlong = nil
     }
 
     /// Another stretch is clearly nearer than the one being followed: a
@@ -360,10 +404,7 @@ struct TrailProgress {
         }
         guard let pending = pendingJump, pending.count >= Self.jumpConfirmFixes else { return }
         pendingJump = nil
-        let current = along ?? 0
-        let firstCheckpoint = checkpointAlong.count > 1 ? checkpointAlong[1] : guide.length
-        if isClosed, current < min(TrailGuide.windowAhead, firstCheckpoint - Self.reachSlack),
-           candidate > guide.length - TrailGuide.windowAhead {
+        if isSettingOffBackward(to: candidate, from: along ?? 0) {
             // Still by the start, and now steadily on the line's last stretch:
             // they set off the other way round.
             isWalkingBackward = true
