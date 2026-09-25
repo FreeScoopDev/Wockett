@@ -8,6 +8,9 @@ import HealthKit
 
 // MARK: - Checkpoint Circle Overlay
 
+/// The dashed line from someone who has left a trail back to it.
+final class OffTrailLine: MKPolyline {}
+
 final class NavCheckpointCircle: MKCircle {
     var isFinish = false
 }
@@ -123,6 +126,14 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
 
     var onCheckpointReached: ((String) -> Void)?
 
+    // Trail walks: position along the trail's line, and off-trail alerts
+    // (2026-09-24). Nil for every other route.
+    private(set) var trailProgress: TrailProgress?
+    /// Off-trail alerts; the session screen's switch sets this.
+    var offTrailAlertsEnabled = true
+    /// Called with true when the person leaves the trail, false when back.
+    var onOffTrailChange: ((Bool) -> Void)?
+
     private let route: NavigableRoute
     private let locationManager = CLLocationManager()
     private let pedometer = CMPedometer()
@@ -159,6 +170,7 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
     init(route: NavigableRoute) {
         self.route = route
         super.init()
+        trailProgress = TrailProgress(route: route)
         drivingDetector = DrivingDetector(speedCeiling: route.activityMode.drivingSpeedCeiling)
         locationManager.delegate = self
         locationManager.desiredAccuracy = kCLLocationAccuracyBestForNavigation
@@ -274,6 +286,11 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
                     self.writeSnapshot()
                 }
                 let now = Date()
+                if var progress = self.trailProgress {
+                    let event = progress.tick(at: now, alertsEnabled: self.offTrailAlertsEnabled)
+                    self.trailProgress = progress
+                    if let event { self.handleOffTrail(event) }
+                }
                 let isMoving = now.timeIntervalSince(self.lastMovementTime) < self.movementWindow
                 if self.stopTracker.tick(isMoving: isMoving, now: now) != nil {
                     if !self.showBreakPrompt {
@@ -408,7 +425,10 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
     }
 
     var remainingDistance: Double {
-        max(0, route.totalDistance - totalDistanceCovered)
+        // A trail walk counts what is left along the trail, not what is left
+        // of the planned distance after however far the GPS track wandered.
+        if let progress = trailProgress, progress.along != nil { return progress.remaining }
+        return max(0, route.totalDistance - totalDistanceCovered)
     }
 
     // Pace (walking/running) or speed (cycling) — shown as "--" until enough data.
@@ -485,6 +505,12 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
             }
             self.lastLocation = loc
             self.trackPoints.append(loc.coordinate)
+            if var progress = self.trailProgress {
+                let event = progress.update(location: loc.coordinate, at: Date(),
+                                            alertsEnabled: self.offTrailAlertsEnabled)
+                self.trailProgress = progress
+                if let event { self.handleOffTrail(event) }
+            }
             self.lastMovementTime = Date()
             self.lastKnownSpeed = loc.speed
             self.workoutWriter?.addLocations(locations)
@@ -533,6 +559,13 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
     nonisolated func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {}
 
     private func checkArrival(at location: CLLocation) {
+        // A trail walk advances by position along the trail: a checkpoint
+        // counts once it has been passed, however far the trail data sits
+        // from the ground path, and "to next" follows the trail's bends.
+        if trailProgress != nil {
+            advanceAlongTrail()
+            return
+        }
         guard let next = nextWaypoint else { return }
         let dist = location.distance(from: CLLocation(latitude: next.latitude, longitude: next.longitude))
         distanceToNextWaypoint = dist
@@ -575,6 +608,55 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
             )
         }
         writeSnapshot()
+    }
+
+    private func advanceAlongTrail() {
+        let count = route.waypoints.count
+        guard count > 0 else { return }
+        // Several checkpoints can be passed in one fix after a gap in GPS.
+        for _ in 0...count {
+            guard !isCompleted, let progress = trailProgress else { return }
+            let index = route.isLoop ? currentWaypointIndex % count : currentWaypointIndex
+            guard index < count else { return }
+            distanceToNextWaypoint = progress.distanceAlong(toWaypoint: index)
+            guard progress.hasReached(waypoint: index) else { return }
+            advanceWaypoint()
+        }
+    }
+
+    // MARK: Off trail
+
+    /// "The trail is about 200 ft to the northeast."
+    var offTrailDirectionText: String? { offTrailDescription(spoken: false) }
+
+    /// Bearing from the person to the nearest point of the trail, degrees from north.
+    var bearingToTrail: Double? {
+        guard let nearest = trailProgress?.nearest, let here = lastLocation?.coordinate else { return nil }
+        return HeadingTracker.bearing(from: here, to: nearest)
+    }
+
+    private func offTrailDescription(spoken: Bool) -> String? {
+        guard let offset = trailProgress?.offset, let bearing = bearingToTrail else { return nil }
+        let formatter = MKDistanceFormatter()
+        formatter.unitStyle = spoken ? .full : .abbreviated
+        let distance = formatter.string(fromDistance: max(10, (offset / 10).rounded() * 10))
+        return "The trail is about \(distance) to the \(CompassDirection.name(for: bearing))."
+    }
+
+    private func handleOffTrail(_ event: OffTrailMonitor.Event) {
+        switch event {
+        case .left:
+            let direction = offTrailDescription(spoken: true) ?? ""
+            WalkAudioCueService.shared.announce("You've left \(route.name). \(direction)")
+            // In the app the banner and a haptic say it; in a pocket, a notification.
+            if UIApplication.shared.applicationState != .active {
+                fireBackgroundNotification(title: "Off \(route.name)",
+                                           body: offTrailDescription(spoken: false) ?? "Head back to the trail.")
+            }
+        case .returned:
+            WalkAudioCueService.shared.announce("Back on \(route.name).")
+        }
+        onOffTrailChange?(event == .left)
     }
 
     private func finish() {
@@ -625,6 +707,8 @@ struct NavigationMapView: UIViewRepresentable {
     var headingUp = false
     /// Bumped by the recentre button; each new value re-follows the person.
     var recenterToken = 0
+    /// Off a trail: from the person to the nearest point of it, drawn dashed.
+    var offTrailLink: [CLLocationCoordinate2D]?
 
     func makeUIView(context: Context) -> MKMapView {
         let map = MKMapView()
@@ -669,6 +753,14 @@ struct NavigationMapView: UIViewRepresentable {
         }
         coordinator.headingDegrees = headingDegrees
         coordinator.updateBeam(on: map)
+        let link = offTrailLink ?? []
+        if !Self.sameCoordinates(link, coordinator.lastOffTrailLink) {
+            coordinator.lastOffTrailLink = link
+            map.removeOverlays(map.overlays.filter { $0 is OffTrailLine })
+            if link.count == 2 {
+                map.addOverlay(OffTrailLine(coordinates: link, count: link.count), level: .aboveLabels)
+            }
+        }
 
         if !computedLegs.isEmpty, !context.coordinator.hasAddedLegs {
             context.coordinator.hasAddedLegs = true
@@ -719,6 +811,10 @@ struct NavigationMapView: UIViewRepresentable {
         }
     }
 
+    static func sameCoordinates(_ a: [CLLocationCoordinate2D], _ b: [CLLocationCoordinate2D]) -> Bool {
+        a.count == b.count && zip(a, b).allSatisfy { $0.latitude == $1.latitude && $0.longitude == $1.longitude }
+    }
+
     static func addCheckpointMarkers(on map: MKMapView, legs: [RouteLeg]) {
         var allCoords: [CLLocationCoordinate2D] = []
         for leg in legs {
@@ -759,6 +855,7 @@ struct NavigationMapView: UIViewRepresentable {
         var lastHeadingUp = false
         var lastRecenterToken = 0
         var headingDegrees: Double?
+        var lastOffTrailLink: [CLLocationCoordinate2D] = []
 
         /// Points the beam where the person faces, relative to the map's own
         /// rotation, so it stays right while the map turns.
@@ -772,6 +869,14 @@ struct NavigationMapView: UIViewRepresentable {
         }
 
         func mapView(_ map: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
+            if let line = overlay as? OffTrailLine {
+                let r = MKPolylineRenderer(polyline: line)
+                r.strokeColor = .brandOrange
+                r.lineWidth = 3
+                r.lineCap = .round
+                r.lineDashPattern = [6, 6]
+                return r
+            }
             if let circle = overlay as? NavCheckpointCircle {
                 let r = MKCircleRenderer(circle: circle)
                 if circle.isFinish {

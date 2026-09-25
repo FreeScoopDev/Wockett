@@ -68,6 +68,7 @@ struct ActiveSessionView: View {
     @State private var recenterToken          = 0
     @State private var headingTracker         = HeadingTracker()
     @State private var freeMapHeading: Double = 0
+    @AppStorage("wkt_offTrailAlerts_v1") private var offTrailAlerts = true
 
     private enum FinishChoice { case save, saveWithRoute, discard }
 
@@ -255,6 +256,7 @@ struct ActiveSessionView: View {
         .onChange(of: headingUp) { _, up in
             position = .userLocation(followsHeading: up, fallback: .automatic)
         }
+        .onChange(of: offTrailAlerts) { _, on in session.offTrailAlertsEnabled = on }
         .onChange(of: recenterToken) { _, _ in
             position = .userLocation(followsHeading: headingUp, fallback: .automatic)
         }
@@ -324,7 +326,8 @@ struct ActiveSessionView: View {
                 distanceCoveredMeters: session.totalDistanceCovered,
                 headingDegrees: headingTracker.direction(track: session.trackPoints),
                 headingUp: headingUp,
-                recenterToken: recenterToken
+                recenterToken: recenterToken,
+                offTrailLink: offTrailLink
             )
             .ignoresSafeArea()
         } else {
@@ -460,6 +463,15 @@ struct ActiveSessionView: View {
                     .foregroundColor(Color.earthMuted.opacity(0.25))
                     .transition(.opacity)
             }
+            if let progress = session.trailProgress, progress.isOffTrail {
+                OffTrailBanner(trailName: route.name,
+                               detail: session.offTrailDirectionText,
+                               arrowAngle: offTrailArrowAngle)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                Rectangle()
+                    .frame(height: 0.5)
+                    .foregroundColor(Color.earthMuted.opacity(0.25))
+            }
             if showHeatBanner {
                 HeatAdvisoryBanner(
                     intervalMinutes: waterBreakIntervalMinutes,
@@ -546,6 +558,7 @@ struct ActiveSessionView: View {
         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: session.estimatedSteps > 0)
         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: poiManager.selectedPOI?.id)
         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: panelExpanded)
+        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: session.trailProgress?.isOffTrail)
         .background(.ultraThinMaterial, ignoresSafeAreaEdges: .bottom)
     }
 
@@ -656,6 +669,11 @@ struct ActiveSessionView: View {
                                                                  : "Marks every 20% of the route on the map",
                                      isOn: $checkpointsEnabled)
                 }
+                if route.path != nil {
+                    SessionToggleRow(icon: .directionArrow, tint: .earthOrange, title: "Off-trail alerts",
+                                     detail: "Tells you when you're more than \(session.distanceText(OffTrailMonitor.leaveMeters)) from the trail, and which way it is",
+                                     isOn: $offTrailAlerts)
+                }
             }
 
             if !petStore.pets.isEmpty { crewSection }
@@ -685,6 +703,20 @@ struct ActiveSessionView: View {
         .padding(.horizontal, 18)
         .padding(.top, 10)
         .padding(.bottom, 4)
+    }
+
+    /// From the person to the nearest point of the trail, while they are off it.
+    private var offTrailLink: [CLLocationCoordinate2D]? {
+        guard let progress = session.trailProgress, progress.isOffTrail,
+              let nearest = progress.nearest, let here = session.trackPoints.last else { return nil }
+        return [here, nearest]
+    }
+
+    /// The way back to the trail relative to where the person faces.
+    private var offTrailArrowAngle: Double? {
+        guard let bearing = session.bearingToTrail,
+              let facing = headingTracker.direction(track: session.trackPoints) else { return nil }
+        return bearing - facing
     }
 
     private var routeProgress: some View {
@@ -849,6 +881,10 @@ struct ActiveSessionView: View {
                 }
             }
             session.onCheckpointReached = checkpointsEnabled ? { [self] lbl in handleCheckpoint(lbl) } : nil
+            session.offTrailAlertsEnabled = offTrailAlerts
+            session.onOffTrailChange = { off in
+                UINotificationFeedbackGenerator().notificationOccurred(off ? .warning : .success)
+            }
             showBreakPromptAlert = session.showBreakPrompt
             showDrivingBanner = session.drivingSuspected
             // Re-adopt any pets that became active while minimized.
@@ -875,6 +911,10 @@ struct ActiveSessionView: View {
         WalkAudioCueService.shared.reset()
         session.start()
         session.onCheckpointReached = checkpointsEnabled ? { [self] lbl in handleCheckpoint(lbl) } : nil
+        session.offTrailAlertsEnabled = offTrailAlerts
+        session.onOffTrailChange = { off in
+            UINotificationFeedbackGenerator().notificationOccurred(off ? .warning : .success)
+        }
         await WalkLiveActivityManager.shared.start(
             routeName: route.name,
             totalDistanceMeters: route.totalDistance,
