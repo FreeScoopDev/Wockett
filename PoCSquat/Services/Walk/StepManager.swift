@@ -293,10 +293,15 @@ final class StepManager: ObservableObject {
     private func authorizeAndFetchHealthKit() async {
         guard HKHealthStore.isHealthDataAvailable() else { return }
         let stepType = HKQuantityType(.stepCount)
-        // Write types: workout records, distance samples, calories.
+        // Write types: workout records, their GPS route, distance samples, calories.
         // These are requested here so a single system prompt covers all HealthKit access.
+        // The route is its own permission: HealthWorkoutWriter has always built
+        // one, but without this it was never allowed, finishRoute failed into
+        // a log line, and walks reached Health with no map (release audit,
+        // 2026-09-25). Existing users are asked once for just this type.
         let typesToShare: Set<HKSampleType> = [
             .workoutType(),
+            HKSeriesType.workoutRoute(),
             HKQuantityType(.distanceWalkingRunning),
             HKQuantityType(.distanceCycling),
             HKQuantityType(.activeEnergyBurned)
