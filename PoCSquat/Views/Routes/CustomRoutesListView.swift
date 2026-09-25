@@ -299,7 +299,7 @@ struct CustomRouteDetailView: View {
                             RouteSessionHistoryView(route: route, historyStore: historyStore)
                         } label: {
                             Label {
-                                Text("View Run History")
+                                Text("View History")
                             } icon: {
                                 Image(wkt: .history).wktIcon(.row, tint: .earthCream)
                             }
