@@ -76,12 +76,15 @@ struct ActiveWalkSnapshot: Codable {
     let liveSteps: Int
     let checkpointDate: Date           // when this snapshot was written
     let trackPoints: [WaypointCoord]?  // GPS breadcrumbs; optional so pre-existing checkpoint files still decode
+    /// Metres along a trail or recorded line, so a restored walk picks up
+    /// where it was instead of from the nearest stretch. Optional for the same reason.
+    let trailAlong: Double?
 
     init(route: RouteData, startTime: Date, totalDistanceCovered: Double,
          pausedDuration: TimeInterval, isPaused: Bool, pauseStartDate: Date?,
          currentWaypointIndex: Int, currentLap: Int, triggeredCheckpoints: Set<Int>,
          splitTimes: [SplitTimeRecord], liveSteps: Int, checkpointDate: Date,
-         trackPoints: [WaypointCoord]? = nil) {
+         trackPoints: [WaypointCoord]? = nil, trailAlong: Double? = nil) {
         self.route = route; self.startTime = startTime
         self.totalDistanceCovered = totalDistanceCovered
         self.pausedDuration = pausedDuration; self.isPaused = isPaused
@@ -90,6 +93,7 @@ struct ActiveWalkSnapshot: Codable {
         self.triggeredCheckpoints = triggeredCheckpoints; self.splitTimes = splitTimes
         self.liveSteps = liveSteps; self.checkpointDate = checkpointDate
         self.trackPoints = trackPoints
+        self.trailAlong = trailAlong
     }
 }
 

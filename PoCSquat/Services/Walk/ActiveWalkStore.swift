@@ -66,6 +66,7 @@ final class ActiveWalkStore {
         guard session == nil, let snapshot = ActiveWalkSnapshotStore.load() else { return nil }
         let route = snapshot.route.navigableRoute
         let mgr = NavigationSessionManager(route: route)
+        mgr.onRouteReversed = { [weak self] in self?.activeRoute = $0 }
         mgr.restore(from: snapshot)
         session = mgr
         activeRoute = route
@@ -144,6 +145,7 @@ final class ActiveWalkStore {
         guard session == nil else { return nil }
         let route = route.followingRecordedLine()
         let mgr = NavigationSessionManager(route: route)
+        mgr.onRouteReversed = { [weak self] in self?.activeRoute = $0 }
         session = mgr
         activeRoute = route
         isStarted = false
