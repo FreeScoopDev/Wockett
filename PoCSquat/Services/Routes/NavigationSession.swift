@@ -341,6 +341,7 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
         timer = nil
         locationManager.stopUpdatingLocation()
         UIApplication.shared.isIdleTimerDisabled = false
+        resetOffTrail()
         writeSnapshot()
     }
 
@@ -355,6 +356,7 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
         isPaused = false
         UIApplication.shared.isIdleTimerDisabled = true
         lastMovementTime = Date()   // prevent a phantom stop on the first ticks after resuming
+        resetOffTrail()
         locationManager.startUpdatingLocation()
         startTimer()
         writeSnapshot()
@@ -362,6 +364,7 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
 
     func stop() {
         autoPausedForInactivity = false
+        NotificationService.shared.withdraw(.offTrail)
         ActiveWalkSnapshotStore.clear()
         locationManager.stopUpdatingLocation()
         pedometer.stopUpdates()
@@ -501,7 +504,7 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
             // again when the walk is restarted or saved.
             waypoints: route.waypoints.isEmpty
                 ? trackPoints.map { WaypointCoord($0) }
-                : ((route.pathIsRecording ? route.path : nil) ?? route.waypoints).map { WaypointCoord($0) },
+                : route.historyWaypoints.map { WaypointCoord($0) },
             lapCount: route.lapCount,
             isLoop: route.isLoop,
             activityType: route.activityMode.rawValue,
@@ -524,8 +527,8 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
             self.lastLocation = loc
             self.trackPoints.append(loc.coordinate)
             if var progress = self.trailProgress {
-                let event = progress.update(location: loc.coordinate, at: Date(),
-                                            alertsEnabled: self.offTrailAlertsEnabled)
+                let event = progress.update(location: loc.coordinate, accuracy: loc.horizontalAccuracy,
+                                            at: Date(), alertsEnabled: self.offTrailAlertsEnabled)
                 self.trailProgress = progress
                 if let event { self.handleOffTrail(event) }
                 if progress.isWalkingBackward { self.turnRouteRound(at: progress.reversedAlong ?? 0) }
@@ -680,12 +683,23 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
             // In the app the banner and a haptic say it; in a pocket, a notification.
             if UIApplication.shared.applicationState != .active {
                 fireBackgroundNotification(title: "Off \(route.name)",
-                                           body: offTrailDescription(spoken: false) ?? "Head back to the \(route.lineNoun).")
+                                           body: offTrailDescription(spoken: false) ?? "Head back to the \(route.lineNoun).",
+                                           kind: .offTrail)
             }
         case .returned:
             WalkAudioCueService.shared.announce("Back on \(route.name).")
+            NotificationService.shared.withdraw(.offTrail)
         }
         onOffTrailChange?(event == .left)
+    }
+
+    /// Clears the off-trail state, and the banner with it.
+    private func resetOffTrail() {
+        guard var progress = trailProgress else { return }
+        let wasOff = progress.isOffTrail
+        progress.resetOffTrail()
+        trailProgress = progress
+        if wasOff { NotificationService.shared.withdraw(.offTrail) }
     }
 
     private func finish() {
@@ -703,9 +717,10 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
         }
     }
 
-    private func fireBackgroundNotification(title: String, body: String) {
+    private func fireBackgroundNotification(title: String, body: String,
+                                            kind: NotificationKind = .routeEvent(UUID().uuidString)) {
         Task {
-            await NotificationService.shared.schedule(.routeEvent(UUID().uuidString), title: title, body: body,
+            await NotificationService.shared.schedule(kind, title: title, body: body,
                                                       trigger: UNTimeIntervalNotificationTrigger(timeInterval: 0.5, repeats: false))
         }
     }

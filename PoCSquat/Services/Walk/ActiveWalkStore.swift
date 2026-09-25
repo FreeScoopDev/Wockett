@@ -107,10 +107,7 @@ final class ActiveWalkStore {
         // Ignore trivial walks — same 50m threshold used by the Free Walk summary auto-save.
         guard snapshot.totalDistanceCovered >= 50 else { return }
 
-        let route = snapshot.route.navigableRoute
-        let path: [WaypointCoord] = route.waypoints.isEmpty
-            ? (snapshot.trackPoints ?? [])
-            : snapshot.route.waypoints
+        let path = Self.salvagedWaypoints(for: snapshot)
 
         let salvaged = WalkSession(
             id: UUID(),
@@ -126,6 +123,15 @@ final class ActiveWalkStore {
             customRouteId: snapshot.route.customRouteId
         )
         historyStore.add(salvaged)
+    }
+
+    /// The points a salvaged walk keeps: the breadcrumbs of a free walk, and
+    /// for a guided one what Walk History keeps for its route.
+    static func salvagedWaypoints(for snapshot: ActiveWalkSnapshot) -> [WaypointCoord] {
+        let route = snapshot.route.navigableRoute
+        return route.waypoints.isEmpty
+            ? (snapshot.trackPoints ?? [])
+            : route.historyWaypoints.map { WaypointCoord($0) }
     }
 
     /// Called when the user declines to resume a recovered walk.

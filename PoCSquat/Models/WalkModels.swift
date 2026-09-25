@@ -604,6 +604,15 @@ struct NavigableRoute: Identifiable, Hashable {
     /// someone recorded.
     var lineNoun: String { pathIsRecording ? "route" : "trail" }
 
+    /// What Walk History keeps for a walk on this route: a recording's whole
+    /// line, so restarting or saving it round-trips; otherwise the waypoints
+    /// (a trail's checkpoints, see `NavigationSessionManager.completedSession`).
+    /// One rule for every place a walk is saved — it was written out by hand
+    /// in two, and the crash salvage, the third, kept only the checkpoints.
+    var historyWaypoints: [CLLocationCoordinate2D] {
+        (pathIsRecording ? path : nil) ?? waypoints
+    }
+
     static func == (l: NavigableRoute, r: NavigableRoute) -> Bool { l.id == r.id }
     func hash(into hasher: inout Hasher) { hasher.combine(id) }
 }

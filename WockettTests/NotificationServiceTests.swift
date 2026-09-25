@@ -54,6 +54,16 @@ struct NotificationServiceTests {
         #expect(center.added.count == 2)
     }
 
+    @Test func offTrailReplacesItselfAndIsWithdrawnFromTheLockScreen() async {
+        let (svc, center, _) = make()
+        await svc.schedule(.offTrail, title: "Off A", body: "b", trigger: nil)
+        await svc.schedule(.offTrail, title: "Off A", body: "b", trigger: nil)
+        #expect(Set(center.added.map(\.identifier)) == ["nav-off-trail"], "one identifier, so each replaces the last")
+        svc.withdraw(.offTrail)
+        #expect(center.removedDelivered == [["nav-off-trail"]])
+        #expect(center.removedPending.last == ["nav-off-trail"])
+    }
+
     @Test func settingsToggleOffSkipsAndCancels() async {
         let (svc, center, defaults) = make()
         defaults.set(false, forKey: "notif_weeklySummary")
