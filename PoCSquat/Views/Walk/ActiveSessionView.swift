@@ -46,6 +46,10 @@ struct ActiveSessionView: View {
     @State private var petCompletions: [PetCompletion] = []
     @State private var completedPetNames: [String] = []
     @State private var computedLegs: [RouteLeg] = []
+    /// Bumped when the session turns a closed line round, once the legs for
+    /// the new direction are ready: the map is rebuilt with its checkpoint pins
+    /// numbered in the order they will now be walked.
+    @State private var mapGeneration = 0
     @State private var petActiveSinceDistance: [UUID: Double] = [:]
     @State private var petAccumulatedDistances: [UUID: Double] = [:]
     @State private var allSessionPetIds: Set<UUID> = []
@@ -330,7 +334,14 @@ struct ActiveSessionView: View {
                 recenterToken: recenterToken,
                 offTrailLink: offTrailLink
             )
+            .id(mapGeneration)
             .ignoresSafeArea()
+            .onChange(of: route.id) {
+                Task {
+                    computedLegs = await computeWalkingLegs()
+                    mapGeneration += 1
+                }
+            }
         } else {
             Map(position: $position,
                 bounds: MapCameraBounds(minimumDistance: 100, maximumDistance: 800)) {

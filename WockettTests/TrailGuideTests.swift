@@ -113,6 +113,11 @@ struct TrailGuideTests {
         let path = straight
         var progress = try #require(TrailProgress(route: route(path: path, waypoints: [path[0], path[5], path[10]], loop: false)))
         #expect(abs(progress.checkpointAlong[1] - 500) < 2)
+        // Walk up from the start: position follows on, it does not leap to a
+        // stretch 470 m away on one fix.
+        for east in [0.0, 200, 400] {
+            _ = progress.update(location: at(east: east, north: 45), at: Date(), alertsEnabled: true)
+        }
         _ = progress.update(location: at(east: 470, north: 45), at: Date(), alertsEnabled: true)
         #expect(!progress.hasReached(waypoint: 1), "30 m short of the checkpoint")
         _ = progress.update(location: at(east: 490, north: 45), at: Date(), alertsEnabled: true)
@@ -240,6 +245,134 @@ struct TrailGuideTests {
         #expect(ArrowTurn.angle(from: 170, to: -170) == 190)
         #expect(ArrowTurn.angle(from: 0, to: 90) == 90)
         #expect(ArrowTurn.angle(from: 720, to: 10) == 730)
+    }
+
+    // MARK: Where a walk starts, and jumps (2026-09-25 review of #65/#66)
+
+    /// 400 m square loop: a → b → c → d → a, 1.6 km.
+    private var squareLoop: [CLLocationCoordinate2D] {
+        let a = at(east: 0, north: 0)
+        return [a, at(east: 400, north: 0), at(east: 400, north: 400), at(east: 0, north: 400), a]
+    }
+
+    private func loopProgress(_ path: [CLLocationCoordinate2D]) throws -> TrailProgress {
+        let length = TrailWalkPlanner.length(path)
+        let waypoints = TrailWalkPlanner.checkpoints(along: path, isLoop: true, length: length)
+        return try #require(TrailProgress(route: route(path: path, waypoints: waypoints, loop: true)))
+    }
+
+    @Test("Starting a loop beside where it closes starts at the start, not the finish")
+    func loopStartIsNotTheFinish() throws {
+        var progress = try loopProgress(squareLoop)
+        // 10 m west, 5 m north of the start: nearer the loop's last stretch
+        // (10 m) than its first (11 m). This used to finish the walk.
+        _ = progress.update(location: at(east: -10, north: 5), at: Date(), alertsEnabled: true)
+        #expect((progress.along ?? .infinity) < 20, "along \(progress.along ?? -1)")
+        #expect(!progress.hasReached(waypoint: 1))
+        #expect(!progress.hasReached(waypoint: 0), "the finish")
+        #expect(progress.checkpointsToAdvance(from: 1, waypointCount: progress.checkpointAlong.count) == 0)
+    }
+
+    @Test("A loop shorter than the look-ahead: GPS noise at the start does not pick the finish")
+    func shortLoopStart() throws {
+        // 60 m square, 240 m round: both ends inside the window.
+        let a = at(east: 0, north: 0)
+        var progress = try loopProgress([a, at(east: 60, north: 0), at(east: 60, north: 60), at(east: 0, north: 60), a])
+        for point in [at(east: -3, north: 2), at(east: -2, north: 4), at(east: -4, north: 1)] {
+            _ = progress.update(location: point, at: Date(), alertsEnabled: true)
+            #expect((progress.along ?? .infinity) < 20, "along \(progress.along ?? -1)")
+        }
+        #expect(progress.checkpointsToAdvance(from: 1, waypointCount: progress.checkpointAlong.count) == 0)
+    }
+
+    @Test("After a gap in fixes, an out-and-back keeps to the way out")
+    func outAndBackGap() throws {
+        // 1.5 km out, and back 6 m to the north (a path's two sides).
+        let path = (0...15).map { at(east: Double($0) * 100, north: 0) }
+            + (0...15).reversed().map { at(east: Double($0) * 100, north: 6) }
+        let length = TrailWalkPlanner.length(path)
+        let waypoints = TrailWalkPlanner.checkpoints(along: path, isLoop: false, length: length)
+        var progress = try #require(TrailProgress(route: route(path: path, waypoints: waypoints, loop: false)))
+        for east in stride(from: 0.0, through: 600, by: 100) {
+            _ = progress.update(location: at(east: east, north: 0), at: Date(), alertsEnabled: true)
+        }
+        // No fix for 350 m, then one nearer the way back (1.5 m) than the way out (4.5 m).
+        _ = progress.update(location: at(east: 950, north: 4.5), at: Date(), alertsEnabled: true)
+        #expect(abs((progress.along ?? 0) - 950) < 5, "along \(progress.along ?? -1)")
+    }
+
+    @Test("A clearly nearer stretch counts only once several fixes agree")
+    func jumpNeedsAgreement() throws {
+        var progress = try #require(TrailProgress(route: route(path: hairpin, waypoints: [hairpin[0], hairpin[11]], loop: false)))
+        _ = progress.update(location: at(east: 100, north: 0), at: Date(), alertsEnabled: true)
+        _ = progress.update(location: at(east: 150, north: 0), at: Date(), alertsEnabled: true)
+        // Onto the way back (40 m north), which is 350 m further along.
+        _ = progress.update(location: at(east: 150, north: 40), at: Date(), alertsEnabled: true)
+        #expect(abs((progress.along ?? 0) - 150) < 3, "one fix is not enough")
+        _ = progress.update(location: at(east: 145, north: 40), at: Date(), alertsEnabled: true)
+        _ = progress.update(location: at(east: 140, north: 40), at: Date(), alertsEnabled: true)
+        // The way back reaches x = 140 after 500 + 40 + 360 m.
+        #expect(abs((progress.along ?? 0) - 900) < 3, "three agreeing fixes are a shortcut taken")
+    }
+
+    @Test("Setting off round a loop the other way turns the route round instead of counting its checkpoints")
+    func loopWalkedBackward() throws {
+        var progress = try loopProgress(squareLoop)
+        let count = progress.checkpointAlong.count
+        // Up the loop's last stretch from the start, 5 m a fix.
+        for north in stride(from: 0.0, through: 60, by: 5) {
+            _ = progress.update(location: at(east: 0, north: north), at: Date(), alertsEnabled: true)
+            #expect(progress.checkpointsToAdvance(from: 1, waypointCount: count) == 0, "at \(north) m")
+            #expect(!progress.hasReached(waypoint: 0))
+            if progress.isWalkingBackward { break }
+        }
+        #expect(progress.isWalkingBackward)
+        let reversedAlong = try #require(progress.reversedAlong)
+        #expect(reversedAlong > 20 && reversedAlong < 60, "reversedAlong \(reversedAlong)")
+
+        // The session then follows the reversed route from there.
+        let loop = route(path: squareLoop, waypoints: TrailWalkPlanner.checkpoints(along: squareLoop, isLoop: true,
+                                                                                    length: 1600), loop: true)
+        let turned = try #require(loop.reversedAlongLine())
+        #expect(turned.path?.count == 5 && turned.isLoop)
+        #expect(TrailWalkPlanner.meters(turned.waypoints[0], squareLoop[0]) < 1, "same start")
+        // Checkpoints every 533 m from the start, now up the west side and along the top.
+        #expect(TrailWalkPlanner.meters(turned.waypoints[1], at(east: 133, north: 400)) < 5,
+                "first checkpoint is now round the other way")
+        var onward = try #require(TrailProgress(route: turned))
+        onward.resume(at: reversedAlong)
+        _ = onward.update(location: at(east: 0, north: 80), at: Date(), alertsEnabled: true)
+        #expect(abs((onward.along ?? 0) - 80) < 3)
+    }
+
+    @Test("Several checkpoints can pass on one fix, but never the finish with them")
+    func finishNeedsItsOwnFix() throws {
+        let path = straight
+        var line = try #require(TrailProgress(route: route(path: path, waypoints: [path[0], path[5], path[10]], loop: false)))
+        line.resume(at: 1000)
+        #expect(line.checkpointsToAdvance(from: 1, waypointCount: 3) == 1, "checkpoint 1, not the finish")
+        #expect(line.checkpointsToAdvance(from: 2, waypointCount: 3) == 1, "the finish, on the next fix")
+
+        var loop = try loopProgress(squareLoop)
+        let count = loop.checkpointAlong.count
+        loop.resume(at: 1600)
+        #expect(loop.checkpointsToAdvance(from: 1, waypointCount: count) == count - 1, "every checkpoint but the finish")
+        #expect(loop.checkpointsToAdvance(from: 0, waypointCount: count) == 1, "then the finish")
+    }
+
+    @Test("A walk's position along the line survives a crash snapshot; older snapshots have none")
+    func snapshotKeepsTrailPosition() throws {
+        let route = route(path: straight, waypoints: [straight[0], straight[10]], loop: false)
+        let snapshot = ActiveWalkSnapshot(route: .init(route), startTime: Date(), totalDistanceCovered: 750,
+                                          pausedDuration: 0, isPaused: false, pauseStartDate: nil,
+                                          currentWaypointIndex: 1, currentLap: 1, triggeredCheckpoints: [],
+                                          splitTimes: [], liveSteps: 0, checkpointDate: Date(), trailAlong: 740)
+        let data = try JSONEncoder().encode(snapshot)
+        #expect(try JSONDecoder().decode(ActiveWalkSnapshot.self, from: data).trailAlong == 740)
+        var object = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        object.removeValue(forKey: "trailAlong")
+        let old = try JSONSerialization.data(withJSONObject: object)
+        #expect(try JSONDecoder().decode(ActiveWalkSnapshot.self, from: old).trailAlong == nil)
     }
 
     // MARK: Words
