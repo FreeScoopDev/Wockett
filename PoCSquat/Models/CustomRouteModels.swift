@@ -78,6 +78,10 @@ final class CustomRouteStore: ObservableObject {
             record.totalDistance = route.totalDistance
             record.isLoop        = route.isLoop
             record.activityMode  = route.activityMode.rawValue
+            // The builder's edits are new waypoints. Without this line they
+            // lived only in memory and were gone on the next launch, while
+            // the edited distance and loop setting were kept (2026-09-25).
+            record.waypointsData = (try? JSONEncoder().encode(route.waypoints)) ?? record.waypointsData
         }
         try? context.save()
     }
