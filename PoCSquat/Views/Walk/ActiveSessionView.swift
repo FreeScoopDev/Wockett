@@ -265,8 +265,9 @@ struct ActiveSessionView: View {
                 onKeepGoing: { showFinishConfirm = false },
                 onFinish: { pendingFinish = .save; showFinishConfirm = false },
                 // A trail walk can't be saved as a route yet: MKDirections
-                // would join its checkpoints on the streets (#63).
-                onFinishAndSaveRoute: isGuided && route.path == nil
+                // would join its checkpoints on the streets (#63). A recorded
+                // route saves its whole line, which RecordedRoute recognises.
+                onFinishAndSaveRoute: isGuided && (route.path == nil || route.pathIsRecording)
                     ? { pendingFinish = .saveWithRoute; showFinishConfirm = false }
                     : nil,
                 onDiscard: { pendingFinish = .discard; showFinishConfirm = false }
@@ -1008,7 +1009,7 @@ struct ActiveSessionView: View {
         routeStore.save(CustomRoute(
             id: UUID(),
             name: route.name,
-            waypoints: route.waypoints.map { WaypointCoord($0) },
+            waypoints: ((route.pathIsRecording ? route.path : nil) ?? route.waypoints).map { WaypointCoord($0) },
             totalDistance: route.totalDistance,
             isLoop: route.isLoop,
             createdAt: Date(),

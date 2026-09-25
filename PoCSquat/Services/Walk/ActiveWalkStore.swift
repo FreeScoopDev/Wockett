@@ -137,9 +137,12 @@ final class ActiveWalkStore {
     }
 
     /// Creates a session for `route` and returns it. Returns nil without side effects if a session is already active.
+    /// Every guided walk starts here, so this is where a recorded walk saved as
+    /// a route becomes a line to follow rather than hundreds of MKDirections legs.
     @discardableResult
     func beginSession(route: NavigableRoute) -> NavigationSessionManager? {
         guard session == nil else { return nil }
+        let route = route.followingRecordedLine()
         let mgr = NavigationSessionManager(route: route)
         session = mgr
         activeRoute = route

@@ -159,7 +159,7 @@ struct CustomRouteDetailView: View {
     @ObservedObject var routeStore:   CustomRouteStore
     @Environment(\.dismiss) private var dismiss
     @State private var activityMode:      ActivityMode
-    @State private var routeLegs:         [MKRoute] = []
+    @State private var routeLegs:         [RouteLeg] = []
     @State private var isLoading          = false
     @State private var routeWeather:      RouteWeather?
     @State private var elevationProfile:  ElevationProfile?
@@ -168,12 +168,25 @@ struct CustomRouteDetailView: View {
     @State private var isEditing               = false
     @State private var shareState: ShareState  = .idle
     @State private var showActiveSessionAlert  = false
+    @State private var showRename              = false
+    @State private var renameText              = ""
+    /// Set when the route is a recorded walk (`RecordedRoute`): drawn as its
+    /// own line, pinned only at its checkpoints, never sent to MKDirections.
+    /// Worked out in `.task`, not `init`: the list builds a detail view for
+    /// every row it draws, and a long ride is thousands of points.
+    @State private var recordedLine: RecordedRoute.Line?
+    @State private var isClassified = false
 
     init(route: CustomRoute, historyStore: WalkHistoryStore, routeStore: CustomRouteStore) {
         self.route        = route
         self.historyStore = historyStore
         self.routeStore   = routeStore
         _activityMode     = State(initialValue: route.activityMode)
+    }
+
+    private var pinCoordinates: [CLLocationCoordinate2D] {
+        guard isClassified else { return [] }
+        return recordedLine?.checkpoints ?? route.waypoints.map { $0.clCoordinate }
     }
 
     private enum ShareState { case idle, sharing, shared, failed }
@@ -192,7 +205,7 @@ struct CustomRouteDetailView: View {
             VStack(spacing: 0) {
                 ZStack {
                     CustomRouteMapView(
-                        waypoints: route.waypoints.map { $0.clCoordinate },
+                        waypoints: pinCoordinates,
                         routeLegs: routeLegs
                     )
                     if isLoading {
@@ -245,8 +258,8 @@ struct CustomRouteDetailView: View {
 
                         HStack(spacing: 12) {
                             infoTile(icon: "mappin.circle",
-                                     value: "\(route.waypoints.count)",
-                                     label: "waypoints")
+                                     value: isClassified ? "\(pinCoordinates.count)" : "–",
+                                     label: recordedLine == nil ? "waypoints" : "checkpoints")
                             infoTile(icon: "clock",
                                      value: route.timeText,
                                      label: "est. time")
@@ -383,11 +396,32 @@ struct CustomRouteDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
-                Button { isEditing = true } label: {
+                // A recorded walk can't go through the builder, which routes
+                // every leg with MKDirections; it can still be renamed.
+                Button {
+                    if recordedLine == nil {
+                        isEditing = true
+                    } else {
+                        renameText = route.name
+                        showRename = true
+                    }
+                } label: {
                     Image(wkt: .buildRoute).wktIcon(.inline, tint: .earthGreen)
                 }
-                .accessibilityLabel("Build route")
+                .accessibilityLabel(recordedLine == nil ? "Build route" : "Rename route")
             }
+        }
+        .alert("Rename Route", isPresented: $showRename) {
+            TextField("Route name", text: $renameText)
+            Button("Save") {
+                var renamed = route
+                renamed.name = renameText.trimmingCharacters(in: .whitespacesAndNewlines)
+                routeStore.update(renamed)
+            }
+            .disabled(renameText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("This route follows a recorded line, so it keeps that shape.")
         }
         .alert("Walk Already Active", isPresented: $showActiveSessionAlert) {
             Button("OK", role: .cancel) {}
@@ -453,26 +487,34 @@ struct CustomRouteDetailView: View {
 
     private func loadLegs() async {
         isLoading = true
+        if !isClassified {
+            recordedLine = RecordedRoute.line(for: route.waypoints.map { $0.clCoordinate }, isLoop: route.isLoop)
+            isClassified = true
+        }
 
         let coords = route.waypoints.map { $0.clCoordinate }
-        var legs: [MKRoute] = []
+        var legs: [RouteLeg] = []
 
         async let weatherFetch = RouteWeatherService.shared.fetchWeather(for: route.centroid)
 
-        for i in 0..<(coords.count - 1) {
-            let req           = MKDirections.Request()
-            req.source        = MKMapItem(location: CLLocation(latitude: coords[i].latitude, longitude: coords[i].longitude), address: nil)
-            req.destination   = MKMapItem(location: CLLocation(latitude: coords[i + 1].latitude, longitude: coords[i + 1].longitude), address: nil)
-            req.transportType = .walking
-            if let r = try? await MKDirections(request: req).calculate().routes.first { legs.append(r) }
-        }
+        if let recordedLine {
+            legs = [RouteLeg(path: recordedLine.path)]
+        } else {
+            for i in 0..<(coords.count - 1) {
+                let req           = MKDirections.Request()
+                req.source        = MKMapItem(location: CLLocation(latitude: coords[i].latitude, longitude: coords[i].longitude), address: nil)
+                req.destination   = MKMapItem(location: CLLocation(latitude: coords[i + 1].latitude, longitude: coords[i + 1].longitude), address: nil)
+                req.transportType = .walking
+                if let r = try? await MKDirections(request: req).calculate().routes.first { legs.append(RouteLeg(r)) }
+            }
 
-        if route.isLoop, let first = coords.first, let last = coords.last {
-            let req           = MKDirections.Request()
-            req.source        = MKMapItem(location: CLLocation(latitude: last.latitude, longitude: last.longitude), address: nil)
-            req.destination   = MKMapItem(location: CLLocation(latitude: first.latitude, longitude: first.longitude), address: nil)
-            req.transportType = .walking
-            if let r = try? await MKDirections(request: req).calculate().routes.first { legs.append(r) }
+            if route.isLoop, let first = coords.first, let last = coords.last {
+                let req           = MKDirections.Request()
+                req.source        = MKMapItem(location: CLLocation(latitude: last.latitude, longitude: last.longitude), address: nil)
+                req.destination   = MKMapItem(location: CLLocation(latitude: first.latitude, longitude: first.longitude), address: nil)
+                req.transportType = .walking
+                if let r = try? await MKDirections(request: req).calculate().routes.first { legs.append(RouteLeg(r)) }
+            }
         }
 
         routeLegs = legs

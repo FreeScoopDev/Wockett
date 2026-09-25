@@ -461,9 +461,11 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
             // not its full line: the summary's "Save as Custom Route" saves
             // these points for MKDirections to join, and a trail's dozens of
             // vertices would come back routed on streets, one request each.
+            // A recorded route keeps its line, which RecordedRoute recognises
+            // again when the walk is restarted or saved.
             waypoints: route.waypoints.isEmpty
                 ? trackPoints.map { WaypointCoord($0) }
-                : route.waypoints.map { WaypointCoord($0) },
+                : ((route.pathIsRecording ? route.path : nil) ?? route.waypoints).map { WaypointCoord($0) },
             lapCount: route.lapCount,
             isLoop: route.isLoop,
             activityType: route.activityMode.rawValue,
