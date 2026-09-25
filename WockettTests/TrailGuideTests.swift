@@ -301,6 +301,62 @@ struct TrailGuideTests {
         #expect(progress.isWalkingBackward)
         progress.declineReverse()
         #expect(!progress.isWalkingBackward && progress.reversedAlong == nil)
+        // Walking on up the closing side, position follows instead of asking again.
+        for north in stride(from: 65.0, through: 120, by: 5) {
+            _ = progress.update(location: at(east: 0, north: north), at: Date(), alertsEnabled: true)
+            #expect(!progress.isWalkingBackward, "asked to turn again at \(north) m")
+        }
+        #expect((progress.along ?? 0) > 1400, "along \(progress.along ?? -1)")
+    }
+
+    @Test("After a restore, one fix cannot leap ahead and tick checkpoints")
+    func restoreThenLeapNeedsAgreement() throws {
+        let a = at(east: 0, north: 0)
+        var progress = try loopProgress([a, at(east: 60, north: 0), at(east: 60, north: 60), at(east: 0, north: 60), a])
+        progress.resume(at: 20)
+        // 30 m up the closing side: along 210, a 190 m step on the first fix.
+        _ = progress.update(location: at(east: 0, north: 30), at: Date(), alertsEnabled: true)
+        #expect(abs((progress.along ?? 0) - 20) < 1, "along \(progress.along ?? -1)")
+        #expect(progress.checkpointsToAdvance(from: 1, waypointCount: progress.checkpointAlong.count) == 0)
+    }
+
+    @Test("Short routes that come home place their finish at the end, not beside the start",
+          arguments: [(out: 60.0, gap: 5.0), (out: 110.0, gap: 10.0), (out: 125.0, gap: 5.0)])
+    func shortRoundTripFinishPlacement(out: Double, gap: Double) throws {
+        // Recorded like the app records: a point every 5 m, isLoop false.
+        let path = stride(from: 0.0, through: out, by: 5).map { at(east: $0, north: 0) }
+            + stride(from: out, through: 0, by: -5).map { at(east: $0, north: gap) }
+        let length = TrailWalkPlanner.length(path)
+        let waypoints = TrailWalkPlanner.checkpoints(along: path, isLoop: false, length: length)
+        var progress = try #require(TrailProgress(route: route(path: path, waypoints: waypoints, loop: false)))
+        let finish = waypoints.count - 1
+        #expect(progress.checkpointAlong[finish] > length - 1, "finish placed at \(progress.checkpointAlong[finish]) of \(length)")
+        #expect(abs(progress.checkpointAlong[1] - length / 2) < 3, "halfway placed at \(progress.checkpointAlong[1])")
+        // Walk it; the walk must not complete before its last 20 m.
+        var index = 1
+        for (i, point) in path.enumerated() {
+            _ = progress.update(location: point, at: Date(), alertsEnabled: true)
+            index += progress.checkpointsToAdvance(from: index, waypointCount: waypoints.count)
+            if index >= waypoints.count {
+                let along = TrailWalkPlanner.length(Array(path[...i]))
+                #expect(along >= length - TrailProgress.reachSlack - 5, "completed at \(along) of \(length)")
+                return
+            }
+        }
+        Issue.record("never completed")
+    }
+
+    @Test("A walk round a block that ends beside its start places its finish at the end")
+    func blockWalkFinishPlacement() throws {
+        // 50 x 50 m round a block, ending 5 m short of the start; saved as a one-way route.
+        let path = stride(from: 0.0, through: 50, by: 5).map { at(east: $0, north: 0) }
+            + stride(from: 5.0, through: 50, by: 5).map { at(east: 50, north: $0) }
+            + stride(from: 45.0, through: 0, by: -5).map { at(east: $0, north: 50) }
+            + stride(from: 45.0, through: 5, by: -5).map { at(east: 0, north: $0) }
+        let length = TrailWalkPlanner.length(path)
+        let waypoints = TrailWalkPlanner.checkpoints(along: path, isLoop: false, length: length)
+        let progress = try #require(TrailProgress(route: route(path: path, waypoints: waypoints, loop: false)))
+        #expect(progress.checkpointAlong[waypoints.count - 1] > length - 1)
     }
 
     @Test("A short loop walked the other way turns round instead of counting its checkpoints")

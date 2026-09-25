@@ -108,6 +108,20 @@ struct TrailGuide {
         return Candidates(best: best, inWindow: chosen)
     }
 
+    /// Distance along the line of the point on it nearest `point`, looking
+    /// only at or after `minimum`. Nearest wins outright; on an exact tie the
+    /// earlier point does.
+    func nearestAlong(to point: CLLocationCoordinate2D, atOrAfter minimum: Double) -> Double {
+        guard path.count >= 2 else { return 0 }
+        var best: Position?
+        for i in 0..<(path.count - 1) where cumulative[i + 1] >= minimum {
+            let candidate = project(point, onSegment: i)
+            guard candidate.along >= minimum - 0.01 else { continue }
+            if best == nil || candidate.offset < best?.offset ?? .infinity { best = candidate }
+        }
+        return best?.along ?? minimum
+    }
+
     /// The person's position on the line. With `previousAlong`, the stretch
     /// near where they were is preferred, so a trail that doubles back beside
     /// itself does not make progress jump to its other side; a part of the
@@ -229,6 +243,9 @@ struct TrailProgress {
     /// far the person has moved from it — not by time, which would let someone
     /// standing at the start of a loop for five minutes reach its finish.
     private var lastAcceptedLocation: CLLocationCoordinate2D?
+    /// The session declined to turn the route round; far-half positions near
+    /// the start are then ordinary jumps, not a request to turn again.
+    private var reverseDeclined = false
     /// A position on another stretch, waiting for more fixes to agree.
     private var pendingJump: (along: Double, count: Int, location: CLLocationCoordinate2D)?
     /// Metres along a trail per metre in a straight line, generously: how far
@@ -255,9 +272,14 @@ struct TrailProgress {
     init?(route: NavigableRoute) {
         guard let path = route.path, path.count >= 2 else { return nil }
         let guide = TrailGuide(path: path)
-        var previous: Double?
+        // Checkpoints are points on the line (TrailWalkPlanner.checkpoints),
+        // so each is placed at its exact nearest point at or after the one
+        // before — never through the walking rules' tie-break, which on a
+        // short route that comes home put the finish beside the start and
+        // ended the walk at the turnaround (2026-09-25 review of #69).
+        var previous = 0.0
         checkpointAlong = route.waypoints.map { waypoint in
-            let along = guide.position(of: waypoint, near: previous)?.along ?? 0
+            let along = guide.nearestAlong(to: waypoint, atOrAfter: previous)
             previous = along
             return along
         }
@@ -342,8 +364,9 @@ struct TrailProgress {
         // checkpoints they never walked. The way back still updates.
         if found.best.offset <= OffTrailMonitor.leaveMeters {
             let chosen = found.preferred
-            // Without a previous fix there is no distance moved to judge a leap by.
-            let plausible = lastAcceptedLocation == nil
+            // Before the first fix there is nothing to judge a leap from. After
+            // a restore there is a position but no fix, so moved counts as 0.
+            let plausible = along == nil
                 || chosen.along - current <= Self.windingFactor * moved + Self.leapSlackMeters
             if chosen == found.inWindow, plausible, !isSettingOffBackward(to: chosen.along, from: current) {
                 along = chosen.along
@@ -380,7 +403,7 @@ struct TrailProgress {
     /// checkpoint", so a forward walker whose fixes lapse early on is not
     /// taken for one going backwards (2026-09-25 review of #67/#68).
     private func isSettingOffBackward(to candidate: Double, from current: Double) -> Bool {
-        isClosed && current <= Self.startBandMeters
+        isClosed && !reverseDeclined && current <= Self.startBandMeters
             && candidate > guide.length - min(TrailGuide.windowAhead, guide.length / 2)
     }
 
@@ -390,6 +413,7 @@ struct TrailProgress {
     mutating func declineReverse() {
         isWalkingBackward = false
         reversedAlong = nil
+        reverseDeclined = true
     }
 
     /// Another stretch is clearly nearer than the one being followed: a
