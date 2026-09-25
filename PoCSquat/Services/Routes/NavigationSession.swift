@@ -133,8 +133,12 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
     var offTrailAlertsEnabled = true
     /// Called with true when the person leaves the trail, false when back.
     var onOffTrailChange: ((Bool) -> Void)?
+    /// Called when a closed trail or recording is turned round because the
+    /// person set off the other way; ActiveWalkStore republishes the route so
+    /// the map redraws its checkpoints in the order they will be walked.
+    var onRouteReversed: ((NavigableRoute) -> Void)?
 
-    private let route: NavigableRoute
+    private(set) var route: NavigableRoute
     private let locationManager = CLLocationManager()
     private let pedometer = CMPedometer()
     private(set) var startTime = Date()
@@ -235,6 +239,17 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
         elapsedTime = Date().timeIntervalSince(startTime) - pausedDuration
 
         trackPoints = (snapshot.trackPoints ?? []).map { $0.clCoordinate }
+        // Pick up along the trail where the walk was, not from the nearest
+        // stretch on the first fix. Snapshots from before 1.13 have no
+        // position; the last checkpoint passed is the best guess then.
+        if var progress = trailProgress {
+            // On a loop, index 0 is the finish, so the last one passed wraps round.
+            let count = route.waypoints.count
+            let lastPassed = count > 0 ? (currentWaypointIndex - 1 + count) % count : 0
+            let fallback = progress.checkpointAlong.indices.contains(lastPassed) ? progress.checkpointAlong[lastPassed] : 0
+            progress.resume(at: snapshot.trailAlong ?? fallback)
+            trailProgress = progress
+        }
 
         beginTracking()
         writeSnapshot()
@@ -379,7 +394,8 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
             splitTimes: splitTimes.map { .init(label: $0.label, elapsed: $0.elapsed) },
             liveSteps: liveSteps,
             checkpointDate: Date(),
-            trackPoints: thinned.map { WaypointCoord($0) }
+            trackPoints: thinned.map { WaypointCoord($0) },
+            trailAlong: trailProgress?.along
         )
         ActiveWalkSnapshotStore.save(snapshot)
     }
@@ -512,6 +528,7 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
                                             alertsEnabled: self.offTrailAlertsEnabled)
                 self.trailProgress = progress
                 if let event { self.handleOffTrail(event) }
+                if progress.isWalkingBackward { self.turnRouteRound(at: progress.reversedAlong ?? 0) }
             }
             self.lastMovementTime = Date()
             self.lastKnownSpeed = loc.speed
@@ -614,16 +631,26 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
 
     private func advanceAlongTrail() {
         let count = route.waypoints.count
-        guard count > 0 else { return }
-        // Several checkpoints can be passed in one fix after a gap in GPS.
-        for _ in 0...count {
-            guard !isCompleted, let progress = trailProgress else { return }
-            let index = route.isLoop ? currentWaypointIndex % count : currentWaypointIndex
-            guard index < count else { return }
-            distanceToNextWaypoint = progress.distanceAlong(toWaypoint: index)
-            guard progress.hasReached(waypoint: index) else { return }
-            advanceWaypoint()
-        }
+        guard count > 0, let progress = trailProgress else { return }
+        // Several checkpoints can be passed in one fix after a gap in GPS, but
+        // never the finish with them (TrailProgress.checkpointsToAdvance).
+        let passed = progress.checkpointsToAdvance(from: currentWaypointIndex, waypointCount: count)
+        for _ in 0..<passed where !isCompleted { advanceWaypoint() }
+        let index = route.isLoop ? currentWaypointIndex % count : min(currentWaypointIndex, count - 1)
+        distanceToNextWaypoint = progress.distanceAlong(toWaypoint: index)
+    }
+
+    /// The person set off round a closed line the other way. Only happens
+    /// before the first checkpoint, so nothing already counted changes.
+    private func turnRouteRound(at along: Double) {
+        guard currentWaypointIndex == 1, currentLap == 1,
+              let reversed = route.reversedAlongLine(),
+              var progress = TrailProgress(route: reversed) else { return }
+        progress.resume(at: along)
+        route = reversed
+        trailProgress = progress
+        onRouteReversed?(reversed)
+        writeSnapshot()
     }
 
     // MARK: Off trail

@@ -119,3 +119,21 @@ enum TrailWalkPlanner {
         coords.indices.min { meters(coords[$0], location) < meters(coords[$1], location) } ?? 0
     }
 }
+
+extension NavigableRoute {
+    /// The same line walked the other way, with checkpoints spaced from its
+    /// new start the way the planner spaces them; nil for a route without a
+    /// line. For a closed line (a loop, or a recording that came home), which
+    /// can be set off round in either direction from its start.
+    func reversedAlongLine() -> NavigableRoute? {
+        guard let path, path.count >= 2 else { return nil }
+        let back = Array(path.reversed())
+        let length = TrailWalkPlanner.length(back)
+        return NavigableRoute(name: name,
+                              waypoints: TrailWalkPlanner.checkpoints(along: back, isLoop: isLoop, length: length),
+                              lapCount: lapCount, isLoop: isLoop, totalDistance: totalDistance,
+                              isCustomRoute: isCustomRoute, isCommunityRoute: isCommunityRoute,
+                              activityMode: activityMode, customRouteId: customRouteId,
+                              path: back, pathIsRecording: pathIsRecording)
+    }
+}
