@@ -49,7 +49,10 @@ jobs:
     # SwiftLint needs a Swift toolchain but not Xcode, so it runs here on the
     # 1x Linux runner rather than on a 10x macOS one. The official image ships
     # the binary, so there is nothing to install.
-    container: ghcr.io/realm/swiftlint:0.57.0
+    # Pinned to the version on Joe's Mac (`swiftlint version`), so a local
+    # scripts/lint.sh and this job judge the same rules. It was 0.57.0 from
+    # 2026-09-07 to 2026-09-26 while the docs said 0.65.1; bump both together.
+    container: ghcr.io/realm/swiftlint:0.65.1
 
     steps:
       - name: Check out repo

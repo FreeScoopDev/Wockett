@@ -38,7 +38,7 @@ test job cost 140 of the 2,000 free minutes a month.
 | Job | Required? | What it does |
 | --- | --- | --- |
 | `language-guard` | **Yes** | Greps `Views/`, `Intents/` and `WocketWidget` for hardcoded walk-specific copy (`"End Walk"`, `"Walk History"`, …). Fails the build if any reappear — user-facing copy must read the session's `ActivityMode`. |
-| `swiftlint` | **Yes** (since 2026-09-09) | Runs SwiftLint 0.65.1 from `ghcr.io/realm/swiftlint` against `.swiftlint.yml`. Fails on any error-severity violation. |
+| `swiftlint` | **Yes** (since 2026-09-09) | Runs SwiftLint 0.65.1 (the image tag pinned in `guards.yml`; 0.57.0 until 2026-09-26) from `ghcr.io/realm/swiftlint` against `.swiftlint.yml`. Fails on any error-severity violation. |
 
 ### Reading the SwiftLint result
 
@@ -92,10 +92,15 @@ Autofix is not free here. Any run needs a full build and test afterwards.
 
 ### When CI fails and local passes
 
-It happens at the same SwiftLint version. On 2026-09-09, 0.65.1 on macOS said
-0 error-severity violations; 0.65.1 in the Linux container said 1. The line was
-`HomeWeatherView.swift:91`, a `URL(string:)!` — a plain force-unwrap that the
-macOS run simply did not report. CI is the arbiter.
+First compare versions: `swiftlint version` locally against the image tag in
+`guards.yml`. On 2026-09-09 macOS said 0 error-severity violations and CI said
+1, at `HomeWeatherView.swift:91`, a `URL(string: "https://…")!`. This section
+used to call that a macOS/Linux difference at 0.65.1, but CI was pinned to
+0.57.0 at the time. Tested on 2026-09-26 with a probe commit on #83 and locally:
+0.65.1 exempts a force-unwrapped `URL(string:)` whose argument is a plain string
+literal, on both macOS and the Linux image, and flags an interpolated or
+variable URL and every other force-unwrap; 0.57.0 flags the literal as well. CI
+now pins 0.65.1, so local and CI agree. CI is the arbiter.
 
 Finding the line: the job log shows `##[error]Force unwrapping should be
 avoided` with **no file or line**, and fetching the raw log through the API
@@ -108,7 +113,7 @@ The job id is the `id` of the check run on the commit
 (`gh api repos/FreeScoopDev/Wockett/commits/<sha>/check-runs`).
 
 Fixing it: remove the unwrap. Do not add a `swiftlint:disable` comment — an
-annotation is precisely the thing the two platforms may honour differently,
+annotation is precisely the thing two SwiftLint runs may honour differently,
 and it was the wrong first guess here.
 
 ## Xcode Cloud
