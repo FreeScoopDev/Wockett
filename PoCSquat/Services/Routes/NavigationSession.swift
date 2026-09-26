@@ -142,6 +142,9 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
     var offTrailAlertsEnabled = true
     /// Called with true when the person leaves the trail, false when back.
     var onOffTrailChange: ((Bool) -> Void)?
+    /// The session screen is on screen (ActiveSessionView sets it). Minimized
+    /// to the mini tile, the off-trail banner is not visible either.
+    var isSessionScreenVisible = false
     /// Called when a closed trail or recording is turned round because the
     /// person set off the other way; ActiveWalkStore republishes the route so
     /// the map redraws its checkpoints in the order they will be walked.
@@ -692,8 +695,11 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
         case .left:
             let direction = offTrailDescription(spoken: true) ?? ""
             WalkAudioCueService.shared.announce("You've left \(route.name). \(direction)")
-            // In the app the banner and a haptic say it; in a pocket, a notification.
-            if UIApplication.shared.applicationState != .active {
+            // On the session screen the banner and a haptic say it; anywhere
+            // else — a pocket, or the app with the walk minimized — a
+            // notification, which in-walk kinds show even in the foreground.
+            if Self.shouldNotifyOffTrail(appIsActive: UIApplication.shared.applicationState == .active,
+                                         sessionScreenVisible: isSessionScreenVisible) {
                 fireBackgroundNotification(title: "Off \(route.name)",
                                            body: offTrailDescription(spoken: false) ?? "Head back to the \(route.lineNoun).",
                                            kind: .offTrail)
@@ -702,6 +708,13 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
             WalkAudioCueService.shared.announce("Back on \(route.name).")
         }
         onOffTrailChange?(event == .left)
+    }
+
+    /// Whether leaving the trail needs a notification: only the session
+    /// screen shows the off-trail banner. Minimized, it used to be a haptic
+    /// and nothing to read (2026-09-25 review of #65).
+    nonisolated static func shouldNotifyOffTrail(appIsActive: Bool, sessionScreenVisible: Bool) -> Bool {
+        !(appIsActive && sessionScreenVisible)
     }
 
     /// Clears the off-trail state, and the banner and notification with it
