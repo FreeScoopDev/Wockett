@@ -294,8 +294,10 @@ struct TrailGuideTests {
     private func completion(_ progress: inout TrailProgress, count: Int,
                             fixes: [(CLLocationCoordinate2D, Double)]) -> Double? {
         var index = 1
+        let start = Date(timeIntervalSinceReferenceDate: 0)
         for (point, truth) in fixes {
-            _ = progress.update(location: point, at: Date(), alertsEnabled: true)
+            // Walking pace: the fix's time follows how far the walk has gone, gaps included.
+            _ = progress.update(location: point, at: start.addingTimeInterval(truth / 1.4), alertsEnabled: true)
             index += progress.checkpointsToAdvance(from: index, waypointCount: count)
             if index >= count { return truth }
         }
@@ -374,16 +376,20 @@ struct TrailGuideTests {
     /// Returns the fix on which the walk completed, how many times it turned
     /// round, and the fix of the first turn.
     private func sessionWalk(_ route: NavigableRoute, _ fixes: [CLLocationCoordinate2D],
-                             resumeAt: Double? = nil) -> (completedAt: Int?, turns: Int, firstTurnAt: Int?) {
+                             times: [Date]? = nil, resumeAt: Double? = nil,
+                             resumedSince: Date? = nil) -> (completedAt: Int?, turns: Int, firstTurnAt: Int?) {
         guard var progress = TrailProgress(route: route) else { return (nil, 0, nil) }
-        if let resumeAt { progress.resume(at: resumeAt) }
+        if let resumeAt { progress.resume(at: resumeAt, since: resumedSince) }
+        let start = Date(timeIntervalSinceReferenceDate: 0)
         var route = route
         var index = 1
         var lap = 1
         var turns = 0
         var firstTurn: Int?
         for (i, point) in fixes.enumerated() {
-            _ = progress.update(location: point, at: Date(), alertsEnabled: false)
+            // A fix every 3.6 s — 5 m at walking pace — unless the walk says otherwise.
+            let time = times?[i] ?? start.addingTimeInterval(Double(i) * 3.6)
+            _ = progress.update(location: point, at: time, alertsEnabled: false)
             if let turned = progress.turnedRound(route) {
                 route = turned.route
                 progress = turned.progress
@@ -508,10 +514,12 @@ struct TrailGuideTests {
         let path = circle(length, spacing: 5)
         let guide = TrailGuide(path: path)
         var rng = SeededGenerator(seed: 4)
-        let fixes = walkPoints(guide, from: 0, distance: length + 30, rng: &rng).enumerated()
+        let kept = walkPoints(guide, from: 0, distance: length + 30, rng: &rng).enumerated()
             .filter { Double($0.offset) * 5 < 0.1 * length || Double($0.offset) * 5 > (0.1 + fraction) * length }
-            .map(\.element)
-        let result = sessionWalk(loopRoute(path), fixes)
+        let start = Date(timeIntervalSinceReferenceDate: 0)
+        // The gap is time as well as distance: the fixes that did arrive keep their times.
+        let result = sessionWalk(loopRoute(path), kept.map(\.element),
+                                 times: kept.map { start.addingTimeInterval(Double($0.offset) * 3.6) })
         #expect(result.turns == 0, "turned round \(result.turns) times")
         #expect(result.completedAt != nil)
     }
@@ -521,8 +529,12 @@ struct TrailGuideTests {
         let path = circle(400, spacing: 5)
         let guide = TrailGuide(path: path)
         var rng = SeededGenerator(seed: 5)
-        let fixes = walkPoints(guide, from: 370, distance: 60, rng: &rng)
-        let result = sessionWalk(loopRoute(path), fixes, resumeAt: 150)
+        // Saved at 100 m three minutes ago; now at 320 m. The shorter way round
+        // is 180 m back, which would put them 80 m behind the start and turn the
+        // route; three minutes is time to have walked the 220 m on.
+        let fixes = walkPoints(guide, from: 320, distance: 60, rng: &rng)
+        let result = sessionWalk(loopRoute(path), fixes, resumeAt: 100,
+                                 resumedSince: Date(timeIntervalSinceReferenceDate: -180))
         #expect(result.turns == 0, "turned round \(result.turns) times")
     }
 
@@ -582,6 +594,45 @@ struct TrailGuideTests {
             _ = progress.update(location: at(east: 0, north: north), at: Date(), alertsEnabled: true)
         }
         #expect(progress.isWalkingBackward, "a backward walk after a restore must not sit at 0 for good")
+    }
+
+    @Test("Starting 60 m behind the planned start of a small loop: no credit for the loop not walked",
+          arguments: [150.0, 200.0], [false, true])
+    func smallLoopStartBehind(length: Double, backward: Bool) throws {
+        // The long way round from the start to the person is most of the loop;
+        // their first fixes must not be credited with it (19–28% finishes on
+        // three real loops, 2026-09-25 review).
+        let path = circle(length, spacing: 5)
+        let guide = TrailGuide(path: path)
+        var rng = SeededGenerator(seed: 8)
+        let here = length - 60
+        let toStart = backward ? here : length - here
+        let expected = toStart > length / 2 ? toStart : toStart + length
+        let fixes = walkPoints(guide, from: here, distance: expected + 40, backward: backward, rng: &rng)
+        let result = sessionWalk(loopRoute(path), fixes)
+        let done = try #require(result.completedAt, "never completed")
+        #expect(abs(Double(done) * 5 - expected) <= 45, "completed after \(Double(done) * 5) m, expected \(Int(expected))")
+    }
+
+    @Test("Walking home along the outbound side of a recorded out-and-back still counts the way home",
+          arguments: [12.0, 15.0])
+    func homeOnTheOutboundSide(gap: Double) throws {
+        let path = outAndBack(out: 300, gap: gap)
+        let length = TrailWalkPlanner.length(path)
+        let waypoints = TrailWalkPlanner.checkpoints(along: path, isLoop: false, length: length)
+        var progress = try #require(TrailProgress(route: route(path: path, waypoints: waypoints, loop: false)))
+        // Out and home both on the outbound line (y = 0).
+        let fixes = stride(from: 0.0, through: 300, by: 5).map { (at(east: $0, north: 0), $0) }
+            + stride(from: 300.0, through: 0, by: -5).map { (at(east: $0, north: 0), 600 - $0) }
+        let done = completion(&progress, count: waypoints.count, fixes: fixes)
+        #expect((done ?? 0) >= 600 - TrailProgress.reachSlack - 10, "completed at \(String(describing: done))")
+    }
+
+    @Test("A custom loop's last checkpoint is labelled WP N/N, not WP 0/N")
+    func checkpointLabels() {
+        #expect(WaypointStep.label(arrivingAt: 1, count: 5) == "WP 2/5")
+        #expect(WaypointStep.label(arrivingAt: 4, count: 5) == "WP 5/5", "a loop's last checkpoint")
+        #expect(WaypointStep.label(arrivingAt: 0, count: 5) == "WP 1/5", "a loop's finish, as before")
     }
 
     @Test("A small loop: past checkpoint 1, back behind the start and round the other way, still finishes")

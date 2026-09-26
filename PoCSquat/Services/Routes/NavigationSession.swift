@@ -256,7 +256,7 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
             let count = route.waypoints.count
             let lastPassed = count > 0 ? (currentWaypointIndex - 1 + count) % count : 0
             let fallback = progress.checkpointAlong.indices.contains(lastPassed) ? progress.checkpointAlong[lastPassed] : 0
-            progress.resume(at: snapshot.trailAlong ?? fallback)
+            progress.resume(at: snapshot.trailAlong ?? fallback, since: snapshot.checkpointDate)
             trailProgress = progress
         }
 
@@ -610,8 +610,7 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
                                       isLoop: route.isLoop, lapCount: route.lapCount)
         currentWaypointIndex = step.index
         if route.isCustomRoute, onCheckpointReached != nil {
-            let wpNum = min(currentWaypointIndex, route.waypoints.count)
-            let label = "WP \(wpNum)/\(route.waypoints.count)"
+            let label = WaypointStep.label(arrivingAt: arrivedIndex, count: route.waypoints.count)
             splitTimes.append((label: label, elapsed: elapsedTime))
             onCheckpointReached?(label)
         }

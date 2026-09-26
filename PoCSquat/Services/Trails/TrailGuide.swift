@@ -239,8 +239,10 @@ struct TrailProgress {
         var cost: Double
     }
     private var guesses: [Guess]
-    /// Where the last fix that counted was (the planned start before any).
+    /// Where and when the last fix that counted was (the planned start, at no
+    /// time, before any).
     private var lastFix: CLLocationCoordinate2D
+    private var lastFixTime: Date?
     /// Consecutive fixes on which the likeliest guess was behind the start.
     /// One fix can be a leap — after a restore, a single fix 36 m away on a
     /// small loop reads as well backwards as forwards — so turning round
@@ -258,13 +260,22 @@ struct TrailProgress {
     /// Metres of mismatch between distance along the line and distance
     /// moved that cost one unit.
     static let travelScale = 10.0
-    /// Extra cost per metre of a step backwards along the line: a long way
-    /// back is less likely than a long way on. After a gap of more than half
-    /// a loop, the shorter way round is backwards, and without this the walk
-    /// turned round and restarted its checkpoints (2026-09-25 review of the
-    /// rebuild). A flat cost per backward step, and a 3 m allowance for
-    /// wobble, were tried with it and changed nothing in 529 scenarios.
+    /// Extra cost of a step backwards along the line, and more per metre: a
+    /// long way back is less likely than a long way on. After a gap of more
+    /// than half a loop, the shorter way round is backwards, and without the
+    /// per-metre cost the walk turned round and restarted its checkpoints.
+    /// Without the flat cost, walking home along the outbound side of a
+    /// recorded out-and-back 12–15 m from the return line read as walking
+    /// backwards (2026-09-25 reviews of the rebuild).
+    static let backwardCost = 2.0
     static let backwardCostPerMeter = 0.18
+    /// The long way round a closed line is only considered when the time since
+    /// the last fix that counted could cover it at this speed, plus
+    /// `longWayMargin`. Scored unconditionally, a walk's first fixes near
+    /// another stretch of a small loop were credited with most of the loop:
+    /// "Walk complete" after 65 m of 344 (2026-09-25 review of the rebuild).
+    let longWaySpeed: Double
+    static let longWayMargin = 40.0
     /// Guesses kept, and how much costlier than the best one may be.
     static let maxGuesses = 10
     static let keepWithin = 100.0
@@ -293,19 +304,22 @@ struct TrailProgress {
         self.guide = guide
         isLoop = route.isLoop
         isClosed = path.count > 2 && TrailWalkPlanner.meters(path[0], path[path.count - 1]) <= Self.closedMeters
+        longWaySpeed = route.activityMode.drivingSpeedCeiling
         // The walk starts at the start of the line: the planner begins a trail
         // walk where the person is, and a recording begins where it began.
         guesses = [Guess(at: 0, walked: 0, began: nil, cost: 0)]
         lastFix = path[0]
     }
 
-    /// Picks up from a known distance walked: a restored session, or a route
-    /// just turned round.
-    mutating func resume(at along: Double) {
+    /// Picks up from a known distance walked: a restored session (`since` is
+    /// when it was saved — the person may have walked on meanwhile), or a
+    /// route just turned round (`since` is the fix it turned on).
+    mutating func resume(at along: Double, since: Date? = nil) {
         let at = min(max(0, along), guide.length)
         self.along = at
         guesses = [Guess(at: at, walked: at, began: at, cost: 0)]
         lastFix = guide.point(atAlong: at)
+        lastFixTime = since
         fixesBehind = 0
     }
 
@@ -367,7 +381,7 @@ struct TrailProgress {
         // next fix back on it is judged from the last one that counted, so a
         // detour that rejoins further on is travel, not a leap.
         if found.nearest.offset <= OffTrailMonitor.leaveMeters {
-            track(to: found.candidates, at: location, accuracy: accuracy)
+            track(to: found.candidates, at: location, time: now, accuracy: accuracy)
         }
         guard alertsEnabled else {
             monitor.reset()
@@ -378,17 +392,18 @@ struct TrailProgress {
 
     /// Moves every guess on to each candidate stretch and keeps the likeliest.
     private mutating func track(to candidates: [TrailGuide.Position], at location: CLLocationCoordinate2D,
-                                accuracy: Double) {
+                                time: Date, accuracy: Double) {
         let moved = TrailWalkPlanner.meters(lastFix, location)
+        let reach = Self.longWayMargin + longWaySpeed * max(0, time.timeIntervalSince(lastFixTime ?? time))
         let sigma = max(Self.fixSigma, accuracy)
         var next: [Guess] = []
         for candidate in candidates {
             let fit = candidate.offset * candidate.offset / (2 * sigma * sigma)
             var best: Guess?
             for guess in guesses {
-                for step in steps(from: guess.at, to: candidate.along) {
+                for step in steps(from: guess.at, to: candidate.along, within: reach) {
                     let travel = abs(abs(step) - moved) / Self.travelScale
-                        + max(0, -step) * Self.backwardCostPerMeter
+                        + (step < 0 ? Self.backwardCost - step * Self.backwardCostPerMeter : 0)
                     let cost = guess.cost + travel + fit
                     if best == nil || cost < best?.cost ?? .infinity {
                         let walked = guess.walked + step
@@ -404,6 +419,7 @@ struct TrailProgress {
             .filter { $0.cost <= leader.cost + Self.keepWithin }
             .map { var g = $0; g.cost -= leader.cost; return g }
         lastFix = location
+        lastFixTime = time
         along = min(max(0, leader.walked), guide.length)
         // Judged on the likeliest guess's own origin: where a loop's first and
         // last stretches run side by side (Rob Wallace Park), the first fix
@@ -422,12 +438,15 @@ struct TrailProgress {
     /// The ways to travel along the line from `a` to `b`. On a closed line
     /// both ways round the join: from just past the start, the far side of
     /// the join is a few metres back; after a long gap it is most of the
-    /// line ahead. Each is scored, not just the shorter.
-    private func steps(from a: Double, to b: Double) -> [Double] {
+    /// line ahead. The longer is scored too when there has been time to walk
+    /// it (`reach`); the shorter always is.
+    private func steps(from a: Double, to b: Double, within reach: Double) -> [Double] {
         guard isClosed, guide.length > 0 else { return [b - a] }
         var forward = (b - a).truncatingRemainder(dividingBy: guide.length)
         if forward < 0 { forward += guide.length }
-        return [forward, forward - guide.length]
+        let back = forward - guide.length
+        let (shorter, longer) = forward <= -back ? (forward, back) : (back, forward)
+        return abs(longer) <= reach ? [shorter, longer] : [shorter]
     }
 
     /// Starts the off-trail clock over. The session calls it on pause and
@@ -472,6 +491,13 @@ struct WaypointStep: Equatable {
     var lap: Int
     var finished: Bool
 
+    /// The split and notification label on a custom route for arriving at
+    /// waypoint `index`: "WP 5/5" for a loop's last, not the wrapped "WP 0/5"
+    /// (2026-09-25 review of the rebuild).
+    static func label(arrivingAt index: Int, count: Int) -> String {
+        "WP \(min(index + 1, count))/\(count)"
+    }
+
     static func after(index: Int, lap: Int, count: Int, isLoop: Bool, lapCount: Int) -> WaypointStep {
         let next = index + 1
         if isLoop {
@@ -498,7 +524,7 @@ extension TrailProgress {
     func turnedRound(_ route: NavigableRoute) -> TurnedRound? {
         guard isWalkingBackward, let reversed = route.reversedAlongLine(),
               var progress = TrailProgress(route: reversed) else { return nil }
-        progress.resume(at: reversedAlong ?? 0)
+        progress.resume(at: reversedAlong ?? 0, since: lastFixTime)
         return TurnedRound(route: reversed, progress: progress, index: 1, lap: 1)
     }
 }
