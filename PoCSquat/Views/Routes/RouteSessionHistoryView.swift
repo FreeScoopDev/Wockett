@@ -29,12 +29,12 @@ struct RouteSessionHistoryView: View {
 
     private var emptyState: some View {
         VStack(spacing: 16) {
-            Image(wkt: .history)
-                .font(.system(size: 64)).foregroundColor(.earthMuted.opacity(0.4))
+            Image(wkt: .history).wktIcon(.hero, tint: .earthMuted)
+                .accessibilityHidden(true)
             Text("No Runs Yet")
-                .font(.headline).foregroundColor(.earthCream)
+                .font(.wktHeading(17)).foregroundColor(.earthCream)
             Text("Complete a walk on \"\(route.name)\" to see your history here")
-                .font(.subheadline).foregroundColor(.earthMuted)
+                .font(.wktBody(15)).foregroundColor(.earthMuted)
                 .multilineTextAlignment(.center)
         }
         .padding()

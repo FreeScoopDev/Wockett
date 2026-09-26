@@ -37,8 +37,8 @@ struct CustomRoutesListView: View {
 
     private var emptyState: some View {
         VStack(spacing: 16) {
-            Image(wkt: .saved)
-                .font(.system(size: 64)).foregroundColor(.earthMuted.opacity(0.4))
+            Image(wkt: .saved).wktIcon(.hero, tint: .earthMuted)
+                .accessibilityHidden(true)
             Text("Nothing Saved Yet")
                 .font(.wktHeading(17)).foregroundColor(.earthCream)
             Text("Build a custom route or bookmark locations to find them here")
