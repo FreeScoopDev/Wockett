@@ -134,11 +134,23 @@ enum CommunityHubSummary {
 
     // MARK: Routes
 
-    /// Community routes ranked by wocketts, newest first among equals.
-    static func topRoutes(_ routes: [SharedRoute], limit: Int = 5) -> [SharedRoute] {
-        Array(routes
-            .sorted { $0.wocketts != $1.wocketts ? $0.wocketts > $1.wocketts : $0.createdAt > $1.createdAt }
-            .prefix(limit))
+    /// A route starting this close counts as near you: a short drive.
+    static let nearbyRouteMeters = 40_000.0   // 25 mi
+
+    /// Community routes ranked by wocketts, those starting near you first
+    /// (Joe, 2026-09-26: the plain top list opened on routes 168 mi away).
+    /// Routes further off, or all of them when your location is unknown,
+    /// follow in the same order, so the row is never empty for being remote.
+    static func topRoutes(_ routes: [SharedRoute], near location: CLLocation? = nil,
+                          limit: Int = 5) -> [SharedRoute] {
+        let ranked = routes.sorted {
+            $0.wocketts != $1.wocketts ? $0.wocketts > $1.wocketts : $0.createdAt > $1.createdAt
+        }
+        let nearby = ranked.filter {
+            (distanceToStart(of: $0, from: location) ?? .infinity) <= nearbyRouteMeters
+        }
+        let rest = ranked.filter { route in !nearby.contains { $0.id == route.id } }
+        return Array((nearby + rest).prefix(limit))
     }
 
     /// Metres from `location` to a route's start, or nil without either.

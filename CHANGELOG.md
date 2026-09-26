@@ -12,7 +12,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - The next badge, the one closest to done, with the two after it.
   - Walks with the crew: each pet's last 7 days as walks, distance and a bar per day, and how many walks the pets took together.
   - The three latest community milestones, with likes.
-  - Top community routes as a sideways row, ranked by wocketts.
+  - Top community routes as a sideways row: those starting within 25 miles first, ranked by wocketts, then the rest in the same order. Ranked by wocketts alone, the row opened on routes 168 miles away.
   - Official trails nearby, from the bundled packs. Tapping one opens it in Routes → Trails (new `RoutesDestination.trails`).
 
   Every section is Home's card with Home's small spaced-capitals label and green link, now shared as `wktCard()` and `WktSectionHeader`, so the tab looks like the rest of the app rather than an approximation of it. There is no new CloudKit data: opening the tab makes three public-database reads, cached until pull-to-refresh, and a section whose read fails hides without taking the rest down. The badge count now leaves out walks flagged as driven, as the Badges screen always did; the two counts could disagree before. Two icons joined `WktSymbol`, `wockett` and `like`. `CommunityHubSummaryTests` cover badge order, the flagged-walk count, rank and the nudge, the crew's week and route ranking, and each failed when the rule it guards was broken on purpose.

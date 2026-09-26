@@ -92,10 +92,10 @@ struct CommunityHubSummaryTests {
 
     // MARK: Routes and names
 
-    private func route(_ name: String, wocketts: Int) throws -> SharedRoute {
+    private func route(_ name: String, wocketts: Int, latitude: Double = 35.78) throws -> SharedRoute {
         let record = CKRecord(recordType: "CommunityRoute", recordID: CKRecord.ID(recordName: name))
         record["name"] = name
-        record["waypointsJSON"] = "[{\"latitude\":35.78,\"longitude\":-78.64}]"
+        record["waypointsJSON"] = "[{\"latitude\":\(latitude),\"longitude\":-78.64}]"
         record["distanceMeters"] = 1000.0
         record["upvotes"] = wocketts
         return try #require(SharedRoute(record: record))
@@ -106,6 +106,19 @@ struct CommunityHubSummaryTests {
         let routes = [try route("a", wocketts: 3), try route("b", wocketts: 31),
                       try route("c", wocketts: 0), try route("d", wocketts: 19)]
         #expect(CommunityHubSummary.topRoutes(routes, limit: 3).map(\.name) == ["b", "d", "a"])
+    }
+
+    @Test("Routes near you come first, ranked by wocketts; far ones follow, never dropped")
+    func topRoutesNearYouFirst() throws {
+        let here = CLLocation(latitude: 35.78, longitude: -78.64)
+        let routes = [try route("far-popular", wocketts: 40, latitude: 38.2),    // ~168 mi north
+                      try route("near-a", wocketts: 2),
+                      try route("near-b", wocketts: 9, latitude: 35.9),          // ~8 mi
+                      try route("far-b", wocketts: 5, latitude: 40.0)]
+        #expect(CommunityHubSummary.topRoutes(routes, near: here).map(\.name)
+                == ["near-b", "near-a", "far-popular", "far-b"])
+        #expect(CommunityHubSummary.topRoutes(routes, near: nil).first?.name == "far-popular",
+                "no location: plain ranking by wocketts")
     }
 
     @Test("Initials for avatars")
