@@ -259,7 +259,7 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
             let count = route.waypoints.count
             let lastPassed = count > 0 ? (currentWaypointIndex - 1 + count) % count : 0
             let fallback = progress.checkpointAlong.indices.contains(lastPassed) ? progress.checkpointAlong[lastPassed] : 0
-            progress.resume(at: snapshot.trailAlong ?? fallback)
+            progress.resume(at: snapshot.trailAlong ?? fallback, since: snapshot.checkpointDate)
             trailProgress = progress
         }
 
@@ -543,7 +543,7 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
                                             at: Date(), alertsEnabled: self.offTrailAlertsEnabled)
                 self.trailProgress = progress
                 if let event { self.handleOffTrail(event) }
-                if progress.isWalkingBackward { self.turnRouteRound(at: progress.reversedAlong ?? 0) }
+                if let turned = progress.turnedRound(self.route) { self.turnRouteRound(turned) }
             }
             self.lastMovementTime = Date()
             self.lastKnownSpeed = loc.speed
@@ -609,19 +609,18 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
 
     private func advanceWaypoint() {
         let arrivedIndex = currentWaypointIndex
-        currentWaypointIndex += 1
+        let step = WaypointStep.after(index: currentWaypointIndex, lap: currentLap, count: route.waypoints.count,
+                                      isLoop: route.isLoop, lapCount: route.lapCount)
+        currentWaypointIndex = step.index
         if route.isCustomRoute, onCheckpointReached != nil {
-            let wpNum = min(currentWaypointIndex, route.waypoints.count)
-            let label = "WP \(wpNum)/\(route.waypoints.count)"
+            let label = WaypointStep.label(arrivingAt: arrivedIndex, count: route.waypoints.count)
             splitTimes.append((label: label, elapsed: elapsedTime))
             onCheckpointReached?(label)
         }
+        currentLap = step.lap
         if route.isLoop {
-            if currentWaypointIndex >= route.waypoints.count {
-                currentWaypointIndex = 0
-            } else if currentWaypointIndex == 1 {
-                currentLap += 1
-                if currentLap > route.lapCount {
+            if step.index == 1 {
+                if step.finished {
                     finish()
                 } else {
                     let lapsLeft = route.lapCount - (currentLap - 1)
@@ -631,7 +630,7 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
                     )
                 }
             }
-        } else if currentWaypointIndex >= route.waypoints.count {
+        } else if step.finished {
             finish()
         } else {
             let total = route.waypoints.count - 1
@@ -655,19 +654,14 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
         distanceToNextWaypoint = progress.distanceAlong(toWaypoint: index)
     }
 
-    /// The person set off round a closed line the other way. Only happens
-    /// before the first checkpoint, so nothing already counted changes.
-    private func turnRouteRound(at along: Double) {
-        guard currentWaypointIndex == 1, currentLap == 1,
-              let reversed = route.reversedAlongLine(),
-              var progress = TrailProgress(route: reversed) else {
-            trailProgress?.declineReverse()
-            return
-        }
-        progress.resume(at: along)
-        route = reversed
-        trailProgress = progress
-        onRouteReversed?(reversed)
+    /// The person is going round a closed line the other way: the walk
+    /// restarts on the reversed route (`TrailProgress.turnedRound`).
+    private func turnRouteRound(_ turned: TrailProgress.TurnedRound) {
+        route = turned.route
+        trailProgress = turned.progress
+        currentWaypointIndex = turned.index
+        currentLap = turned.lap
+        onRouteReversed?(turned.route)
         writeSnapshot()
     }
 
