@@ -478,3 +478,8 @@ struct WalkHistoryRow: View {
         .padding(.vertical, 8)
     }
 }
+
+// LINT PROBE (temporary, removed in the next commit): does CI SwiftLint 0.65.1 flag both?
+private func _lintProbeURL() -> URL { URL(string: "https://example.com")! }
+private let _lintProbeOptional: Int? = 1
+private let _lintProbePlain = _lintProbeOptional!
