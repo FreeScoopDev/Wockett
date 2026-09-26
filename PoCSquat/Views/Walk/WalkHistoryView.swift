@@ -70,11 +70,11 @@ struct WalkHistoryView: View {
             Image(wkt: .history)
                 .font(.system(size: 64)).foregroundColor(.earthMuted.opacity(0.4))
             Text("No Walks Yet")
-                .font(.headline).foregroundColor(.earthCream)
+                .font(.wktHeading(17)).foregroundColor(.earthCream)
             Text("Complete a walk to build your history")
-                .font(.subheadline).foregroundColor(.earthMuted).multilineTextAlignment(.center)
+                .font(.wktBody(15)).foregroundColor(.earthMuted).multilineTextAlignment(.center)
             Button("Log a Past Walk") { showManualEntry = true }
-                .foregroundColor(.earthGreen).fontWeight(.semibold)
+                .foregroundColor(.earthGreen).font(.wktBody(17))
         }.padding()
     }
 
@@ -88,17 +88,15 @@ struct WalkHistoryView: View {
             Divider().frame(height: 36)
             statCell("\(walksThisWeek)", "This Week")
         }
-        .padding(.vertical, 12)
-        .background(Color.earthCard)
-        .cornerRadius(14)
+        .wktCard(padding: 12)
         .padding(.horizontal)
         .padding(.top, 8)
     }
 
     private func statCell(_ value: String, _ label: String) -> some View {
         VStack(spacing: 2) {
-            Text(value).font(.headline.monospacedDigit()).foregroundColor(.earthCream)
-            Text(label).font(.caption2).foregroundColor(.earthMuted)
+            Text(value).font(.wktHeading(17).monospacedDigit()).foregroundColor(.earthCream)
+            Text(label).wktTechnical(10).foregroundColor(.earthMuted)
         }
         .frame(maxWidth: .infinity)
     }
@@ -153,7 +151,7 @@ struct WalkSessionDetailSheet: View {
                 ScrollView {
                     VStack(spacing: 20) {
                         Text(Self.dateFmt.string(from: session.date))
-                            .font(.subheadline).foregroundColor(.earthMuted)
+                            .font(.wktBody(15)).foregroundColor(.earthMuted)
                             .padding(.top, 4)
 
                         HStack(spacing: 12) {
@@ -164,8 +162,7 @@ struct WalkSessionDetailSheet: View {
                         .padding(.horizontal)
 
                         VStack(alignment: .leading, spacing: 8) {
-                            Text("Activity Type")
-                                .font(.caption.bold()).foregroundColor(.earthMuted)
+                            WktSectionHeader(title: "Activity Type")
                                 .padding(.horizontal)
                             Picker("Activity Type", selection: $selectedActivityType) {
                                 Text("Walk").tag("walking")
@@ -178,18 +175,17 @@ struct WalkSessionDetailSheet: View {
                         }
 
                         VStack(alignment: .leading, spacing: 8) {
-                            Text("Notes")
-                                .font(.caption.bold()).foregroundColor(.earthMuted)
+                            WktSectionHeader(title: "Notes")
                                 .padding(.horizontal)
                             ZStack(alignment: .topLeading) {
                                 if notes.isEmpty {
                                     Text("Add a note about this walk…")
-                                        .font(.subheadline).foregroundColor(.earthMuted.opacity(0.5))
+                                        .font(.wktBody(15)).foregroundColor(.earthMuted.opacity(0.5))
                                         .padding(.horizontal, 14).padding(.top, 12)
                                 }
                                 TextEditor(text: $notes)
                                     .foregroundColor(.earthCream)
-                                    .font(.subheadline)
+                                    .font(.wktBody(15))
                                     .scrollContentBackground(.hidden)
                                     .frame(minHeight: 88)
                                     .padding(.horizontal, 10)
@@ -210,7 +206,7 @@ struct WalkSessionDetailSheet: View {
                             .padding(.vertical, 14)
                             .background(Color.earthCard)
                             .foregroundColor(.earthCream)
-                            .fontWeight(.semibold)
+                            .font(.wktBody(17))
                             .cornerRadius(14)
                             .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.earthGreen.opacity(0.4), lineWidth: 1.5))
                         }
@@ -254,11 +250,12 @@ struct WalkSessionDetailSheet: View {
     private func detailTile(_ value: String, _ label: String, _ icon: WktSymbol) -> some View {
         VStack(spacing: 6) {
             Image(wkt: icon).wktIcon(.row, tint: .earthGreen)
-            Text(value).font(.headline.bold()).foregroundColor(.earthCream)
-            Text(label).font(.caption).foregroundColor(.earthMuted)
+            Text(value).font(.wktHeading(17)).foregroundColor(.earthCream)
+            Text(label).font(.wktBody(12)).foregroundColor(.earthMuted)
         }
-        .frame(maxWidth: .infinity).padding(.vertical, 16)
-        .background(Color.earthCard).cornerRadius(14)
+        // Centred tile: the full-width frame keeps it centred inside wktCard's leading frame.
+        .frame(maxWidth: .infinity)
+        .wktCard()
     }
 }
 
@@ -302,13 +299,13 @@ struct ManualWalkEntrySheet: View {
                         sectionCard("Duration") {
                             HStack(spacing: 24) {
                                 VStack(spacing: 4) {
-                                    Text("\(durationHours)").font(.title2.bold()).foregroundColor(.earthCream)
-                                    Text("hours").font(.caption).foregroundColor(.earthMuted)
+                                    Text("\(durationHours)").font(.wktDisplay(22)).foregroundColor(.earthCream)
+                                    Text("hours").font(.wktBody(12)).foregroundColor(.earthMuted)
                                     Stepper("", value: $durationHours, in: 0...23).labelsHidden()
                                 }
                                 VStack(spacing: 4) {
-                                    Text("\(durationMinutes)").font(.title2.bold()).foregroundColor(.earthCream)
-                                    Text("minutes").font(.caption).foregroundColor(.earthMuted)
+                                    Text("\(durationMinutes)").font(.wktDisplay(22)).foregroundColor(.earthCream)
+                                    Text("minutes").font(.wktBody(12)).foregroundColor(.earthMuted)
                                     Stepper("", value: $durationMinutes, in: 0...59).labelsHidden()
                                 }
                                 Spacer()
@@ -337,7 +334,7 @@ struct ManualWalkEntrySheet: View {
 
                                 if let meters = distanceMeters {
                                     Text("≈ \(formattedDistance(meters)) · \(Int(meters / 0.762).formatted()) steps")
-                                        .font(.caption).foregroundColor(.earthGreen)
+                                        .font(.wktBody(12)).foregroundColor(.earthGreen)
                                 }
                             }
                         }
@@ -352,7 +349,7 @@ struct ManualWalkEntrySheet: View {
                             Text("Save Walk")
                                 .frame(maxWidth: .infinity).padding(.vertical, 16)
                                 .background(isValid ? Color.earthGreenFill : Color.earthMuted.opacity(0.3))
-                                .foregroundColor(.white).font(.headline).cornerRadius(14)
+                                .foregroundColor(.white).font(.wktBody(17)).cornerRadius(14)
                         }
                         .disabled(!isValid)
                         .padding(.horizontal)
@@ -383,9 +380,9 @@ struct ManualWalkEntrySheet: View {
 
     private func sectionCard<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(title).font(.caption.bold()).foregroundColor(.earthMuted).padding(.horizontal)
+            WktSectionHeader(title: title).padding(.horizontal)
             VStack(alignment: .leading, spacing: 8) { content() }
-                .padding(14).background(Color.earthCard).cornerRadius(14).padding(.horizontal)
+                .wktCard(padding: 14).padding(.horizontal)
         }
     }
 
@@ -443,16 +440,16 @@ struct WalkHistoryRow: View {
                 Image(wkt: rowIcon).wktIcon(.row, tint: rowColor)
             }
             VStack(alignment: .leading, spacing: 4) {
-                Text(session.routeName).font(.headline).foregroundColor(.earthCream).lineLimit(1)
-                Text(session.formattedDate).font(.subheadline).foregroundColor(.earthMuted)
+                Text(session.routeName).font(.wktHeading(17)).foregroundColor(.earthCream).lineLimit(1)
+                Text(session.formattedDate).font(.wktBody(15)).foregroundColor(.earthMuted)
                 HStack(spacing: 10) {
                     Label { Text(session.distanceText) } icon: { Image(wkt: .distance).wktIcon(.inline, tint: .earthMuted) }
                     Label { Text(session.timeText) } icon: { Image(wkt: .time).wktIcon(.inline, tint: .earthMuted) }
                 }
-                .font(.footnote).foregroundColor(.earthMuted)
+                .font(.wktBody(13)).foregroundColor(.earthMuted)
                 if !session.notes.isEmpty {
                     Text(session.notes)
-                        .font(.caption).foregroundColor(.earthMuted.opacity(0.8))
+                        .font(.wktBody(12)).foregroundColor(.earthMuted.opacity(0.8))
                         .lineLimit(1)
                 }
             }
