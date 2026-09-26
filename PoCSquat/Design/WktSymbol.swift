@@ -144,7 +144,11 @@ enum WktSymbol {
     case northUp            // location.north.line (map: north up)
     case headingUp          // location.north.line.fill (map: turns with you)
     case directionArrow     // arrow.up.circle.fill (which way to go)
-    case arrowUp            // arrow.up (rotate for a compass heading)
+    case arrowUp            // arrow.up (trend rising; rotate for a compass heading)
+    case arrowDown          // arrow.down (trend falling)
+    case arrowRightCircle   // arrow.right.circle (walk session start)
+    case dotted             // circle.dotted (gait status: watch)
+    case chartBar           // chart.bar (use filled: true for chart.bar.fill)
     case send               // paperplane (use filled: true for paperplane.fill)
     case joinPerson         // person.badge.plus (join a challenge)
     case anyActivity        // sparkles (challenge open to any activity)
@@ -260,6 +264,10 @@ enum WktSymbol {
         case .headingUp:      return "location.north.line.fill"
         case .directionArrow: return "arrow.up.circle.fill"
         case .arrowUp:        return "arrow.up"
+        case .arrowDown:      return "arrow.down"
+        case .arrowRightCircle: return "arrow.right.circle"
+        case .dotted:         return "circle.dotted"
+        case .chartBar:       return "chart.bar"
         case .send:           return "paperplane"
         case .joinPerson:     return "person.badge.plus"
         case .anyActivity:    return "sparkles"
