@@ -283,9 +283,11 @@ non-obvious ways.
   local one.** On 2026-09-09 macOS reported 0 error-severity violations and CI
   reported 1 (`HomeWeatherView.swift:91`, a `URL(string:)!`). This file called
   that a platform difference "at the same version", but CI was running 0.57.0
-  (pinned since #10) against 0.65.1 locally, found by reading the workflow on
-  2026-09-26. CI now pins 0.65.1. Whether macOS and Linux can still disagree
-  at one version is untested. CI is the arbiter. To find the line, read the check-run
+  (pinned since #10) against 0.65.1 locally. Tested 2026-09-26: 0.65.1 exempts
+  `URL(string: "literal")!` (a plain string literal) on macOS and on the Linux
+  CI image alike, and flags every other force-unwrap, including an interpolated
+  or variable URL; 0.57.0 flagged the literal too. CI now pins 0.65.1, so the
+  two runs agree. CI is the arbiter. To find the line, read the check-run
   **annotations** — `gh api repos/FreeScoopDev/Wockett/check-runs/<id>/annotations`
   — because the job log, and the raw log via the API, both strip `file=`/`line=`
   from the reporter's output. Never fix a CI-only lint failure with a
