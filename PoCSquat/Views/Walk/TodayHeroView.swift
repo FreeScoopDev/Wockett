@@ -232,14 +232,21 @@ private struct HourlyStepBars: View {
             // Time axis labels
             HStack(spacing: 0) {
                 ForEach(0..<24, id: \.self) { hour in
+                    // Labels keep their natural width on one line. Each hour
+                    // gets a 1/24 slot, narrower than "Now", which wrapped to
+                    // "No / w" (2026-09-26); the empty slots beside it give way.
                     if labelHours.contains(hour) {
                         Text(hourLabel(hour))
                             .font(.system(size: 8))
                             .foregroundColor(.earthMuted.opacity(0.45))
+                            .lineLimit(1)
+                            .fixedSize()
                     } else if hour == currentHour {
                         Text("Now")
                             .font(.system(size: 8, weight: .semibold))
                             .foregroundColor(.earthGreen.opacity(0.7))
+                            .lineLimit(1)
+                            .fixedSize()
                     } else {
                         Color.clear
                     }
