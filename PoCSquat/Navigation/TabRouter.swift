@@ -20,6 +20,9 @@ enum CommunityDestination: Hashable {
 
 enum RoutesDestination: Hashable {
     case nearby
+    /// Routes → Trails, with this trail opened when it is in the list
+    /// (the Community hub's "Trails near you").
+    case trails(openTrailID: String?)
 }
 
 // MARK: - Tab Router

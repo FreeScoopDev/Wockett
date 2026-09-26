@@ -54,6 +54,10 @@ struct RouteFinderContentView: View {
     @State private var mode: Mode = .routes
     @State private var trailFinder = TrailFinder()
     @State private var selectedTrail: TrailListItem?
+    /// A trail another tab asked to open, kept until the list holds it:
+    /// switching to Trails clears the selection, and the list can arrive
+    /// only once a location does.
+    @State private var pendingOpenTrailID: String?
     @AppStorage("wkt_trails_groupSections_v1") private var groupTrailSections = true
     @AppStorage("wkt_trails_showShortPaths_v1") private var showShortTrailPaths = false
     /// Measured, so the map frames a trail in the part the panel leaves visible.
@@ -148,10 +152,7 @@ struct RouteFinderContentView: View {
             if mode == .trails { refreshTrails() }
         }
         .onAppear {
-            if tabRouter.pendingRoutesDestination == .nearby {
-                showNearbySheet = true
-                tabRouter.pendingRoutesDestination = nil
-            }
+            if let dest = tabRouter.pendingRoutesDestination { open(dest) }
             if routeManager.lastLocation == nil {
                 Task { routeManager.lastLocation = await routeManager.fetchCurrentLocation() }
             }
@@ -161,10 +162,7 @@ struct RouteFinderContentView: View {
             clearRoutes()
         }
         .onChange(of: tabRouter.pendingRoutesDestination) { _, dest in
-            if dest == .nearby {
-                showNearbySheet = true
-                tabRouter.pendingRoutesDestination = nil
-            }
+            if let dest { open(dest) }
         }
         .onChange(of: selectedRoute?.id) { _, _ in loadElevation() }
         .onChange(of: activityMode) { _, v in
@@ -262,6 +260,30 @@ struct RouteFinderContentView: View {
             : routeManager.lastLocation?.coordinate
     }
 
+    /// A destination another tab asked for.
+    private func open(_ destination: RoutesDestination) {
+        tabRouter.pendingRoutesDestination = nil
+        switch destination {
+        case .nearby:
+            showNearbySheet = true
+        case .trails(let openTrailID):
+            pendingOpenTrailID = openTrailID
+            if mode != .trails {
+                mode = .trails   // onChange(of: mode) refreshes and opens it
+            } else {
+                refreshTrails()
+            }
+        }
+    }
+
+    private func openPendingTrail() {
+        guard let id = pendingOpenTrailID, !trailFinder.items.isEmpty else { return }
+        pendingOpenTrailID = nil
+        if let item = trailFinder.items.first(where: { $0.id == id }) {
+            withAnimation(.spring(response: 0.3)) { selectedTrail = item }
+        }
+    }
+
     private func refreshTrails() {
         trailFinder.refresh(near: trailCenter,
                             grouped: groupTrailSections,
@@ -271,6 +293,7 @@ struct RouteFinderContentView: View {
         if let current = selectedTrail, !trailFinder.items.contains(where: { $0.id == current.id }) {
             selectedTrail = nil
         }
+        openPendingTrail()
     }
 
     // MARK: - Config panel
