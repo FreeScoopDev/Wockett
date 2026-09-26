@@ -52,11 +52,12 @@ struct AchievementFeedContentView: View {
 
     private var emptyState: some View {
         VStack(spacing: 14) {
-            Text("🏅").font(.system(size: 52))
+            Image(wkt: .badges).wktIcon(.hero, tint: .earthOrange)
+                .accessibilityHidden(true)
             Text("No achievements shared yet")
-                .font(.headline).foregroundColor(.earthCream)
+                .font(.wktHeading(17)).foregroundColor(.earthCream)
             Text("Earn a badge and share it to be the first!")
-                .font(.subheadline).foregroundColor(.earthMuted)
+                .font(.wktBody(15)).foregroundColor(.earthMuted)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 40)
         }
@@ -64,10 +65,10 @@ struct AchievementFeedContentView: View {
 
     private func errorState(_ message: String) -> some View {
         VStack(spacing: 14) {
-            Image(wkt: .cloudError)
-                .font(.system(size: 36)).foregroundColor(.earthMuted)
+            Image(wkt: .cloudError).wktIcon(.hero, tint: .earthMuted)
+                .accessibilityHidden(true)
             Text(message)
-                .font(.subheadline).foregroundColor(.earthMuted)
+                .font(.wktBody(15)).foregroundColor(.earthMuted)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 40)
             Button { loadError = nil; Task { await load() } } label: {
@@ -76,7 +77,7 @@ struct AchievementFeedContentView: View {
                 } icon: {
                     Image(wkt: .refresh).wktIcon(.inline, tint: .earthGreen)
                 }
-                .font(.subheadline.bold())
+                .font(.wktBody(15))
                 .padding(.horizontal, 20).padding(.vertical, 10)
                 .background(Color.earthCard)
                 .foregroundColor(.earthGreen)
@@ -97,12 +98,12 @@ struct AchievementFeedContentView: View {
             case .networkUnavailable, .networkFailure:
                 loadError = "No internet connection. Check your connection and retry."
             case .unknownItem, .invalidArguments, .internalError:
-                loadError = "Achievement feed not yet deployed — open CloudKit Console and deploy WocketAchievement to Production."
+                loadError = "The achievement feed isn't available right now. Please try again later."
             default:
-                loadError = "Couldn't load feed (error \(ck.code.rawValue))."
+                loadError = "Couldn't load the feed. Please try again."
             }
         } catch {
-            loadError = "Couldn't load feed: \(error.localizedDescription)"
+            loadError = "Couldn't load the feed. Check your connection and try again."
         }
         isLoading = false
     }
@@ -141,25 +142,25 @@ private struct AchievementPostCard: View {
                     .fill(Color.earthGreen.opacity(0.12))
                     .frame(width: 52, height: 52)
                 Text(post.badgeEmoji)
-                    .font(.system(size: 26))
+                    .font(.system(size: 26)) // the badge's own emoji (data), not UI chrome
             }
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
                     Text(post.authorName)
-                        .font(.subheadline.bold())
+                        .font(.wktHeading(15))
                         .foregroundColor(.earthCream)
                     Text("earned")
-                        .font(.subheadline)
+                        .font(.wktBody(15))
                         .foregroundColor(.earthMuted)
                     Text(post.badgeName)
-                        .font(.subheadline.bold())
+                        .font(.wktHeading(15))
                         .foregroundColor(.earthGreen)
                 }
 
                 if !post.message.isEmpty {
                     Text("\"\(post.message)\"")
-                        .font(.footnote)
+                        .font(.wktBody(13))
                         .foregroundColor(.earthMuted)
                         .italic()
                         .lineLimit(3)
@@ -167,7 +168,7 @@ private struct AchievementPostCard: View {
 
                 HStack(spacing: 16) {
                     Text(timeAgo(post.createdAt))
-                        .font(.caption)
+                        .font(.wktBody(12))
                         .foregroundColor(.earthMuted.opacity(0.7))
 
                     Spacer()
@@ -180,13 +181,13 @@ private struct AchievementPostCard: View {
                         Task { try? await AchievementFeedService.shared.like(id: post.id) }
                     } label: {
                         HStack(spacing: 4) {
-                            Image(systemName: hasLiked ? "heart.fill" : "heart")
-                                .font(.system(size: 14))
-                                .foregroundColor(hasLiked ? .red : .earthMuted)
+                            // accentRun matches the like on the Community hub's feed card.
+                            Image(wkt: .like)
+                                .wktIcon(.inline, tint: hasLiked ? .accentRun : .earthMuted, filled: hasLiked)
                             if post.likes > 0 {
                                 Text("\(post.likes)")
-                                    .font(.caption.bold())
-                                    .foregroundColor(hasLiked ? .red : .earthMuted)
+                                    .font(.wktBody(12))
+                                    .foregroundColor(hasLiked ? .accentRun : .earthMuted)
                             }
                         }
                     }
@@ -195,9 +196,7 @@ private struct AchievementPostCard: View {
                 .padding(.top, 2)
             }
         }
-        .padding(14)
-        .background(Color.earthCard)
-        .cornerRadius(16)
+        .wktCard(padding: 14)
         .onAppear { hasLiked = AchievementFeedService.shared.hasLiked(id: post.id) }
         .contextMenu {
             if let onHide {
@@ -253,12 +252,12 @@ struct ShareAchievementSheet: View {
                 VStack(spacing: 24) {
                     VStack(spacing: 8) {
                         Text(badge.emoji)
-                            .font(.system(size: 64))
+                            .font(.system(size: 64)) // the badge's own emoji (data)
                         Text(badge.name)
-                            .font(.title3.bold())
+                            .font(.wktHeading(20))
                             .foregroundColor(.earthCream)
                         Text(badge.description)
-                            .font(.subheadline)
+                            .font(.wktBody(15))
                             .foregroundColor(.earthMuted)
                             .multilineTextAlignment(.center)
                             .padding(.horizontal, 24)
@@ -266,20 +265,18 @@ struct ShareAchievementSheet: View {
                     .padding(.top, 8)
 
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("Add a message (optional)")
-                            .font(.caption.bold())
-                            .foregroundColor(.earthMuted)
+                        WktSectionHeader(title: "Add a message (optional)")
                             .padding(.horizontal, 4)
                         ZStack(alignment: .topLeading) {
                             if message.isEmpty {
                                 Text("Share how you earned it…")
                                     .foregroundColor(.earthMuted.opacity(0.6))
-                                    .font(.subheadline)
+                                    .font(.wktBody(15))
                                     .padding(.horizontal, 8)
                                     .padding(.top, 10)
                             }
                             TextEditor(text: $message)
-                                .font(.subheadline)
+                                .font(.wktBody(15))
                                 .foregroundColor(.earthCream)
                                 .scrollContentBackground(.hidden)
                                 .frame(height: 80)
@@ -292,8 +289,8 @@ struct ShareAchievementSheet: View {
 
                     if let error = postError {
                         Text(error)
-                            .font(.caption)
-                            .foregroundColor(.orange)
+                            .font(.wktBody(12))
+                            .foregroundColor(.earthOrange)
                             .multilineTextAlignment(.center)
                             .padding(.horizontal)
                     }
@@ -303,11 +300,13 @@ struct ShareAchievementSheet: View {
                             if isPosting {
                                 ProgressView().tint(.white)
                             } else {
-                                Label(
-                                    didPost ? "Posted!" : "Post to Community",
-                                    systemImage: didPost ? "checkmark.circle.fill" : "paperplane.fill"
-                                )
-                                .font(.headline)
+                                Label {
+                                    Text(didPost ? "Posted!" : "Post to Community")
+                                } icon: {
+                                    Image(wkt: didPost ? .success : .send)
+                                        .wktIcon(.row, tint: .white, filled: true, onFill: true)
+                                }
+                                .font(.wktBody(17))
                             }
                         }
                         .frame(maxWidth: .infinity)
@@ -341,7 +340,7 @@ struct ShareAchievementSheet: View {
             let container = CKContainer(identifier: "iCloud.Scoops.PoCSquat")
             let status    = try? await container.accountStatus()
             guard status == .available else {
-                postError = "Sign into iCloud in Settings → [Your Name] to share achievements."
+                postError = "Sign in to iCloud in the Settings app to share achievements."
                 isPosting = false
                 return
             }
@@ -359,15 +358,15 @@ struct ShareAchievementSheet: View {
             } catch let ck as CKError {
                 switch ck.code {
                 case .unknownItem, .invalidArguments:
-                    postError = "Schema not deployed yet. Open CloudKit Console → Deploy WocketAchievement to Production."
+                    postError = "Sharing isn't available right now. Please try again later."
                 case .networkUnavailable, .networkFailure:
                     postError = "No internet connection."
                 default:
-                    postError = "Couldn't post (error \(ck.code.rawValue))."
+                    postError = "Couldn't post. Please try again."
                 }
                 isPosting = false
             } catch {
-                postError = error.localizedDescription
+                postError = "Couldn't post. Check your connection and try again."
                 isPosting = false
             }
         }

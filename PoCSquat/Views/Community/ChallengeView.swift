@@ -11,6 +11,7 @@ struct ChallengesContentView: View {
     @State private var isLoading         = false
     @State private var loadError:        String?          = nil
     @State private var selectedChallenge: WalkChallenge?  = nil
+    @State private var showDetail        = false
     @State private var showCreate        = false
     /// Opens "New challenge" on arrival (the Community hub's Start a challenge).
     private let startCreating: Bool
@@ -27,7 +28,7 @@ struct ChallengesContentView: View {
                 VStack(spacing: 12) {
                     ProgressView().tint(.earthGreen)
                     Text("Loading challenges…")
-                        .font(.subheadline).foregroundColor(.earthMuted)
+                        .font(.wktBody(15)).foregroundColor(.earthMuted)
                 }
             } else if let err = loadError, challenges.isEmpty {
                 errorView(err)
@@ -55,8 +56,12 @@ struct ChallengesContentView: View {
         .sheet(isPresented: $showCreate, onDismiss: { Task { await load() } }) {
             CreateChallengeView()
         }
-        .sheet(item: $selectedChallenge) { challenge in
-            ChallengeDetailView(challenge: challenge)
+        // A push like every other Community detail. `selectedChallenge` is left
+        // set on the way back so the page doesn't blank out mid-pop.
+        .navigationDestination(isPresented: $showDetail) {
+            if let challenge = selectedChallenge {
+                ChallengeDetailView(challenge: challenge)
+            }
         }
     }
 
@@ -76,14 +81,14 @@ struct ChallengesContentView: View {
                                 isJoined: ChallengeService.shared.hasJoined(challenge),
                                 onHide: { challenges.removeAll { $0.id == challenge.id } }
                             )
-                            .onTapGesture { selectedChallenge = challenge }
+                            .onTapGesture { selectedChallenge = challenge; showDetail = true }
                         }
                     }
                     .padding(.horizontal, 20)
                 }
                 if let err = loadError {
                     Text(err)
-                        .font(.caption).foregroundColor(.earthOrange)
+                        .font(.wktBody(12)).foregroundColor(.earthOrange)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 24).padding(.top, 8)
                 }
@@ -99,13 +104,14 @@ struct ChallengesContentView: View {
                     RoundedRectangle(cornerRadius: 14)
                         .fill(Color.earthGreen.opacity(0.12))
                         .frame(width: 52, height: 52)
-                    Text("🏆").font(.system(size: 26))
+                    Image(wkt: .records).wktIcon(.row, tint: .earthGreen)
+                        .accessibilityHidden(true)
                 }
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Community Challenges")
-                        .font(.headline).foregroundColor(.earthCream)
+                        .font(.wktHeading(17)).foregroundColor(.earthCream)
                     Text("Walk together, compete together")
-                        .font(.caption).foregroundColor(.earthMuted)
+                        .font(.wktBody(12)).foregroundColor(.earthMuted)
                 }
                 Spacer()
             }
@@ -116,11 +122,12 @@ struct ChallengesContentView: View {
 
     private var emptyState: some View {
         VStack(spacing: 16) {
-            Text("🏁").font(.system(size: 48))
+            Image(wkt: .finish).wktIcon(.hero, tint: .earthGreen, filled: true)
+                .accessibilityHidden(true)
             Text("No active challenges yet")
-                .font(.headline).foregroundColor(.earthCream)
+                .font(.wktHeading(17)).foregroundColor(.earthCream)
             Text("Tap + to create the first community challenge and invite others to join.")
-                .font(.subheadline).foregroundColor(.earthMuted)
+                .font(.wktBody(15)).foregroundColor(.earthMuted)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 32)
         }
@@ -129,10 +136,10 @@ struct ChallengesContentView: View {
 
     private func errorView(_ message: String) -> some View {
         VStack(spacing: 16) {
-            Image(wkt: .cloudError)
-                .font(.system(size: 40)).foregroundColor(.earthMuted)
+            Image(wkt: .cloudError).wktIcon(.hero, tint: .earthMuted)
+                .accessibilityHidden(true)
             Text(message)
-                .font(.subheadline).foregroundColor(.earthMuted)
+                .font(.wktBody(15)).foregroundColor(.earthMuted)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 32)
             Button { Task { await load() } } label: {
@@ -141,7 +148,7 @@ struct ChallengesContentView: View {
                 } icon: {
                     Image(wkt: .refresh).wktIcon(.inline, tint: .earthGreen)
                 }
-                .font(.subheadline.bold())
+                .font(.wktBody(15))
                 .foregroundColor(.earthGreen)
                 .padding(.horizontal, 20).padding(.vertical, 10)
                 .background(Color.earthCard)
@@ -163,7 +170,7 @@ struct ChallengesContentView: View {
             #if DEBUG
             print("[ChallengeService] Error: \(error)")
             #endif
-            loadError = "Couldn't load challenges: \(error.localizedDescription)"
+            loadError = "Couldn't load challenges. Check your connection and try again."
         }
         isLoading = false
     }
@@ -171,15 +178,17 @@ struct ChallengesContentView: View {
     private func ckErrorMessage(_ error: CKError) -> String {
         switch error.code {
         case .notAuthenticated:
-            return "Sign into iCloud (Settings → [Your Name]) to view challenges."
+            return "Sign in to iCloud in the Settings app to view challenges."
         case .networkUnavailable, .networkFailure:
             return "No internet connection. Check your connection and retry."
-        case .invalidArguments:
-            return "Missing queryable index on CloudKit schema. In CloudKit Console, add a Queryable index on 'endDate' (Challenge) and 'challengeRecordName' (ChallengeEntry), then redeploy to Production."
-        case .unknownItem:
-            return "Challenge record type not found. Ensure the Challenge schema is deployed to Production in CloudKit Console."
+        // .invalidArguments is a missing queryable index (endDate on Challenge,
+        // challengeRecordName on ChallengeEntry) and .unknownItem an undeployed
+        // record type: both fixed in CloudKit Console, and the DEBUG print in
+        // load() carries the error.
+        case .invalidArguments, .unknownItem:
+            return "Challenges aren't available right now. Please try again later."
         default:
-            return "iCloud error (\(error.code.rawValue)): \(error.localizedDescription)"
+            return "Couldn't reach iCloud. Please try again."
         }
     }
 }
@@ -214,18 +223,18 @@ private struct ChallengeCard: View {
                 RoundedRectangle(cornerRadius: 12)
                     .fill(Color.earthGreen.opacity(0.1))
                     .frame(width: 50, height: 50)
-                Text(challenge.emoji).font(.system(size: 26))
+                Text(challenge.emoji).font(.system(size: 26)) // the creator's pick (data)
             }
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
                     Text(challenge.title)
-                        .font(.subheadline.bold())
+                        .font(.wktHeading(15))
                         .foregroundColor(.earthCream)
                         .lineLimit(1)
                     if isJoined {
                         Text("Joined")
-                            .font(.system(size: 9, weight: .bold))
+                            .wktTechnical(9)
                             .foregroundColor(.earthGreen)
                             .padding(.horizontal, 6).padding(.vertical, 2)
                             .background(Color.earthGreen.opacity(0.15))
@@ -234,14 +243,14 @@ private struct ChallengeCard: View {
                 }
                 HStack(spacing: 8) {
                     Text(challenge.goalText)
-                        .font(.caption).foregroundColor(.earthMuted)
-                    Text("·").font(.caption).foregroundColor(.earthMuted.opacity(0.4))
+                        .font(.wktBody(12)).foregroundColor(.earthMuted)
+                    Text("·").font(.wktBody(12)).foregroundColor(.earthMuted.opacity(0.4))
                     Text(challenge.timeRemainingText)
-                        .font(.caption)
+                        .font(.wktBody(12))
                         .foregroundColor(challenge.daysRemaining(from: Date()) <= 1 ? .earthOrange : .earthMuted)
                 }
                 Text("by \(challenge.authorName)")
-                    .font(.system(size: 10)).foregroundColor(.earthMuted.opacity(0.55))
+                    .font(.wktBody(10)).foregroundColor(.earthMuted.opacity(0.55))
             }
 
             Spacer()
@@ -249,11 +258,9 @@ private struct ChallengeCard: View {
             Image(wkt: .chevronRight)
                 .wktIcon(.inline, tint: .earthMuted.opacity(0.4))
         }
-        .padding(14)
-        .background(Color.earthCard)
-        .cornerRadius(16)
+        .wktCard(padding: 14)
         .overlay(
-            RoundedRectangle(cornerRadius: 16)
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .stroke(isJoined ? Color.earthGreen.opacity(0.3) : Color.clear, lineWidth: 1)
         )
         .contextMenu {
@@ -289,7 +296,6 @@ struct ChallengeDetailView: View {
     let challenge: WalkChallenge
     @EnvironmentObject private var stepManager:  StepManager
     @EnvironmentObject private var historyStore: WalkHistoryStore
-    @Environment(\.dismiss) private var dismiss
 
     @State private var participants:    [ChallengeParticipant] = []
     @State private var myProgressValue: Int    = 0
@@ -305,32 +311,23 @@ struct ChallengeDetailView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            ZStack {
-                Color.earthBg.ignoresSafeArea()
-                ScrollView {
-                    VStack(spacing: 20) {
-                        heroSection
-                        syncSection
-                        leaderboardSection
-                    }
-                    .padding(.bottom, 40)
+        ZStack {
+            Color.earthBg.ignoresSafeArea()
+            ScrollView {
+                VStack(spacing: 20) {
+                    heroSection
+                    syncSection
+                    leaderboardSection
                 }
-            }
-            .navigationTitle(challenge.title)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Done") { dismiss() }.foregroundColor(.earthGreen)
-                }
-            }
-            .task {
-                await loadLeaderboard()
-                await loadMyProgress()
+                .padding(.bottom, 40)
             }
         }
-        .presentationDetents([.large])
-        .presentationDragIndicator(.visible)
+        .navigationTitle(challenge.title)
+        .navigationBarTitleDisplayMode(.inline)
+        .task {
+            await loadLeaderboard()
+            await loadMyProgress()
+        }
     }
 
     // MARK: - Hero
@@ -342,17 +339,17 @@ struct ChallengeDetailView: View {
                     RoundedRectangle(cornerRadius: 16)
                         .fill(Color.earthGreen.opacity(0.1))
                         .frame(width: 64, height: 64)
-                    Text(challenge.emoji).font(.system(size: 36))
+                    Text(challenge.emoji).font(.system(size: 36)) // the creator's pick (data)
                 }
                 VStack(alignment: .leading, spacing: 5) {
                     Text(challenge.goalText)
-                        .font(.system(size: 20, weight: .bold, design: .rounded).monospacedDigit())
+                        .font(.wktHeading(20).monospacedDigit())
                         .foregroundColor(.earthCream)
                     Text(challenge.timeRemainingText)
-                        .font(.subheadline)
+                        .font(.wktBody(15))
                         .foregroundColor(challenge.daysRemaining(from: Date()) <= 1 ? .earthOrange : .earthMuted)
                     Text(detailSubtitle)
-                        .font(.caption).foregroundColor(.earthMuted.opacity(0.65))
+                        .font(.wktBody(12)).foregroundColor(.earthMuted.opacity(0.65))
                 }
                 Spacer()
             }
@@ -363,35 +360,29 @@ struct ChallengeDetailView: View {
                 VStack(spacing: 8) {
                     HStack {
                         Text("Your Progress")
-                            .font(.caption.bold()).foregroundColor(.earthMuted)
+                            .wktTechnical(10)
+                            .textCase(.uppercase)
+                            .foregroundColor(.earthMuted)
+                            .accessibilityAddTraits(.isHeader)
                         Spacer()
                         if let rank = myRank {
                             Text("Rank #\(rank)")
-                                .font(.caption.bold()).foregroundColor(.earthGreen)
+                                .font(.wktBody(12)).foregroundColor(.earthGreen)
                         }
                         Text(challenge.progressDisplay(for: myProgressValue))
-                            .font(.system(size: 11, weight: .bold, design: .rounded).monospacedDigit())
+                            .font(.wktBody(11).monospacedDigit())
                             .foregroundColor(.earthCream)
                     }
                     .padding(.horizontal, 20)
 
-                    GeometryReader { geo in
-                        let prog = challenge.progress(for: myProgressValue)
-                        ZStack(alignment: .leading) {
-                            Capsule().fill(Color.earthMuted.opacity(0.12))
-                            Capsule()
-                                .fill(prog >= 1 ? Color.accentNotice : Color.earthGreen)
-                                .frame(width: max(6, geo.size.width * prog))
-                                .animation(.spring(response: 0.5, dampingFraction: 0.8), value: prog)
-                        }
-                        .frame(height: 8)
-                    }
-                    .frame(height: 8)
-                    .padding(.horizontal, 20)
+                    let prog = challenge.progress(for: myProgressValue)
+                    WktProgressBar(value: prog, tint: prog >= 1 ? .accentNotice : .earthGreen)
+                        .animation(.spring(response: 0.5, dampingFraction: 0.8), value: prog)
+                        .padding(.horizontal, 20)
 
                     if challenge.goalType == .pace {
                         Text("Qualifying sessions beat \(challengeFormattedPace(challenge.goalPaceSecsPerKm)) · \(challenge.activityFilterLabel)")
-                            .font(.system(size: 10)).foregroundColor(.earthMuted.opacity(0.7))
+                            .font(.wktBody(10)).foregroundColor(.earthMuted.opacity(0.7))
                             .padding(.horizontal, 20)
                     }
                 }
@@ -418,10 +409,15 @@ struct ChallengeDetailView: View {
                             Text("Syncing…")
                         }
                     } else {
-                        Label(syncButtonLabel, systemImage: isJoined ? "arrow.triangle.2.circlepath" : "person.badge.plus")
+                        Label {
+                            Text(syncButtonLabel)
+                        } icon: {
+                            Image(wkt: isJoined ? .loop : .joinPerson)
+                                .wktIcon(.inline, tint: .white, onFill: true)
+                        }
                     }
                 }
-                .font(.subheadline.bold())
+                .font(.wktBody(15))
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)
                 .background(Color.earthGreenFill)
@@ -433,7 +429,7 @@ struct ChallengeDetailView: View {
 
             if let msg = syncMessage {
                 Text(msg)
-                    .font(.caption).foregroundColor(.earthGreen)
+                    .font(.wktBody(12)).foregroundColor(.earthGreen)
                     .transition(.opacity)
             }
         }
@@ -453,42 +449,39 @@ struct ChallengeDetailView: View {
     @ViewBuilder
     private var leaderboardSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack {
+            // WktSectionHeader's look, plus the trailing count or spinner it has no slot for.
+            HStack(alignment: .firstTextBaseline) {
                 Text("Leaderboard")
-                    .font(.subheadline.bold()).foregroundColor(.earthCream)
+                    .wktTechnical(10)
+                    .textCase(.uppercase)
+                    .foregroundColor(.earthMuted)
+                    .accessibilityAddTraits(.isHeader)
                 Spacer()
                 if isLoading {
                     ProgressView().scaleEffect(0.7).tint(.earthGreen)
                 } else {
                     Text("\(participants.count) participant\(participants.count == 1 ? "" : "s")")
-                        .font(.caption).foregroundColor(.earthMuted)
+                        .font(.wktBody(12)).foregroundColor(.earthMuted)
                 }
             }
-            .padding(.horizontal, 20)
 
             if let err = loadError {
                 Text(err)
-                    .font(.caption).foregroundColor(.earthOrange)
-                    .padding(.horizontal, 20)
+                    .font(.wktBody(12)).foregroundColor(.earthOrange)
             } else if participants.isEmpty && !isLoading {
                 Text("Be the first to join this challenge!")
-                    .font(.caption).foregroundColor(.earthMuted)
-                    .padding(.horizontal, 20)
+                    .font(.wktBody(12)).foregroundColor(.earthMuted)
             } else {
                 ForEach(participants.indices, id: \.self) { i in
                     LeaderboardRow(rank: i + 1, participant: participants[i], challenge: challenge)
-                        .padding(.horizontal, 20)
                     if i < participants.count - 1 {
                         Divider()
                             .background(Color.earthMuted.opacity(0.1))
-                            .padding(.horizontal, 20)
                     }
                 }
             }
         }
-        .padding(.vertical, 14)
-        .background(Color.earthCard)
-        .cornerRadius(18)
+        .wktCard()
         .padding(.horizontal, 20)
     }
 
@@ -525,7 +518,7 @@ struct ChallengeDetailView: View {
         myProgressValue = value
         do {
             try await ChallengeService.shared.joinOrUpdate(challenge, steps: value)
-            syncMessage = "Synced \(challenge.leaderboardDisplay(for: value)) ✓"
+            syncMessage = "Synced \(challenge.leaderboardDisplay(for: value))"
             await loadLeaderboard()
         } catch {
             syncMessage = "Sync failed — check your connection."
@@ -542,33 +535,32 @@ private struct LeaderboardRow: View {
     let challenge:   WalkChallenge
 
     private var progress: Double { challenge.progress(for: participant.steps) }
-    private var medalEmoji: String? {
+    /// Gold, silver and bronze for the podium, from the app's palette.
+    private var podiumTint: Color? {
         switch rank {
-        case 1: return "🥇"
-        case 2: return "🥈"
-        case 3: return "🥉"
+        case 1: return .accentNotice
+        case 2: return .earthMuted
+        case 3: return .earthOrange
         default: return nil
         }
     }
 
     var body: some View {
         HStack(spacing: 12) {
-            Group {
-                if let medal = medalEmoji {
-                    Text(medal).font(.title3)
-                } else {
-                    Text("#\(rank)")
-                        .font(.system(size: 12, weight: .bold, design: .rounded))
-                        .foregroundColor(.earthMuted)
-                        .frame(width: 28)
-                }
-            }
-            .frame(width: 28)
+            Text(podiumTint == nil ? "#\(rank)" : "\(rank)")
+                .font(.wktHeading(12).monospacedDigit())
+                .foregroundColor(podiumTint ?? .earthMuted)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+                .frame(width: 24, height: 24)
+                .background(Circle().fill((podiumTint ?? .clear).opacity(0.18)))
+                .frame(width: 28)
+                .accessibilityLabel("Rank \(rank)")
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 4) {
                     Text(participant.isCurrentDevice ? "You (\(participant.displayName))" : participant.displayName)
-                        .font(.subheadline)
+                        .font(.wktBody(15))
                         .foregroundColor(participant.isCurrentDevice ? .earthGreen : .earthCream)
                         .lineLimit(1)
                     if participant.isCurrentDevice {
@@ -576,22 +568,17 @@ private struct LeaderboardRow: View {
                     }
                 }
 
-                GeometryReader { geo in
-                    ZStack(alignment: .leading) {
-                        Capsule().fill(Color.earthMuted.opacity(0.1))
-                        Capsule()
-                            .fill(progress >= 1
-                                ? Color.accentNotice
-                                : (participant.isCurrentDevice ? Color.earthGreen : Color.earthGreen.opacity(0.55)))
-                            .frame(width: max(3, geo.size.width * progress))
-                    }
-                    .frame(height: 4)
-                }
-                .frame(height: 4)
+                WktProgressBar(
+                    value: progress,
+                    tint: progress >= 1
+                        ? .accentNotice
+                        : (participant.isCurrentDevice ? .earthGreen : .earthGreen.opacity(0.55)),
+                    height: 4
+                )
             }
 
             Text(challenge.leaderboardDisplay(for: participant.steps))
-                .font(.system(size: 13, weight: .semibold, design: .rounded).monospacedDigit())
+                .font(.wktBody(13).monospacedDigit())
                 .foregroundColor(.earthCream)
                 .frame(minWidth: 60, alignment: .trailing)
         }
@@ -637,7 +624,7 @@ struct CreateChallengeView: View {
     }
 
     private let paceOptions: [(secsPerKm: Double, hint: String)] = [
-        (300, "blazing 🔥"),
+        (300, "blazing"),
         (360, "race pace"),
         (420, "strong"),
         (480, "solid"),
@@ -645,11 +632,11 @@ struct CreateChallengeView: View {
         (600, "any pace wins"),
     ]
 
-    private let activityOptions: [(filter: String?, label: String, icon: String)] = [
-        (nil,       "Any",   "sparkles"),
-        ("walking", "Walk",  "figure.walk"),
-        ("running", "Run",   "figure.run"),
-        ("cycling", "Bike",  "figure.outdoor.cycle"),
+    private let activityOptions: [(filter: String?, label: String, icon: WktSymbol)] = [
+        (nil,       "Any",   .anyActivity),
+        ("walking", "Walk",  .walk),
+        ("running", "Run",   .run),
+        ("cycling", "Bike",  .ride),
     ]
 
     var body: some View {
@@ -666,7 +653,7 @@ struct CreateChallengeView: View {
                         durationSection
                         if let err = saveError {
                             Text(err)
-                                .font(.caption).foregroundColor(.earthOrange)
+                                .font(.wktBody(12)).foregroundColor(.earthOrange)
                                 .multilineTextAlignment(.center)
                                 .padding(.horizontal, 16)
                         }
@@ -707,7 +694,7 @@ struct CreateChallengeView: View {
                 ForEach(emojiOptions, id: \.self) { e in
                     Button { emoji = e } label: {
                         Text(e)
-                            .font(.system(size: 28))
+                            .font(.system(size: 28)) // emoji choices (data)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 10)
                             .background(emoji == e ? Color.earthGreen.opacity(0.2) : Color.earthCard)
@@ -729,9 +716,10 @@ struct CreateChallengeView: View {
                     let selected = goalType == type
                     Button { goalType = type } label: {
                         VStack(spacing: 4) {
-                            Text(goalTypeEmoji(type)).font(.system(size: 22))
+                            Image(wkt: goalTypeSymbol(type))
+                                .wktIcon(.row, tint: selected ? .white : .earthMuted, onFill: selected)
                             Text(goalTypeLabel(type))
-                                .font(.system(size: 11, weight: .semibold))
+                                .font(.wktBody(11))
                                 .foregroundColor(selected ? .white : .earthCream)
                         }
                         .frame(maxWidth: .infinity)
@@ -755,9 +743,10 @@ struct CreateChallengeView: View {
                     let selected = activityFilter == opt.filter
                     Button { activityFilter = opt.filter } label: {
                         VStack(spacing: 4) {
-                            Image(systemName: opt.icon).font(.system(size: 18))
+                            Image(wkt: opt.icon)
+                                .wktIcon(.row, tint: selected ? .white : .earthMuted, onFill: selected)
                             Text(opt.label)
-                                .font(.system(size: 11, weight: .semibold))
+                                .font(.wktBody(11))
                                 .foregroundColor(selected ? .white : .earthCream)
                         }
                         .frame(maxWidth: .infinity)
@@ -785,11 +774,11 @@ struct CreateChallengeView: View {
                         Button { goalSteps = g } label: {
                             HStack {
                                 Text(formatK(g))
-                                    .font(.subheadline.bold())
+                                    .font(.wktBody(15))
                                     .foregroundColor(goalSteps == g ? .white : .earthCream)
                                 Spacer()
                                 Text(approxStepTime(steps: g))
-                                    .font(.caption)
+                                    .font(.wktBody(12))
                                     .foregroundColor(goalSteps == g ? .white.opacity(0.8) : .earthMuted)
                             }
                             .padding(.horizontal, 14).padding(.vertical, 11)
@@ -806,11 +795,11 @@ struct CreateChallengeView: View {
                         Button { goalDistanceMeters = opt.meters } label: {
                             HStack {
                                 Text(opt.label)
-                                    .font(.subheadline.bold())
+                                    .font(.wktBody(15))
                                     .foregroundColor(goalDistanceMeters == opt.meters ? .white : .earthCream)
                                 Spacer()
                                 Text(distanceHint(meters: opt.meters))
-                                    .font(.caption)
+                                    .font(.wktBody(12))
                                     .foregroundColor(goalDistanceMeters == opt.meters ? .white.opacity(0.8) : .earthMuted)
                             }
                             .padding(.horizontal, 14).padding(.vertical, 11)
@@ -828,11 +817,11 @@ struct CreateChallengeView: View {
                             Button { goalPaceSecsPerKm = opt.secsPerKm } label: {
                                 HStack {
                                     Text(challengeFormattedPace(opt.secsPerKm))
-                                        .font(.subheadline.bold())
+                                        .font(.wktBody(15))
                                         .foregroundColor(goalPaceSecsPerKm == opt.secsPerKm ? .white : .earthCream)
                                     Spacer()
                                     Text(opt.hint)
-                                        .font(.caption)
+                                        .font(.wktBody(12))
                                         .foregroundColor(goalPaceSecsPerKm == opt.secsPerKm ? .white.opacity(0.8) : .earthMuted)
                                 }
                                 .padding(.horizontal, 14).padding(.vertical, 11)
@@ -847,7 +836,7 @@ struct CreateChallengeView: View {
                         ForEach(sessionCountOptions, id: \.self) { n in
                             Button { goalSessionCount = n } label: {
                                 Text("\(n)")
-                                    .font(.subheadline.bold())
+                                    .font(.wktBody(15))
                                     .frame(maxWidth: .infinity)
                                     .padding(.vertical, 12)
                                     .background(goalSessionCount == n ? Color.earthGreenFill : Color.earthCard)
@@ -867,7 +856,7 @@ struct CreateChallengeView: View {
                 ForEach(durationOptions, id: \.self) { d in
                     Button { duration = d } label: {
                         Text("\(d)d")
-                            .font(.caption.bold())
+                            .font(.wktBody(12))
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 11)
                             .background(duration == d ? Color.earthGreenFill : Color.earthCard)
@@ -895,7 +884,7 @@ struct CreateChallengeView: View {
                     }
                 }
             }
-            .font(.headline)
+            .font(.wktBody(17))
             .frame(maxWidth: .infinity)
             .padding(.vertical, 18)
             .background(title.trimmingCharacters(in: .whitespaces).isEmpty
@@ -911,10 +900,7 @@ struct CreateChallengeView: View {
 
     private func formSection<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(title)
-                .font(.caption.bold())
-                .foregroundColor(.earthMuted)
-                .textCase(.uppercase)
+            WktSectionHeader(title: title)
             content()
         }
     }
@@ -948,11 +934,11 @@ struct CreateChallengeView: View {
         }
     }
 
-    private func goalTypeEmoji(_ type: ChallengeGoalType) -> String {
+    private func goalTypeSymbol(_ type: ChallengeGoalType) -> WktSymbol {
         switch type {
-        case .steps:    return "🦶"
-        case .distance: return "📏"
-        case .pace:     return "⚡️"
+        case .steps:    return .steps
+        case .distance: return .distance
+        case .pace:     return .pace
         }
     }
 

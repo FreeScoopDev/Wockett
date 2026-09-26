@@ -101,9 +101,7 @@ struct BadgesContentView: View {
                 .wktTechnical(11)
                 .foregroundColor(pinnedIds.count == 2 ? .earthOrange : .earthMuted)
         }
-        .padding(.horizontal, 14).padding(.vertical, 10)
-        .background(Color.earthCard)
-        .cornerRadius(12)
+        .wktCard(padding: 12)
     }
 
     // MARK: - Streak tiles
@@ -111,9 +109,10 @@ struct BadgesContentView: View {
     private var streakSection: some View {
         VStack(spacing: 12) {
             HStack(spacing: 12) {
-                streakTile(value: currentStreak,   label: "Goal Streak",  emoji: "🔥")
-                streakTile(value: appleADayStreak, label: "Apple a Day",  emoji: "🍎")
-                streakTile(value: longestStreak,   label: "Best Streak",  emoji: "🏆")
+                streakTile(value: currentStreak,   label: "Goal Streak",  symbol: .calories, tint: .earthOrange)
+                // Apple a Day is a 10,000-step streak, so it wears the steps glyph.
+                streakTile(value: appleADayStreak, label: "Apple a Day",  symbol: .steps,    tint: .earthGreen)
+                streakTile(value: longestStreak,   label: "Best Streak",  symbol: .records,  tint: .accentNotice)
             }
             HStack(spacing: 8) {
                 Image(wkt: .walk).wktIcon(.inline, tint: .earthGreen)
@@ -122,14 +121,14 @@ struct BadgesContentView: View {
                     .font(.wktBody(14)).foregroundColor(.earthCream)
             }
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 12).padding(.horizontal, 16)
-            .background(Color.earthCard).cornerRadius(12)
+            .wktCard(padding: 12)
         }
     }
 
-    private func streakTile(value: Int, label: String, emoji: String) -> some View {
+    private func streakTile(value: Int, label: String, symbol: WktSymbol, tint: Color) -> some View {
         VStack(spacing: 4) {
-            Text(emoji).font(.system(size: 24))
+            Image(wkt: symbol).wktIcon(.row, tint: tint, filled: true)
+                .accessibilityHidden(true)
             Text("\(value)")
                 .font(.wktDisplay(26))
                 .foregroundColor(.earthCream)
@@ -142,9 +141,9 @@ struct BadgesContentView: View {
                 .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 16)
-        .background(Color.earthCard)
-        .cornerRadius(14)
+        // Third-width tiles: 10 pt sides keep "APPLE A DAY" on one line.
+        .padding(.vertical, 6)
+        .wktCard(padding: 10)
     }
 
     // MARK: - Personal Records
@@ -152,21 +151,19 @@ struct BadgesContentView: View {
     @ViewBuilder
     private var personalRecordsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Personal Records")
-                .font(.wktHeading(17)).foregroundColor(.earthCream)
+            WktSectionHeader(title: "Personal Records")
             if sessions.isEmpty {
                 Text("Complete walks to unlock personal records.")
                     .font(.wktBody(12)).foregroundColor(.earthMuted)
-                    .padding(14)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color.earthCard).cornerRadius(12)
+                    .wktCard(padding: 14)
             } else {
                 VStack(spacing: 8) {
                     ForEach(computedPersonalRecords, id: \.label) { rec in
                         HStack(spacing: 12) {
-                            Text(rec.emoji)
-                                .font(.system(size: 20))
+                            Image(wkt: rec.symbol)
+                                .wktIcon(.row, tint: .earthGreen)
                                 .frame(width: 32, alignment: .center)
+                                .accessibilityHidden(true)
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(rec.label)
                                     .wktTechnical(10)
@@ -183,9 +180,7 @@ struct BadgesContentView: View {
                                     .foregroundColor(.earthMuted.opacity(0.7))
                             }
                         }
-                        .padding(.horizontal, 14).padding(.vertical, 11)
-                        .background(Color.earthCard)
-                        .cornerRadius(12)
+                        .wktCard(padding: 12)
                     }
                 }
             }
@@ -207,14 +202,14 @@ struct BadgesContentView: View {
         }
         if let best = stepsByDay.max(by: { $0.value < $1.value }) {
             records.append(PersonalRecord(
-                emoji: "🏆", label: "Best Day",
+                symbol: .records, label: "Best Day",
                 value: best.value.formatted() + " steps", detail: shortDate(best.key)
             ))
         }
 
         if let longest = cleanSessions.max(by: { $0.totalDistance < $1.totalDistance }) {
             records.append(PersonalRecord(
-                emoji: "📏", label: "Longest Walk",
+                symbol: .distance, label: "Longest Walk",
                 value: longest.distanceText, detail: shortDate(longest.date)
             ))
         }
@@ -234,7 +229,7 @@ struct BadgesContentView: View {
             let mins      = Int(mpu)
             let secs      = Int((mpu - Double(mins)) * 60)
             records.append(PersonalRecord(
-                emoji: "⚡️", label: "Best Pace",
+                symbol: .pace, label: "Best Pace",
                 value: String(format: "%d:%02d%@", mins, secs, unit), detail: shortDate(fastest.date)
             ))
         }
@@ -246,8 +241,7 @@ struct BadgesContentView: View {
 
     private func badgeSection(title: String, badges: [WalkBadge]) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(title)
-                .font(.wktHeading(17)).foregroundColor(.earthCream)
+            WktSectionHeader(title: title)
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
                 ForEach(badges) { badge in
                     badgeTile(badge)
@@ -286,9 +280,9 @@ struct BadgesContentView: View {
         .padding(.vertical, 14).padding(.horizontal, 6)
         .frame(maxWidth: .infinity)
         .background(Color.earthCard.opacity(earned ? 1 : 0.5))
-        .cornerRadius(12)
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 12)
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .stroke(isPinned ? Color.earthOrange.opacity(0.6) : (earned ? Color.earthGreen.opacity(0.45) : Color.clear), lineWidth: 1.5)
         )
         .overlay(alignment: .topTrailing) {
@@ -368,7 +362,7 @@ struct BadgesView: View {
 // MARK: - Personal Record model
 
 private struct PersonalRecord {
-    let emoji:  String
+    let symbol: WktSymbol
     let label:  String
     let value:  String
     let detail: String?
