@@ -845,6 +845,19 @@ struct TrailGuideTests {
         #expect(try JSONDecoder().decode(ActiveWalkSnapshot.self, from: old).trailAlong == nil)
     }
 
+    // MARK: Where the off-trail alert goes
+
+    @Test("Off the trail: the banner on the session screen, a notification anywhere else")
+    func offTrailNotificationWhenNotOnSessionScreen() {
+        #expect(!NavigationSessionManager.shouldNotifyOffTrail(appIsActive: true, sessionScreenVisible: true),
+                "the banner is showing")
+        #expect(NavigationSessionManager.shouldNotifyOffTrail(appIsActive: true, sessionScreenVisible: false),
+                "minimized to the mini tile: no banner in sight")
+        #expect(NavigationSessionManager.shouldNotifyOffTrail(appIsActive: false, sessionScreenVisible: true),
+                "in a pocket")
+        #expect(NavigationSessionManager.shouldNotifyOffTrail(appIsActive: false, sessionScreenVisible: false))
+    }
+
     // MARK: Words
 
     @Test("Compass words for bearings, including the wrap at north")
