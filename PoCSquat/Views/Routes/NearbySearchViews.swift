@@ -50,7 +50,7 @@ struct DestinationSearchSheet: View {
                                 .font(.system(size: 44))
                                 .foregroundColor(.earthMuted.opacity(0.4))
                             Text("Search for anywhere you'd like to walk — a café, park, gym, landmark, or friend's street.")
-                                .font(.subheadline)
+                                .font(.wktBody(15))
                                 .multilineTextAlignment(.center)
                                 .foregroundColor(.earthMuted)
                                 .padding(.horizontal, 32)
@@ -63,7 +63,7 @@ struct DestinationSearchSheet: View {
                     } else if results.isEmpty {
                         Spacer()
                         Text("No places found")
-                            .font(.subheadline)
+                            .font(.wktBody(15))
                             .foregroundColor(.earthMuted)
                         Spacer()
                     } else {
@@ -152,11 +152,11 @@ private struct SearchResultRow: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(result.mapItem.name ?? "Unknown place")
                         .foregroundColor(.earthCream)
-                        .font(.body)
+                        .font(.wktBody(17))
                     if let sub = subtitle {
                         Text(sub)
                             .foregroundColor(.earthMuted)
-                            .font(.subheadline)
+                            .font(.wktBody(15))
                             .lineLimit(1)
                     }
                 }
@@ -165,7 +165,7 @@ private struct SearchResultRow: View {
 
                 if let dist = distanceText {
                     Text(dist)
-                        .font(.subheadline)
+                        .font(.wktBody(15))
                         .foregroundColor(.earthMuted)
                 }
             }
@@ -264,7 +264,7 @@ struct NearbyPlacesSheet: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 Text("Pick a vibe and we'll find somewhere to walk to.")
-                    .font(.subheadline)
+                    .font(.wktBody(15))
                     .foregroundColor(.earthMuted)
                     .padding(.horizontal)
 
@@ -278,16 +278,18 @@ struct NearbyPlacesSheet: View {
                                 Text(category.emoji)
                                     .font(.system(size: 42))
                                 Text(category.name)
-                                    .font(.subheadline.bold())
+                                    .font(.wktHeading(15))
                                     .foregroundColor(.earthCream)
                                     .multilineTextAlignment(.center)
                             }
+                            // Centred tile: the full-width frame keeps it centred
+                            // inside the card's leading frame; 6 + 16 keeps the
+                            // tile's 22 pt vertical padding.
                             .frame(maxWidth: .infinity)
-                            .padding(.vertical, 22)
-                            .background(Color.earthCard)
-                            .cornerRadius(16)
+                            .padding(.vertical, 6)
+                            .wktCard()
                             .overlay(
-                                RoundedRectangle(cornerRadius: 16)
+                                RoundedRectangle(cornerRadius: 18, style: .continuous)
                                     .stroke(Color.earthGreen.opacity(0.2), lineWidth: 1)
                             )
                         }
@@ -307,7 +309,7 @@ struct NearbyPlacesSheet: View {
                 Spacer()
                 ProgressView().tint(.earthGreen)
                 Text("Finding \(category.name.lowercased()) nearby…")
-                    .font(.subheadline).foregroundColor(.earthMuted)
+                    .font(.wktBody(15)).foregroundColor(.earthMuted)
                 Spacer()
             }
         } else if results.isEmpty {
@@ -315,9 +317,9 @@ struct NearbyPlacesSheet: View {
                 Spacer()
                 Text(category.emoji).font(.system(size: 52))
                 Text("None found nearby")
-                    .font(.headline).foregroundColor(.earthCream)
+                    .font(.wktHeading(17)).foregroundColor(.earthCream)
                 Text("Try a different category or expand your walk radius.")
-                    .font(.subheadline).foregroundColor(.earthMuted)
+                    .font(.wktBody(15)).foregroundColor(.earthMuted)
                     .multilineTextAlignment(.center).padding(.horizontal, 32)
                 Spacer()
             }
@@ -432,9 +434,9 @@ extension MKPointOfInterestCategory {
         case .cafe, .bakery, .restaurant, .brewery, .winery, .foodMarket:
             return .earthOrange
         case .museum, .library, .theater, .movieTheater, .amusementPark, .university:
-            return Color(red: 0.50, green: 0.30, blue: 0.80)
+            return .accentIndoor
         case .fitnessCenter:
-            return Color(red: 0.20, green: 0.50, blue: 0.90)
+            return .accentInfo
         default:
             return .earthMuted
         }
@@ -546,16 +548,16 @@ private struct NearbyPlaceRow: View {
                 VStack(alignment: .leading, spacing: 5) {
                     Text(item.name ?? "Unknown place")
                         .foregroundColor(.earthCream)
-                        .font(.body)
+                        .font(.wktBody(17))
                     if let sub = subtitle {
                         Text(sub)
                             .foregroundColor(.earthMuted)
-                            .font(.subheadline)
+                            .font(.wktBody(15))
                             .lineLimit(1)
                     }
                     if let cat = item.pointOfInterestCategory {
                         Text("\(cat.tagEmoji) \(cat.tagLabel)")
-                            .font(.caption.bold())
+                            .font(.wktBody(12))
                             .padding(.horizontal, 8).padding(.vertical, 3)
                             .background(cat.tagColor.opacity(0.15))
                             .foregroundColor(cat.tagColor)
@@ -574,7 +576,7 @@ private struct NearbyPlaceRow: View {
                     }
                     if let dist = distanceText {
                         Text(dist)
-                            .font(.caption)
+                            .font(.wktBody(12))
                             .foregroundColor(.earthMuted)
                     }
                 }
@@ -587,7 +589,7 @@ private struct NearbyPlaceRow: View {
                     } icon: {
                         Image(wkt: .arrowRight).wktIcon(.inline, tint: .earthGreen)
                     }
-                    .font(.caption.bold())
+                    .font(.wktBody(12))
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 7)
                     .background(Color.earthGreen.opacity(0.15))
@@ -600,7 +602,7 @@ private struct NearbyPlaceRow: View {
                     } icon: {
                         Image(wkt: .loop).wktIcon(.inline, tint: .earthMuted)
                     }
-                    .font(.caption.bold())
+                    .font(.wktBody(12))
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 7)
                     .background(Color.earthCard)
