@@ -169,7 +169,7 @@ private struct TrendChartSection: View {
                     RuleMark(y: .value("Goal", stepManager.currentGoal))
                         .lineStyle(StrokeStyle(lineWidth: 1, dash: [5, 4]))
                         .foregroundStyle(Color.earthOrange.opacity(0.5))
-                        .annotation(position: .trailing, alignment: .center) {
+                        .annotation(position: .top, alignment: .leading) {
                             Text("Goal")
                                 .font(.system(size: 8))
                                 .foregroundColor(.earthOrange.opacity(0.7))
