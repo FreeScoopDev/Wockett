@@ -8,7 +8,11 @@ import Foundation
 @MainActor
 struct CommunityHubSummaryTests {
 
-    private let now = Date(timeIntervalSince1970: 1_790_000_000)
+    /// Noon today, local time. A fixed timestamp fell in the evening on one
+    /// machine and in another hour on Xcode Cloud (UTC), so the walks earned
+    /// Night Owl or Early Bird on one and not the other, and Badge Hunter
+    /// jumped the badge order (CI, 2026-09-26). Noon earns neither.
+    private let now: Date = Calendar.current.date(bySettingHour: 12, minute: 0, second: 0, of: Date()) ?? Date()
 
     private func walk(km: Double, daysAgo: Double = 0, pets: [UUID: Double] = [:],
                       flagged: Bool = false) -> WalkSession {
