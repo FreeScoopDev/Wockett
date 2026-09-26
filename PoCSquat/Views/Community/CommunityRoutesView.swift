@@ -21,7 +21,7 @@ final class CommunityRoutesModel {
         } catch let ck as CKError {
             loadError = ckMessage(ck)
         } catch {
-            loadError = "Couldn't load routes: \(error.localizedDescription)"
+            loadError = "Couldn't load community routes. Check your connection and try again."
         }
         isLoading = false
     }
@@ -29,15 +29,15 @@ final class CommunityRoutesModel {
     private func ckMessage(_ ck: CKError) -> String {
         switch ck.code {
         case .notAuthenticated:
-            return "Sign into iCloud (Settings → [Your Name]) to view community routes."
+            return "Sign in to iCloud in the Settings app to view community routes."
         case .networkUnavailable, .networkFailure:
             return "No internet connection. Check your connection and retry."
         case .unknownItem, .invalidArguments, .internalError:
-            return "Community routes aren't set up yet — open CloudKit Console and deploy SharedRoute to Production."
+            return "Community routes aren't available right now. Please try again later."
         case .serviceUnavailable:
             return "iCloud is temporarily unavailable. Try again in a moment."
         default:
-            return "Couldn't load routes (error \(ck.code.rawValue))."
+            return "Couldn't load community routes. Please try again."
         }
     }
 }
@@ -61,7 +61,7 @@ struct CommunityRoutesView: View {
                 VStack(spacing: 12) {
                     ProgressView().tint(.earthGreen)
                     Text("Loading routes…")
-                        .font(.subheadline).foregroundColor(.earthMuted)
+                        .font(.wktBody(15)).foregroundColor(.earthMuted)
                 }
             } else if let err = model.loadError, model.routes.isEmpty {
                 errorState(err)
@@ -72,7 +72,7 @@ struct CommunityRoutesView: View {
             }
         }
         .navigationTitle("Community Routes")
-        .navigationBarTitleDisplayMode(.large)
+        .navigationBarTitleDisplayMode(.inline)
         .task { await model.load() }
         .alert("Session Already Active", isPresented: $showActiveSessionAlert) {
             Button("OK", role: .cancel) {}
@@ -86,10 +86,10 @@ struct CommunityRoutesView: View {
             LazyVStack(spacing: 14) {
                 if let err = wocketError {
                     HStack(spacing: 6) {
-                        Image(wkt: .errorCircle).wktIcon(.inline, tint: .orange, filled: true)
-                        Text(err).font(.caption)
+                        Image(wkt: .errorCircle).wktIcon(.inline, tint: .earthOrange, filled: true)
+                        Text(err).font(.wktBody(12))
                     }
-                    .foregroundColor(.orange)
+                    .foregroundColor(.earthOrange)
                     .padding(.horizontal)
                     .transition(.opacity)
                 }
@@ -118,11 +118,12 @@ struct CommunityRoutesView: View {
 
     private var emptyState: some View {
         VStack(spacing: 16) {
-            Text("🗺️").font(.system(size: 52))
+            Image(wkt: .communityRoutes).wktIcon(.hero, tint: .earthGreen)
+                .accessibilityHidden(true)
             Text("No routes shared yet")
-                .font(.headline).foregroundColor(.earthCream)
+                .font(.wktHeading(17)).foregroundColor(.earthCream)
             Text("Share a route from Route Finder to be the first!")
-                .font(.subheadline).foregroundColor(.earthMuted)
+                .font(.wktBody(15)).foregroundColor(.earthMuted)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 40)
         }
@@ -130,10 +131,10 @@ struct CommunityRoutesView: View {
 
     private func errorState(_ message: String) -> some View {
         VStack(spacing: 14) {
-            Image(wkt: .cloudError)
-                .font(.system(size: 36)).foregroundColor(.earthMuted)
+            Image(wkt: .cloudError).wktIcon(.hero, tint: .earthMuted)
+                .accessibilityHidden(true)
             Text(message)
-                .font(.subheadline).foregroundColor(.earthMuted)
+                .font(.wktBody(15)).foregroundColor(.earthMuted)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 40)
             Button { Task { await model.load(force: true) } } label: {
@@ -142,11 +143,11 @@ struct CommunityRoutesView: View {
                 } icon: {
                     Image(wkt: .refresh).wktIcon(.inline, tint: .earthGreen)
                 }
-                .font(.subheadline.bold())
+                .font(.wktBody(15))
                 .padding(.horizontal, 20).padding(.vertical, 10)
-                    .background(Color.earthCard)
-                    .foregroundColor(.earthGreen)
-                    .cornerRadius(10)
+                .background(Color.earthCard)
+                .foregroundColor(.earthGreen)
+                .cornerRadius(10)
             }
         }
     }

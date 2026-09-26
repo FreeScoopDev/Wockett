@@ -144,6 +144,10 @@ enum WktSymbol {
     case northUp            // location.north.line (map: north up)
     case headingUp          // location.north.line.fill (map: turns with you)
     case directionArrow     // arrow.up.circle.fill (which way to go)
+    case arrowUp            // arrow.up (rotate for a compass heading)
+    case send               // paperplane (use filled: true for paperplane.fill)
+    case joinPerson         // person.badge.plus (join a challenge)
+    case anyActivity        // sparkles (challenge open to any activity)
 
     var name: String {
         switch self {
@@ -255,6 +259,10 @@ enum WktSymbol {
         case .northUp:        return "location.north.line"
         case .headingUp:      return "location.north.line.fill"
         case .directionArrow: return "arrow.up.circle.fill"
+        case .arrowUp:        return "arrow.up"
+        case .send:           return "paperplane"
+        case .joinPerson:     return "person.badge.plus"
+        case .anyActivity:    return "sparkles"
         }
     }
 
@@ -279,12 +287,14 @@ enum WktIconSize {
     case tab    // 26pt — tab bar glyphs
     case row    // 20pt — list rows, section headers, card icons
     case inline // 16pt — inline with body text, chevrons
+    case hero   // 44pt — the glyph over an empty or error state
 
     var points: CGFloat {
         switch self {
         case .tab:    return 26
         case .row:    return 20
         case .inline: return 16
+        case .hero:   return 44
         }
     }
 }
