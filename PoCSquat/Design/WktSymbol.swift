@@ -110,6 +110,8 @@ enum WktSymbol {
     // Community moderation
     case communityWave      // person.2.wave.2 (share badge to community)
     case communityFill      // person.2 (use filled: true for person.2.fill)
+    case wockett            // w.circle (a vote for a community route)
+    case like               // heart (liking a community post)
     case flagReport         // flag
     case blockUser          // nosign
     case cloudError         // exclamationmark.icloud
@@ -223,6 +225,8 @@ enum WktSymbol {
         case .openHealth:     return "heart.text.square"
         case .communityWave:  return "person.2.wave.2"
         case .communityFill:  return "person.2"
+        case .wockett:        return "w.circle"
+        case .like:           return "heart"
         case .flagReport:     return "flag"
         case .blockUser:      return "nosign"
         case .cloudError:     return "exclamationmark.icloud"

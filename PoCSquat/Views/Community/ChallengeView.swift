@@ -12,6 +12,13 @@ struct ChallengesContentView: View {
     @State private var loadError:        String?          = nil
     @State private var selectedChallenge: WalkChallenge?  = nil
     @State private var showCreate        = false
+    /// Opens "New challenge" on arrival (the Community hub's Start a challenge).
+    private let startCreating: Bool
+    @State private var didStartCreating = false
+
+    init(startCreating: Bool = false) {
+        self.startCreating = startCreating
+    }
 
     var body: some View {
         ZStack {
@@ -39,6 +46,12 @@ struct ChallengesContentView: View {
             }
         }
         .task { await load() }
+        .onAppear {
+            if startCreating, !didStartCreating {
+                didStartCreating = true
+                showCreate = true
+            }
+        }
         .sheet(isPresented: $showCreate, onDismiss: { Task { await load() } }) {
             CreateChallengeView()
         }
