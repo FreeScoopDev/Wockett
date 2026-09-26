@@ -132,17 +132,26 @@ final class PetStore: ObservableObject {
     }
 
     // Backward-compatible helpers: use petDistances when present, fall back to activePetIds.
-    private func petParticipated(_ pet: PetProfile, in session: WalkSession) -> Bool {
+    // Static so views and tests (the Community hub's crew card) share the one rule.
+    nonisolated static func participated(_ petID: UUID, in session: WalkSession) -> Bool {
         session.petDistances.isEmpty
-            ? session.activePetIds.contains(pet.id)
-            : (session.petDistances[pet.id] ?? 0) > 0
+            ? session.activePetIds.contains(petID)
+            : (session.petDistances[petID] ?? 0) > 0
+    }
+
+    nonisolated static func walkedMeters(_ petID: UUID, in session: WalkSession) -> Double {
+        if session.petDistances.isEmpty {
+            return session.activePetIds.contains(petID) ? session.totalDistance : 0
+        }
+        return session.petDistances[petID] ?? 0
+    }
+
+    private func petParticipated(_ pet: PetProfile, in session: WalkSession) -> Bool {
+        Self.participated(pet.id, in: session)
     }
 
     private func petWalkedMeters(_ pet: PetProfile, in session: WalkSession) -> Double {
-        if session.petDistances.isEmpty {
-            return session.activePetIds.contains(pet.id) ? session.totalDistance : 0
-        }
-        return session.petDistances[pet.id] ?? 0
+        Self.walkedMeters(pet.id, in: session)
     }
 
     func todaySteps(for pet: PetProfile, in sessions: [WalkSession]) -> Int {
