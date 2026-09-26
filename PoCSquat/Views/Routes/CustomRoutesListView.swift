@@ -40,9 +40,9 @@ struct CustomRoutesListView: View {
             Image(wkt: .saved)
                 .font(.system(size: 64)).foregroundColor(.earthMuted.opacity(0.4))
             Text("Nothing Saved Yet")
-                .font(.headline).foregroundColor(.earthCream)
+                .font(.wktHeading(17)).foregroundColor(.earthCream)
             Text("Build a custom route or bookmark locations to find them here")
-                .font(.subheadline).foregroundColor(.earthMuted)
+                .font(.wktBody(15)).foregroundColor(.earthMuted)
                 .multilineTextAlignment(.center)
             Button { isBuilding = true } label: {
                 Label {
@@ -51,7 +51,7 @@ struct CustomRoutesListView: View {
                     Image(wkt: .add).wktIcon(.inline, tint: .white, onFill: true)
                 }
                 .padding(.horizontal, 24).padding(.vertical, 16)
-                .background(Color.earthOrangeFill).foregroundColor(.white).bold()
+                .background(Color.earthOrangeFill).foregroundColor(.white).font(.wktBody(17))
                 .cornerRadius(12)
             }
             .padding(.top, 8)
@@ -72,9 +72,7 @@ struct CustomRoutesListView: View {
                     }
                     .onDelete { store.delete(at: $0) }
                 } header: {
-                    Text("My Routes")
-                        .font(.caption.bold()).foregroundColor(.earthMuted)
-                        .textCase(nil)
+                    WktSectionHeader(title: "My Routes")
                 }
             }
             if !bookmarkStore.bookmarks.isEmpty {
@@ -86,9 +84,7 @@ struct CustomRoutesListView: View {
                     }
                     .onDelete { bookmarkStore.delete(at: $0) }
                 } header: {
-                    Text("Bookmarked Places")
-                        .font(.caption.bold()).foregroundColor(.earthMuted)
-                        .textCase(nil)
+                    WktSectionHeader(title: "Bookmarked Places")
                 }
             }
         }
@@ -112,9 +108,9 @@ struct BookmarkRow: View {
                     .wktIcon(.row, tint: Color.accentInfo, filled: true)
             }
             VStack(alignment: .leading, spacing: 4) {
-                Text(bookmark.name).font(.headline).foregroundColor(.earthCream)
+                Text(bookmark.name).font(.wktHeading(17)).foregroundColor(.earthCream)
                 Text(bookmark.address)
-                    .font(.footnote).foregroundColor(.earthMuted).lineLimit(1)
+                    .font(.wktBody(13)).foregroundColor(.earthMuted).lineLimit(1)
             }
             Spacer()
         }
@@ -133,17 +129,16 @@ struct CustomRouteRow: View {
                 RoundedRectangle(cornerRadius: 10)
                     .fill(Color.earthGreen.opacity(0.15))
                     .frame(width: 46, height: 46)
-                Image(systemName: route.isLoop ? "arrow.triangle.2.circlepath" : "arrow.right")
-                    .foregroundColor(.earthGreen)
-                    .font(.system(size: 18, weight: .medium))
+                Image(wkt: route.isLoop ? .loop : .arrowRight)
+                    .wktIcon(.row, tint: .earthGreen)
             }
             VStack(alignment: .leading, spacing: 4) {
-                Text(route.name).font(.headline).foregroundColor(.earthCream)
+                Text(route.name).font(.wktHeading(17)).foregroundColor(.earthCream)
                 HStack(spacing: 10) {
                     Label { Text(route.distanceText) } icon: { Image(wkt: .distance).wktIcon(.inline, tint: .earthMuted) }
                     Label { Text("~\(route.estimatedSteps.formatted()) steps") } icon: { Image(wkt: .walk).wktIcon(.inline, tint: .earthMuted) }
                 }
-                .font(.footnote).foregroundColor(.earthMuted)
+                .font(.wktBody(13)).foregroundColor(.earthMuted)
             }
             Spacer()
         }
@@ -195,7 +190,7 @@ struct CustomRouteDetailView: View {
         case .idle:    return Color.accentInfoFill
         case .sharing: return Color.accentInfoFill.opacity(0.6)
         case .shared:  return .earthGreenFill
-        case .failed:  return .red.opacity(0.7)
+        case .failed:  return .earthOrangeFill
         }
     }
 
@@ -211,7 +206,7 @@ struct CustomRouteDetailView: View {
                     if isLoading {
                         ProgressView().tint(.earthGreen)
                             .padding(16)
-                            .background(.black.opacity(0.6))
+                            .background(Color.earthBg.opacity(0.8))
                             .cornerRadius(10)
                     }
                 }
@@ -222,18 +217,19 @@ struct CustomRouteDetailView: View {
                         HStack(alignment: .top) {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(route.name)
-                                    .font(.title2.bold()).foregroundColor(.earthCream)
-                                Label(
-                                    route.isLoop ? "Loop route" : "One-way route",
-                                    systemImage: route.isLoop ? "arrow.triangle.2.circlepath" : "arrow.right"
-                                )
-                                .font(.caption).foregroundColor(.earthGreen)
+                                    .font(.wktHeading(22)).foregroundColor(.earthCream)
+                                Label {
+                                    Text(route.isLoop ? "Loop route" : "One-way route")
+                                } icon: {
+                                    Image(wkt: route.isLoop ? .loop : .arrowRight).wktIcon(.inline, tint: .earthGreen)
+                                }
+                                .font(.wktBody(12)).foregroundColor(.earthGreen)
                             }
                             Spacer()
                             VStack(alignment: .trailing, spacing: 4) {
-                                Text(route.distanceText).font(.title3.bold()).foregroundColor(.earthCream)
+                                Text(route.distanceText).font(.wktDisplay(22)).foregroundColor(.earthCream)
                                 Text("~\(route.estimatedSteps.formatted()) steps")
-                                    .font(.subheadline).foregroundColor(.earthMuted)
+                                    .font(.wktBody(15)).foregroundColor(.earthMuted)
                             }
                         }
 
@@ -244,23 +240,23 @@ struct CustomRouteDetailView: View {
                         if let profile = elevationProfile {
                             ElevationProfileChart(profile: profile)
                         } else if isLoadingElevation {
-                            RoundedRectangle(cornerRadius: 12)
+                            RoundedRectangle(cornerRadius: 18, style: .continuous)
                                 .fill(Color.earthCard)
                                 .frame(height: 80)
                                 .overlay {
                                     HStack(spacing: 8) {
                                         ProgressView().tint(.earthGreen)
                                         Text("Calculating elevation...")
-                                            .font(.subheadline).foregroundColor(.earthMuted)
+                                            .font(.wktBody(15)).foregroundColor(.earthMuted)
                                     }
                                 }
                         }
 
                         HStack(spacing: 12) {
-                            infoTile(icon: "mappin.circle",
+                            infoTile(icon: .mapPinFill,
                                      value: isClassified ? "\(pinCoordinates.count)" : "–",
                                      label: recordedLine == nil ? "waypoints" : "checkpoints")
-                            infoTile(icon: "clock",
+                            infoTile(icon: .time,
                                      value: route.timeText,
                                      label: "est. time")
                         }
@@ -292,7 +288,7 @@ struct CustomRouteDetailView: View {
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 18).padding(.horizontal, 20)
                                 .background(activityMode.tileFillColor).foregroundColor(.white)
-                                .fontWeight(.semibold).cornerRadius(14)
+                                .font(.wktBody(17)).cornerRadius(14)
                         }
 
                         NavigationLink {
@@ -307,7 +303,7 @@ struct CustomRouteDetailView: View {
                             .padding(.vertical, 14)
                             .background(Color.earthCard)
                             .foregroundColor(.earthCream)
-                            .fontWeight(.semibold)
+                            .font(.wktBody(17))
                             .cornerRadius(12)
                         }
                         .buttonStyle(.plain)
@@ -324,10 +320,10 @@ struct CustomRouteDetailView: View {
                                     Image(wkt: .openInMaps).wktIcon(.inline, tint: .earthMuted)
                                     Text("Open in Apple Maps")
                                 }
-                                .font(.subheadline).foregroundColor(.earthMuted)
+                                .font(.wktBody(15)).foregroundColor(.earthMuted)
                             }
                             Text("Laps and multi-stop routes aren't supported in Apple Maps")
-                                .font(.caption)
+                                .font(.wktBody(12))
                                 .foregroundColor(.earthMuted.opacity(0.6))
                                 .multilineTextAlignment(.center)
                         }
@@ -344,9 +340,9 @@ struct CustomRouteDetailView: View {
                             HStack {
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text("Share to Community")
-                                        .font(.subheadline.bold()).foregroundColor(.earthCream)
+                                        .font(.wktHeading(15)).foregroundColor(.earthCream)
                                     Text("Posting as \(CommunityRouteService.shared.username)")
-                                        .font(.caption2).foregroundColor(.earthMuted)
+                                        .font(.wktBody(11)).foregroundColor(.earthMuted)
                                 }
                                 Spacer()
                             }
@@ -382,7 +378,7 @@ struct CustomRouteDetailView: View {
                                 .padding(.vertical, 14)
                                 .background(shareButtonColor)
                                 .foregroundColor(.white)
-                                .fontWeight(.semibold)
+                                .font(.wktBody(17))
                                 .cornerRadius(12)
                             }
                             .disabled(shareState != .idle)
@@ -458,8 +454,9 @@ struct CustomRouteDetailView: View {
             activityMode = mode
         } label: {
             HStack(spacing: 6) {
-                Image(systemName: mode.icon).font(.system(size: 13, weight: .semibold))
-                Text(mode.sessionLabel).font(.subheadline.bold())
+                Image(systemName: mode.icon)
+                    .wktIcon(.inline, tint: selected ? .white : .earthCream, onFill: selected)
+                Text(mode.sessionLabel).font(.wktBody(15))
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 9)
@@ -471,18 +468,15 @@ struct CustomRouteDetailView: View {
     }
 
     @ViewBuilder
-    private func infoTile(icon: String, value: String, label: String) -> some View {
+    private func infoTile(icon: WktSymbol, value: String, label: String) -> some View {
         HStack(spacing: 10) {
-            Image(systemName: icon).foregroundColor(.earthGreen)
+            Image(wkt: icon).wktIcon(.row, tint: .earthGreen)
             VStack(alignment: .leading, spacing: 2) {
-                Text(value).font(.subheadline.bold()).foregroundColor(.earthCream)
-                Text(label).font(.caption).foregroundColor(.earthMuted)
+                Text(value).font(.wktHeading(15)).foregroundColor(.earthCream)
+                Text(label).font(.wktBody(12)).foregroundColor(.earthMuted)
             }
         }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.earthCard)
-        .cornerRadius(10)
+        .wktCard(padding: 14)
     }
 
     private func loadLegs() async {

@@ -214,7 +214,7 @@ struct RouteFinderContentView: View {
                 if let dismiss = onDismiss {
                     Button { dismiss() } label: {
                         Image(wkt: .chevronLeft)
-                            .wktIcon(.row, tint: .primary)
+                            .wktIcon(.row, tint: .earthCream)
                             .padding(10)
                             .background(.ultraThinMaterial, in: Circle())
                     }
@@ -227,7 +227,7 @@ struct RouteFinderContentView: View {
                     HStack(spacing: 6) {
                         ProgressView().scaleEffect(0.8)
                         Text("Finding routes…")
-                            .font(.caption.bold())
+                            .font(.wktBody(12))
                     }
                     .padding(.horizontal, 12).padding(.vertical, 6)
                     .background(.ultraThinMaterial, in: Capsule())
@@ -301,7 +301,7 @@ struct RouteFinderContentView: View {
     private func configPanel() -> some View {
         VStack(spacing: 0) {
             Capsule()
-                .fill(Color.secondary.opacity(0.3))
+                .fill(Color.earthMuted.opacity(0.3))
                 .frame(width: 36, height: 4)
                 .padding(.top, 10)
                 .padding(.bottom, 20)
@@ -342,7 +342,7 @@ struct RouteFinderContentView: View {
                             }
                         }
                     }
-                    .font(.headline)
+                    .font(.wktBody(17))
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 18)
                     .background(routeManager.isGenerating ? Color.earthGreenFill.opacity(0.7) : Color.earthGreenFill)
@@ -355,12 +355,12 @@ struct RouteFinderContentView: View {
 
                 if let err = routeManager.locationError {
                     HStack(spacing: 6) {
-                        Image(wkt: .warning).wktIcon(.inline, tint: .orange, filled: true)
+                        Image(wkt: .warning).wktIcon(.inline, tint: .earthOrange, filled: true)
                         Text(err)
-                            .font(.caption)
+                            .font(.wktBody(12))
                             .multilineTextAlignment(.leading)
                     }
-                    .foregroundColor(.orange)
+                    .foregroundColor(.earthOrange)
                     .padding(.horizontal, 20)
                     .transition(.opacity.combined(with: .move(edge: .top)))
 
@@ -369,7 +369,7 @@ struct RouteFinderContentView: View {
                             Image(wkt: .loop).wktIcon(.inline, tint: .earthGreen)
                             Text("Try nearby loops instead")
                         }
-                        .font(.subheadline.bold())
+                        .font(.wktBody(15))
                         .foregroundColor(.earthGreen)
                     }
                     .padding(.horizontal, 20)
@@ -382,7 +382,7 @@ struct RouteFinderContentView: View {
                             Image(wkt: .find).wktIcon(.inline, tint: .earthMuted)
                             Text("Search a place")
                         }
-                        .font(.caption)
+                        .font(.wktBody(12))
                         .foregroundColor(.earthMuted)
                     }
                     Rectangle()
@@ -393,7 +393,7 @@ struct RouteFinderContentView: View {
                             Image(wkt: .locationOn).wktIcon(.inline, tint: .earthMuted)
                             Text("Nearby places")
                         }
-                        .font(.caption)
+                        .font(.wktBody(12))
                         .foregroundColor(.earthMuted)
                     }
                 }
@@ -424,14 +424,14 @@ struct RouteFinderContentView: View {
                     } icon: {
                         Image(wkt: .refresh).wktIcon(.inline, tint: .earthGreen)
                     }
-                    .font(.caption.bold())
+                    .font(.wktBody(12))
                     .foregroundColor(.earthGreen)
                 }
                 .accessibilityIdentifier("routes.newSearch")
                 .frame(width: 110, alignment: .leading)
 
                 Capsule()
-                    .fill(Color.secondary.opacity(0.3))
+                    .fill(Color.earthMuted.opacity(0.3))
                     .frame(width: 36, height: 4)
                     .frame(maxWidth: .infinity)
 
@@ -454,7 +454,7 @@ struct RouteFinderContentView: View {
 
                     if let err = routeManager.locationError {
                         Text(err)
-                            .font(.caption).foregroundColor(.orange)
+                            .font(.wktBody(12)).foregroundColor(.earthOrange)
                             .multilineTextAlignment(.center)
                             .padding(.horizontal, 20)
                     }
@@ -520,7 +520,7 @@ struct RouteFinderContentView: View {
                 .padding(.horizontal, 20)
                 .transition(.opacity.combined(with: .move(edge: .top)))
         } else if isLoadingElevation {
-            RoundedRectangle(cornerRadius: 12)
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .fill(Color.earthCard)
                 .frame(height: 80)
                 .overlay(ProgressView().tint(.earthGreen))
@@ -529,7 +529,7 @@ struct RouteFinderContentView: View {
             HStack(spacing: 6) {
                 Image(wkt: .elevation).wktIcon(.inline, tint: .earthMuted)
                 Text(err)
-                    .font(.caption)
+                    .font(.wktBody(12))
             }
             .foregroundColor(.earthMuted)
             .padding(.horizontal, 20)
@@ -546,7 +546,7 @@ struct RouteFinderContentView: View {
             onNavigateAway?()
         } label: {
             Label("Start \(activityMode.sessionLabel)", systemImage: activityMode.icon)
-                .font(.headline)
+                .font(.wktBody(17))
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 18)
                 .background(Color.earthGreenFill)
@@ -564,10 +564,10 @@ struct RouteFinderContentView: View {
                     Image(wkt: .openInMaps).wktIcon(.inline, tint: .earthMuted)
                     Text("Open in Apple Maps")
                 }
-                .font(.subheadline).foregroundColor(.earthMuted)
+                .font(.wktBody(15)).foregroundColor(.earthMuted)
             }
             Text("Laps and multi-stop routes aren't supported in Apple Maps")
-                .font(.caption)
+                .font(.wktBody(12))
                 .foregroundColor(.earthMuted.opacity(0.6))
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 32)
@@ -581,11 +581,11 @@ struct RouteFinderContentView: View {
         VStack(spacing: 10) {
             if let err = wocketError {
                 HStack(spacing: 6) {
-                    Image(wkt: .errorCircle).wktIcon(.inline, tint: .orange, filled: true)
+                    Image(wkt: .errorCircle).wktIcon(.inline, tint: .earthOrange, filled: true)
                     Text(err)
-                        .font(.caption)
+                        .font(.wktBody(12))
                 }
-                .foregroundColor(.orange)
+                .foregroundColor(.earthOrange)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 20)
                 .transition(.opacity)
@@ -603,26 +603,24 @@ struct RouteFinderContentView: View {
                     } icon: {
                         Image(wkt: .communityFill).wktIcon(.inline, tint: .earthCream, filled: true)
                     }
-                    .font(.subheadline.bold())
+                    .font(.wktHeading(15))
                     .foregroundColor(.earthCream)
                     Spacer()
                     if communityModel.isLoading {
                         ProgressView().tint(.earthGreen).scaleEffect(0.8)
                     } else {
-                        Image(systemName: showCommunityRoutes ? "chevron.up" : "chevron.down")
-                            .font(.caption).foregroundColor(.earthMuted)
+                        Image(wkt: showCommunityRoutes ? .chevronUp : .chevronDown)
+                            .wktIcon(.inline, tint: .earthMuted)
                     }
                 }
-                .padding(.horizontal, 16).padding(.vertical, 14)
-                .background(Color.earthCard)
-                .cornerRadius(12)
+                .wktCard()
                 .padding(.horizontal, 20)
             }
 
             if showCommunityRoutes {
                 if communityModel.isLoading && communityModel.routes.isEmpty {
                     ProgressView("Loading routes…")
-                        .font(.caption).foregroundColor(.earthMuted)
+                        .font(.wktBody(12)).foregroundColor(.earthMuted)
                         .padding(.vertical, 12)
                 } else if let error = communityModel.loadError, communityModel.routes.isEmpty {
                     VStack(spacing: 10) {
@@ -630,7 +628,7 @@ struct RouteFinderContentView: View {
                             .font(.system(size: 28))
                             .foregroundColor(.earthMuted)
                         Text(error)
-                            .font(.caption)
+                            .font(.wktBody(12))
                             .foregroundColor(.earthMuted)
                             .multilineTextAlignment(.center)
                             .padding(.horizontal, 32)
@@ -642,17 +640,17 @@ struct RouteFinderContentView: View {
                             } icon: {
                                 Image(wkt: .refresh).wktIcon(.inline, tint: .earthGreen)
                             }
-                            .font(.caption.bold())
+                            .font(.wktBody(12))
                             .padding(.horizontal, 16).padding(.vertical, 8)
                             .background(Color.earthCard)
                             .foregroundColor(.earthGreen)
-                            .cornerRadius(8)
+                            .cornerRadius(10)
                         }
                     }
                     .padding(.vertical, 12)
                 } else if communityModel.routes.isEmpty && communityModel.didLoad {
                     Text("No routes shared yet — be the first!")
-                        .font(.caption).foregroundColor(.earthMuted)
+                        .font(.wktBody(12)).foregroundColor(.earthMuted)
                         .padding(.vertical, 8)
                 } else {
                     ForEach(Array(communityModel.routes.enumerated()), id: \.element.id) { i, route in
@@ -713,7 +711,7 @@ struct RouteFinderContentView: View {
             activityMode = mode
         } label: {
             Label(mode.sessionLabel, systemImage: mode.icon)
-                .font(.caption.bold())
+                .font(.wktBody(12))
                 .padding(.horizontal, 14).padding(.vertical, 9)
                 .background(isSelected ? Color.earthGreenFill : Color.earthCard)
                 .foregroundColor(isSelected ? .white : .earthCream)
@@ -731,7 +729,7 @@ struct RouteFinderContentView: View {
             saveIntent()
         } label: {
             Text(intent.label)
-                .font(.caption.bold())
+                .font(.wktBody(12))
                 .padding(.horizontal, 14).padding(.vertical, 9)
                 .background(isSelected ? Color.earthGreenFill : Color.earthCard)
                 .foregroundColor(isSelected ? .white : .earthCream)
