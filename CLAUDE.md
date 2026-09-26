@@ -17,7 +17,7 @@ user benefit — scored and deliberately declined. Don't "fix" it.
 | Thing | Name |
 | --- | --- |
 | GitHub repo | `FreeScoopDev/Wockett` |
-| Local folder | `~/Desktop/PoCSquat` |
+| Local folder | `~/Desktop/Apps/PoCSquat` (was `~/Desktop/PoCSquat` until 2026-09-26) |
 | App target / scheme | `PoCSquat` |
 | Widget + Live Activity | `WocketWidgetExtension` (one `t`) |
 | Unit tests | `WockettTests` |
@@ -216,7 +216,7 @@ Status `In Review` and Build `N`. That is the whole post-release process: no
 `Versions.xcconfig` PR.
 
 **A manual Xcode archive is emergency-only**, for when Xcode Cloud itself is
-down. It builds whatever is on disk in `~/Desktop/PoCSquat`, which is how
+down. It builds whatever is on disk in `~/Desktop/Apps/PoCSquat`, which is how
 build 84 went out without #53.
 
 Testing runs on **Xcode Cloud** (25 hours/month, included in the Developer
@@ -330,16 +330,24 @@ non-obvious ways.
   `main` is protected, so a pushed branch cannot ship anything by itself.
   Claude never pushes to `main`, never force-pushes, and never merges a PR.
   Joe no longer runs git commands for routine work.
-- **Never move what is checked out in `~/Desktop/PoCSquat`.** That folder is
+- **Never move what is checked out in `~/Desktop/Apps/PoCSquat`.** That folder is
   Joe's; git there is read-only with `--no-optional-locks`, because past
   sessions left `.git/index.lock` files behind. Do all branch work in a
-  separate worktree (`git worktree add ~/Desktop/PoCSquat-claude -b <branch>
+  separate worktree (`git worktree add ~/Desktop/Apps/PoCSquat-claude -b <branch>
   origin/main`), and remove it once the PR merges. No `switch`, `checkout`,
   `merge`, `pull` or `commit` in Joe's folder. If it needs updating before an
   emergency archive, give Joe the command instead. Cost: on
   2026-09-23 a fast-forward landed 14 s into Joe's 1.12 archive, and build 84
   shipped without #53. It was proved from the archive's dSYM; see
   `Versions.xcconfig`.
+- **Keep repos out of iCloud-synced folders.** On 2026-09-26 the Desktop,
+  then synced by iCloud's Desktop & Documents, was moved to a local
+  `~/Desktop/Apps`. Only the files iCloud had downloaded made the move: the
+  repos lost `.git/HEAD`, most refs and 30 tracked files, and git no longer
+  recognised them. Wockett was re-cloned from GitHub with nothing lost, because
+  every change was pushed. Pushing every branch is what made that true; a repo
+  with no remote (SqwatrApp) had no such copy. If a git command here says "not
+  a git repository", check for a missing `.git/HEAD` before anything else.
 - **Anything Joe has to do is written as numbered steps**: where to click,
   what to type, what he should see, and what to do if he doesn't. "Be careful
   when X" is not a step. If a risk can be removed on Claude's side instead,
