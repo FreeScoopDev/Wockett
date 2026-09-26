@@ -97,9 +97,7 @@ struct HealthHubView: View {
                     .wktIcon(.inline, tint: .earthMuted.opacity(0.5))
                     .accessibilityHidden(true)
             }
-            .padding(16)
-            .background(Color.earthCard)
-            .cornerRadius(18)
+            .wktCard()
         }
         .buttonStyle(BounceButtonStyle(scale: 0.97))
         .padding(.horizontal)
@@ -152,27 +150,21 @@ struct HealthFunStatsCard: View {
     var body: some View {
         if facts.isEmpty { EmptyView() } else {
             VStack(alignment: .leading, spacing: 10) {
-                Text("Your Journey in Perspective")
-                    .font(.caption.bold())
-                    .foregroundColor(.earthMuted)
-                    .textCase(.uppercase)
+                WktSectionHeader(title: "Your Journey in Perspective")
                 HStack(spacing: 10) {
                     ForEach(facts) { fact in
                         VStack(alignment: .leading, spacing: 4) {
                             Text(fact.emoji).font(.title2)
                             Text(fact.headline)
-                                .font(.system(size: 12, weight: .bold))
+                                .font(.wktHeading(12))
                                 .foregroundColor(.earthCream)
                                 .lineLimit(2)
                                 .fixedSize(horizontal: false, vertical: true)
                             Text(fact.detail)
-                                .font(.system(size: 10))
+                                .font(.wktBody(10))
                                 .foregroundColor(.earthMuted)
                         }
-                        .padding(12)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Color.earthCard)
-                        .cornerRadius(14)
+                        .wktCard(padding: 12)
                     }
                 }
             }

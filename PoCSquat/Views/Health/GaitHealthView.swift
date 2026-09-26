@@ -119,13 +119,20 @@ enum GaitStatus {
         }
     }
 
-    var icon: String {
+    var symbol: WktSymbol {
         switch self {
-        case .good:      return "checkmark.circle.fill"
-        case .notice:    return "circle.dotted"
-        case .attention: return "exclamationmark.triangle.fill"
+        case .good:      return .success
+        case .notice:    return .dotted
+        case .attention: return .warning
         }
     }
+
+    /// circle.dotted has no fill variant; the other two are drawn filled.
+    var filled: Bool { self != .notice }
+
+    /// String form for RecoveryCard (TodayHeroView), which still takes a
+    /// `systemImage:` name.
+    var icon: String { symbol.name + (filled ? ".fill" : "") }
 }
 
 // MARK: - Metric Config
@@ -284,7 +291,7 @@ struct GaitHealthSection: View {
                 } icon: {
                     Image(wkt: .readiness).wktIcon(.row, tint: .earthCream)
                 }
-                .font(.headline)
+                .font(.wktHeading(17))
                 .foregroundColor(.earthCream)
                 Spacer()
                 if service.isLoading {
@@ -312,7 +319,7 @@ struct GaitHealthSection: View {
             }
 
             Text("Measured by iPhone sensors during detected walking bouts. Tap a card for details.")
-                .font(.caption2)
+                .font(.wktBody(11))
                 .foregroundColor(.earthMuted.opacity(0.55))
                 .padding(.horizontal, 20)
         }
@@ -336,17 +343,15 @@ struct GaitHealthSection: View {
                 .wktIcon(.row, tint: .earthMuted)
             VStack(alignment: .leading, spacing: 4) {
                 Text("No gait data yet")
-                    .font(.subheadline.bold())
+                    .font(.wktHeading(15))
                     .foregroundColor(.earthCream)
                 Text("Walk with your iPhone to start tracking walking health metrics.")
-                    .font(.caption)
+                    .font(.wktBody(12))
                     .foregroundColor(.earthMuted)
             }
             Spacer()
         }
-        .padding(16)
-        .background(Color.earthCard)
-        .cornerRadius(14)
+        .wktCard()
         .padding(.horizontal, 20)
     }
 }
@@ -388,7 +393,7 @@ private struct GaitMetricCard: View {
                     Image(wkt: config.symbol)
                         .wktIcon(.inline, tint: .earthGreen)
                     Text(config.title)
-                        .font(.caption.bold())
+                        .font(.wktHeading(12))
                         .foregroundColor(.earthCream)
                         .lineLimit(1)
                     Spacer()
@@ -399,29 +404,31 @@ private struct GaitMetricCard: View {
 
                 if let cur = currentAvg {
                     Text(config.format(cur))
-                        .font(.system(size: 17, weight: .bold, design: .rounded).monospacedDigit())
+                        .font(.wktHeading(17).monospacedDigit())
                         .foregroundColor(.earthCream)
 
                     HStack(spacing: 6) {
                         let st = config.statusOf(cur)
-                        Label(st.label, systemImage: st.icon)
-                            .font(.caption2.bold())
-                            .foregroundColor(st.color)
+                        Label {
+                            Text(st.label)
+                        } icon: {
+                            Image(wkt: st.symbol).symbolVariant(st.filled ? .fill : .none)
+                        }
+                        .font(.wktBody(11))
+                        .foregroundColor(st.color)
                         Spacer()
                         if let t = trendPct { trendBadge(t) }
                     }
                 } else {
                     Text("–")
-                        .font(.title3.bold())
+                        .font(.wktHeading(20))
                         .foregroundColor(.earthMuted)
                         .padding(.bottom, 2)
                 }
 
                 if !chartPts.isEmpty { sparkline }
             }
-            .padding(12)
-            .background(Color.earthCard)
-            .cornerRadius(14)
+            .wktCard(padding: 12)
         }
         .buttonStyle(.plain)
     }
@@ -430,10 +437,10 @@ private struct GaitMetricCard: View {
         let isUp   = pct >= 0
         let isGood = config.higherIsBetter ? isUp : !isUp
         return HStack(spacing: 2) {
-            Image(systemName: isUp ? "arrow.up" : "arrow.down")
+            Image(wkt: isUp ? .arrowUp : .arrowDown)
             Text(String(format: "%.0f%%", abs(pct)))
         }
-        .font(.caption2.bold())
+        .font(.wktBody(11))
         .foregroundColor(isGood ? .earthGreen : .earthOrange)
     }
 
@@ -552,31 +559,39 @@ struct GaitMetricDetailContentView: View {
             VStack(alignment: .leading, spacing: 4) {
                 if let avg = sevenDayAvg {
                     Text(config.format(avg))
-                        .font(.system(size: 28, weight: .bold, design: .rounded))
+                        .font(.wktDisplay(28))
                         .foregroundColor(.earthCream)
                     HStack(spacing: 8) {
                         if let st = currentStatus {
-                            Label(st.label, systemImage: st.icon)
-                                .font(.caption.bold())
-                                .foregroundColor(st.color)
-                                .padding(.horizontal, 8).padding(.vertical, 3)
-                                .background(st.color.opacity(0.12))
-                                .cornerRadius(8)
+                            Label {
+                                Text(st.label)
+                            } icon: {
+                                Image(wkt: st.symbol).symbolVariant(st.filled ? .fill : .none)
+                            }
+                            .font(.wktBody(12))
+                            .foregroundColor(st.color)
+                            .padding(.horizontal, 8).padding(.vertical, 3)
+                            .background(st.color.opacity(0.12))
+                            .cornerRadius(8)
                         }
                         if let t = trendPct {
                             let isGood = (config.higherIsBetter && t >= 0) || (!config.higherIsBetter && t <= 0)
-                            Label(String(format: "%+.1f%% vs prior week", t), systemImage: t >= 0 ? "arrow.up" : "arrow.down")
-                                .font(.caption2)
-                                .foregroundColor(isGood ? .earthGreen : .earthOrange)
+                            Label {
+                                Text(String(format: "%+.1f%% vs prior week", t))
+                            } icon: {
+                                Image(wkt: t >= 0 ? .arrowUp : .arrowDown)
+                            }
+                            .font(.wktBody(11))
+                            .foregroundColor(isGood ? .earthGreen : .earthOrange)
                         }
                     }
                 } else {
                     Text("No data yet")
-                        .font(.title3.bold())
+                        .font(.wktHeading(20))
                         .foregroundColor(.earthMuted)
                 }
                 Text("7-day average · Normal: \(config.normalRange)")
-                    .font(.caption2)
+                    .font(.wktBody(11))
                     .foregroundColor(.earthMuted)
             }
             Spacer()
@@ -589,9 +604,7 @@ struct GaitMetricDetailContentView: View {
 
     private var trendChartSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("30-Day Trend")
-                .font(.subheadline.bold())
-                .foregroundColor(.earthCream)
+            WktSectionHeader(title: "30-Day Trend")
                 .padding(.horizontal, 20)
 
             Chart {
@@ -623,7 +636,7 @@ struct GaitMetricDetailContentView: View {
                     .foregroundStyle(Color.earthGreen.opacity(0.45))
                     .annotation(position: .trailing, alignment: .center) {
                         Text("Good")
-                            .font(.system(size: 9, weight: .semibold))
+                            .font(.wktBody(9))
                             .foregroundColor(.earthGreen.opacity(0.7))
                     }
             }
@@ -631,7 +644,7 @@ struct GaitMetricDetailContentView: View {
                 AxisMarks(values: .stride(by: .day, count: 7)) { _ in
                     AxisGridLine().foregroundStyle(Color.earthMuted.opacity(0.1))
                     AxisValueLabel(format: .dateTime.month(.abbreviated).day(), centered: true)
-                        .font(.system(size: 9))
+                        .font(.wktBody(9))
                         .foregroundStyle(Color.earthMuted)
                 }
             }
@@ -641,7 +654,7 @@ struct GaitMetricDetailContentView: View {
                     AxisValueLabel {
                         if let d = value.as(Double.self) {
                             Text(config.format(d))
-                                .font(.system(size: 9))
+                                .font(.wktBody(9))
                                 .foregroundStyle(Color.earthMuted)
                         }
                     }
@@ -667,21 +680,18 @@ struct GaitMetricDetailContentView: View {
                 let item = items[i]
                 VStack(alignment: .leading, spacing: 4) {
                     Text(item.label)
-                        .font(.caption2.bold())
+                        .wktTechnical(10)
                         .foregroundColor(.earthMuted)
                     Text(item.value ?? "–")
-                        .font(.system(size: 18, weight: .bold, design: .rounded).monospacedDigit())
+                        .font(.wktHeading(18).monospacedDigit())
                         .foregroundColor(.earthCream)
                         .minimumScaleFactor(0.7)
                         .lineLimit(1)
                     Text(item.note)
-                        .font(.system(size: 10))
+                        .font(.wktBody(10))
                         .foregroundColor(.earthMuted.opacity(0.6))
                 }
-                .padding(14)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.earthCard)
-                .cornerRadius(14)
+                .wktCard(padding: 14)
             }
         }
         .padding(.horizontal, 20)
@@ -691,9 +701,7 @@ struct GaitMetricDetailContentView: View {
 
     private var dowSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Day-of-Week Pattern")
-                .font(.subheadline.bold())
-                .foregroundColor(.earthCream)
+            WktSectionHeader(title: "Day-of-Week Pattern")
 
             let maxVal = dowAverages.map(\.value).max() ?? 1
             let minVal = dowAverages.map(\.value).min() ?? 0
@@ -705,7 +713,7 @@ struct GaitMetricDetailContentView: View {
                         : 0.5
                     VStack(spacing: 4) {
                         Text(config.format(entry.value))
-                            .font(.system(size: 8, weight: .medium).monospacedDigit())
+                            .font(.wktBody(8).monospacedDigit())
                             .foregroundColor(.earthMuted)
                             .lineLimit(1)
                             .minimumScaleFactor(0.5)
@@ -713,7 +721,7 @@ struct GaitMetricDetailContentView: View {
                             .fill(config.statusOf(entry.value).color.opacity(0.75))
                             .frame(height: max(12, 60 * normalized))
                         Text(entry.label)
-                            .font(.system(size: 10, weight: .semibold))
+                            .wktTechnical(10)
                             .foregroundColor(.earthMuted)
                     }
                     .frame(maxWidth: .infinity)
@@ -721,18 +729,16 @@ struct GaitMetricDetailContentView: View {
             }
             .frame(height: 90, alignment: .bottom)
         }
-        .padding(16)
-        .background(Color.earthCard)
-        .cornerRadius(16)
+        .wktCard()
         .padding(.horizontal, 20)
     }
 
     // MARK: About
 
     private var aboutSection: some View {
-        infoSection(title: "About This Metric", icon: "info.circle.fill", color: Color.accentHealth) {
+        infoSection(title: "About This Metric", icon: .info, filled: true, color: Color.accentHealth) {
             Text(config.explanation)
-                .font(.subheadline)
+                .font(.wktBody(15))
                 .foregroundColor(.earthMuted)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -741,7 +747,7 @@ struct GaitMetricDetailContentView: View {
     // MARK: What Affects
 
     private var affectsSection: some View {
-        infoSection(title: "What Affects It", icon: "chart.bar.fill", color: .earthOrange) {
+        infoSection(title: "What Affects It", icon: .chartBar, filled: true, color: .earthOrange) {
             VStack(alignment: .leading, spacing: 8) {
                 ForEach(config.whatAffects, id: \.self) { item in
                     HStack(alignment: .top, spacing: 10) {
@@ -750,7 +756,7 @@ struct GaitMetricDetailContentView: View {
                             .frame(width: 5, height: 5)
                             .padding(.top, 6)
                         Text(item)
-                            .font(.subheadline)
+                            .font(.wktBody(15))
                             .foregroundColor(.earthMuted)
                             .fixedSize(horizontal: false, vertical: true)
                     }
@@ -762,7 +768,7 @@ struct GaitMetricDetailContentView: View {
     // MARK: Tips
 
     private var tipsSection: some View {
-        infoSection(title: "How to Improve", icon: "lightbulb.fill", color: .earthGreen) {
+        infoSection(title: "How to Improve", icon: .tip, color: .earthGreen) {
             VStack(alignment: .leading, spacing: 12) {
                 ForEach(config.tips.indices, id: \.self) { i in
                     HStack(alignment: .top, spacing: 12) {
@@ -771,11 +777,11 @@ struct GaitMetricDetailContentView: View {
                                 .fill(Color.earthGreen.opacity(0.15))
                                 .frame(width: 24, height: 24)
                             Text("\(i + 1)")
-                                .font(.system(size: 11, weight: .bold))
+                                .font(.wktHeading(11))
                                 .foregroundColor(.earthGreen)
                         }
                         Text(config.tips[i])
-                            .font(.subheadline)
+                            .font(.wktBody(15))
                             .foregroundColor(.earthMuted)
                             .fixedSize(horizontal: false, vertical: true)
                     }
@@ -788,19 +794,22 @@ struct GaitMetricDetailContentView: View {
 
     private func infoSection<Content: View>(
         title: String,
-        icon: String,
+        icon: WktSymbol,
+        filled: Bool = false,
         color: Color,
         @ViewBuilder content: () -> Content
     ) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label(title, systemImage: icon)
-                .font(.subheadline.bold())
-                .foregroundColor(color)
+            Label {
+                Text(title)
+            } icon: {
+                Image(wkt: icon).wktIcon(.inline, tint: color, filled: filled)
+            }
+            .font(.wktHeading(15))
+            .foregroundColor(color)
             content()
         }
-        .padding(16)
-        .background(Color.earthCard)
-        .cornerRadius(16)
+        .wktCard()
         .padding(.horizontal, 20)
     }
 }
