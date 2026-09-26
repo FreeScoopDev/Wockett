@@ -28,6 +28,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - `WktSymbol` gains `arrowUp` (turned for a route's compass heading), `send`, `joinPerson` and `anyActivity`, and `WktIconSize` gains `.hero` (44 pt) for empty and error states.
 
 ### Fixed
+- Home's step timeline shows "Now" on one line. Each hour gets a 1/24 slot of the width, narrower than the word, so it wrapped to "No" over "w". The hour labels now keep their natural width, and the empty slots beside them give way.
 - Position on a trail walk or a recorded route is tracked as a sequence of fixes, not decided one fix at a time. On 1,233 simulated walks each way round 411 real North Carolina loops, from random starting points with ±5 m GPS wobble:
   - backward walks that never finished went from 185 to 4
   - walks that said "Walk complete" before halfway went from 17 to 0 (the worst on the previous code finished 1% of the way round)
