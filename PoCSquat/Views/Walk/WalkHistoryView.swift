@@ -67,8 +67,8 @@ struct WalkHistoryView: View {
 
     private var emptyState: some View {
         VStack(spacing: 16) {
-            Image(wkt: .history)
-                .font(.system(size: 64)).foregroundColor(.earthMuted.opacity(0.4))
+            Image(wkt: .history).wktIcon(.hero, tint: .earthMuted)
+                .accessibilityHidden(true)
             Text("No Walks Yet")
                 .font(.wktHeading(17)).foregroundColor(.earthCream)
             Text("Complete a walk to build your history")

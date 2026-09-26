@@ -46,9 +46,8 @@ struct DestinationSearchSheet: View {
                     if searchText.isEmpty {
                         Spacer()
                         VStack(spacing: 12) {
-                            Image(wkt: .place)
-                                .font(.system(size: 44))
-                                .foregroundColor(.earthMuted.opacity(0.4))
+                            Image(wkt: .place).wktIcon(.hero, tint: .earthMuted)
+                                .accessibilityHidden(true)
                             Text("Search for anywhere you'd like to walk — a café, park, gym, landmark, or friend's street.")
                                 .font(.wktBody(15))
                                 .multilineTextAlignment(.center)
