@@ -241,9 +241,7 @@ struct TrailDetailView: View {
 
     /// A walk from where the person stands, when they are at the trail.
     private var startPlan: TrailWalkPlan? {
-        guard let userLocation,
-              let section = TrailWalkPlanner.section(of: item, at: userLocation) else { return nil }
-        return TrailWalkPlanner.plan(for: section, name: item.name, from: userLocation)
+        TrailWalkPlanner.plan(for: item, from: userLocation)
     }
 
     var body: some View {
@@ -319,7 +317,7 @@ struct TrailDetailView: View {
                     .cornerRadius(14)
             }
             .accessibilityIdentifier("routes.trailStart")
-            Text(TrailText.startCaption(for: plan, grouped: item.isGroup))
+            Text(TrailText.startCaption(for: plan))
                 .font(.wktBody(12))
                 .foregroundColor(.earthMuted)
                 .multilineTextAlignment(.center)
@@ -409,9 +407,9 @@ enum TrailText {
     }
 
     /// "Starts where you are and goes round the loop · 1.1 mi"
-    static func startCaption(for plan: TrailWalkPlan, grouped: Bool) -> String {
+    static func startCaption(for plan: TrailWalkPlan) -> String {
         let route = plan.isLoop ? "goes round the loop" : "follows the trail to its far end"
-        let scope = grouped ? "On the section you're at: starts where you are and \(route)"
+        let scope = plan.isSectionOnly ? "On the section you're at: starts where you are and \(route)"
                             : "Starts where you are and \(route)"
         return "\(scope) · \(distance(plan.distanceMeters))"
     }
