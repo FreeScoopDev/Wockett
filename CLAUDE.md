@@ -157,95 +157,36 @@ way unless there's a strong reason; adding the first one is a real decision.
 
 ## Process
 
-Simplified on 2026-09-23, after 1.12 took a changelog cut, two stacked PRs, a
-flaky-test PR, a missed CI event, a manual archive that missed a merged fix, and
-a build-number PR. The picture is the "Wockett Ship Path" artifact
-(https://claude.ai/artifact/7XiSmyWHE78VkVhrajyzR7). **Joe decides what ships;
-Claude does the git work and the bookkeeping; checks run by themselves, and a
-change that passes them merges itself.**
+@~/.claude/toolkit/PROCESS.md
 
-Auto-merge since 2026-09-27, at Joe's request. By the time Joe clicked Merge
-on a routine PR, the three required checks had already passed, and he was not
-reviewing code. So the click only added waiting, and a conflict whenever two
-PRs were open at once (#90, #92). `main` is not what users get. The gate that
-matters is the release: Start Build, TestFlight QA and Submit, all Joe's.
+The process is shared by every app and lives in the toolkit
+(`FreeScoopDev/app-toolkit`, checked out at `~/.claude/toolkit`): every
+change, auto-merge, `changelog.d/`, the release PR and Joe's five release
+steps, git rules. **If you cannot see its "Every change: no Joe step"
+section, the import did not load: read `~/.claude/toolkit/PROCESS.md` now,
+before any git work.** Change the process there, not here.
 
-`main` is protected: no direct pushes, no force-push, no deletion, and three
-required checks (`Wockett | CI Tests | Test - iOS`, `Language-consistency
-guard`, and `SwiftLint` — the last added 2026-09-09 once its error-severity
-backlog reached zero). Squash-merge.
+Wockett's specifics:
 
-### Every change: no Joe step
-
-Claude, in its own worktree (see "Working with Joe"):
-
-1. Branches from `origin/main`, one change per branch, `feat/`, `fix/` or
-   `chore/` prefix. **Never stack a PR on another branch.** `CI Tests` only
-   builds PRs whose base is `main`, so a stacked PR gets no CI until
-   retargeted (#53, #54).
-2. Makes the change with its `changelog.d/` entry and runs `scripts/test.sh`.
-3. Merges `origin/main` in, pushes the branch and opens the PR.
-4. About 2 minutes later, confirms a `Wockett | CI Tests` status exists on the
-   PR. If there is none, it re-fires with `gh pr close N && gh pr reopen N`
-   (`docs/ci.md` explains why). It fixes any red check itself.
-5. Queues the merge with `gh pr merge N --auto --squash` and gives Joe the
-   link. GitHub squash-merges once all three required checks are green. A red
-   check or a conflict blocks it, and Claude fixes it (for a conflict: merge
-   `origin/main` in, run `scripts/test.sh`, push). If Joe says "hold #N",
-   Claude runs `gh pr merge N --disable-auto`, and that PR waits for his
-   Merge. Auto-merge is a repo setting (Settings → General → Allow
-   auto-merge, on since 2026-09-27); if `--auto` is refused, check it first.
-
-### Shipping a version: five Joe steps
-
-Claude opens the **release PR**: it moves every `changelog.d/` entry into
-`[Unreleased]` under its heading, deletes those files, cuts `[Unreleased]` into
-`[x.y] - date`, bumps `MARKETING_VERSION`, and runs the `release-checker`
-agent. The release PR is **never** auto-merged: merging it is Joe's decision to
-ship. The PR
-description starts with a **Ship Card**:
-
-- **What's New**: App Store copy covering everything users have not seen
-  since the version that is *live* (check
-  `https://itunes.apple.com/lookup?id=6794364736`), not just since the last cut.
-- **What to Test**: TestFlight copy.
-- **QA cards**: the Testing/QA cards linked from the Notion Releases page.
-- **Console steps**: anything only Joe can do (CloudKit schema deploy,
-  publishing a record, an App Store Connect product). Each is written as exact
-  clicks. Omit the section when there are none.
-- **Release check**: the `release-checker` report. This replaces the SOP
-  Usage Log as the record that the checks ran.
-
-Joe then:
-
-1. Merges the release PR.
-2. Does the console steps, if the Ship Card lists any.
-3. App Store Connect → Apps → Wockett → Xcode Cloud → Release Flow →
-   **Start Build** (`main` is the only branch it offers). Waits for Slack
-   `#wockett_release_updates` and notes the build number.
-4. Installs it from TestFlight, works through the QA cards, and marks each one
-   Passed in Notion. A failure goes back through "Every change", then step 3
-   again.
-5. App Store Connect → Distribution → new version → Add Build → pastes What's
-   New → Add for Review → Submit. Tells Claude "submitted build N".
-
-After step 5, Claude tags the build's commit `vX.Y` (lightweight, like `v1.9`
-to `v1.11`) and pushes the tag. It also sets the Notion Releases row to
-Status `In Review` and Build `N`. That is the whole post-release process: no
-`Versions.xcconfig` PR.
-
-**A manual Xcode archive is emergency-only**, for when Xcode Cloud itself is
-down. It builds whatever is on disk in `~/Desktop/Apps/PoCSquat`, which is how
-build 84 went out without #53.
-
-Testing runs on **Xcode Cloud** (25 hours/month, included in the Developer
-Program). GitHub Actions runs only a Linux wording guard — the macOS jobs were
-removed 2026-09-04 because they billed at 10x and were slower and flakier.
-
-Run the tests locally before pushing:
-
-    xcodebuild test -project PoCSquat.xcodeproj -scheme PoCSquat \
-      -destination "id=$(bash scripts/ci_pick_simulator.sh)"
+- **Required checks** on `main` (`.claude/app.json` → `requiredChecks`):
+  `Wockett | CI Tests | Test - iOS`, `Language-consistency guard`, `SwiftLint`
+  (the last required since 2026-09-09, once its error-severity backlog reached
+  zero). `~/.claude/toolkit/bin/repo-check.sh .` confirms GitHub still
+  matches.
+- **The picture** is the "Wockett Ship Path" artifact
+  (https://claude.ai/artifact/7XiSmyWHE78VkVhrajyzR7). The process was
+  simplified on 2026-09-23, after 1.12 took a changelog cut, two stacked PRs
+  (#53, #54, which got no CI until retargeted), a flaky-test PR, a missed CI
+  event, a manual archive that missed a merged fix, and a build-number PR.
+- **Release**: What's New is checked against the live version at
+  `https://itunes.apple.com/lookup?id=6794364736`. Release Flow reports to
+  Slack `#wockett_release_updates`. Tags are lightweight, like `v1.9` to
+  `v1.11`. There is no post-release `Versions.xcconfig` PR.
+- **An emergency manual archive** builds whatever is on disk in
+  `~/Desktop/Apps/PoCSquat`, which is how build 84 went out without #53.
+- **CI** is Xcode Cloud (25 hours/month, included in the Developer Program).
+  GitHub Actions runs only the Linux guards; the macOS jobs were removed
+  2026-09-04 because they billed at 10x and were slower and flakier.
 
 ## Verifying claims
 
