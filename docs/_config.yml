@@ -1,0 +1,4 @@
+# GitHub Pages (wockett.app) serves this folder. ci.md is internal
+# documentation for the repo, not a page for the website.
+exclude:
+  - ci.md
