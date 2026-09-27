@@ -16,6 +16,14 @@ import Foundation
 // Grouping is by name AND proximity. "Main Trail" and "Loop Trail" are common
 // names, and two parks ten miles apart must not become one trail, so sections
 // only join a group when one of them sits within `joinGapMeters` of another.
+//
+// Unnamed sections group too, more strictly: only pieces of the same kind of
+// path (same `pathKindLabel`, same foot and bike access) that meet end to end.
+// OSM splits a path wherever something crosses it, and with no name there is
+// nothing to merge on in the builder, so the paved path along Duck Road from
+// Kitty Hawk into Duck was 57 "Unnamed Trail" rows (Joe, 2026-09-26). Without
+// a name, closeness alone would join a park's every footpath, so the rule is
+// endpoints, not boxes: a chain of touching pieces is one card.
 
 /// Paved or not, from OSM's `surface` vocabulary. Anything else (boardwalk,
 /// metal, a typo) is neither, and shows no surface tag rather than a guess.
@@ -124,6 +132,15 @@ enum TrailListBuilder {
     /// Sections of the same name closer than this join one group.
     static let joinGapMeters = 400.0
 
+    /// Unnamed sections of one kind join when an endpoint of one lies this
+    /// close to an endpoint of another. Pieces that meet share an OSM node,
+    /// but the pack drops ways under 30 m (`min_length_m`) — the driveway and
+    /// road crossings along a side path — so real neighbours sit up to ~30 m
+    /// apart. Measured on the NC pack along Duck Road (2026-09-26): gaps of
+    /// 0–27 m between consecutive pieces; at 15 m the longest chain was 3
+    /// pieces, at 30 m it is 30 pieces, 6.6 km.
+    static let unnamedJoinMeters = 30.0
+
     /// Builds list rows from pack rows ranked by distance (nearest first).
     /// `maxLengthMeters` drops rows whose shown length is longer.
     static func items(from ranked: [(trail: TrailFeature, distance: Double)],
@@ -148,13 +165,12 @@ enum TrailListBuilder {
 
     private static func groups(from ranked: [(trail: TrailFeature, distance: Double)]) -> [TrailListItem] {
         var result: [TrailListItem] = []
-        // Unnamed trails never group: "Unnamed Trail" is not a name.
         var byName: [String: [(trail: TrailFeature, distance: Double)]] = [:]
         var nameOrder: [String] = []
+        var unnamed: [(trail: TrailFeature, distance: Double)] = []
         for entry in ranked {
             guard let raw = entry.trail.name?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else {
-                result.append(TrailListItem(id: "t\(entry.trail.id)", name: entry.trail.displayName,
-                                            sections: [entry.trail], distanceMeters: entry.distance))
+                unnamed.append(entry)
                 continue
             }
             let key = raw.lowercased()
@@ -162,21 +178,88 @@ enum TrailListBuilder {
             byName[key, default: []].append(entry)
         }
         for key in nameOrder {
-            for cluster in clusters(byName[key] ?? []) {
-                let sorted = cluster.sorted { $0.distance < $1.distance }
-                let ids = sorted.map { String($0.trail.id) }.sorted().joined(separator: "-")
-                result.append(TrailListItem(id: sorted.count == 1 ? "t\(ids)" : "g\(ids)",
-                                            name: sorted[0].trail.displayName,
-                                            sections: sorted.map(\.trail),
-                                            distanceMeters: sorted[0].distance))
+            let members = byName[key] ?? []
+            for cluster in clusters(members, joined: {
+                gapMeters(members[$0].trail.bounds, members[$1].trail.bounds) <= joinGapMeters
+            }) {
+                result.append(item(for: cluster))
             }
+        }
+        result += unnamedGroups(unnamed).map(item(for:))
+        return result
+    }
+
+    /// One row for a cluster: nearest section first, an id that does not
+    /// depend on arrival order, and the nearest section's name. Unnamed
+    /// sections in a cluster share a `pathKindLabel`, so a group is titled by
+    /// it (a group is never a loop); a single section keeps its own label.
+    private static func item(for cluster: [(trail: TrailFeature, distance: Double)]) -> TrailListItem {
+        let sorted = cluster.sorted { $0.distance < $1.distance }
+        let ids = sorted.map { String($0.trail.id) }.sorted().joined(separator: "-")
+        let nearest = sorted[0].trail
+        let name = sorted.count > 1 && !nearest.hasName ? nearest.pathKindLabel : nearest.displayName
+        return TrailListItem(id: sorted.count == 1 ? "t\(ids)" : "g\(ids)",
+                             name: name,
+                             sections: sorted.map(\.trail),
+                             distanceMeters: sorted[0].distance)
+    }
+
+    /// What makes two unnamed sections the same path: the card title they
+    /// would get and who may use them. Access is part of it so a group's
+    /// "allows bikes" is never an average of pieces that disagree.
+    private struct UnnamedKind: Hashable {
+        let label: String
+        let allowsFoot: Bool
+        let allowsBike: Bool
+    }
+
+    /// Unnamed sections chained end to end within `unnamedJoinMeters`, per
+    /// kind. Transitive: A–B and B–C make one group even when A and C are far
+    /// apart, which is the whole point for a path split at every driveway.
+    private static func unnamedGroups(_ entries: [(trail: TrailFeature, distance: Double)]) -> [[(trail: TrailFeature, distance: Double)]] {
+        var byKind: [UnnamedKind: [(trail: TrailFeature, distance: Double)]] = [:]
+        var kindOrder: [UnnamedKind] = []
+        for entry in entries {
+            let kind = UnnamedKind(label: entry.trail.pathKindLabel,
+                                   allowsFoot: entry.trail.allowsFoot, allowsBike: entry.trail.allowsBike)
+            if byKind[kind] == nil { kindOrder.append(kind) }
+            byKind[kind, default: []].append(entry)
+        }
+        var result: [[(trail: TrailFeature, distance: Double)]] = []
+        for kind in kindOrder {
+            let members = byKind[kind] ?? []
+            // Decode each polyline once, not once per pair. By index, not id:
+            // ids are only unique within one pack.
+            let ends: [[CLLocationCoordinate2D]] = members.map {
+                let coords = $0.trail.coordinates
+                return coords.isEmpty ? [] : [coords[0], coords[coords.count - 1]]
+            }
+            result += clusters(members) { endpointGapMeters(ends[$0], ends[$1]) <= unnamedJoinMeters }
         }
         return result
     }
 
-    /// Splits same-named sections into clusters that are actually near each
-    /// other: connected components where an edge is "boxes within the gap".
-    private static func clusters(_ entries: [(trail: TrailFeature, distance: Double)]) -> [[(trail: TrailFeature, distance: Double)]] {
+    /// The shortest distance between any endpoint of one section and any of
+    /// another; infinite when either has no geometry.
+    static func endpointGapMeters(_ a: [CLLocationCoordinate2D], _ b: [CLLocationCoordinate2D]) -> Double {
+        var best = Double.infinity
+        for p in a {
+            for q in b {
+                let metersPerDegree = 111_320.0
+                let x = (p.longitude - q.longitude) * metersPerDegree * max(0.01, cos(p.latitude * .pi / 180))
+                let y = (p.latitude - q.latitude) * metersPerDegree
+                best = min(best, (x * x + y * y).squareRoot())
+            }
+        }
+        return best
+    }
+
+    /// Splits sections into clusters that are actually connected: connected
+    /// components where an edge is `joined(i, j)` on indices into `entries` —
+    /// boxes within the gap for named sections, touching endpoints for
+    /// unnamed ones.
+    private static func clusters(_ entries: [(trail: TrailFeature, distance: Double)],
+                                 joined: (Int, Int) -> Bool) -> [[(trail: TrailFeature, distance: Double)]] {
         var parent = Array(entries.indices)
         func find(_ i: Int) -> Int {
             var i = i
@@ -185,7 +268,7 @@ enum TrailListBuilder {
         }
         for i in entries.indices {
             for j in entries.indices where j > i {
-                if gapMeters(entries[i].trail.bounds, entries[j].trail.bounds) <= joinGapMeters {
+                if joined(i, j) {
                     parent[find(i)] = find(j)
                 }
             }

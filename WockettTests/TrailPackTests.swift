@@ -122,7 +122,8 @@ struct TrailPackTests {
 
         let track = try #require(try src.trail(id: 4))
         #expect(track.name == nil)
-        #expect(track.displayName == "Unnamed Trail")
+        #expect(track.tags["highway"] == "track", "tags_json is read")
+        #expect(track.displayName == "Unpaved Track", "an unnamed row is named for what it is")
         #expect(track.dogAccess == .notPermitted)
         #expect(track.dogAccessProvenance == .inferred)
         #expect(!track.dogAccessIsConfident)

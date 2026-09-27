@@ -214,10 +214,28 @@ final class BundledTrailSource: TrailDataSource {
                 allowsFoot: int("allows_foot") != 0,
                 allowsBike: int("allows_bike") != 0,
                 allowsHorse: int("allows_horse") != 0,
-                isLoop: int("is_loop") != 0
+                isLoop: int("is_loop") != 0,
+                tags: Self.tags(fromJSON: text("tags_json"))
             ))
         }
         return rows
+    }
+
+    /// `tags_json` as strings. The builder writes a flat object of OSM tags
+    /// (plus `merged_ways`, a number); anything unreadable is no tags, not an
+    /// error — tags only feed labels.
+    static func tags(fromJSON json: String?) -> [String: String] {
+        guard let data = json?.data(using: .utf8), !data.isEmpty,
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return [:] }
+        var tags: [String: String] = [:]
+        for (key, value) in object {
+            switch value {
+            case let string as String: tags[key] = string
+            case let number as NSNumber: tags[key] = number.stringValue
+            default: continue
+            }
+        }
+        return tags
     }
 
     private static func readMeta(_ db: OpaquePointer) throws -> [String: String] {

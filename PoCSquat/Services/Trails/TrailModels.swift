@@ -95,16 +95,81 @@ struct TrailFeature: Identifiable, Hashable {
     let allowsBike: Bool
     let allowsHorse: Bool
     let isLoop: Bool
+    /// The OSM tags the builder kept (`tags_json`: `highway`, `bicycle`,
+    /// `surface`…). Empty when a source carries none. Read for labelling only;
+    /// every filterable fact has its own column.
+    var tags: [String: String] = [:]
 
     /// The trail's coordinates, decoded on demand.
     var coordinates: [CLLocationCoordinate2D] { EncodedPolyline.decode(encodedPolyline) }
+
+    /// Whether the row carries a name. Whitespace is not a name — the same
+    /// test the list's grouping uses. A name in the `name` column counts
+    /// whatever produced it, including one the pack builder derived (marked
+    /// `name_source` in the tags).
+    var hasName: Bool { !(name ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
     /// A name a detail screen can show without looking broken. Unnamed trails
     /// are the majority in OSM (81% in North Carolina), and they still need a
     /// label — same rule as a routeless walk in `WalkHistoryView`.
     var displayName: String {
-        if let name, !name.isEmpty { return name }
-        return isLoop ? "Unnamed Loop" : "Unnamed Trail"
+        if hasName, let name { return name }
+        return Self.unnamedLabel(surface: surface, highway: tags["highway"], bicycle: tags["bicycle"], isLoop: isLoop)
+    }
+
+    /// What an unnamed section is, as a card title, ignoring whether it is a
+    /// loop. Unnamed sections only group when this matches (see
+    /// `TrailListBuilder`), so a group's title is true of every section in it.
+    var pathKindLabel: String {
+        Self.unnamedLabel(surface: surface, highway: tags["highway"], bicycle: tags["bicycle"], isLoop: false)
+    }
+
+    /// The one rule for naming a trail that has no name, from what the pack
+    /// says about it: "Paved Bike Path", "Footpath", "Unpaved Track",
+    /// "Boardwalk", "Paved Loop". "Unnamed Trail" / "Unnamed Loop" only when
+    /// the data says nothing useful.
+    ///
+    /// - Material first: `surface=wood` is a boardwalk; otherwise
+    ///   `TrailSurfaceKind` gives "Paved" or "Unpaved"; any other surface
+    ///   (metal, a typo) or none adds nothing rather than a guess.
+    /// - The noun comes from OSM's `highway`: `cycleway`, or
+    ///   `bicycle=designated` on anything, is a bike path; `footway` a
+    ///   footpath; `track` a track; `bridleway` a bridle path. `path` or no
+    ///   tag is the generic "Path", which alone would read as a placeholder,
+    ///   so with no material either it falls back to "Unnamed Trail".
+    /// - A loop keeps the material and bike-ness and ends in "Loop".
+    static func unnamedLabel(surface: String?, highway: String?, bicycle: String?, isLoop: Bool) -> String {
+        let surface = surface?.lowercased()
+        let isBoardwalk = surface == "wood"
+        let material: String? = isBoardwalk ? "Boardwalk" : TrailSurfaceKind(surface: surface).map {
+            $0 == .paved ? "Paved" : "Unpaved"
+        }
+        let highway = highway?.lowercased()
+        let isBike = highway == "cycleway" || bicycle?.lowercased() == "designated"
+
+        if isLoop {
+            let noun = isBike ? "Bike Loop" : "Loop"
+            if let material { return "\(material) \(noun)" }
+            return isBike ? noun : "Unnamed Loop"
+        }
+        if isBoardwalk { return "Boardwalk" }
+        let noun: String?
+        if isBike {
+            noun = "Bike Path"
+        } else {
+            switch highway {
+            case "footway": noun = "Footpath"
+            case "track": noun = "Track"
+            case "bridleway": noun = "Bridle Path"
+            default: noun = nil
+            }
+        }
+        switch (material, noun) {
+        case let (material?, noun?): return "\(material) \(noun)"
+        case let (nil, noun?): return noun
+        case let (material?, nil): return "\(material) Path"
+        case (nil, nil): return "Unnamed Trail"
+        }
     }
 
     /// Whether the dog-access value is worth showing with confidence. Only a
