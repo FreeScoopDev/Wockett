@@ -106,8 +106,12 @@ way unless there's a strong reason; adding the first one is a real decision.
 - **Shared UI components look the same everywhere they appear.** Joe's explicit
   standard (2026-09-04). If a component gains a variant, roll it to every screen
   that uses it rather than keeping two.
-- **`CHANGELOG.md` entry ships with the change**, in the same commit, explaining
-  *why* — not just what. Keep a Changelog format.
+- **The changelog entry ships with the change**, in the same commit, explaining
+  *why* — not just what. Since 2026-09-27 it goes in its own file in
+  `changelog.d/`, not in `CHANGELOG.md`. `changelog.d/README.md` has the format.
+  The release PR gathers the files into `CHANGELOG.md`. Two open PRs that both
+  edited `[Unreleased]` conflicted every time, and a conflicted PR cannot
+  auto-merge.
 - **Accessibility identifiers** on marker views need
   `.accessibilityElement(children: .contain)` or they never reach the
   accessibility tree. UI tests depend on: `home.statCard`, `home.tile.walk`,
@@ -156,15 +160,22 @@ way unless there's a strong reason; adding the first one is a real decision.
 Simplified on 2026-09-23, after 1.12 took a changelog cut, two stacked PRs, a
 flaky-test PR, a missed CI event, a manual archive that missed a merged fix, and
 a build-number PR. The picture is the "Wockett Ship Path" artifact
-(https://claude.ai/artifact/7XiSmyWHE78VkVhrajyzR7). **Joe clicks; Claude does
-the git work and the bookkeeping; checks run by themselves.**
+(https://claude.ai/artifact/7XiSmyWHE78VkVhrajyzR7). **Joe decides what ships;
+Claude does the git work and the bookkeeping; checks run by themselves, and a
+change that passes them merges itself.**
+
+Auto-merge since 2026-09-27, at Joe's request. By the time Joe clicked Merge
+on a routine PR, the three required checks had already passed, and he was not
+reviewing code. So the click only added waiting, and a conflict whenever two
+PRs were open at once (#90, #92). `main` is not what users get. The gate that
+matters is the release: Start Build, TestFlight QA and Submit, all Joe's.
 
 `main` is protected: no direct pushes, no force-push, no deletion, and three
 required checks (`Wockett | CI Tests | Test - iOS`, `Language-consistency
 guard`, and `SwiftLint` — the last added 2026-09-09 once its error-severity
 backlog reached zero). Squash-merge.
 
-### Every change: Joe's one step is Merge
+### Every change: no Joe step
 
 Claude, in its own worktree (see "Working with Joe"):
 
@@ -172,18 +183,26 @@ Claude, in its own worktree (see "Working with Joe"):
    `chore/` prefix. **Never stack a PR on another branch.** `CI Tests` only
    builds PRs whose base is `main`, so a stacked PR gets no CI until
    retargeted (#53, #54).
-2. Makes the change with its `CHANGELOG.md` line and runs `scripts/test.sh`.
+2. Makes the change with its `changelog.d/` entry and runs `scripts/test.sh`.
 3. Merges `origin/main` in, pushes the branch and opens the PR.
 4. About 2 minutes later, confirms a `Wockett | CI Tests` status exists on the
    PR. If there is none, it re-fires with `gh pr close N && gh pr reopen N`
    (`docs/ci.md` explains why). It fixes any red check itself.
-5. Gives Joe the PR link. Joe clicks **Squash and merge** once all three
-   checks are green. Claude never merges.
+5. Queues the merge with `gh pr merge N --auto --squash` and gives Joe the
+   link. GitHub squash-merges once all three required checks are green. A red
+   check or a conflict blocks it, and Claude fixes it (for a conflict: merge
+   `origin/main` in, run `scripts/test.sh`, push). If Joe says "hold #N",
+   Claude runs `gh pr merge N --disable-auto`, and that PR waits for his
+   Merge. Auto-merge is a repo setting (Settings → General → Allow
+   auto-merge, on since 2026-09-27); if `--auto` is refused, check it first.
 
 ### Shipping a version: five Joe steps
 
-Claude opens the **release PR**: it cuts `[Unreleased]` into `[x.y] - date`,
-bumps `MARKETING_VERSION`, and runs the `release-checker` agent. The PR
+Claude opens the **release PR**: it moves every `changelog.d/` entry into
+`[Unreleased]` under its heading, deletes those files, cuts `[Unreleased]` into
+`[x.y] - date`, bumps `MARKETING_VERSION`, and runs the `release-checker`
+agent. The release PR is **never** auto-merged: merging it is Joe's decision to
+ship. The PR
 description starts with a **Ship Card**:
 
 - **What's New**: App Store copy covering everything users have not seen
@@ -335,11 +354,13 @@ not call them, so a clone without the toolkit still builds and passes CI.
   just operating it.
 - Terminal commands as one complete copy-paste block, with a plain-English note
   on what it does.
-- **Claude commits, pushes branches and pushes release tags; Joe merges.**
-  Agreed 2026-09-23. Joe's approval of a change is the Merge button, and
-  `main` is protected, so a pushed branch cannot ship anything by itself.
-  Claude never pushes to `main`, never force-pushes, and never merges a PR.
-  Joe no longer runs git commands for routine work.
+- **Claude commits, pushes branches, queues auto-merge and pushes release
+  tags; Joe merges only the release PR.** Agreed 2026-09-23, auto-merge added
+  2026-09-27. A routine PR merges itself once the required checks pass. A merge
+  on `main` reaches users only through Joe's Release Flow build, QA and Submit.
+  Claude never pushes to `main`, never force-pushes, never merges past a
+  failing or missing check, and never auto-merges the release PR. Joe no
+  longer runs git commands for routine work.
 - **Never move what is checked out in `~/Desktop/Apps/PoCSquat`.** That folder is
   Joe's; git there is read-only with `--no-optional-locks`, because past
   sessions left `.git/index.lock` files behind. Do all branch work in a
