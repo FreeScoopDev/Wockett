@@ -6,6 +6,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Internal
+- `scripts/test.sh`, `scripts/lint.sh` and `scripts/ci_pick_simulator.sh` are now thin wrappers around a shared toolkit in `~/.claude/toolkit`, configured by the new `.claude/app.json`. The same hardened runner now serves Joe's other app too, and neither repo depends on the other. Usage is unchanged. `lint.sh` compares `app.json`'s exclusions with `.swiftlint.yml`'s and aborts when they differ, where it used to compare against a list hardcoded in the script. `test.sh` gained one check: a run of 0 tests is a failure, because a test filter that matches nothing still makes xcodebuild print TEST SUCCEEDED. `.gitignore` now keeps the rest of `.claude/` (local settings, stray worktrees) out of git. `app.json` also carries the review checklist the `critic` agent (formerly `wockett-critic`) applies to Wockett.
+
+### Internal
 - `docs/ci.md` no longer carries the App Store Connect team ID or the `main` ruleset's ID, and the website no longer serves it. The repo is public, and GitHub Pages was publishing the file at `wockett.app/ci.html` (HTTP 200 on 2026-09-26), so internal CI notes sat on the app's customer-facing site. Neither ID grants access on its own, but neither needs to be public: the ruleset ID is one `gh api` call away, and the team is the one App Store Connect opens to. A new `docs/_config.yml` excludes `ci.md` from the site; the privacy policy and home page are unaffected.
 
 ## [1.13] - 2026-09-26
