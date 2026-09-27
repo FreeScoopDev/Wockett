@@ -5,8 +5,18 @@
   "unitTestTarget": "WockettTests",
   "uiTestTarget": "WockettUITests",
   "xcodebuildExtraArgs": [],
-  "lintExcluded": ["WockettTests", "prompts", "docs"],
+  "lintExcluded": [
+    "WockettTests",
+    "prompts",
+    "docs"
+  ],
   "versionSource": "Versions.xcconfig",
+  "github": "FreeScoopDev/Wockett",
+  "requiredChecks": [
+    "Wockett | CI Tests | Test - iOS",
+    "Language-consistency guard",
+    "SwiftLint"
+  ],
   "reviewFocus": [
     "Colors, fonts and icons go through DesignSystem.swift and WktSymbol / .wktIcon(); no hardcoded systemName strings or hand-copied colour literals.",
     "Activity-appropriate language: a run says run, a ride says ride. Any hardcoded 'Walk' on a surface that can show another activity is a bug (ActivityMode).",
