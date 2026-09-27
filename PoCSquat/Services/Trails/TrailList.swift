@@ -109,6 +109,10 @@ struct TrailListItem: Identifiable, Hashable {
     /// Whether the row is a named trail rather than a path titled by what it
     /// is. Sections of a group share a name or share having none.
     var hasName: Bool { sections.first?.hasName ?? false }
+    /// A named trail whose name comes from the map data, not one derived from
+    /// a road. The Community tab's "Trails near you" marks rows "Official",
+    /// so it lists only these.
+    var isOfficial: Bool { sections.first?.hasOwnName ?? false }
     var lengthMeters: Double { sections.reduce(0) { $0 + $1.lengthMeters } }
     /// Only a single section can be a loop; a group of sections is a network.
     var isLoop: Bool { sections.count == 1 && sections[0].isLoop }

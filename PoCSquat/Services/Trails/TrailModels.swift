@@ -130,6 +130,12 @@ struct TrailFeature: Identifiable, Hashable {
     /// `name_source` in the tags).
     var hasName: Bool { !(name ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
+    /// Whether the name is the trail's own, from the map data, rather than one
+    /// the pack builder derived from a road alongside ("Duck Road Path",
+    /// tagged `name_source: derived_road`). Only an own name may be presented
+    /// as an official trail.
+    var hasOwnName: Bool { hasName && tags["name_source"] != "derived_road" }
+
     /// A name a detail screen can show without looking broken. Unnamed trails
     /// are the majority in OSM (81% in North Carolina), and they still need a
     /// label — same rule as a routeless walk in `WalkHistoryView`.

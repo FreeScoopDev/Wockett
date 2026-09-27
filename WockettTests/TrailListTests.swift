@@ -34,6 +34,21 @@ struct TrailListTests {
         trails.enumerated().map { ($0.element, distances?[$0.offset] ?? Double($0.offset) * 100) }
     }
 
+    // MARK: Official trails
+
+    @Test("Only a trail's own name is official: a road-derived name and no name are not")
+    func officialNames() {
+        var derived = section(1, "Duck Road Path")
+        derived.tagsJSON = #"{"highway":"cycleway","name_source":"derived_road"}"#
+        var own = section(2, "Rocky Branch Trail", lat: 36.5)
+        own.tagsJSON = #"{"highway":"path"}"#
+        let unnamed = section(3, nil, lat: 37.5)
+        let items = TrailListBuilder.items(from: ranked([derived, own, unnamed]), grouped: true)
+        let official = items.filter(\.isOfficial).map(\.name)
+        #expect(official == ["Rocky Branch Trail"])
+        #expect(items.filter(\.hasName).count == 2, "a derived name still groups and titles like a name")
+    }
+
     // MARK: Grouping
 
     @Test("Touching sections of one trail become one row with the total length and the nearest distance")
