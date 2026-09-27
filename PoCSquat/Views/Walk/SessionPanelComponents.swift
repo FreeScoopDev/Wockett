@@ -434,3 +434,59 @@ struct OffTrailBanner: View {
         .accessibilityIdentifier("session.offTrail")
     }
 }
+
+/// At the trail a session was heading for: carry on along it. Laid out like
+/// the other session banners (`OffTrailBanner`, the driving and heat
+/// banners), with its buttons on their own row so they keep their size at
+/// large text sizes.
+struct TrailArrivalBanner: View {
+    let trailName: String
+    let activityMode: ActivityMode
+    let onStart: () -> Void
+    let onDismiss: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(wkt: .routeTrail)
+                    .wktIcon(.row, tint: .earthGreen)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("You're at \(trailName)")
+                        .font(.subheadline.bold())
+                        .foregroundColor(.earthCream)
+                    Text("Carry on along the trail from here. This \(activityMode.noun) keeps its time and distance.")
+                        .font(.caption)
+                        .foregroundColor(.earthMuted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .accessibilityElement(children: .combine)
+                Spacer(minLength: 0)
+            }
+            HStack(spacing: 8) {
+                Button(action: onStart) {
+                    Text("Start trail \(activityMode.noun)")
+                        .font(.caption.bold())
+                        .padding(.horizontal, 12).padding(.vertical, 8)
+                        .background(Color.earthGreenFill)
+                        .foregroundColor(.white).cornerRadius(8)
+                }
+                .accessibilityIdentifier("session.trailArrivalStart")
+                Button(action: onDismiss) {
+                    Text("Not now")
+                        .font(.caption.bold())
+                        .padding(.horizontal, 12).padding(.vertical, 8)
+                        .background(Color.earthCard)
+                        .foregroundColor(.earthCream).cornerRadius(8)
+                }
+                .accessibilityHint("Hides this. The trail \(activityMode.noun) stays under More.")
+            }
+            .padding(.leading, 32)
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.earthGreen.opacity(0.14))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("session.trailArrival")
+    }
+}

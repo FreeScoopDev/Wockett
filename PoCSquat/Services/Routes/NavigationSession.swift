@@ -145,10 +145,23 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
     /// The session screen is on screen (ActiveSessionView sets it). Minimized
     /// to the mini tile, the off-trail banner is not visible either.
     var isSessionScreenVisible = false
-    /// Called when a closed trail or recording is turned round because the
-    /// person set off the other way; ActiveWalkStore republishes the route so
-    /// the map redraws its checkpoints in the order they will be walked.
-    var onRouteReversed: ((NavigableRoute) -> Void)?
+    /// Called when the session's route changes under it: a closed trail or
+    /// recording turned round because the person set off the other way, or a
+    /// session heading to a trail turned into the trail walk. ActiveWalkStore
+    /// republishes the route so the map redraws it.
+    var onRouteChanged: ((NavigableRoute) -> Void)?
+
+    // Heading to a trail (2026-09-26): the route carries `approach`, and
+    // within `TrailWalkPlanner.startRadiusMeters` of the trail the session
+    // offers the trail walk instead of finishing at the access point.
+    /// The person has reached the trail this session is heading for.
+    private(set) var arrivedAtTrail = false
+    /// Where they were when they reached it, in case they have wandered out
+    /// of range again by the time they say yes.
+    private var trailArrivalLocation: CLLocationCoordinate2D?
+    /// `totalDistanceCovered` when the current route began: the 20/40/60/80%
+    /// markers of a trail walk count from the trail, not from home.
+    private(set) var legStartDistance: Double = 0
 
     private(set) var route: NavigableRoute
     private let locationManager = CLLocationManager()
@@ -251,6 +264,7 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
         elapsedTime = Date().timeIntervalSince(startTime) - pausedDuration
 
         trackPoints = (snapshot.trackPoints ?? []).map { $0.clCoordinate }
+        legStartDistance = snapshot.legStartDistance ?? 0
         // Pick up along the trail where the walk was, not from the nearest
         // stretch on the first fix. Snapshots from before 1.13 have no
         // position; the last checkpoint passed is the best guess then.
@@ -410,7 +424,8 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
             liveSteps: liveSteps,
             checkpointDate: Date(),
             trackPoints: thinned.map { WaypointCoord($0) },
-            trailAlong: trailProgress?.along
+            trailAlong: trailProgress?.along,
+            legStartDistance: legStartDistance
         )
         ActiveWalkSnapshotStore.save(snapshot)
     }
@@ -450,7 +465,10 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
     }
 
     var progressText: String {
-        route.isLoop
+        if route.approach != nil {
+            return arrivedAtTrail ? "You're at the trail" : "Heading to the trail"
+        }
+        return route.isLoop
             ? "Lap \(min(currentLap, route.lapCount)) of \(route.lapCount)"
             : "Heading to destination"
     }
@@ -459,7 +477,7 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
         // A trail walk counts what is left along the trail, not what is left
         // of the planned distance after however far the GPS track wandered.
         if let progress = trailProgress, progress.along != nil { return progress.remaining }
-        return max(0, route.totalDistance - totalDistanceCovered)
+        return max(0, route.totalDistance - (totalDistanceCovered - legStartDistance))
     }
 
     // Pace (walking/running) or speed (cycling) — shown as "--" until enough data.
@@ -581,7 +599,7 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
         guard route.totalDistance > 0, onCheckpointReached != nil else { return }
         for (i, fraction) in checkpointFractions.enumerated() {
             guard !triggeredCheckpoints.contains(i) else { continue }
-            if totalDistanceCovered >= route.totalDistance * fraction {
+            if totalDistanceCovered - legStartDistance >= route.totalDistance * fraction {
                 triggeredCheckpoints.insert(i)
                 let label = "\(Int(fraction * 100))%"
                 splitTimes.append((label: label, elapsed: elapsedTime))
@@ -592,7 +610,14 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
 
     nonisolated func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {}
 
-    private func checkArrival(at location: CLLocation) {
+    /// Internal, not private, so tests can feed a fix without a CLLocationManager.
+    func checkArrival(at location: CLLocation) {
+        // Heading to a trail: no finish at the access point. Reaching the
+        // trail anywhere offers the trail walk; the person decides.
+        if let approach = route.approach {
+            checkTrailArrival(approach, at: location)
+            return
+        }
         // A trail walk advances by position along the trail: a checkpoint
         // counts once it has been passed, however far the trail data sits
         // from the ground path, and "to next" follows the trail's bends.
@@ -661,8 +686,52 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
         trailProgress = turned.progress
         currentWaypointIndex = turned.index
         currentLap = turned.lap
-        onRouteReversed?(turned.route)
+        onRouteChanged?(turned.route)
         writeSnapshot()
+    }
+
+    // MARK: Heading to a trail
+
+    private func checkTrailArrival(_ approach: TrailApproach, at location: CLLocation) {
+        if let access = route.waypoints.last {
+            distanceToNextWaypoint = location.distance(from: CLLocation(latitude: access.latitude, longitude: access.longitude))
+        }
+        guard !arrivedAtTrail, approach.arrivalPlan(at: location.coordinate) != nil else { return }
+        arrivedAtTrail = true
+        trailArrivalLocation = location.coordinate
+        let noun = route.activityMode.noun
+        WalkAudioCueService.shared.announce("You've reached \(approach.trailName). Start the trail \(noun) when you're ready.")
+        if Self.shouldNotifyOffTrail(appIsActive: UIApplication.shared.applicationState == .active,
+                                     sessionScreenVisible: isSessionScreenVisible) {
+            fireBackgroundNotification(title: "You're at \(approach.trailName)",
+                                       body: "Open Wockett to start the trail \(noun).")
+        }
+    }
+
+    /// Turns a session heading to a trail into the walk along it, from where
+    /// the person is (or where they reached it, if they have moved out of
+    /// range since). One session throughout: the time, distance, steps and
+    /// Health workout carry on, and the walk is saved under the trail's name.
+    /// Returns the new route, or nil when there is no trail walk to start.
+    @discardableResult
+    func beginTrailWalk() -> NavigableRoute? {
+        guard let approach = route.approach else { return nil }
+        let here = lastLocation?.coordinate
+        guard let plan = here.flatMap(approach.arrivalPlan(at:))
+                ?? trailArrivalLocation.flatMap(approach.arrivalPlan(at:)) else { return nil }
+        let next = plan.navigableRoute(activityMode: route.activityMode)
+        route = next
+        trailProgress = TrailProgress(route: next)
+        currentWaypointIndex = 1
+        currentLap = 1
+        triggeredCheckpoints = []
+        legStartDistance = totalDistanceCovered
+        distanceToNextWaypoint = 0
+        arrivedAtTrail = false
+        trailArrivalLocation = nil
+        onRouteChanged?(next)
+        writeSnapshot()
+        return next
     }
 
     // MARK: Off trail

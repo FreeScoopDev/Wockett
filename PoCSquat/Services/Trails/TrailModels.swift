@@ -165,3 +165,9 @@ struct TrailQuery: Hashable {
 
     static let any = TrailQuery()
 }
+
+// Codable so a session heading to a trail survives a crash-and-restore with
+// its destination (`TrailApproach`, `ActiveWalkSnapshot.RouteData.approach`).
+// Synthesised, so it has to live in the file that declares the types.
+extension TrailBounds: Codable {}
+extension TrailFeature: Codable {}
