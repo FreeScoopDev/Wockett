@@ -214,7 +214,8 @@ final class BundledTrailSource: TrailDataSource {
                 allowsFoot: int("allows_foot") != 0,
                 allowsBike: int("allows_bike") != 0,
                 allowsHorse: int("allows_horse") != 0,
-                isLoop: int("is_loop") != 0
+                isLoop: int("is_loop") != 0,
+                tagsJSON: text("tags_json")
             ))
         }
         return rows
@@ -272,9 +273,13 @@ final class BundledTrailSource: TrailDataSource {
     /// percent at the radii this serves (tens of kilometres), and it needs no
     /// `CLLocation` allocation per vertex.
     static func distanceMeters(from origin: CLLocationCoordinate2D, to trail: TrailFeature) -> Double {
-        let coords = trail.coordinates
+        distanceMeters(from: origin, toLine: trail.coordinates)
+    }
+
+    /// The same, for any line (a stitched chain of sections).
+    static func distanceMeters(from origin: CLLocationCoordinate2D, toLine coords: [CLLocationCoordinate2D]) -> Double {
         guard let first = coords.first else { return .greatestFiniteMagnitude }
-        let metersPerDegree = 111_320.0
+        let metersPerDegree = TrailGeometry.metersPerDegree
         let cosLat = cos(origin.latitude * .pi / 180)
         func local(_ c: CLLocationCoordinate2D) -> (x: Double, y: Double) {
             ((c.longitude - origin.longitude) * metersPerDegree * cosLat,
