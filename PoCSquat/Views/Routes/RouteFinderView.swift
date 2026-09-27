@@ -325,8 +325,10 @@ struct RouteFinderContentView: View {
                             cycling: activityMode == .cycling,
                             usesMiles: Locale.current.measurementSystem == .us,
                             includeShortPaths: showShortTrailPaths)
-        if let current = selectedTrail, !trailFinder.items.contains(where: { $0.id == current.id }) {
-            selectedTrail = nil
+        // Keep the open trail, but as the fresh item: its distance from the
+        // person changes when a location refresh rebuilt the list.
+        if let current = selectedTrail {
+            selectedTrail = trailFinder.items.first(where: { $0.id == current.id })
         }
         openPendingTrail()
     }
