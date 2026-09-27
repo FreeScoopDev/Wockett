@@ -7,10 +7,25 @@ import Foundation
 /// step with them. The last test opens the pack the app actually ships —
 /// `Bundle.main` is the host app under unit tests — so a broken or missing
 /// bundled pack fails here, not on a user's first launch.
+///
+/// Every library gets its own empty packs directory, removed when the test
+/// ends. The default is the app's real Application Support, where a pack
+/// installed by hand on the simulator made `loadBundled` open an extra "nc"
+/// and failed these tests (2026-09-27). A class, not a struct, for `deinit`:
+/// Swift Testing makes a fresh instance per test.
 @MainActor
-struct TrailPackLibraryTests {
+final class TrailPackLibraryTests {
 
     private final class Marker {}
+
+    private let packsDirectory = FileManager.default.temporaryDirectory
+        .appendingPathComponent("TrailPackLibraryTests-\(UUID().uuidString)", isDirectory: true)
+
+    deinit { try? FileManager.default.removeItem(at: packsDirectory) }
+
+    private func makeLibrary(_ registry: TrailAttributionRegistry) -> TrailPackLibrary {
+        TrailPackLibrary(registry: registry, packsDirectory: packsDirectory)
+    }
 
     private var fixtureURL: URL {
         get throws {
@@ -22,7 +37,7 @@ struct TrailPackLibraryTests {
     @Test("Opening a pack registers its attribution; closing withdraws it")
     func openAndClose() throws {
         let registry = TrailAttributionRegistry()
-        let library = TrailPackLibrary(registry: registry)
+        let library = makeLibrary(registry)
         let src = library.open(url: try fixtureURL, region: "fixture")
         #expect(src != nil)
         #expect(library.source(for: "fixture") === src)
@@ -39,7 +54,7 @@ struct TrailPackLibraryTests {
     @Test("Re-opening a region replaces the pack without double-crediting")
     func reopenReplaces() throws {
         let registry = TrailAttributionRegistry()
-        let library = TrailPackLibrary(registry: registry)
+        let library = makeLibrary(registry)
         library.open(url: try fixtureURL, region: "fixture")
         library.open(url: try fixtureURL, region: "fixture")
         #expect(library.sources.count == 1)
@@ -51,7 +66,7 @@ struct TrailPackLibraryTests {
     @Test("A pack that cannot be opened is recorded, not thrown, and credits nothing")
     func badPackIsRecorded() {
         let registry = TrailAttributionRegistry()
-        let library = TrailPackLibrary(registry: registry)
+        let library = makeLibrary(registry)
         let missing = URL(fileURLWithPath: "/nonexistent/\(UUID().uuidString).wktpack")
         #expect(library.open(url: missing, region: "x") == nil)
         #expect(library.loadErrors["x"]?.hasPrefix("Could not open") == true)
@@ -62,7 +77,7 @@ struct TrailPackLibraryTests {
     @Test("A bundle without the region records a clear error")
     func bundleWithoutRegion() {
         let registry = TrailAttributionRegistry()
-        let library = TrailPackLibrary(registry: registry)
+        let library = makeLibrary(registry)
         // The test bundle has fixture.wktpack, not nc.wktpack.
         library.loadBundled(from: Bundle(for: Marker.self))
         #expect(library.loadErrors["nc"] == "nc.wktpack is not in the app bundle")
@@ -72,7 +87,7 @@ struct TrailPackLibraryTests {
     @Test("The pack the app ships opens, is the supported schema, and credits OpenStreetMap")
     func shippedPackOpens() throws {
         let registry = TrailAttributionRegistry()
-        let library = TrailPackLibrary(registry: registry)
+        let library = makeLibrary(registry)
         library.loadBundled(from: .main)
         #expect(library.loadErrors.isEmpty, "\(library.loadErrors)")
         let nc = try #require(library.source(for: "nc"))
