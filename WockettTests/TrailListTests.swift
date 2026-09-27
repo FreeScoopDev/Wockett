@@ -91,23 +91,42 @@ struct TrailListTests {
         return out
     }
 
-    /// Metres east along the Duck Road side path (36.10 N), in degrees of longitude.
-    private let duckLat = 36.10
-    private func east(_ meters: Double) -> Double { -75.717 + meters / (111_320 * cos(36.10 * .pi / 180)) }
+    /// A point `east` and `north` metres from a spot on the Duck Road side
+    /// path (36.10 N, -75.717).
+    private func at(_ east: Double, _ north: Double = 0) -> CLLocationCoordinate2D {
+        CLLocationCoordinate2D(latitude: 36.10 + north / 111_320,
+                               longitude: -75.717 + east / (111_320 * cos(36.10 * .pi / 180)))
+    }
 
-    /// A straight piece of path along 36.10 N from `from` to `to` metres east —
-    /// the shape OSM gives a side path split at every driveway.
-    private func piece(_ id: Int64, from: Double, to: Double, name: String? = nil,
-                       surface: String? = "asphalt", tags: [String: String] = ["highway": "cycleway", "bicycle": "designated"],
-                       foot: Bool = true, bike: Bool = true) -> TrailFeature {
-        let coords = [CLLocationCoordinate2D(latitude: duckLat, longitude: east(from)),
-                      CLLocationCoordinate2D(latitude: duckLat, longitude: east(to))]
+    private static let cycleway = ["highway": "cycleway", "bicycle": "designated"]
+
+    /// A piece of path through `points` (metres east, north), with the pack's
+    /// fields; length is the line's own.
+    private func path(_ id: Int64, _ points: [(Double, Double)], name: String? = nil,
+                      surface: String? = "asphalt", tags: [String: String] = cycleway,
+                      foot: Bool = true, bike: Bool = true, loop: Bool = false) -> TrailFeature {
+        let coords = points.map { at($0.0, $0.1) }
+        let lats = coords.map(\.latitude), lons = coords.map(\.longitude)
+        let json = String(data: (try? JSONSerialization.data(withJSONObject: tags)) ?? Data(), encoding: .utf8)
         return TrailFeature(id: id, sourceID: "osm", sourceRef: "w\(id)", name: name,
-                            encodedPolyline: encode(coords), pointCount: 2, lengthMeters: abs(to - from),
-                            bounds: TrailBounds(minLatitude: duckLat, minLongitude: min(east(from), east(to)),
-                                                maxLatitude: duckLat, maxLongitude: max(east(from), east(to))),
+                            encodedPolyline: encode(coords), pointCount: coords.count,
+                            lengthMeters: TrailWalkPlanner.length(coords).rounded(),
+                            bounds: TrailBounds(minLatitude: lats.min() ?? 0, minLongitude: lons.min() ?? 0,
+                                                maxLatitude: lats.max() ?? 0, maxLongitude: lons.max() ?? 0),
                             surface: surface, difficulty: nil, dogAccess: .unknown, dogAccessProvenance: .default,
-                            allowsFoot: foot, allowsBike: bike, allowsHorse: false, isLoop: false, tags: tags)
+                            allowsFoot: foot, allowsBike: bike, allowsHorse: false, isLoop: loop, tagsJSON: json)
+    }
+
+    /// A straight piece along the path from `from` to `to` metres east — the
+    /// shape OSM gives a side path split at every driveway.
+    private func piece(_ id: Int64, from: Double, to: Double, name: String? = nil,
+                       surface: String? = "asphalt", tags: [String: String] = cycleway,
+                       foot: Bool = true, bike: Bool = true) -> TrailFeature {
+        path(id, [(from, 0), (to, 0)], name: name, surface: surface, tags: tags, foot: foot, bike: bike)
+    }
+
+    private func grouped(_ trails: [TrailFeature]) -> [TrailListItem] {
+        TrailListBuilder.items(from: ranked(trails), grouped: true)
     }
 
     @Test("A chain of touching unnamed pieces of one path is one row, named for what it is")
@@ -125,59 +144,125 @@ struct TrailListTests {
         #expect(item.sections.map(\.id) == [2, 1, 3, 4], "nearest first")
         #expect(item.id == "g1-2-3-4")
         #expect(TrailText.summary(for: item).contains("4 sections"))
-        // Transitive: the two ends of the chain are nowhere near each other.
-        let firstEnds = pieces[0].coordinates, lastEnds = pieces[3].coordinates
-        #expect(TrailListBuilder.endpointGapMeters(firstEnds, lastEnds) > 400)
     }
 
-    @Test("A gap wider than the join distance keeps two rows")
+    @Test("A gap just over the join distance keeps two rows; just under joins")
     func unnamedGapSplits() {
-        let gap = TrailListBuilder.unnamedJoinMeters + 10
-        let rows = ranked([piece(1, from: 0, to: 200), piece(2, from: 200 + gap, to: 400)])
-        let items = TrailListBuilder.items(from: rows, grouped: true)
-        #expect(items.count == 2)
-        #expect(items.allSatisfy { !$0.isGroup && $0.name == "Paved Bike Path" })
+        let join = TrailListBuilder.unnamedJoinMeters
+        let apart = grouped([piece(1, from: 0, to: 200), piece(2, from: 200 + join + 1, to: 400)])
+        #expect(apart.count == 2)
+        #expect(apart.allSatisfy { !$0.isGroup && $0.name == "Paved Bike Path" })
+        let joined = grouped([piece(1, from: 0, to: 200), piece(2, from: 200 + join - 1, to: 400)])
+        #expect(joined.count == 1)
     }
 
     @Test("Touching unnamed pieces of different kinds stay apart: paved/unpaved, bike/foot, access")
     func unnamedKindsStayApart() {
         let paved = piece(1, from: 0, to: 200)
         let unpaved = piece(2, from: 200, to: 400, surface: "gravel")
-        #expect(TrailListBuilder.items(from: ranked([paved, unpaved]), grouped: true).map(\.name)
-                == ["Paved Bike Path", "Unpaved Bike Path"])
+        #expect(grouped([paved, unpaved]).map(\.name) == ["Paved Bike Path", "Unpaved Bike Path"])
 
         let footway = piece(3, from: 200, to: 400, tags: ["highway": "footway"], bike: false)
-        #expect(TrailListBuilder.items(from: ranked([paved, footway]), grouped: true).count == 2)
+        #expect(grouped([paved, footway]).count == 2)
 
-        // Same title, different access: bike rules must not be averaged.
+        // Same title, different bike access: bike rules must not be averaged.
         let pathBikes = piece(4, from: 0, to: 200, tags: ["highway": "path"], bike: true)
         let pathNoBikes = piece(5, from: 200, to: 400, tags: ["highway": "path"], bike: false)
         #expect(pathBikes.pathKindLabel == pathNoBikes.pathKindLabel)
-        #expect(TrailListBuilder.items(from: ranked([pathBikes, pathNoBikes]), grouped: true).count == 2)
+        #expect(grouped([pathBikes, pathNoBikes]).count == 2)
+
+        // Same title, different foot access.
+        let footOK = piece(6, from: 0, to: 200, foot: true)
+        let noFoot = piece(7, from: 200, to: 400, foot: false)
+        #expect(footOK.pathKindLabel == noFoot.pathKindLabel)
+        #expect(grouped([footOK, noFoot]).count == 2)
+    }
+
+    @Test("Four footpaths meeting at a crossroads stay four")
+    func unnamedCrossroadsStaysApart() {
+        let foot = ["highway": "footway"]
+        let arms = [path(1, [(0, 0), (200, 0)], tags: foot, bike: false),
+                    path(2, [(0, 0), (-200, 0)], tags: foot, bike: false),
+                    path(3, [(0, 0), (0, 200)], tags: foot, bike: false),
+                    path(4, [(0, 0), (0, -200)], tags: foot, bike: false)]
+        #expect(grouped(arms).count == 4)
+        #expect(TrailChain.stitch(arms.map(\.coordinates)) == nil)
+    }
+
+    @Test("At a T the stem joins neither arm, and the arms don't join through it")
+    func unnamedTeeStaysApart() {
+        let foot = ["highway": "footway"]
+        let tee = [path(1, [(-200, 0), (0, 0)], tags: foot, bike: false),
+                   path(2, [(0, 0), (200, 0)], tags: foot, bike: false),
+                   path(3, [(0, 0), (0, -200)], tags: foot, bike: false)]
+        let items = grouped(tee)
+        #expect(items.count == 3)
+        #expect(items.allSatisfy { !$0.isGroup })
+    }
+
+    @Test("A ladder of paths is not one group")
+    func unnamedLadderIsNotOneGroup() {
+        let foot = ["highway": "footway"]
+        // Two rails 60 m apart, each in two pieces, and three rungs.
+        let ladder = [path(1, [(0, 0), (100, 0)], tags: foot, bike: false),
+                      path(2, [(100, 0), (200, 0)], tags: foot, bike: false),
+                      path(3, [(0, 60), (100, 60)], tags: foot, bike: false),
+                      path(4, [(100, 60), (200, 60)], tags: foot, bike: false),
+                      path(5, [(0, 0), (0, 60)], tags: foot, bike: false),
+                      path(6, [(100, 0), (100, 60)], tags: foot, bike: false),
+                      path(7, [(200, 0), (200, 60)], tags: foot, bike: false)]
+        let items = grouped(ladder)
+        #expect(items.count >= 3)
+        #expect(items.allSatisfy { $0.sections.count <= 3 }, "only corners, where exactly two pieces meet, join")
+        let middleRung = items.first { $0.sections.contains { $0.id == 6 } }
+        #expect(middleRung?.sections.count == 1, "the middle rung meets two rails at each end")
+    }
+
+    @Test("The two sides of a road are not one path, with or without a crossing between them")
+    func unnamedRoadSidesStayApart() {
+        let west = piece(1, from: 0, to: 300)
+        let east = path(2, [(0, 20), (300, 20)])
+        let crossing = path(3, [(300, 0), (300, 20)])
+        let withCrossing = grouped([west, east, crossing])
+        #expect(!withCrossing.contains { $0.sections.contains { $0.id == 1 } && $0.sections.contains { $0.id == 2 } })
+        #expect(withCrossing.allSatisfy { $0.lengthMeters <= 320 }, "no row counts the path twice")
+        let bare = grouped([west, east])
+        #expect(bare.count == 2, "ends 20 m apart, but joining them turns straight back")
+    }
+
+    @Test("A group is titled by its kind even when its nearest piece is a loop")
+    func unnamedGroupTitleIsTheKind() {
+        let lollipop = path(1, [(0, 0), (100, 0), (100, 100), (0, 0)], loop: true)
+        let stick = piece(2, from: 0, to: -200)
+        #expect(lollipop.displayName == "Paved Bike Loop")
+        let items = TrailListBuilder.items(from: ranked([lollipop, stick], distances: [10, 100]), grouped: true)
+        #expect(items.count == 1)
+        #expect(items[0].name == "Paved Bike Path")
     }
 
     @Test("Named sections never join unnamed ones, and still group by name as before")
     func namedGroupingUnchanged() {
-        let rows = ranked([
+        let items = grouped([
             piece(1, from: 0, to: 200, name: "Duck Trail"),
             piece(2, from: 200, to: 400),
             piece(3, from: 900, to: 1_100, name: "Duck Trail"),   // 700 m past piece 1
             piece(4, from: 400, to: 600)
         ])
-        let items = TrailListBuilder.items(from: rows, grouped: true)
         // Named: 1 and 3 are 700 m apart, over the 400 m join, so two rows even
         // though unnamed pieces bridge them. Unnamed 2 and 4 chain.
         #expect(items.filter { $0.name == "Duck Trail" }.count == 2)
         #expect(items.filter { $0.name == "Paved Bike Path" }.map { $0.sections.map(\.id) } == [[2, 4]])
+        #expect(items.filter(\.hasName).count == 2, "only the named rows count as named")
 
         // A builder-derived name is a name like any other.
-        let derived = ranked([
-            piece(5, from: 0, to: 200, name: "Duck Road Path", tags: ["highway": "cycleway", "name_source": "derived"]),
-            piece(6, from: 300, to: 500, name: "Duck Road Path", tags: ["highway": "cycleway", "name_source": "derived"])
+        let derivedTags = ["highway": "cycleway", "name_source": "derived"]
+        let named = grouped([
+            piece(5, from: 0, to: 200, name: "Duck Road Path", tags: derivedTags),
+            piece(6, from: 300, to: 500, name: "Duck Road Path", tags: derivedTags)
         ])
-        let named = TrailListBuilder.items(from: derived, grouped: true)
         #expect(named.map(\.name) == ["Duck Road Path"])
         #expect(named[0].isGroup, "joined by name within 400 m, not by endpoints")
+        #expect(named[0].hasName)
     }
 
     @Test("Unnamed sections with no geometry never group")
@@ -208,17 +293,22 @@ struct TrailListTests {
 
     @Test("Unnamed labels say what the path is")
     func unnamedLabels() {
-        func label(_ surface: String?, _ highway: String?, bicycle: String? = nil, loop: Bool = false) -> String {
-            TrailFeature.unnamedLabel(surface: surface, highway: highway, bicycle: bicycle, isLoop: loop)
+        func label(_ surface: String?, _ highway: String?, bicycle: String? = nil, bike: Bool = true,
+                   loop: Bool = false) -> String {
+            TrailFeature.unnamedLabel(surface: surface, highway: highway, bicycle: bicycle,
+                                      allowsBike: bike, isLoop: loop)
         }
         #expect(label("asphalt", "cycleway") == "Paved Bike Path")
         #expect(label("paved", "path", bicycle: "designated") == "Paved Bike Path")
         #expect(label("asphalt", "path", bicycle: "yes") == "Paved Path", "allowed is not designated")
+        #expect(label("asphalt", "cycleway", bike: false) == "Paved Path", "a cycleway closed to bikes")
         #expect(label("gravel", "cycleway") == "Unpaved Bike Path")
         #expect(label(nil, "cycleway") == "Bike Path")
         #expect(label(nil, "footway") == "Footpath")
         #expect(label("concrete", "footway") == "Paved Footpath")
         #expect(label("dirt", "track") == "Unpaved Track")
+        #expect(label(nil, "track") == "Unpaved Track", "a bare 'Track' reads like a running track")
+        #expect(label("asphalt", "track") == "Paved Track")
         #expect(label("ground", "path") == "Unpaved Path")
         #expect(label("ground", nil) == "Unpaved Path")
         #expect(label("wood", "footway") == "Boardwalk")
@@ -231,13 +321,68 @@ struct TrailListTests {
         #expect(label("wood", "footway", loop: true) == "Boardwalk Loop")
         #expect(label("asphalt", "cycleway", loop: true) == "Paved Bike Loop")
         #expect(label(nil, "cycleway", loop: true) == "Bike Loop")
-        #expect(label(nil, "footway", loop: true) == "Unnamed Loop")
+        #expect(label(nil, "footway", loop: true) == "Footpath Loop")
+        #expect(label(nil, "track", loop: true) == "Unpaved Loop")
+        #expect(label(nil, "path", loop: true) == "Unnamed Loop")
     }
 
     @Test("A named row keeps its name; blank names are not names")
     func displayNameUsesName() {
         #expect(piece(1, from: 0, to: 100, name: "Duck Trail").displayName == "Duck Trail")
         #expect(piece(2, from: 0, to: 100, name: "  ").displayName == "Paved Bike Path")
+    }
+
+    // MARK: Walking a group
+
+    @Test("A chain stitches into one line: in order, turned the same way, join points once")
+    func stitchOrdersAndReverses() throws {
+        // Given out of order, and pieces 2 and 4 drawn backwards.
+        let pieces = [path(3, [(300, 0), (400, 0), (500, 0)]),
+                      path(2, [(300, 0), (200, 0), (100, 0)]),
+                      path(4, [(700, 0), (520, 0)]),
+                      path(1, [(0, 0), (50, 0), (100, 0)])]
+        let line = try #require(TrailChain.stitch(pieces.map(\.coordinates)))
+        #expect(!line.isClosed)
+        let east = line.path.map { ($0.longitude - at(0).longitude) * 111_320 * cos(36.10 * .pi / 180) }
+        let ascending = zip(east, east.dropFirst()).allSatisfy { $0.0 < $0.1 }
+        let descending = zip(east, east.dropFirst()).allSatisfy { $0.0 > $0.1 }
+        #expect(ascending || descending, "one direction throughout, no piece backwards")
+        // 0,50,100 | 200,300 | 400,500 | 520,700: shared points 100 and 300 once;
+        // the 20 m gap at 500–520 is bridged, not merged.
+        #expect(line.path.count == 9)
+        #expect(abs(TrailWalkPlanner.length(line.path) - 700) < 2)
+    }
+
+    @Test("Start on a chain walks the whole chain to its far end, from any piece")
+    func planCoversWholeChain() throws {
+        let pieces = [piece(1, from: 0, to: 100), piece(2, from: 100, to: 300),
+                      piece(3, from: 320, to: 500), piece(4, from: 525, to: 1_500)]
+        let item = try #require(grouped(pieces).first)
+        // Standing near the east end of the short first piece, whose own
+        // far end is under 50 m away: the old per-section plan had nothing.
+        let plan = try #require(TrailWalkPlanner.plan(for: item, from: at(90, 5)))
+        #expect(!plan.isSectionOnly)
+        // The walk starts at the trail vertex nearest the person (100 m) and
+        // runs over every piece, bridging the 20 and 25 m gaps, to 1,500 m.
+        #expect(abs(plan.distanceMeters - 1_400) < 5, "the whole chain, not the 10 m left of piece 1")
+        let end = try #require(plan.path.last)
+        #expect(TrailWalkPlanner.meters(end, at(1_500)) < 2)
+        #expect(TrailText.startCaption(for: plan).hasPrefix("Starts where you are"))
+    }
+
+    @Test("A group that is not one line walks the section you're at, or the next one in reach")
+    func planFallsBackToSections() throws {
+        // Named sections within 400 m but not end to end: no single line.
+        let tiny = path(1, [(0, 0), (40, 0)], name: "Loop Trail")
+        let beside = path(2, [(-300, 60), (300, 60)], name: "Loop Trail")
+        let item = try #require(grouped([tiny, beside]).first)
+        #expect(item.isGroup)
+        #expect(TrailChain.stitch(item.sections.map(\.coordinates)) == nil)
+        // Standing on the 40 m piece: too short to walk, so the 600 m one 60 m away is used.
+        let plan = try #require(TrailWalkPlanner.plan(for: item, from: at(20, 0)))
+        #expect(plan.isSectionOnly)
+        #expect(plan.distanceMeters > 250)
+        #expect(TrailText.startCaption(for: plan).hasPrefix("On the section you're at"))
     }
 
     @Test("With grouping off, every section is its own row")

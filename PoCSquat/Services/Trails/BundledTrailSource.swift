@@ -215,27 +215,10 @@ final class BundledTrailSource: TrailDataSource {
                 allowsBike: int("allows_bike") != 0,
                 allowsHorse: int("allows_horse") != 0,
                 isLoop: int("is_loop") != 0,
-                tags: Self.tags(fromJSON: text("tags_json"))
+                tagsJSON: text("tags_json")
             ))
         }
         return rows
-    }
-
-    /// `tags_json` as strings. The builder writes a flat object of OSM tags
-    /// (plus `merged_ways`, a number); anything unreadable is no tags, not an
-    /// error — tags only feed labels.
-    static func tags(fromJSON json: String?) -> [String: String] {
-        guard let data = json?.data(using: .utf8), !data.isEmpty,
-              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return [:] }
-        var tags: [String: String] = [:]
-        for (key, value) in object {
-            switch value {
-            case let string as String: tags[key] = string
-            case let number as NSNumber: tags[key] = number.stringValue
-            default: continue
-            }
-        }
-        return tags
     }
 
     private static func readMeta(_ db: OpaquePointer) throws -> [String: String] {
@@ -290,9 +273,13 @@ final class BundledTrailSource: TrailDataSource {
     /// percent at the radii this serves (tens of kilometres), and it needs no
     /// `CLLocation` allocation per vertex.
     static func distanceMeters(from origin: CLLocationCoordinate2D, to trail: TrailFeature) -> Double {
-        let coords = trail.coordinates
+        distanceMeters(from: origin, toLine: trail.coordinates)
+    }
+
+    /// The same, for any line (a stitched chain of sections).
+    static func distanceMeters(from origin: CLLocationCoordinate2D, toLine coords: [CLLocationCoordinate2D]) -> Double {
         guard let first = coords.first else { return .greatestFiniteMagnitude }
-        let metersPerDegree = 111_320.0
+        let metersPerDegree = TrailGeometry.metersPerDegree
         let cosLat = cos(origin.latitude * .pi / 180)
         func local(_ c: CLLocationCoordinate2D) -> (x: Double, y: Double) {
             ((c.longitude - origin.longitude) * metersPerDegree * cosLat,

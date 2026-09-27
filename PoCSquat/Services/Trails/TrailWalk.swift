@@ -22,6 +22,9 @@ struct TrailWalkPlan: Equatable {
     let waypoints: [CLLocationCoordinate2D]
     let isLoop: Bool
     let distanceMeters: Double
+    /// True when the walk covers only the section the person is at, not the
+    /// whole grouped trail (a group whose pieces don't form one line).
+    var isSectionOnly = false
 
     func navigableRoute(activityMode: ActivityMode) -> NavigableRoute {
         NavigableRoute(name: name, waypoints: waypoints, lapCount: 1, isLoop: isLoop,
@@ -53,16 +56,50 @@ enum TrailWalkPlanner {
             .min { $0.1 < $1.1 }?.0
     }
 
+    /// The walk a row's Start button offers from `location`, or nil when the
+    /// person is not at it.
+    ///
+    /// A group whose sections chain into one line (`TrailChain.stitch`) — every
+    /// unnamed group, and a named one whose pieces happen to — is walked as
+    /// that line, so Start on a 4 mi path split at every driveway follows the
+    /// whole path rather than the 250 ft piece underfoot. Otherwise the walk
+    /// covers the section the person is at; if that one is too short to walk
+    /// from where they stand, the next-nearest section in reach is tried.
+    static func plan(for item: TrailListItem, from location: CLLocationCoordinate2D?) -> TrailWalkPlan? {
+        guard let location else { return nil }
+        if item.isGroup, let line = TrailChain.stitch(item.sections.map(\.coordinates)) {
+            return plan(along: line.path, isLoop: line.isClosed, name: item.name, from: location)
+        }
+        let inReach = item.sections
+            .map { ($0, BundledTrailSource.distanceMeters(from: location, to: $0)) }
+            .filter { $0.1 <= startRadiusMeters }
+            .sorted { $0.1 < $1.1 }
+        for (section, _) in inReach {
+            if var plan = plan(for: section, name: item.name, from: location) {
+                plan.isSectionOnly = item.isGroup
+                return plan
+            }
+        }
+        return nil
+    }
+
     /// A walk along `section` from the point nearest `location`, or nil if the
     /// person is not at the trail or the geometry is too short to walk.
     static func plan(for section: TrailFeature, name: String, from location: CLLocationCoordinate2D) -> TrailWalkPlan? {
-        guard BundledTrailSource.distanceMeters(from: location, to: section) <= startRadiusMeters else { return nil }
-        var coords = section.coordinates
+        plan(along: section.coordinates, isLoop: section.isLoop, name: name, from: location)
+    }
+
+    /// A walk along `line` from its point nearest `location`: all the way round
+    /// a loop, or to the farther end of a line.
+    static func plan(along line: [CLLocationCoordinate2D], isLoop: Bool, name: String,
+                     from location: CLLocationCoordinate2D) -> TrailWalkPlan? {
+        guard BundledTrailSource.distanceMeters(from: location, toLine: line) <= startRadiusMeters else { return nil }
+        var coords = line
         guard coords.count >= 2 else { return nil }
         let nearest = nearestIndex(in: coords, to: location)
 
         let path: [CLLocationCoordinate2D]
-        if section.isLoop {
+        if isLoop {
             if coords.count > 2, meters(coords[0], coords[coords.count - 1]) < 1 { coords.removeLast() }
             let from = min(nearest, coords.count - 1)
             let ring = Array(coords[from...] + coords[..<from])
@@ -76,8 +113,8 @@ enum TrailWalkPlanner {
         guard path.count >= 2, distance >= 50 else { return nil }
 
         return TrailWalkPlan(name: name, path: path,
-                             waypoints: checkpoints(along: path, isLoop: section.isLoop, length: distance),
-                             isLoop: section.isLoop, distanceMeters: distance)
+                             waypoints: checkpoints(along: path, isLoop: isLoop, length: distance),
+                             isLoop: isLoop, distanceMeters: distance)
     }
 
     /// Start, evenly spaced points, and — for a line — the end. A loop leaves

@@ -23,7 +23,12 @@ import Foundation
 // nothing to merge on in the builder, so the paved path along Duck Road from
 // Kitty Hawk into Duck was 57 "Unnamed Trail" rows (Joe, 2026-09-26). Without
 // a name, closeness alone would join a park's every footpath, so the rule is
-// endpoints, not boxes: a chain of touching pieces is one card.
+// endpoints, not boxes, and only where exactly two pieces meet (`TrailChain`):
+// a simple chain of pieces is one card, a junction is not joined through. The
+// first cut joined any two endpoints within 30 m and turned UNC's campus into
+// one 255-section, 19.8 km "Paved Footpath" and downtown Raleigh's plaza into
+// a 164 x 164 m mesh; it also joined the two sides of a road and counted the
+// path twice.
 
 /// Paved or not, from OSM's `surface` vocabulary. Anything else (boardwalk,
 /// metal, a typo) is neither, and shows no surface tag rather than a guess.
@@ -101,6 +106,9 @@ struct TrailListItem: Identifiable, Hashable {
     let distanceMeters: Double
 
     var isGroup: Bool { sections.count > 1 }
+    /// Whether the row is a named trail rather than a path titled by what it
+    /// is. Sections of a group share a name or share having none.
+    var hasName: Bool { sections.first?.hasName ?? false }
     var lengthMeters: Double { sections.reduce(0) { $0 + $1.lengthMeters } }
     /// Only a single section can be a loop; a group of sections is a network.
     var isLoop: Bool { sections.count == 1 && sections[0].isLoop }
@@ -132,14 +140,9 @@ enum TrailListBuilder {
     /// Sections of the same name closer than this join one group.
     static let joinGapMeters = 400.0
 
-    /// Unnamed sections of one kind join when an endpoint of one lies this
-    /// close to an endpoint of another. Pieces that meet share an OSM node,
-    /// but the pack drops ways under 30 m (`min_length_m`) — the driveway and
-    /// road crossings along a side path — so real neighbours sit up to ~30 m
-    /// apart. Measured on the NC pack along Duck Road (2026-09-26): gaps of
-    /// 0–27 m between consecutive pieces; at 15 m the longest chain was 3
-    /// pieces, at 30 m it is 30 pieces, 6.6 km.
-    static let unnamedJoinMeters = 30.0
+    /// Unnamed sections of one kind join where they chain end to end within
+    /// this distance (`TrailChain.joinMeters`, see there).
+    static let unnamedJoinMeters = TrailChain.joinMeters
 
     /// Builds list rows from pack rows ranked by distance (nearest first).
     /// `maxLengthMeters` drops rows whose shown length is longer.
@@ -213,9 +216,11 @@ enum TrailListBuilder {
         let allowsBike: Bool
     }
 
-    /// Unnamed sections chained end to end within `unnamedJoinMeters`, per
-    /// kind. Transitive: A–B and B–C make one group even when A and C are far
+    /// Unnamed sections chained end to end (`TrailChain.links`), per kind.
+    /// Transitive: A–B and B–C make one group even when A and C are far
     /// apart, which is the whole point for a path split at every driveway.
+    /// Every link joins two endpoints that have no other partner, so a group
+    /// is always a simple line or ring, never a network.
     private static func unnamedGroups(_ entries: [(trail: TrailFeature, distance: Double)]) -> [[(trail: TrailFeature, distance: Double)]] {
         var byKind: [UnnamedKind: [(trail: TrailFeature, distance: Double)]] = [:]
         var kindOrder: [UnnamedKind] = []
@@ -228,30 +233,13 @@ enum TrailListBuilder {
         var result: [[(trail: TrailFeature, distance: Double)]] = []
         for kind in kindOrder {
             let members = byKind[kind] ?? []
-            // Decode each polyline once, not once per pair. By index, not id:
-            // ids are only unique within one pack.
-            let ends: [[CLLocationCoordinate2D]] = members.map {
-                let coords = $0.trail.coordinates
-                return coords.isEmpty ? [] : [coords[0], coords[coords.count - 1]]
+            var linked = Set<[Int]>()
+            for link in TrailChain.links(members.map(\.trail.coordinates), within: unnamedJoinMeters) {
+                linked.insert([min(link.a, link.b), max(link.a, link.b)])
             }
-            result += clusters(members) { endpointGapMeters(ends[$0], ends[$1]) <= unnamedJoinMeters }
+            result += clusters(members) { linked.contains([$0, $1]) }
         }
         return result
-    }
-
-    /// The shortest distance between any endpoint of one section and any of
-    /// another; infinite when either has no geometry.
-    static func endpointGapMeters(_ a: [CLLocationCoordinate2D], _ b: [CLLocationCoordinate2D]) -> Double {
-        var best = Double.infinity
-        for p in a {
-            for q in b {
-                let metersPerDegree = 111_320.0
-                let x = (p.longitude - q.longitude) * metersPerDegree * max(0.01, cos(p.latitude * .pi / 180))
-                let y = (p.latitude - q.latitude) * metersPerDegree
-                best = min(best, (x * x + y * y).squareRoot())
-            }
-        }
-        return best
     }
 
     /// Splits sections into clusters that are actually connected: connected
@@ -290,10 +278,143 @@ enum TrailListBuilder {
         let dLat = max(0, max(a.minLatitude, b.minLatitude) - min(a.maxLatitude, b.maxLatitude))
         let dLon = max(0, max(a.minLongitude, b.minLongitude) - min(a.maxLongitude, b.maxLongitude))
         let midLat = (a.minLatitude + a.maxLatitude + b.minLatitude + b.maxLatitude) / 4
-        let metersPerDegree = 111_320.0
-        let x = dLon * metersPerDegree * max(0.01, cos(midLat * .pi / 180))
-        let y = dLat * metersPerDegree
+        let x = dLon * TrailGeometry.metersPerDegree * max(0.01, cos(midLat * .pi / 180))
+        let y = dLat * TrailGeometry.metersPerDegree
         return (x * x + y * y).squareRoot()
+    }
+}
+
+// MARK: - Chains
+
+/// Pieces of one path that meet end to end, as OSM leaves a path split at
+/// every driveway: which pieces link, and the single line they make.
+///
+/// A link is made only where exactly two pieces meet — the rule the pack
+/// builder uses for named ways. An endpoint joins another piece only when
+/// that piece is the one and only piece with an endpoint within
+/// `joinMeters`, and the same holds from the other side. At a junction
+/// (three or more ends together: a "+", a "T", a campus grid) nothing is
+/// joined, so linked pieces are always a simple line or ring. Two more guards:
+/// each endpoint takes part in one link at most, and a link that doubles back
+/// on itself (turning more than 135°) is refused, which is what two sides of
+/// a road ending at the same corner look like.
+enum TrailChain {
+
+    /// Pieces that meet share an OSM node, but the pack drops ways under
+    /// 30 m (`min_length_m`) — the driveway and road crossings along a side
+    /// path — so real neighbours sit up to ~30 m apart. Measured on the NC
+    /// pack along Duck Road (2026-09-26): gaps of 0–27 m between consecutive
+    /// pieces; at 15 m the longest chain was 3 pieces, at 30 m it is 30
+    /// pieces, 6.6 km.
+    static let joinMeters = 30.0
+    /// cos(135°): a join turning back more sharply than this is refused.
+    static let maxTurnCosine = -0.7071
+
+    /// Piece `a`'s end `aEnd` joins piece `b`'s end `bEnd`; end 0 is a line's
+    /// first coordinate, 1 its last.
+    struct Link: Hashable {
+        let a: Int, aEnd: Int, b: Int, bEnd: Int
+    }
+
+    private struct End {
+        let line: Int
+        let end: Int
+        let point: CLLocationCoordinate2D
+    }
+
+    /// The links between `lines`, each at most once.
+    static func links(_ lines: [[CLLocationCoordinate2D]], within: Double = joinMeters) -> [Link] {
+        var ends: [End] = []
+        for (i, line) in lines.enumerated() where line.count >= 2 {
+            ends.append(End(line: i, end: 0, point: line[0]))
+            ends.append(End(line: i, end: 1, point: line[line.count - 1]))
+        }
+        // near[k]: the other pieces' endpoints within reach of endpoint k.
+        var near = [[Int]](repeating: [], count: ends.count)
+        for k in ends.indices {
+            for m in ends.indices where m > k && ends[m].line != ends[k].line
+                && TrailGeometry.meters(ends[k].point, ends[m].point) <= within {
+                near[k].append(m)
+                near[m].append(k)
+            }
+        }
+        func partnerLines(_ k: Int) -> Set<Int> { Set(near[k].map { ends[$0].line }) }
+
+        var used = Set<Int>()
+        var result: [Link] = []
+        for k in ends.indices where !used.contains(k) {
+            let partners = partnerLines(k)
+            guard partners.count == 1, let other = partners.first, other > ends[k].line,
+                  let m = near[k].filter({ !used.contains($0) }).min(by: {
+                      TrailGeometry.meters(ends[k].point, ends[$0].point) < TrailGeometry.meters(ends[k].point, ends[$1].point)
+                  }),
+                  partnerLines(m) == [ends[k].line],
+                  !doublesBack(lines[ends[k].line], at: ends[k].end, into: lines[other], at: ends[m].end)
+            else { continue }
+            used.insert(k)
+            used.insert(m)
+            result.append(Link(a: ends[k].line, aEnd: ends[k].end, b: other, bEnd: ends[m].end))
+        }
+        return result
+    }
+
+    /// The one line `lines` make when every piece is linked into a single
+    /// chain or ring: pieces in order, each turned to run the same way, the
+    /// join point not repeated. Nil when they are not one simple chain.
+    static func stitch(_ lines: [[CLLocationCoordinate2D]],
+                       within: Double = joinMeters) -> (path: [CLLocationCoordinate2D], isClosed: Bool)? {
+        guard lines.count >= 2, lines.allSatisfy({ $0.count >= 2 }) else { return nil }
+        let all = links(lines, within: within)
+        guard all.count == lines.count - 1 || all.count == lines.count else { return nil }
+        var next: [Int: (line: Int, end: Int)] = [:]    // key: line * 2 + end
+        for link in all {
+            next[link.a * 2 + link.aEnd] = (link.b, link.bEnd)
+            next[link.b * 2 + link.bEnd] = (link.a, link.aEnd)
+        }
+        let isClosed = all.count == lines.count
+        // A line starts at a piece end with no link; a ring anywhere.
+        var start = (line: 0, end: 0)
+        if !isClosed {
+            guard let free = (0..<lines.count * 2).first(where: { next[$0] == nil }) else { return nil }
+            start = (free / 2, free % 2)
+        }
+        var path: [CLLocationCoordinate2D] = []
+        var visited = Set<Int>()
+        var current: (line: Int, end: Int)? = start
+        while let piece = current, !visited.contains(piece.line) {
+            visited.insert(piece.line)
+            let coords: [CLLocationCoordinate2D] = piece.end == 0 ? lines[piece.line] : lines[piece.line].reversed()
+            if let last = path.last, TrailGeometry.meters(last, coords[0]) < 1 {
+                path += coords.dropFirst()
+            } else {
+                path += coords
+            }
+            current = next[piece.line * 2 + (1 - piece.end)]
+        }
+        guard visited.count == lines.count else { return nil }
+        return (path, isClosed)
+    }
+
+    /// Whether going from `a` out through its end `aEnd` into `b` at its end
+    /// `bEnd` turns back by more than 135°.
+    private static func doublesBack(_ a: [CLLocationCoordinate2D], at aEnd: Int,
+                                    into b: [CLLocationCoordinate2D], at bEnd: Int) -> Bool {
+        let p = aEnd == 0 ? a[0] : a[a.count - 1]
+        let q = bEnd == 0 ? b[0] : b[b.count - 1]
+        let before = inward(a, from: aEnd), after = inward(b, from: bEnd)
+        let cosLat = cos(p.latitude * .pi / 180)
+        let v1 = ((p.longitude - before.longitude) * cosLat, p.latitude - before.latitude)
+        let v2 = ((after.longitude - q.longitude) * cosLat, after.latitude - q.latitude)
+        let n1 = (v1.0 * v1.0 + v1.1 * v1.1).squareRoot(), n2 = (v2.0 * v2.0 + v2.1 * v2.1).squareRoot()
+        guard n1 > 0, n2 > 0 else { return false }
+        return (v1.0 * v2.0 + v1.1 * v2.1) / (n1 * n2) < maxTurnCosine
+    }
+
+    /// The first vertex at least 10 m in from `end`, or the far end: the
+    /// direction a piece has as it reaches that end, not a GPS-noise wiggle.
+    private static func inward(_ line: [CLLocationCoordinate2D], from end: Int) -> CLLocationCoordinate2D {
+        let ordered: [CLLocationCoordinate2D] = end == 0 ? line : line.reversed()
+        return ordered.dropFirst().first { TrailGeometry.meters(ordered[0], $0) >= 10 } ?? ordered[ordered.count - 1]
     }
 }
 

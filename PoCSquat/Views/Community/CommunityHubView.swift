@@ -502,7 +502,9 @@ struct CommunityHubView: View {
 
     @ViewBuilder
     private var trailsCard: some View {
-        let nearby = Array(trailFinder.items.prefix(3))
+        // Named trails only: this card calls them "Official", and a path titled
+        // by what it is ("Paved Footpath") is not an official trail.
+        let nearby = Array(trailFinder.items.filter(\.hasName).prefix(3))
         if !nearby.isEmpty {
             VStack(alignment: .leading, spacing: 4) {
                 WktSectionHeader(title: "Trails near you", actionTitle: "Open Trails", action: { openTrails(nil) })
