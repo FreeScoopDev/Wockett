@@ -172,11 +172,39 @@ final class SmokeTests: XCTestCase {
         XCTAssertTrue(el("summary.root").waitForExistence(timeout: 10))
         app.buttons["summary.done"].tap()
 
+        // Failed once on Xcode Cloud (PR #87, 2026-09-27) and never in 33 local
+        // runs, fresh simulators included. Locally the tile is gone at the first
+        // check, about 1 s after Done, so a 10 s miss is a stuck state rather than
+        // a slow machine, and a longer timeout would not help. The failure left
+        // only "exceeded timeout", so this reports which screen was up and what
+        // the tile said: that text reaches the GitHub check-run summary.
+        let leftoverTile = app.buttons["accessory.miniTile"]
         let miniGone = XCTNSPredicateExpectation(
             predicate: NSPredicate(format: "exists == NO"),
-            object: app.buttons["accessory.miniTile"]
+            object: leftoverTile
         )
-        wait(for: [miniGone], timeout: 10)
+        if XCTWaiter().wait(for: [miniGone], timeout: 10) != .completed {
+            let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+            shot.name = "Mini tile still present"
+            shot.lifetime = .keepAlways
+            add(shot)
+            let tree = XCTAttachment(string: app.debugDescription)
+            tree.name = "Accessibility tree"
+            tree.lifetime = .keepAlways
+            add(tree)
+            XCTFail("Mini tile still present 10 s after Done. \(screenState()), "
+                    + "tile label '\(leftoverTile.label)'")
+        }
+    }
+
+    /// One line describing what is on screen, for failure messages that must
+    /// explain themselves from a CI summary alone.
+    private func screenState() -> String {
+        let marks = ["summary.root", "session.root", "home.statCard", "community.root"]
+            .map { "\($0)=\(el($0).exists)" }
+        let elapsed = el("session.elapsed")
+        let timer = elapsed.exists ? ", session.elapsed '\(elapsed.label)'" : ""
+        return marks.joined(separator: " ") + ", alerts=\(app.alerts.count)" + timer
     }
 
     // MARK: - 5. Routes tab reachability
