@@ -5,6 +5,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Internal
+- `docs/ci.md` no longer carries the App Store Connect team ID or the `main` ruleset's ID, and the website no longer serves it. The repo is public, and GitHub Pages was publishing the file at `wockett.app/ci.html` (HTTP 200 on 2026-09-26), so internal CI notes sat on the app's customer-facing site. Neither ID grants access on its own, but neither needs to be public: the ruleset ID is one `gh api` call away, and the team is the one App Store Connect opens to. A new `docs/_config.yml` excludes `ci.md` from the site; the privacy policy and home page are unaffected.
+
 ## [1.13] - 2026-09-26
 
 ### Added

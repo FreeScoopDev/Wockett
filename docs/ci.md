@@ -19,7 +19,7 @@ returns **404 "Branch not protected"** even though `main` very much is. That 404
 was read as "protection was removed" on 2026-09-08. Use this instead:
 
     gh api repos/FreeScoopDev/Wockett/rulesets
-    gh api repos/FreeScoopDev/Wockett/rulesets/22245839
+    gh api repos/FreeScoopDev/Wockett/rulesets/<id from the line above>
 
 | Required check | Provider | Runner | Bills at |
 | --- | --- | --- | --- |
@@ -118,8 +118,8 @@ and it was the wrong first guess here.
 
 ## Xcode Cloud
 
-Configured at App Store Connect → Wockett → Xcode Cloud → Manage Workflows. Team
-`1b320b4a-f12c-4521-89ca-fa2dcfb8ee19`, app `6794364736`. Two workflows, both
+Configured at App Store Connect → Wockett → Xcode Cloud → Manage Workflows.
+Two workflows, both
 pointed at `https://github.com/FreeScoopDev/Wockett.git` / `PoCSquat.xcodeproj`.
 
 Neither has "Restrict Editing" enabled, so any team member can change them —
