@@ -44,6 +44,26 @@ struct ActiveWalkSnapshot: Codable {
             approach = route.approach
         }
 
+        /// Written out so a trail destination that no longer decodes (a later
+        /// change to `TrailFeature`) costs only the arrival offer, never the
+        /// whole snapshot and the walk in it. Every other field decodes as
+        /// the synthesised init did.
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            name = try c.decode(String.self, forKey: .name)
+            waypoints = try c.decode([WaypointCoord].self, forKey: .waypoints)
+            lapCount = try c.decode(Int.self, forKey: .lapCount)
+            isLoop = try c.decode(Bool.self, forKey: .isLoop)
+            totalDistance = try c.decode(Double.self, forKey: .totalDistance)
+            isCustomRoute = try c.decode(Bool.self, forKey: .isCustomRoute)
+            isCommunityRoute = try c.decode(Bool.self, forKey: .isCommunityRoute)
+            activityMode = try c.decode(String.self, forKey: .activityMode)
+            customRouteId = try c.decodeIfPresent(UUID.self, forKey: .customRouteId)
+            path = try c.decodeIfPresent([WaypointCoord].self, forKey: .path)
+            pathIsRecording = try c.decodeIfPresent(Bool.self, forKey: .pathIsRecording)
+            approach = (try? c.decodeIfPresent(TrailApproach.self, forKey: .approach)) ?? nil
+        }
+
         var navigableRoute: NavigableRoute {
             NavigableRoute(
                 name: name,

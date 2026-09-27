@@ -248,7 +248,11 @@ struct RouteFinderContentView: View {
             onStart: { plan in
                 beginGuidedSession(plan.navigableRoute(activityMode: activityMode))
             },
-            onStartApproach: { route in beginGuidedSession(route) }
+            onStartApproach: { route in beginGuidedSession(route) },
+            refreshLocation: {
+                guard !isWKTUITestMode, let fresh = await routeManager.fetchCurrentLocation(maxAge: 30) else { return }
+                routeManager.lastLocation = fresh
+            }
         )
     }
 
@@ -1118,7 +1122,7 @@ struct RouteFinderMapView: UIViewRepresentable {
         renderer.lineCap = .round
         renderer.lineJoin = .round
         if line.isCasing {
-            renderer.strokeColor = .systemBackground
+            renderer.strokeColor = UIColor(Color.earthCard)
             renderer.lineWidth = 8
             renderer.alpha = 0.85
         } else {

@@ -16,6 +16,10 @@ struct TrailDirectionsSection: View {
     let activityMode: ActivityMode
     @Bindable var directions: TrailDirectionsModel
     let onStart: (NavigableRoute) -> Void
+    /// Asks for a fresh fix. In Trails mode the location is otherwise read
+    /// once when Routes opens, so without this the 100 m rule never fired and
+    /// Start built the route from wherever the person was then.
+    var refreshLocation: () async -> Void = {}
 
     @Environment(\.dynamicTypeSize) private var typeSize
 
@@ -44,7 +48,11 @@ struct TrailDirectionsSection: View {
             }
         }
         .onAppear(perform: requestDirections)
+        .task(id: item.id) { await refreshLocation() }
         .onChange(of: locationKey) { _, _ in requestDirections() }
+        .onChange(of: activityMode) { _, mode in
+            directions.reselect(activityMode: mode, straightLineMeters: item.distanceMeters)
+        }
         .onChange(of: item.id) { _, _ in requestDirections() }
         .onDisappear { directions.cancel() }
     }

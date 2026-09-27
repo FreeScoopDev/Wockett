@@ -173,7 +173,7 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
     /// can sit tens of metres from where the path runs on the ground
     /// (2026-09-24), and a missed checkpoint stalls the session.
     private var arrivalRadius: Double { route.path == nil ? 30 : 60 }
-    private var triggeredCheckpoints: Set<Int> = []
+    private(set) var triggeredCheckpoints: Set<Int> = []
     private let checkpointFractions = [0.2, 0.4, 0.6, 0.8]
     private var workoutWriter: HealthWorkoutWriter?
     var isPaused = false
@@ -250,6 +250,15 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
     /// time and pace stay honest instead of jumping forward by however long the
     /// app was closed.
     func restore(from snapshot: ActiveWalkSnapshot) {
+        applySnapshot(snapshot)
+        beginTracking()
+        writeSnapshot()
+    }
+
+    /// The state half of `restore(from:)`: everything but starting location,
+    /// motion and Health tracking. Separate so tests can restore a snapshot
+    /// without starting a CLLocationManager.
+    func applySnapshot(_ snapshot: ActiveWalkSnapshot) {
         startTime            = snapshot.startTime
         totalDistanceCovered = snapshot.totalDistanceCovered
         currentWaypointIndex = snapshot.currentWaypointIndex
@@ -276,9 +285,6 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
             progress.resume(at: snapshot.trailAlong ?? fallback, since: snapshot.checkpointDate)
             trailProgress = progress
         }
-
-        beginTracking()
-        writeSnapshot()
     }
 
     private func beginTracking() {
@@ -391,6 +397,7 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
     func stop() {
         autoPausedForInactivity = false
         NotificationService.shared.withdraw(.offTrail)
+        NotificationService.shared.withdraw(.trailArrival)
         ActiveWalkSnapshotStore.clear()
         locationManager.stopUpdatingLocation()
         pedometer.stopUpdates()
@@ -405,12 +412,22 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
         pausedDuration + (pauseStart.map { Date().timeIntervalSince($0) } ?? 0)
     }
 
+    /// Off in unit tests, which run in parallel with the snapshot store's own
+    /// tests and would otherwise write into the file those tests check.
+    var writesSnapshots = true
+
     private func writeSnapshot() {
+        guard writesSnapshots else { return }
+        ActiveWalkSnapshotStore.save(snapshot)
+    }
+
+    /// The crash checkpoint as it stands now.
+    var snapshot: ActiveWalkSnapshot {
         // Thin the breadcrumb trail so very long walks keep the checkpoint
         // file small — cap ~2000 points, evenly strided.
         let thinned = Self.thinned(trackPoints)
 
-        let snapshot = ActiveWalkSnapshot(
+        return ActiveWalkSnapshot(
             route: .init(route),
             startTime: startTime,
             totalDistanceCovered: totalDistanceCovered,
@@ -427,7 +444,18 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
             trailAlong: trailProgress?.along,
             legStartDistance: legStartDistance
         )
-        ActiveWalkSnapshotStore.save(snapshot)
+    }
+
+    /// What the Live Activity treats as the whole distance: the current
+    /// route's length plus whatever came before it. The widget shows
+    /// total − covered as the distance left, and covered includes the way to
+    /// a trail, so the trail's length alone read 0 left after a long approach.
+    nonisolated static func liveActivityTotal(routeTotal: Double, legStart: Double) -> Double {
+        max(0, legStart) + routeTotal
+    }
+
+    var liveActivityTotalMeters: Double {
+        Self.liveActivityTotal(routeTotal: route.totalDistance, legStart: legStartDistance)
     }
 
     func dismissBreakPrompt() {
@@ -468,6 +496,7 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
         if route.approach != nil {
             return arrivedAtTrail ? "You're at the trail" : "Heading to the trail"
         }
+        if route.path != nil, !route.isLoop { return "On the \(route.lineNoun)" }
         return route.isLoop
             ? "Lap \(min(currentLap, route.lapCount)) of \(route.lapCount)"
             : "Heading to destination"
@@ -595,7 +624,8 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
         }
     }
 
-    private func checkDistanceCheckpoints() {
+    /// Internal, not private, so tests can check the 20/40/60/80% markers.
+    func checkDistanceCheckpoints() {
         guard route.totalDistance > 0, onCheckpointReached != nil else { return }
         for (i, fraction) in checkpointFractions.enumerated() {
             guard !triggeredCheckpoints.contains(i) else { continue }
@@ -681,7 +711,8 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
 
     /// The person is going round a closed line the other way: the walk
     /// restarts on the reversed route (`TrailProgress.turnedRound`).
-    private func turnRouteRound(_ turned: TrailProgress.TurnedRound) {
+    /// Internal, not private, so tests can check the route change is published.
+    func turnRouteRound(_ turned: TrailProgress.TurnedRound) {
         route = turned.route
         trailProgress = turned.progress
         currentWaypointIndex = turned.index
@@ -704,7 +735,8 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
         if Self.shouldNotifyOffTrail(appIsActive: UIApplication.shared.applicationState == .active,
                                      sessionScreenVisible: isSessionScreenVisible) {
             fireBackgroundNotification(title: "You're at \(approach.trailName)",
-                                       body: "Open Wockett to start the trail \(noun).")
+                                       body: "Open Wockett to start the trail \(noun).",
+                                       kind: .trailArrival)
         }
     }
 
@@ -725,7 +757,11 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
         currentWaypointIndex = 1
         currentLap = 1
         triggeredCheckpoints = []
+        // The way there's 20/40/60/80% splits would sit beside the trail's
+        // own and read as the same markers twice in the summary.
+        splitTimes.removeAll { $0.label.hasSuffix("%") }
         legStartDistance = totalDistanceCovered
+        NotificationService.shared.withdraw(.trailArrival)
         distanceToNextWaypoint = 0
         arrivedAtTrail = false
         trailArrivalLocation = nil

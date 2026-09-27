@@ -23,6 +23,7 @@ struct TrailsPanel: View {
     let directions: TrailDirectionsModel
     let onStart: (TrailWalkPlan) -> Void
     let onStartApproach: (NavigableRoute) -> Void
+    var refreshLocation: () async -> Void = {}
 
     var body: some View {
         VStack(spacing: 0) {
@@ -34,7 +35,8 @@ struct TrailsPanel: View {
 
             if let item = selected {
                 TrailDetailView(item: item, userLocation: userLocation, activityMode: activityMode,
-                                directions: directions, onStart: onStart, onStartApproach: onStartApproach) {
+                                directions: directions, onStart: onStart, onStartApproach: onStartApproach,
+                                refreshLocation: refreshLocation) {
                     withAnimation(.spring(response: 0.3)) { selected = nil }
                 }
             } else {
@@ -234,6 +236,7 @@ struct TrailDetailView: View {
     let directions: TrailDirectionsModel
     let onStart: (TrailWalkPlan) -> Void
     let onStartApproach: (NavigableRoute) -> Void
+    var refreshLocation: () async -> Void = {}
     let onBack: () -> Void
 
     /// A walk from where the person stands, when they are at the trail.
@@ -266,6 +269,16 @@ struct TrailDetailView: View {
                         .foregroundColor(.earthMuted)
                 }
 
+                // What to do next sits right under the name, so Start (at the
+                // trail) or the way there (not yet) needs no scrolling.
+                if let plan = startPlan {
+                    startButton(plan)
+                } else {
+                    TrailDirectionsSection(item: item, userLocation: userLocation, activityMode: activityMode,
+                                           directions: directions, onStart: onStartApproach,
+                                           refreshLocation: refreshLocation)
+                }
+
                 HStack(spacing: 8) {
                     stat("Length", TrailText.distance(item.lengthMeters))
                     if activityMode == .walking {
@@ -279,13 +292,6 @@ struct TrailDetailView: View {
                 TrailTagRow(item: item, activityMode: activityMode)
 
                 dogRule
-
-                if let plan = startPlan {
-                    startButton(plan)
-                } else {
-                    TrailDirectionsSection(item: item, userLocation: userLocation, activityMode: activityMode,
-                                           directions: directions, onStart: onStartApproach)
-                }
 
                 if item.isGroup { sectionList }
 

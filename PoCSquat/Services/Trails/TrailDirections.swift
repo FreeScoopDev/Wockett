@@ -21,8 +21,10 @@ import MapKit
 enum TrailDirectionsMode: String, CaseIterable, Hashable {
     case onFoot, cycling
 
+    /// The session's own transport, so the preview asks MapKit exactly what
+    /// the session will (a run and a walk both route as walking).
     var transportType: MKDirectionsTransportType {
-        self == .cycling ? .cycling : .walking
+        sessionMode(current: .walking).transportType
     }
 
     /// The session this option starts. On foot keeps a run a run; everything
@@ -264,6 +266,14 @@ final class TrailDirectionsModel {
             return
         }
         phase = .loaded(options)
+        reselect(activityMode: activityMode, straightLineMeters: straightLineMeters)
+    }
+
+    /// Chooses the leading option that has a route: after loading, and when
+    /// the activity changes with the detail open, so the tick and the Start
+    /// button follow the new order.
+    func reselect(activityMode: ActivityMode, straightLineMeters: Double) {
+        guard case .loaded = phase else { return }
         let lead = TrailDirectionsPlanner.lead(distanceMeters: leadDistance(straightLine: straightLineMeters),
                                                activityMode: activityMode)
         selected = TrailDirectionsPlanner.order(for: lead).first { route(for: $0) != nil }

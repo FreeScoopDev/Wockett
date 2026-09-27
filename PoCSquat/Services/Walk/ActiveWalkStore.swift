@@ -77,7 +77,7 @@ final class ActiveWalkStore {
         Task {
             await WalkLiveActivityManager.shared.start(
                 routeName: route.name,
-                totalDistanceMeters: route.totalDistance,
+                totalDistanceMeters: capturedMgr.liveActivityTotalMeters,
                 activityMode: route.activityMode.rawValue,
                 startDate: snapshot.startTime
             )

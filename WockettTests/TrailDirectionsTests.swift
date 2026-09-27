@@ -155,6 +155,7 @@ struct TrailDirectionsTests {
         let approach = TrailApproach(item: trailItem)
         let route = approach.navigableRoute(from: home, to: access, distanceMeters: 1_100, activityMode: .walking)
         let mgr = NavigationSessionManager(route: route)
+        mgr.writesSnapshots = false
         #expect(mgr.trailProgress == nil, "the way there is a street route, not a line to follow")
 
         mgr.checkArrival(at: fix(home))
@@ -184,6 +185,7 @@ struct TrailDirectionsTests {
     func noApproachNoSwitch() {
         let mgr = NavigationSessionManager(route: NavigableRoute(name: "Park", waypoints: [home, access],
                                                                  lapCount: 1, isLoop: false, totalDistance: 900))
+        mgr.writesSnapshots = false
         #expect(mgr.beginTrailWalk() == nil)
     }
 
@@ -202,5 +204,103 @@ struct TrailDirectionsTests {
         let old = try JSONDecoder().decode(ActiveWalkSnapshot.RouteData.self,
                                            from: JSONSerialization.data(withJSONObject: json)).navigableRoute
         #expect(old.approach == nil)
+    }
+
+    // MARK: After the switch
+
+    /// A session that walked `approachWalked` metres to the trail, then took
+    /// the trail walk 1,050 m in, with its 20% marker already passed on the
+    /// way there.
+    private func switchedSession() throws -> (NavigationSessionManager, NavigableRoute, [String]) {
+        let approach = TrailApproach(item: trailItem)
+        let mgr = NavigationSessionManager(route: approach.navigableRoute(from: home, to: access,
+                                                                          distanceMeters: 1_100, activityMode: .walking))
+        mgr.writesSnapshots = false
+        var labels: [String] = []
+        mgr.onCheckpointReached = { labels.append($0) }
+        mgr.totalDistanceCovered = 300          // 27% of the way there
+        mgr.checkDistanceCheckpoints()
+        #expect(labels == ["20%"], "the way there has its own markers")
+        mgr.checkArrival(at: fix(access))
+        mgr.totalDistanceCovered = 1_050
+        let next = try #require(mgr.beginTrailWalk())
+        return (mgr, next, labels)
+    }
+
+    @Test("After the switch the markers count from the trail, once each, and the way there's splits go")
+    func markersCountFromTheTrail() throws {
+        let (mgr, next, _) = try switchedSession()
+        #expect(mgr.triggeredCheckpoints.isEmpty, "the way there's 20% must not stop the trail's")
+        #expect(mgr.splitTimes.isEmpty, "the way there's percentage splits would repeat the trail's")
+        var labels: [String] = []
+        mgr.onCheckpointReached = { labels.append($0) }
+        mgr.totalDistanceCovered = 1_050 + 0.25 * next.totalDistance
+        mgr.checkDistanceCheckpoints()
+        #expect(labels == ["20%"])
+        #expect(mgr.splitTimes.map(\.label) == ["20%"])
+    }
+
+    @Test("The leg start survives the crash snapshot and a restore")
+    func legStartSurvivesRestore() throws {
+        let (mgr, next, _) = try switchedSession()
+        let data = try JSONEncoder().encode(mgr.snapshot)
+        let snapshot = try JSONDecoder().decode(ActiveWalkSnapshot.self, from: data)
+        #expect(snapshot.legStartDistance == 1_050)
+
+        let restored = NavigationSessionManager(route: snapshot.route.navigableRoute)
+        restored.writesSnapshots = false
+        restored.applySnapshot(snapshot)
+        #expect(restored.legStartDistance == 1_050)
+        #expect(restored.route.path != nil)
+        #expect(abs(restored.remainingDistance - next.totalDistance) < 1)
+        var labels: [String] = []
+        restored.onCheckpointReached = { labels.append($0) }
+        restored.totalDistanceCovered = 1_050 + 0.25 * next.totalDistance
+        restored.checkDistanceCheckpoints()
+        #expect(labels == ["20%"], "a restored trail walk still counts its markers from the trail")
+    }
+
+    @Test("The Live Activity's total includes the way there, so distance left is the trail's")
+    func liveActivityTotal() throws {
+        #expect(NavigationSessionManager.liveActivityTotal(routeTotal: 800, legStart: 0) == 800)
+        #expect(NavigationSessionManager.liveActivityTotal(routeTotal: 800, legStart: 1_500) == 2_300)
+        let (mgr, next, _) = try switchedSession()
+        #expect(abs(mgr.liveActivityTotalMeters - mgr.totalDistanceCovered - next.totalDistance) < 0.001,
+                "total − covered is what the widget shows as left")
+    }
+
+    @Test("Turning a loop round publishes the new route")
+    func reversalPublishesRoute() throws {
+        let square = [CLLocationCoordinate2D(latitude: 35.780, longitude: -78.640),
+                      CLLocationCoordinate2D(latitude: 35.780, longitude: -78.6356),
+                      CLLocationCoordinate2D(latitude: 35.7836, longitude: -78.6356),
+                      CLLocationCoordinate2D(latitude: 35.7836, longitude: -78.640),
+                      CLLocationCoordinate2D(latitude: 35.780, longitude: -78.640)]
+        let length = TrailWalkPlanner.length(square)
+        let route = NavigableRoute(name: "Loop", waypoints: TrailWalkPlanner.checkpoints(along: square, isLoop: true, length: length),
+                                   lapCount: 1, isLoop: true, totalDistance: length, path: square)
+        let mgr = NavigationSessionManager(route: route)
+        mgr.writesSnapshots = false
+        var published: [UUID] = []
+        mgr.onRouteChanged = { published.append($0.id) }
+        let reversed = try #require(route.reversedAlongLine())
+        let progress = try #require(TrailProgress(route: reversed))
+        mgr.turnRouteRound(.init(route: reversed, progress: progress, index: 1, lap: 1))
+        #expect(published == [reversed.id], "the map and ActiveWalkStore redraw from this")
+    }
+
+    @Test("A trail destination that no longer decodes costs the offer, not the walk")
+    func corruptApproachStillRestores() throws {
+        let approach = TrailApproach(item: trailItem)
+        let route = approach.navigableRoute(from: home, to: access, distanceMeters: 1_100, activityMode: .running)
+        var json = try #require(try JSONSerialization.jsonObject(
+            with: JSONEncoder().encode(ActiveWalkSnapshot.RouteData(route))) as? [String: Any])
+        json["approach"] = ["trailID": 7, "sections": "not an array"]
+        let restored = try JSONDecoder().decode(ActiveWalkSnapshot.RouteData.self,
+                                                from: JSONSerialization.data(withJSONObject: json)).navigableRoute
+        #expect(restored.approach == nil)
+        #expect(restored.name == "To Test Greenway")
+        #expect(restored.waypoints.count == 2)
+        #expect(restored.activityMode == .running)
     }
 }

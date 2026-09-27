@@ -338,7 +338,9 @@ struct ActiveSessionView: View {
                 computedLegs: computedLegs,
                 currentWaypointIndex: session.currentWaypointIndex,
                 checkpointsEnabled: checkpointsEnabled,
-                distanceCoveredMeters: session.totalDistanceCovered,
+                // Milestones are placed along this route's own line, so they
+                // count from where it began, not from home.
+                distanceCoveredMeters: session.totalDistanceCovered - session.legStartDistance,
                 headingDegrees: headingTracker.direction(track: session.trackPoints),
                 headingUp: headingUp,
                 recenterToken: recenterToken,
@@ -875,7 +877,7 @@ struct ActiveSessionView: View {
         Task {
             await WalkLiveActivityManager.shared.start(
                 routeName: next.name,
-                totalDistanceMeters: next.totalDistance,
+                totalDistanceMeters: cap.liveActivityTotalMeters,
                 activityMode: next.activityMode.rawValue,
                 startDate: cap.startTime
             )
@@ -997,7 +999,7 @@ struct ActiveSessionView: View {
         }
         await WalkLiveActivityManager.shared.start(
             routeName: route.name,
-            totalDistanceMeters: route.totalDistance,
+            totalDistanceMeters: session.liveActivityTotalMeters,
             activityMode: route.activityMode.rawValue,
             startDate: session.startTime
         )
