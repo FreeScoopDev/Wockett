@@ -9,6 +9,7 @@ branching network with one name is left alone.
 import json
 import math
 import os
+import signal
 import sqlite3
 import sys
 import tempfile
@@ -173,6 +174,8 @@ class JoinUnnamedTests(unittest.TestCase):
         rows = conn.execute(
             "SELECT source_ref, name, length_m, tags_json, polyline FROM trails ORDER BY id").fetchall()
         meta = dict(conn.execute("SELECT key, value FROM meta"))
+        conn.row_factory = sqlite3.Row
+        self.full = {r["source_ref"]: dict(r) for r in conn.execute("SELECT * FROM trails")}
         conn.close()
         return stats, rows, meta
 
@@ -182,7 +185,7 @@ class JoinUnnamedTests(unittest.TestCase):
         north("w14", 35.790, 35.792, **SIDEPATH),
         north("w12", 35.781, 35.780, **SIDEPATH),          # reversed
         north("w13", 35.781, 35.7811, **SIDEPATH),         # 11 m
-        north("w15", 35.7811, 35.790, **SIDEPATH),
+        north("w15", 35.7811, 35.790, lit="yes", **SIDEPATH),   # the longest
         north("w16", 35.792, 35.795, highway="footway", surface="concrete", bicycle="yes"),
     ]
 
@@ -198,6 +201,45 @@ class JoinUnnamedTests(unittest.TestCase):
         self.assertIn(lats, (sorted(lats), sorted(lats, reverse=True)), "no doubling back")
         self.assertEqual(stats.joined_unnamed_ways, 5)
         self.assertEqual(stats.unnamed_corridors, 1)
+        # w14 was read first, so it has id 1: neither the chain's first piece
+        # (w12 or w16) nor the longest (w15), whose tags the row carries.
+        self.assertEqual(self.full["w12"]["id"], 1, "the smallest member id")
+        self.assertEqual(json.loads(tags).get("lit"), "yes", "tags come from the longest member")
+        self.assertEqual(json.loads(tags)["highway"], "cycleway")
+
+    def test_three_unnamed_ways_forming_a_triangle_are_one_loop(self):
+        tri = [feature("w1", [[LON, 35.780], [LON + 0.004, 35.780]], **SIDEPATH),
+               feature("w2", [[LON + 0.004, 35.780], [LON + 0.002, 35.783]], **SIDEPATH),
+               feature("w3", [[LON + 0.002, 35.783], [LON, 35.780]], **SIDEPATH)]
+
+        def hung(*_):
+            raise TimeoutError("joining a closed loop never finished")
+        old = signal.signal(signal.SIGALRM, hung)
+        signal.setitimer(signal.ITIMER_REAL, 5)
+        try:
+            _, rows, _ = self.build(tri)
+        finally:
+            signal.setitimer(signal.ITIMER_REAL, 0)
+            signal.signal(signal.SIGALRM, old)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(self.full["w1"]["is_loop"], 1)
+        self.assertEqual(json.loads(rows[0][3])["merged_ways"], 3)
+
+    def test_heading_is_read_past_a_kink_at_the_end(self):
+        # At a junction w2 carries on north but starts with a 5 m jog east (a
+        # curb ramp); w3 bears off 30°. Read over its first 15 m, w2 is the
+        # straight one; read off its first segment alone it would be a 90°
+        # turn and w3 would win.
+        lat = 35.790
+        jog = 5 / (111_320 * math.cos(math.radians(lat)))
+        dlon = 0.01 * math.tan(math.radians(30)) / math.cos(math.radians(lat))
+        ways = [north("w1", 35.780, lat, **SIDEPATH),
+                feature("w2", [[LON, lat], [LON + jog, lat], [LON + jog, lat + 0.01]], **SIDEPATH),
+                feature("w3", [[LON, lat], [LON + dlon, lat + 0.01]], **SIDEPATH)]
+        _, rows, _ = self.build(ways)
+        self.assertEqual(json.loads(self.full["w1"]["tags_json"]).get("merged_ways"), 2)
+        self.assertIn("w3", self.full, "w3 is left as its own row")
+        self.assertAlmostEqual(self.full["w1"]["length_m"], 2 * 1112 + 5, delta=10, msg="w1 + w2")
 
     def test_ends_a_metre_apart_join_but_ten_metres_apart_do_not(self):
         near = [north("w1", 35.780, 35.781, **SIDEPATH),
@@ -315,14 +357,94 @@ class JoinUnnamedTests(unittest.TestCase):
 
     def test_named_crossing_joins_its_trail_or_goes(self):
         # Greenways often name their crossings (the Charlotte Rail Trail has 25).
-        ways = [north("w1", 35.780, 35.790, name="Rail Trail"),
+        ways = [north("w1", 35.780, 35.790, name="Rail Trail", bicycle="designated", **SIDEPATH),
                 north("w2", 35.790, 35.7902, name="Rail Trail", highway="footway", footway="crossing"),
-                north("w3", 35.7902, 35.800, name="Rail Trail"),
+                north("w3", 35.7902, 35.800, name="Rail Trail", bicycle="designated", **SIDEPATH),
                 north("w9", 35.850, 35.8505, name="Elm Street", highway="footway", footway="crossing")]
         stats, rows, _ = self.build(ways)
         self.assertEqual([(r[0], r[1]) for r in rows], [("w1", "Rail Trail")])
         self.assertEqual(json.loads(rows[0][3])["merged_ways"], 3)
+        self.assertEqual(self.full["w1"]["allows_bike"], 1, "the crossing does not vote")
         self.assertEqual(stats.skipped_crossing, 1)
+
+    def test_no_merge_flag_still_drops_named_crossings(self):
+        ways = [north("w1", 35.780, 35.790, name="Rail Trail"),
+                north("w2", 35.790, 35.7905, name="Rail Trail", highway="footway", footway="crossing")]
+        stats, rows, _ = self.build(ways, merge_ways=False)
+        self.assertEqual([r[0] for r in rows], ["w1"])
+        self.assertEqual(stats.skipped_crossing, 1)
+
+    # --- access, surface and dogs on joined rows ---------------------------
+
+    def test_crossings_do_not_vote_on_bike_surface_or_dogs(self):
+        ways = [north("w1", 35.780, 35.790, bicycle="designated", foot="designated", **SIDEPATH),
+                north("w2", 35.790, 35.7902, highway="footway", footway="crossing",
+                      surface="paving_stones", dog="no"),
+                north("w3", 35.7902, 35.800, bicycle="designated", foot="designated", **SIDEPATH),
+                north("w4", 35.800, 35.8002, highway="footway", footway="crossing", surface="paving_stones"),
+                north("w5", 35.8002, 35.810, bicycle="designated", foot="designated", **SIDEPATH)]
+        self.build(ways)
+        row = self.full["w1"]
+        self.assertEqual(json.loads(row["tags_json"])["merged_ways"], 5)
+        self.assertEqual((row["allows_bike"], row["allows_foot"]), (1, 1))
+        self.assertEqual(row["surface"], "asphalt", "not the crossings' paving stones")
+        self.assertEqual(row["dog_access"], "unknown", "the crosswalk's dog=no is not the path's")
+
+    def test_a_silent_member_does_not_take_access_away(self):
+        # A cycleway continued by an untagged footway: the footway says
+        # nothing about bikes, which is not a no.
+        ways = [north("w1", 35.780, 35.790, **SIDEPATH),
+                north("w2", 35.790, 35.800, highway="footway", surface="asphalt")]
+        self.build(ways)
+        self.assertEqual(self.full["w1"]["allows_bike"], 1)
+
+    def test_an_explicit_no_takes_access_away(self):
+        ways = [north("w1", 35.780, 35.790, **SIDEPATH),
+                north("w2", 35.790, 35.800, highway="footway", surface="asphalt", bicycle="no")]
+        self.build(ways)
+        self.assertEqual(self.full["w1"]["allows_bike"], 0)
+        self.assertEqual(self.full["w1"]["allows_foot"], 1, "footway allows foot; bicycle=no is not about feet")
+
+    def test_access_no_is_a_no_for_every_mode_it_does_not_reopen(self):
+        ways = [north("w1", 35.780, 35.790, bicycle="designated", **SIDEPATH),
+                north("w2", 35.790, 35.800, highway="path", surface="asphalt", access="no", foot="yes")]
+        self.build(ways)
+        self.assertEqual((self.full["w1"]["allows_bike"], self.full["w1"]["allows_foot"]), (0, 1))
+
+    def test_access_needs_one_member_that_allows_it(self):
+        ways = [north("w1", 35.780, 35.790, highway="footway", surface="asphalt"),
+                north("w2", 35.790, 35.800, highway="footway", surface="asphalt")]
+        self.build(ways)
+        self.assertEqual(self.full["w1"]["allows_bike"], 0, "no member says bikes may")
+
+    def test_named_merge_uses_the_same_access_rule(self):
+        ways = [north("w1", 35.780, 35.790, name="Rail Trail", **SIDEPATH),
+                north("w2", 35.790, 35.800, name="Rail Trail", highway="footway", surface="asphalt"),
+                north("w5", 35.880, 35.890, name="Mill Trail", **SIDEPATH),
+                north("w6", 35.890, 35.900, name="Mill Trail", highway="footway", bicycle="no")]
+        self.build(ways)
+        self.assertEqual(self.full["w1"]["allows_bike"], 1)
+        self.assertEqual(self.full["w5"]["allows_bike"], 0)
+
+    def test_crossings_do_not_count_toward_the_length_floor(self):
+        # 12 m + a 10 m crossing + 12 m is 34 m of row but 24 m of trail.
+        ways = [north("w1", 35.7800, 35.78011, **SIDEPATH),
+                north("w2", 35.78011, 35.7802, highway="footway", footway="crossing"),
+                north("w3", 35.7802, 35.78031, **SIDEPATH)]
+        stats, rows, _ = self.build(ways)
+        self.assertEqual(rows, [])
+        self.assertEqual(stats.skipped_short, 1)
+
+    def test_a_trail_running_through_the_meeting_point_makes_it_a_junction(self):
+        # w1 ends where w2 starts, at a right angle, on the middle of a named
+        # trail that was never split there. That is a crossroads, not a bend.
+        lat = 35.790
+        ways = [north("w1", 35.780, lat, **SIDEPATH),
+                feature("w2", [[LON, lat], [LON + 0.01, lat]], **SIDEPATH),
+                feature("w3", [[LON - 0.005, lat + 0.005], [LON + 0.005, lat - 0.005]],
+                        name="Diagonal Trail", **SIDEPATH)]
+        _, rows, _ = self.build(ways)
+        self.assertEqual(sorted(r[0] for r in rows), ["w1", "w2", "w3"])
 
     def test_no_join_flag_keeps_unnamed_ways_apart(self):
         stats, rows, meta = self.build(self.CHAIN, join_unnamed=False)
@@ -394,6 +516,64 @@ class JoinUnnamedTests(unittest.TestCase):
                      dict(highway="footway", surface="concrete")):   # no bike: a sidewalk
             _, rows, _ = self.build([north("w1", 35.780, 35.795, **tags)], roads=self.PARALLEL)
             self.assertIsNone(rows[0][1], tags)
+
+    def test_a_continuation_of_a_named_trail_is_not_named_after_the_road(self):
+        ways = [north("w1", 35.770, 35.780, name="Cross City Trail", **SIDEPATH),
+                north("w2", 35.780, 35.795, **SIDEPATH)]
+        stats, rows, _ = self.build(ways, roads=self.PARALLEL)
+        self.assertIsNone(self.full["w2"]["name"])
+        self.assertEqual(stats.derived_suppressed_named, 1)
+
+    def test_a_named_trail_crossing_at_the_end_does_not_suppress_the_name(self):
+        ways = [feature("w1", [[LON - 0.01, 35.780], [LON + 0.01, 35.780]], name="Cross City Trail", **SIDEPATH),
+                north("w2", 35.780, 35.795, **SIDEPATH)]
+        stats, _, _ = self.build(ways, roads=self.PARALLEL)
+        self.assertEqual(self.full["w2"]["name"], "Duck Road Path")
+        self.assertEqual(stats.derived_suppressed_named, 0)
+
+    def test_sidepaths_on_both_sides_get_the_side_in_their_name(self):
+        road = [feature("w100", [[LON, 35.775], [LON, 35.800]], highway="primary", name="Duck Road")]
+        east = LON + 0.00022   # ~20 m either side
+        west = LON - 0.00022
+        ways = [north("w1", 35.780, 35.795, lon=east, **SIDEPATH),
+                north("w2", 35.780, 35.795, lon=west, **SIDEPATH)]
+        stats, _, _ = self.build(ways, roads=road)
+        self.assertEqual(self.full["w1"]["name"], "Duck Road Path (East Side)")
+        self.assertEqual(self.full["w2"]["name"], "Duck Road Path (West Side)")
+        self.assertEqual(stats.derived_side_suffixed, 2)
+        # An east-west road gets North / South.
+        road = [feature("w100", [[-78.66, 35.780], [-78.62, 35.780]], highway="primary", name="Main Street")]
+        ways = [feature("w1", [[-78.655, 35.7802], [-78.640, 35.7802]], **SIDEPATH),
+                feature("w2", [[-78.655, 35.7798], [-78.640, 35.7798]], **SIDEPATH)]
+        self.build(ways, roads=road)
+        self.assertEqual(self.full["w1"]["name"], "Main Street Path (North Side)")
+        self.assertEqual(self.full["w2"]["name"], "Main Street Path (South Side)")
+
+    def test_sidepaths_on_opposite_sides_but_not_side_by_side_get_no_side(self):
+        # East of the road for one stretch, west of it further on: two
+        # separate cards in the app already (1.1 km apart), so no suffix.
+        road = [feature("w100", [[LON, 35.775], [LON, 35.830]], highway="primary", name="Duck Road")]
+        ways = [north("w1", 35.780, 35.795, lon=LON + 0.00022, **SIDEPATH),
+                north("w2", 35.805, 35.820, lon=LON - 0.00022, **SIDEPATH)]
+        stats, _, _ = self.build(ways, roads=road)
+        self.assertEqual((self.full["w1"]["name"], self.full["w2"]["name"]), ("Duck Road Path", "Duck Road Path"))
+        self.assertEqual(stats.derived_side_suffixed, 0)
+
+    def test_one_sidepath_gets_no_side(self):
+        _, rows, _ = self.build(self.CHAIN, roads=self.PARALLEL)
+        self.assertEqual(rows[0][1], "Duck Road Path")
+
+    def test_a_road_called_a_trail_gives_a_sidepath(self):
+        road = [feature("w100", [[LON + 0.00022, 35.775], [LON + 0.00022, 35.800]],
+                        highway="primary", name="Virginia Dare Trail")]
+        _, rows, _ = self.build(self.CHAIN, roads=road)
+        self.assertEqual(rows[0][1], "Virginia Dare Trail Sidepath")
+
+    def test_a_blank_road_name_is_no_name(self):
+        road = [feature("w100", [[LON + 0.00022, 35.775], [LON + 0.00022, 35.800]],
+                        highway="primary", name="   ")]
+        _, rows, _ = self.build(self.CHAIN, roads=road)
+        self.assertIsNone(rows[0][1])
 
     # --- sidewalks ---------------------------------------------------------
 

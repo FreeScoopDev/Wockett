@@ -295,6 +295,15 @@ class Trail:
     surface_class: str = ""
     is_sidewalk: bool = False
     is_crossing: bool = False
+    # Explicit "no" for a mode (foot=no, bicycle=no, horse=no, or access=no
+    # without a yes for that mode). Different from allows_* = 0, which is also
+    # what "the data does not say" looks like. See _merged_row.
+    forbids_foot: bool = False
+    forbids_bike: bool = False
+    forbids_horse: bool = False
+    # Length that counts toward the --min-length floor: a merged row's
+    # crossings are links, not trail, and do not count (None = length_m).
+    floor_length_m: Optional[float] = None
 
 
 @dataclass
@@ -305,6 +314,8 @@ class Stats:
     joined_unnamed_ways: int = 0
     unnamed_corridors: int = 0
     derived_names: int = 0
+    derived_suppressed_named: int = 0
+    derived_side_suffixed: int = 0
     skipped_sidewalk: int = 0
     skipped_crossing: int = 0
     skipped_unnamed: int = 0
@@ -427,7 +438,19 @@ def normalize_feature(
         surface_class=surface_class(tags.get("surface")),
         is_sidewalk=_is_sidewalk(highway, tags.get("footway")),
         is_crossing=_is_crossing(highway, tags),
+        forbids_foot=_forbids(tags, "foot"),
+        forbids_bike=_forbids(tags, "bicycle"),
+        forbids_horse=_forbids(tags, "horse"),
     ), simplified)
+
+
+def _forbids(tags: dict[str, str], mode: str) -> bool:
+    """True only when the data says no for this mode, never by default."""
+    value = (tags.get(mode) or "").strip().lower()
+    if value in _FALSE_ISH:
+        return True
+    access = (tags.get("access") or "").strip().lower()
+    return access in _FALSE_ISH and value not in _TRUE_ISH and value != "dismount"
 
 
 # ---------------------------------------------------------------------------
@@ -583,14 +606,31 @@ def merge_named_ways(
 
 
 def _merged_row(parts, coords: list[list[float]], base: Optional[Trail] = None):
-    """One Trail from several, with the most conservative dog access.
+    """One Trail from several.
 
-    Tags (and name) come from `base`, by default the first part."""
+    Tags (and name) come from `base`, by default the first part.
+
+    Crossings do not vote on access, surface, difficulty or dogs: they are a
+    few metres of road crosswalk, usually tagged with nothing, and letting
+    them vote took bike access off the whole Duck sidepath (bicycle=designated
+    cycleways joined by untagged crossings) and 3.5 km of the Charlotte Rail
+    Trail. Among the rest, a mode (foot, bike, horse) is allowed when at least
+    one member allows it and no member forbids it outright (_forbids: an
+    explicit no). A member that is merely silent — an untagged footway in a
+    cycleway corridor — neither allows nor forbids. Dog access is the most
+    restrictive value any member states or infers from access tags."""
     first = base or parts[0][0]
     refs = sorted(t.source_ref for t, _ in parts)
     length_m = line_length_m(coords)
     lats = [c[1] for c in coords]
     lons = [c[0] for c in coords]
+    all_parts = parts
+    parts = [p for p in parts if not p[0].is_crossing] or parts  # the voters
+
+    def allowed(allows: str, forbids: str) -> int:
+        members = [t for t, _ in parts]
+        return 1 if (any(getattr(t, allows) for t in members)
+                     and not any(getattr(t, forbids) for t in members)) else 0
 
     tagged = [(t.dog_access, t.dog_access_provenance) for t, _ in parts if t.dog_access_provenance != "default"]
     if tagged:
@@ -606,7 +646,7 @@ def _merged_row(parts, coords: list[list[float]], base: Optional[Trail] = None):
         return max(sorted(set(values)), key=values.count)
 
     tags = json.loads(first.tags_json)
-    tags["merged_ways"] = len(parts)
+    tags["merged_ways"] = len(all_parts)
     is_loop = 1 if haversine_m(coords[0], coords[-1]) < 50 and length_m > 200 else 0
 
     trail = Trail(
@@ -621,15 +661,19 @@ def _merged_row(parts, coords: list[list[float]], base: Optional[Trail] = None):
         difficulty=majority(t.difficulty for t, _ in parts),
         dog_access=dog_access,
         dog_access_provenance=provenance,
-        allows_foot=1 if all(t.allows_foot for t, _ in parts) else 0,
-        allows_bike=1 if all(t.allows_bike for t, _ in parts) else 0,
-        allows_horse=1 if all(t.allows_horse for t, _ in parts) else 0,
+        allows_foot=allowed("allows_foot", "forbids_foot"),
+        allows_bike=allowed("allows_bike", "forbids_bike"),
+        allows_horse=allowed("allows_horse", "forbids_horse"),
         is_loop=is_loop,
         tags_json=json.dumps(tags, separators=(",", ":"), sort_keys=True),
-        id=min(t.id for t, _ in parts),
+        id=min(t.id for t, _ in all_parts),
         family=first.family,
         surface_class=first.surface_class,
         is_sidewalk=first.is_sidewalk,
+        forbids_foot=any(t.forbids_foot for t, _ in parts),
+        forbids_bike=any(t.forbids_bike for t, _ in parts),
+        forbids_horse=any(t.forbids_horse for t, _ in parts),
+        floor_length_m=sum(t.length_m for t, _ in all_parts if not t.is_crossing),
     )
     return trail, coords
 
@@ -733,16 +777,76 @@ def _cluster_points(points: Sequence[Sequence[float]], tol_m: float) -> list[int
     return [find(i) for i in range(len(points))]
 
 
+class _SegmentGrid:
+    """Line segments in a coarse grid, stored only in the cells asked for."""
+
+    def __init__(self, cell_deg: float, needed: Optional[set[tuple[int, int]]] = None) -> None:
+        self.cell_deg = cell_deg
+        self.needed = needed
+        self.cells: dict[tuple[int, int], list[tuple[int, int, int]]] = {}
+        self.lines: list[Sequence[Sequence[float]]] = []
+
+    def cell(self, lon: float, lat: float) -> tuple[int, int]:
+        return (math.floor(lon / self.cell_deg), math.floor(lat / self.cell_deg))
+
+    def add(self, coords: Sequence[Sequence[float]]) -> int:
+        key = len(self.lines)
+        self.lines.append(coords)
+        last = len(coords) - 2
+        for k, (a, b) in enumerate(zip(coords, coords[1:])):
+            x0, y0 = self.cell(min(a[0], b[0]), min(a[1], b[1]))
+            x1, y1 = self.cell(max(a[0], b[0]), max(a[1], b[1]))
+            for cx in range(x0, x1 + 1):
+                for cy in range(y0, y1 + 1):
+                    if self.needed is None or (cx, cy) in self.needed:
+                        self.cells.setdefault((cx, cy), []).append((key, k, last))
+        return key
+
+    def near(self, p: Sequence[float], tol_m: float):
+        """(line key, unit direction of the segment, t, is first seg, is last seg)
+        for every segment within tol_m of p. t is where p projects, 0..1."""
+        cx, cy = self.cell(p[0], p[1])
+        seen = set()
+        px, py = _local_xy(p, p[1])
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                for key, k, last in self.cells.get((cx + dx, cy + dy), ()):
+                    if (key, k) in seen:
+                        continue
+                    seen.add((key, k))
+                    a, b = self.lines[key][k], self.lines[key][k + 1]
+                    ax, ay = _local_xy(a, p[1])
+                    bx, by = _local_xy(b, p[1])
+                    sx, sy = bx - ax, by - ay
+                    seg2 = sx * sx + sy * sy
+                    t = 0.0 if seg2 == 0 else max(0.0, min(1.0, ((px - ax) * sx + (py - ay) * sy) / seg2))
+                    if math.hypot(px - (ax + t * sx), py - (ay + t * sy)) <= tol_m:
+                        yield key, _unit(sx, sy), t, k == 0, k == last
+
+
+_JUNCTION_CELL_DEG = 0.0005  # ~50 m; one ring covers the 3 m tolerance
+
+
+def _grid_cells_around(points: Iterable[Sequence[float]], cell_deg: float) -> set[tuple[int, int]]:
+    cells = set()
+    for p in points:
+        cx, cy = math.floor(p[0] / cell_deg), math.floor(p[1] / cell_deg)
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                cells.add((cx + dx, cy + dy))
+    return cells
+
+
 def join_unnamed_ways(
     members: list[tuple[Trail, list[list[float]]]],
     stats: Stats,
-    other_ends: Sequence[Sequence[float]] = (),
+    other_lines: Sequence[Sequence[Sequence[float]]] = (),
 ) -> list[tuple[Trail, list[list[float]]]]:
     """Chain unnamed ways of one source into corridors (rules above).
 
-    `other_ends` are the endpoints of every other way in the source (the
-    named ones): they are never joined here, but they make a meeting point a
-    junction."""
+    `other_lines` are every other way in the source (the named ones): they
+    are never joined here, but they make a meeting point a junction — by
+    ending there, or by running through it (two legs) without a split."""
     if len(members) < 2:
         crossings = [m for m in members if m[0].is_crossing]
         stats.skipped_crossing += len(crossings)
@@ -754,7 +858,9 @@ def join_unnamed_ways(
     for _, c in members:
         points.append(c[0])
         points.append(c[-1])
-    points.extend(other_ends)
+    for c in other_lines:
+        points.append(c[0])
+        points.append(c[-1])
     cluster = _cluster_points(points, JOIN_ENDPOINT_TOLERANCE_M)
     degree: dict[int, int] = {}
     for node in cluster:
@@ -764,6 +870,24 @@ def join_unnamed_ways(
     for i in range(n):
         for end in (0, 1):
             ends_at.setdefault(cluster[2 * i + end], []).append((i, end))
+
+    # A way that runs through a meeting point without being split there is
+    # two more legs: an unnamed path ending on the side of an unsplit trail
+    # is at a T, not at a simple end-to-end joint. Only points where two or
+    # more unnamed ends meet can be joins, so only those are looked up.
+    live = {node: ends for node, ends in ends_at.items() if len(ends) >= 2}
+    if live:
+        lines = [c for _, c in members] + list(other_lines)
+        node_point = {node: points[2 * ends[0][0] + ends[0][1]] for node, ends in live.items()}
+        grid = _SegmentGrid(_JUNCTION_CELL_DEG, _grid_cells_around(node_point.values(), _JUNCTION_CELL_DEG))
+        for line in lines:
+            grid.add(line)
+        for node, p in node_point.items():
+            through = set()
+            for key, _, _, _, _ in grid.near(p, JOIN_ENDPOINT_TOLERANCE_M):
+                if cluster[2 * key] != node and cluster[2 * key + 1] != node:
+                    through.add(key)
+            degree[node] += 2 * len(through)
 
     candidates = []
     for node, ends in ends_at.items():
@@ -940,9 +1064,9 @@ class RoadIndex:
     def load(cls, path: str, needed: Optional[set[tuple[int, int]]] = None) -> "RoadIndex":
         index = cls()
         for feature in read_features(path):
-            name = (feature.get("properties") or {}).get("name")
+            name = str((feature.get("properties") or {}).get("name") or "").strip()
             geom = feature.get("geometry") or {}
-            if not name:
+            if not name:  # absent, empty, or only whitespace
                 continue
             if geom.get("type") == "LineString":
                 lines = [geom.get("coordinates") or []]
@@ -952,7 +1076,7 @@ class RoadIndex:
                 continue
             for line in lines:
                 if len(line) >= 2:
-                    index.add(str(name), [c[:2] for c in line], needed)
+                    index.add(name, [c[:2] for c in line], needed)
         return index
 
     def near(self, lon: float, lat: float):
@@ -1036,8 +1160,84 @@ def _may_derive_name(trail: Trail) -> bool:
 def derived_corridor_name(road: str, family: str) -> str:
     if family == "sidewalk":
         return f"{road} Sidewalk"
-    # "Mill Path Path" reads as a typo; a road already called a path gets "Sidepath".
-    return f"{road} Sidepath" if road.split()[-1].lower() == "path" else f"{road} Path"
+    # "Mill Path Path" reads as a typo and "Virginia Dare Trail Path" as a
+    # stutter; a road already called a path or trail gets "Sidepath".
+    return f"{road} Sidepath" if road.split()[-1].lower() in ("path", "trail") else f"{road} Path"
+
+
+# A corridor that carries straight on out of a trail with a real name is that
+# trail's unnamed continuation — "Eastwood Road Path" was the unnamed end of
+# Cross City Trail. Naming it after the road would put two names on one path,
+# so it keeps no name. (Inheriting the trail's name is a separate decision.)
+NAMED_CONTINUATION_MAX_DEFLECTION_DEG = JUNCTION_MAX_DEFLECTION_DEG
+
+
+def _continues_named_path(coords: Sequence[Sequence[float]], named: _SegmentGrid) -> bool:
+    for at_start in (True, False):
+        end = coords[0] if at_start else coords[-1]
+        heading = _end_heading(coords, at_start)
+        for _, (ux, uy), t, first_seg, last_seg in named.near(end, JOIN_ENDPOINT_TOLERANCE_M):
+            # Directions a walker can go along the named way from here. At
+            # the named way's own end there is only one: into it.
+            if first_seg and t == 0.0:
+                ways = [(ux, uy)]
+            elif last_seg and t == 1.0:
+                ways = [(-ux, -uy)]
+            else:
+                ways = [(ux, uy), (-ux, -uy)]
+            if any(deflection_deg(heading, w) <= NAMED_CONTINUATION_MAX_DEFLECTION_DEG for w in ways):
+                return True
+    return False
+
+
+# Sidepaths on both sides of one road get the same derived name, and the app
+# sums same-named sections within 400 m into one card (TrailList.swift), so
+# "The Plaza Path" showed 2.85 km for a 1.5 km road. Two derived rows named
+# after the same road that run side by side get the side of the road each is
+# on: "Duck Road Path (East Side)".
+SIDE_BY_SIDE_MAX_DISTANCE_M = 60.0
+SIDE_BY_SIDE_MIN_SHARE = 0.5
+
+
+def _share_within(coords: Sequence[Sequence[float]], other: Sequence[Sequence[float]], tol_m: float) -> float:
+    samples = _samples(coords, _DERIVED_NAME_SAMPLE_M)
+    if not samples:
+        return 0.0
+    grid = _SegmentGrid(_ROAD_CELL_DEG)
+    grid.add(other)
+    near = sum(1 for lon, lat, _ in samples if next(grid.near((lon, lat), tol_m), None) is not None)
+    return near / len(samples)
+
+
+def _road_side(coords: Sequence[Sequence[float]], roads: RoadIndex, road: str) -> Optional[str]:
+    """Which side of `road` this line runs on, as a compass side."""
+    nid = roads.names.index(road)
+    sx = sy = 0.0
+    for lon, lat, _ in _samples(coords, _DERIVED_NAME_SAMPLE_M):
+        px, py = _local_xy((lon, lat), lat)
+        best = None
+        for rid, lon1, lat1, lon2, lat2 in roads.near(lon, lat):
+            if rid != nid:
+                continue
+            ax, ay = _local_xy((lon1, lat1), lat)
+            bx, by = _local_xy((lon2, lat2), lat)
+            dx, dy = bx - ax, by - ay
+            seg2 = dx * dx + dy * dy
+            if seg2 == 0:
+                continue
+            t = max(0.0, min(1.0, ((px - ax) * dx + (py - ay) * dy) / seg2))
+            ox, oy = px - (ax + t * dx), py - (ay + t * dy)
+            if best is None or math.hypot(ox, oy) < math.hypot(*best):
+                best = (ox, oy)
+        if best is not None and math.hypot(*best) <= DERIVED_NAME_MAX_DISTANCE_M:
+            sx, sy = sx + best[0], sy + best[1]
+    ax, ay = _local_xy(coords[0], coords[0][1])
+    bx, by = _local_xy(coords[-1], coords[0][1])
+    if sx == 0 and sy == 0:
+        return None
+    if abs(by - ay) >= abs(bx - ax):  # the road runs north-south
+        return "East Side" if sx > 0 else "West Side"
+    return "North Side" if sy > 0 else "South Side"
 
 
 def apply_derived_names(
@@ -1053,15 +1253,45 @@ def apply_derived_names(
     for _, coords in targets:
         needed |= _cells_for(coords)
     roads = RoadIndex.load(roads_path, needed)
+
+    ends = [c for _, coords in targets for c in (coords[0], coords[-1])]
+    named = _SegmentGrid(_JUNCTION_CELL_DEG, _grid_cells_around(ends, _JUNCTION_CELL_DEG))
+    for trail, coords in rows:
+        if trail.name and trail.family == "path":
+            named.add(coords)
+
+    by_road: dict[str, list[tuple[Trail, list[list[float]]]]] = {}
     for trail, coords in targets:
         road = derive_road_name(coords, roads)
         if road is None:
+            continue
+        if _continues_named_path(coords, named):
+            stats.derived_suppressed_named += 1
             continue
         trail.name = derived_corridor_name(road, trail.family)
         tags = json.loads(trail.tags_json)
         tags["name_source"] = "derived_road"
         trail.tags_json = json.dumps(tags, separators=(",", ":"), sort_keys=True)
         stats.derived_names += 1
+        by_road.setdefault(road, []).append((trail, coords))
+
+    for road in sorted(by_road):
+        group = by_road[road]
+        sides = {}
+        for i, (a, ca) in enumerate(group):
+            for b, cb in group[i + 1:]:
+                if max(_share_within(ca, cb, SIDE_BY_SIDE_MAX_DISTANCE_M),
+                       _share_within(cb, ca, SIDE_BY_SIDE_MAX_DISTANCE_M)) < SIDE_BY_SIDE_MIN_SHARE:
+                    continue
+                for t, c in ((a, ca), (b, cb)):
+                    if id(t) not in sides:
+                        sides[id(t)] = _road_side(c, roads, road)
+                side_a, side_b = sides[id(a)], sides[id(b)]
+                if side_a and side_b and side_a != side_b:
+                    for t, side in ((a, side_a), (b, side_b)):
+                        if not t.name.endswith(")"):
+                            t.name = f"{t.name} ({side})"
+                            stats.derived_side_suffixed += 1
 
 
 # ---------------------------------------------------------------------------
@@ -1205,7 +1435,10 @@ def build_pack(
         unnamed: list[tuple[Trail, list[list[float]]]] = []
 
         def keep(row: tuple[Trail, list[list[float]]]) -> None:
-            if row[0].length_m < min_length_m:
+            t = row[0]
+            # Crossings do not count toward the floor: two 12 m pieces
+            # stitched by a 10 m crosswalk are not a 34 m trail.
+            if (t.length_m if t.floor_length_m is None else t.floor_length_m) < min_length_m:
                 stats.skipped_short += 1
             else:
                 rows.append(row)
@@ -1241,6 +1474,8 @@ def build_pack(
                     stats.skipped_crossing += 1
                 else:
                     keep((trail, coords))
+            elif trail.is_crossing and not merge_ways:
+                stats.skipped_crossing += 1  # a named crosswalk with nothing to join
             elif merge_ways:
                 # The length floor is applied AFTER merging: a 12 m connector
                 # way is exactly what joins two long pieces of a named trail,
@@ -1251,15 +1486,14 @@ def build_pack(
                 keep((trail, coords))
 
         # Deterministic: names in sorted order, members sorted inside.
-        named_ends = [c for name in sorted(pool) for _, coords in pool[name]
-                      for c in (coords[0], coords[-1])]
+        named_lines = [coords for name in sorted(pool) for _, coords in pool[name]]
         for name in sorted(pool):
             for row in merge_named_ways(pool[name], stats):
                 if row[0].is_crossing:  # a named crosswalk that joined nothing
                     stats.skipped_crossing += 1
                     continue
                 keep(row)
-        for row in join_unnamed_ways(unnamed, stats, other_ends=named_ends):
+        for row in join_unnamed_ways(unnamed, stats, other_lines=named_lines):
             keep(row)
 
     if roads_path:
@@ -1496,7 +1730,8 @@ def main(argv: Optional[list[str]] = None) -> int:
           f"{stats.merge_groups_left:,} same-name groups left unmerged (branching)")
     print(f"  joined unnamed     {stats.joined_unnamed_ways:,} ways -> "
           f"{stats.unnamed_corridors:,} corridors")
-    print(f"  derived names      {stats.derived_names:,}")
+    print(f"  derived names      {stats.derived_names:,} ({stats.derived_side_suffixed:,} with a side; "
+          f"{stats.derived_suppressed_named:,} withheld: they continue a named trail)")
     print(f"  points {stats.points_before:,} -> {stats.points_after:,} "
           f"({reduction:.1f}% removed)")
     print(f"  dog access         " + ", ".join(
