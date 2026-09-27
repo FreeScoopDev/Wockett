@@ -20,7 +20,10 @@ struct TrailsPanel: View {
     let activityMode: ActivityMode
     let containerHeight: CGFloat
     let modePicker: AnyView
+    let directions: TrailDirectionsModel
     let onStart: (TrailWalkPlan) -> Void
+    let onStartApproach: (NavigableRoute) -> Void
+    var refreshLocation: () async -> Void = {}
 
     var body: some View {
         VStack(spacing: 0) {
@@ -32,7 +35,8 @@ struct TrailsPanel: View {
 
             if let item = selected {
                 TrailDetailView(item: item, userLocation: userLocation, activityMode: activityMode,
-                                onStart: onStart) {
+                                directions: directions, onStart: onStart, onStartApproach: onStartApproach,
+                                refreshLocation: refreshLocation) {
                     withAnimation(.spring(response: 0.3)) { selected = nil }
                 }
             } else {
@@ -229,7 +233,10 @@ struct TrailDetailView: View {
     let item: TrailListItem
     let userLocation: CLLocationCoordinate2D?
     let activityMode: ActivityMode
+    let directions: TrailDirectionsModel
     let onStart: (TrailWalkPlan) -> Void
+    let onStartApproach: (NavigableRoute) -> Void
+    var refreshLocation: () async -> Void = {}
     let onBack: () -> Void
 
     /// A walk from where the person stands, when they are at the trail.
@@ -260,6 +267,16 @@ struct TrailDetailView: View {
                         .foregroundColor(.earthMuted)
                 }
 
+                // What to do next sits right under the name, so Start (at the
+                // trail) or the way there (not yet) needs no scrolling.
+                if let plan = startPlan {
+                    startButton(plan)
+                } else {
+                    TrailDirectionsSection(item: item, userLocation: userLocation, activityMode: activityMode,
+                                           directions: directions, onStart: onStartApproach,
+                                           refreshLocation: refreshLocation)
+                }
+
                 HStack(spacing: 8) {
                     stat("Length", TrailText.distance(item.lengthMeters))
                     if activityMode == .walking {
@@ -273,12 +290,6 @@ struct TrailDetailView: View {
                 TrailTagRow(item: item, activityMode: activityMode)
 
                 dogRule
-
-                if let plan = startPlan {
-                    startButton(plan)
-                } else {
-                    directionsButton
-                }
 
                 if item.isGroup { sectionList }
 
@@ -307,30 +318,6 @@ struct TrailDetailView: View {
             }
             .accessibilityIdentifier("routes.trailStart")
             Text(TrailText.startCaption(for: plan))
-                .font(.wktBody(12))
-                .foregroundColor(.earthMuted)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: .infinity)
-        }
-    }
-
-    private var directionsButton: some View {
-        VStack(spacing: 8) {
-            Button(action: openDirections) {
-                Label {
-                    Text("Directions to the trail")
-                } icon: {
-                    Image(wkt: .openInMaps).wktIcon(.row, tint: .white, onFill: true)
-                }
-                .font(.wktBody(17))
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 18)
-                .background(Color.earthGreenFill)
-                .foregroundColor(.white)
-                .cornerRadius(14)
-            }
-            .accessibilityIdentifier("routes.trailDirections")
-            Text("Start \(activityMode.sessionLabel) appears here when you're at the trail.")
                 .font(.wktBody(12))
                 .foregroundColor(.earthMuted)
                 .multilineTextAlignment(.center)
@@ -384,16 +371,6 @@ struct TrailDetailView: View {
         guard let userLocation else { return length }
         let away = BundledTrailSource.distanceMeters(from: userLocation, to: section)
         return "\(length) · \(TrailText.distance(away)) away"
-    }
-
-    /// Apple Maps to the point of the trail nearest the user (or its first
-    /// point, without a location). No transport mode is forced: the trail may
-    /// be a drive away, and Maps uses the person's own default.
-    private func openDirections() {
-        let target = TrailText.nearestCoordinate(of: item, to: userLocation)
-        let mapItem = MKMapItem(location: CLLocation(latitude: target.latitude, longitude: target.longitude), address: nil)
-        mapItem.name = item.name
-        mapItem.openInMaps()
     }
 }
 

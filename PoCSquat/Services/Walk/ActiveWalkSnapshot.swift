@@ -26,6 +26,8 @@ struct ActiveWalkSnapshot: Codable {
         let path: [WaypointCoord]?
         /// Optional for the same reason; absent means a trail's line.
         let pathIsRecording: Bool?
+        /// The trail a session is heading for. Optional for the same reason.
+        let approach: TrailApproach?
 
         init(_ route: NavigableRoute) {
             name = route.name
@@ -39,6 +41,27 @@ struct ActiveWalkSnapshot: Codable {
             customRouteId = route.customRouteId
             path = route.path?.map { WaypointCoord($0) }
             pathIsRecording = route.pathIsRecording
+            approach = route.approach
+        }
+
+        /// Written out so a trail destination that no longer decodes (a later
+        /// change to `TrailFeature`) costs only the arrival offer, never the
+        /// whole snapshot and the walk in it. Every other field decodes as
+        /// the synthesised init did.
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            name = try c.decode(String.self, forKey: .name)
+            waypoints = try c.decode([WaypointCoord].self, forKey: .waypoints)
+            lapCount = try c.decode(Int.self, forKey: .lapCount)
+            isLoop = try c.decode(Bool.self, forKey: .isLoop)
+            totalDistance = try c.decode(Double.self, forKey: .totalDistance)
+            isCustomRoute = try c.decode(Bool.self, forKey: .isCustomRoute)
+            isCommunityRoute = try c.decode(Bool.self, forKey: .isCommunityRoute)
+            activityMode = try c.decode(String.self, forKey: .activityMode)
+            customRouteId = try c.decodeIfPresent(UUID.self, forKey: .customRouteId)
+            path = try c.decodeIfPresent([WaypointCoord].self, forKey: .path)
+            pathIsRecording = try c.decodeIfPresent(Bool.self, forKey: .pathIsRecording)
+            approach = (try? c.decodeIfPresent(TrailApproach.self, forKey: .approach)) ?? nil
         }
 
         var navigableRoute: NavigableRoute {
@@ -53,7 +76,8 @@ struct ActiveWalkSnapshot: Codable {
                 activityMode: ActivityMode(rawValue: activityMode) ?? .walking,
                 customRouteId: customRouteId,
                 path: path?.map(\.clCoordinate),
-                pathIsRecording: pathIsRecording ?? false
+                pathIsRecording: pathIsRecording ?? false,
+                approach: approach
             )
         }
     }
@@ -79,12 +103,15 @@ struct ActiveWalkSnapshot: Codable {
     /// Metres along a trail or recorded line, so a restored walk picks up
     /// where it was instead of from the nearest stretch. Optional for the same reason.
     let trailAlong: Double?
+    /// Distance covered when the current route began: 0, or where a session
+    /// heading to a trail turned into the trail walk. Optional for the same reason.
+    let legStartDistance: Double?
 
     init(route: RouteData, startTime: Date, totalDistanceCovered: Double,
          pausedDuration: TimeInterval, isPaused: Bool, pauseStartDate: Date?,
          currentWaypointIndex: Int, currentLap: Int, triggeredCheckpoints: Set<Int>,
          splitTimes: [SplitTimeRecord], liveSteps: Int, checkpointDate: Date,
-         trackPoints: [WaypointCoord]? = nil, trailAlong: Double? = nil) {
+         trackPoints: [WaypointCoord]? = nil, trailAlong: Double? = nil, legStartDistance: Double? = nil) {
         self.route = route; self.startTime = startTime
         self.totalDistanceCovered = totalDistanceCovered
         self.pausedDuration = pausedDuration; self.isPaused = isPaused
@@ -94,6 +121,7 @@ struct ActiveWalkSnapshot: Codable {
         self.liveSteps = liveSteps; self.checkpointDate = checkpointDate
         self.trackPoints = trackPoints
         self.trailAlong = trailAlong
+        self.legStartDistance = legStartDistance
     }
 }
 

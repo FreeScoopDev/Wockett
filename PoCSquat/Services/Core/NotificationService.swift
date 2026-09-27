@@ -39,6 +39,9 @@ enum NotificationKind: Hashable {
     /// withdrawn when the person is back. Each used to get a fresh UUID and
     /// they piled up on the lock screen (2026-09-25 review).
     static let offTrail = NotificationKind.routeEvent("off-trail")
+    /// "You're at <trail>" on the way to a trail; withdrawn when the trail
+    /// walk starts or the session ends.
+    static let trailArrival = NotificationKind.routeEvent("trail-arrival")
 
     case weeklySummary
     case streakNudge
