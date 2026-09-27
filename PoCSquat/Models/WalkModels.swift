@@ -599,6 +599,10 @@ struct NavigableRoute: Identifiable, Hashable {
     /// Save Route keep a recording's whole line: `RecordedRoute` recognises it
     /// again, so it comes back followed, not routed on streets.
     var pathIsRecording: Bool = false
+    /// The trail this route leads to, for a session heading to a trail from
+    /// its detail screen: on arrival the session offers the trail walk
+    /// (`NavigationSessionManager.beginTrailWalk`).
+    var approach: TrailApproach? = nil
 
     /// What the line is called in off-line guidance: a trail, or the route
     /// someone recorded.

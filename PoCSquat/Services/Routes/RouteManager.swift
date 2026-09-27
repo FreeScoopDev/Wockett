@@ -283,8 +283,9 @@ final class RouteManager: NSObject, ObservableObject, CLLocationManagerDelegate 
         )]
     }
 
-    func fetchCurrentLocation() async -> CLLocation? {
-        await currentLocation()
+    /// A fix no older than `maxAge` seconds.
+    func fetchCurrentLocation(maxAge: TimeInterval = 300) async -> CLLocation? {
+        await currentLocation(maxAge: maxAge)
     }
 
     // MARK: - Loop Routes
@@ -451,14 +452,18 @@ final class RouteManager: NSObject, ObservableObject, CLLocationManagerDelegate 
 
     // MARK: - Location
 
-    private func currentLocation() async -> CLLocation? {
+    private func currentLocation(maxAge: TimeInterval = 300) async -> CLLocation? {
         if isWKTUITestMode {
             return CLLocation(latitude: 40.7589, longitude: -73.9851)
         }
         if authStatus == .notDetermined { locationManager.requestWhenInUseAuthorization() }
         guard authStatus == .authorizedWhenInUse || authStatus == .authorizedAlways else { return nil }
-        if let cached = locationManager.location, -cached.timestamp.timeIntervalSinceNow < 300 { return cached }
+        if let cached = locationManager.location, -cached.timestamp.timeIntervalSinceNow < maxAge { return cached }
         return await withCheckedContinuation { cont in
+            // Two callers at once (Routes opening, a trail's directions): the
+            // earlier one gets nil rather than waiting for ever on a
+            // continuation that was overwritten.
+            locationContinuation?.resume(returning: nil)
             locationContinuation = cont
             locationManager.requestLocation()
         }

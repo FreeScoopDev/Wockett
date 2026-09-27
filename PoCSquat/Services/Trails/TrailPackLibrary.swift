@@ -94,8 +94,15 @@ final class TrailPackLibrary {
             }
             open(url: url, region: region)
         }
-        for region in installed.keys.sorted() {
-            open(url: packURL(for: region), region: region)
+        for region in installed.keys.sorted() where open(url: packURL(for: region), region: region) == nil {
+            // `open` closed the bundled pack before trying the download, so a
+            // corrupt or unreadable download would leave the home region with
+            // no trails at all (2026-09-27). Reopen the bundled copy, but keep
+            // the error: the regions screen shows it and offers a re-download,
+            // which is why the manifest entry stays.
+            let error = loadErrors[region]
+            reopenFallback(for: region, bundle: bundle)
+            loadErrors[region] = error
         }
     }
 
@@ -145,6 +152,9 @@ final class TrailPackLibrary {
 
     func state(of record: TrailRegionRecord) -> RegionState {
         if let t = transient[record.region] { return t }
+        // Installed, but the file would not open at launch: what is open is
+        // the bundled copy or nothing, so say why and offer the download again.
+        if installed[record.region] != nil, let error = loadErrors[record.region] { return .failed(error) }
         if let version = installed[record.region] {
             return record.packVersion > version
                 ? .updateAvailable(installed: version, latest: record.packVersion)

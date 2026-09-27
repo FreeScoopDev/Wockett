@@ -73,6 +73,9 @@ struct ActiveSessionView: View {
     @State private var headingTracker         = HeadingTracker()
     @State private var freeMapHeading: Double = 0
     @AppStorage("wkt_offTrailAlerts_v1") private var offTrailAlerts = true
+    /// "Not now" on the arrived-at-the-trail banner. The offer stays in the
+    /// pulled-up panel.
+    @State private var trailArrivalDismissed  = false
 
     private enum FinishChoice { case save, saveWithRoute, discard }
 
@@ -335,7 +338,9 @@ struct ActiveSessionView: View {
                 computedLegs: computedLegs,
                 currentWaypointIndex: session.currentWaypointIndex,
                 checkpointsEnabled: checkpointsEnabled,
-                distanceCoveredMeters: session.totalDistanceCovered,
+                // Milestones are placed along this route's own line, so they
+                // count from where it began, not from home.
+                distanceCoveredMeters: session.totalDistanceCovered - session.legStartDistance,
                 headingDegrees: headingTracker.direction(track: session.trackPoints),
                 headingUp: headingUp,
                 recenterToken: recenterToken,
@@ -491,6 +496,16 @@ struct ActiveSessionView: View {
                     .frame(height: 0.5)
                     .foregroundColor(Color.earthMuted.opacity(0.25))
             }
+            if let approach = route.approach, session.arrivedAtTrail, !trailArrivalDismissed {
+                TrailArrivalBanner(trailName: approach.trailName,
+                                   activityMode: route.activityMode,
+                                   onStart: startTrailFromApproach,
+                                   onDismiss: { trailArrivalDismissed = true })
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                Rectangle()
+                    .frame(height: 0.5)
+                    .foregroundColor(Color.earthMuted.opacity(0.25))
+            }
             if showHeatBanner {
                 HeatAdvisoryBanner(
                     intervalMinutes: waterBreakIntervalMinutes,
@@ -578,6 +593,7 @@ struct ActiveSessionView: View {
         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: poiManager.selectedPOI?.id)
         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: panelExpanded)
         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: session.trailProgress?.isOffTrail)
+        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: session.arrivedAtTrail)
         .background(.ultraThinMaterial, ignoresSafeAreaEdges: .bottom)
     }
 
@@ -647,6 +663,22 @@ struct ActiveSessionView: View {
     private var expandedDetails: some View {
         VStack(alignment: .leading, spacing: 14) {
             if isGuided { routeProgress }
+            if let approach = route.approach, session.arrivedAtTrail {
+                Button(action: startTrailFromApproach) {
+                    Label {
+                        Text("Start the \(approach.trailName) \(route.activityMode.noun)")
+                    } icon: {
+                        Image(wkt: .routeTrail).wktIcon(.row, tint: .white, onFill: true)
+                    }
+                    .font(.wktBody(15))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(Color.earthGreenFill)
+                    .foregroundColor(.white)
+                    .cornerRadius(14)
+                }
+                .accessibilityIdentifier("session.startTrail")
+            }
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3), spacing: 8) {
                 SessionStatTile(value: session.distanceText(session.totalDistanceCovered), label: "distance")
                 if isGuided {
@@ -829,6 +861,37 @@ struct ActiveSessionView: View {
         return m < 60 ? "\(m)m \(s % 60)s" : "\(m / 60)h \(m % 60)m"
     }
 
+    // MARK: - Heading to a trail
+
+    /// The person reached the trail they were heading for and wants to walk
+    /// it: the same session carries on along the trail
+    /// (`NavigationSessionManager.beginTrailWalk`). `onChange(of: route.id)`
+    /// redraws the map; the Live Activity is restarted because its route name
+    /// is fixed when it starts.
+    private func startTrailFromApproach() {
+        guard let next = session.beginTrailWalk() else { return }
+        trailArrivalDismissed = false
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        WalkAudioCueService.shared.announce("Starting \(next.name).")
+        let cap = session
+        Task {
+            await WalkLiveActivityManager.shared.start(
+                routeName: next.name,
+                totalDistanceMeters: cap.liveActivityTotalMeters,
+                activityMode: next.activityMode.rawValue,
+                startDate: cap.startTime
+            )
+            await WalkLiveActivityManager.shared.update(
+                distanceCovered: cap.totalDistanceCovered,
+                elapsedSeconds: Int(cap.elapsedTime),
+                isPaused: cap.isPaused,
+                paceSecsPerKm: nil,
+                pausedDuration: cap.totalPausedDuration,
+                pauseTime: cap.isPaused ? Date() : nil
+            )
+        }
+    }
+
     // MARK: - Finishing
 
     private var finishSummary: String {
@@ -936,7 +999,7 @@ struct ActiveSessionView: View {
         }
         await WalkLiveActivityManager.shared.start(
             routeName: route.name,
-            totalDistanceMeters: route.totalDistance,
+            totalDistanceMeters: session.liveActivityTotalMeters,
             activityMode: route.activityMode.rawValue,
             startDate: session.startTime
         )

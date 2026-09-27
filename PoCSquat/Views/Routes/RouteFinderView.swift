@@ -62,6 +62,9 @@ struct RouteFinderContentView: View {
     @AppStorage("wkt_trails_showShortPaths_v1") private var showShortTrailPaths = false
     /// Measured, so the map frames a trail in the part the panel leaves visible.
     @State private var trailPanelHeight: CGFloat = 0
+    /// Walking and cycling routes to the open trail, kept across closing and
+    /// reopening it so MapKit is asked once per trail and place.
+    @State private var trailDirections = TrailDirectionsModel()
 
     private let intentKey = "wkt_lastWalkIntent_v1"
 
@@ -87,41 +90,11 @@ struct RouteFinderContentView: View {
     var body: some View {
         GeometryReader { geo in
             ZStack {
-                RouteFinderMapView(
-                    routes: mode == .routes ? routeManager.suggestedRoutes : [],
-                    selectedRoute: mode == .routes ? $selectedRoute : .constant(nil),
-                    goalDistanceMeters: Double(stepManager.currentGoal) * 0.762,
-                    userLocation: mode == .trails ? trailCenter : routeManager.lastLocation?.coordinate,
-                    trails: mode == .trails ? trailFinder.items : [],
-                    selectedTrailID: mode == .trails ? selectedTrail?.id : nil,
-                    mutedBase: mode == .trails,
-                    bottomInset: trailPanelHeight + geo.safeAreaInsets.bottom,
-                    onTrailTap: mode == .trails ? { id in
-                        guard let item = trailFinder.items.first(where: { $0.id == id }) else { return }
-                        withAnimation(.spring(response: 0.3)) { selectedTrail = item }
-                    } : nil
-                )
+                routesMap(bottomSafeArea: geo.safeAreaInsets.bottom)
                 .ignoresSafeArea()
                 .safeAreaInset(edge: .bottom) {
                     if mode == .trails {
-                        TrailsPanel(
-                            finder: trailFinder,
-                            selected: $selectedTrail,
-                            groupSections: $groupTrailSections,
-                            includeShortPaths: $showShortTrailPaths,
-                            userLocation: trailCenter,
-                            activityMode: activityMode,
-                            containerHeight: geo.size.height,
-                            modePicker: AnyView(modePicker),
-                            onStart: { plan in
-                                let nav = plan.navigableRoute(activityMode: activityMode)
-                                guard ActiveWalkStore.shared.beginSession(route: nav) != nil else {
-                                    showActiveSessionAlert = true
-                                    return
-                                }
-                                onNavigateAway?()
-                            }
-                        )
+                        trailsPanel(containerHeight: geo.size.height)
                         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { trailPanelHeight = $0 }
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                     } else if showingConfig {
@@ -240,6 +213,68 @@ struct RouteFinderContentView: View {
         }
     }
 
+    // The map and the Trails panel, out of `body` so the type checker can
+    // take them one at a time.
+    private func routesMap(bottomSafeArea: CGFloat) -> some View {
+        RouteFinderMapView(
+            routes: mode == .routes ? routeManager.suggestedRoutes : [],
+            selectedRoute: mode == .routes ? $selectedRoute : .constant(nil),
+            goalDistanceMeters: Double(stepManager.currentGoal) * 0.762,
+            userLocation: mode == .trails ? trailCenter : routeManager.lastLocation?.coordinate,
+            trails: mode == .trails ? trailFinder.items : [],
+            selectedTrailID: mode == .trails ? selectedTrail?.id : nil,
+            mutedBase: mode == .trails,
+            bottomInset: trailPanelHeight + bottomSafeArea,
+            onTrailTap: mode == .trails ? { id in
+                guard let item = trailFinder.items.first(where: { $0.id == id }) else { return }
+                withAnimation(.spring(response: 0.3)) { selectedTrail = item }
+            } : nil,
+            approachLine: approachLine,
+            approachColor: approachColor
+        )
+    }
+
+    private func trailsPanel(containerHeight: CGFloat) -> some View {
+        TrailsPanel(
+            finder: trailFinder,
+            selected: $selectedTrail,
+            groupSections: $groupTrailSections,
+            includeShortPaths: $showShortTrailPaths,
+            userLocation: trailCenter,
+            activityMode: activityMode,
+            containerHeight: containerHeight,
+            modePicker: AnyView(modePicker),
+            directions: trailDirections,
+            onStart: { plan in
+                beginGuidedSession(plan.navigableRoute(activityMode: activityMode))
+            },
+            onStartApproach: { route in beginGuidedSession(route) },
+            refreshLocation: {
+                guard !isWKTUITestMode, let fresh = await routeManager.fetchCurrentLocation(maxAge: 30) else { return }
+                routeManager.lastLocation = fresh
+            }
+        )
+    }
+
+    /// The chosen way to the open trail, for the map.
+    private var approachLine: MKPolyline? {
+        mode == .trails ? trailDirections.selectedPolyline(forTrail: selectedTrail?.id) : nil
+    }
+
+    private var approachColor: UIColor {
+        let option = trailDirections.selected ?? .onFoot
+        return option.sessionMode(current: activityMode).tileUIColor
+    }
+
+    /// A trail walk, or a session heading to a trail, from the Trails panel.
+    private func beginGuidedSession(_ route: NavigableRoute) {
+        guard ActiveWalkStore.shared.beginSession(route: route) != nil else {
+            showActiveSessionAlert = true
+            return
+        }
+        onNavigateAway?()
+    }
+
     // MARK: - Routes | Trails
 
     private var modePicker: some View {
@@ -290,8 +325,10 @@ struct RouteFinderContentView: View {
                             cycling: activityMode == .cycling,
                             usesMiles: Locale.current.measurementSystem == .us,
                             includeShortPaths: showShortTrailPaths)
-        if let current = selectedTrail, !trailFinder.items.contains(where: { $0.id == current.id }) {
-            selectedTrail = nil
+        // Keep the open trail, but as the fresh item: its distance from the
+        // person changes when a location refresh rebuilt the list.
+        if let current = selectedTrail {
+            selectedTrail = trailFinder.items.first(where: { $0.id == current.id })
         }
         openPendingTrail()
     }
@@ -866,6 +903,14 @@ final class MarkerCircle: MKCircle {
     var isFinish = false
 }
 
+/// The way to the open trail (`TrailDirectionsModel`), drawn dashed so it
+/// never reads as part of the trail.
+final class ApproachPolyline: MKPolyline {
+    /// The light outline under the dashes.
+    var isCasing = false
+    var color: UIColor = .brandGreen
+}
+
 /// One section of a trail on the Routes map, tagged with its list row.
 final class TrailPolyline: MKPolyline {
     var itemId = ""
@@ -901,6 +946,9 @@ struct RouteFinderMapView: UIViewRepresentable {
     var bottomInset: CGFloat = 440
     /// A tap on or near a trail line, with its list row's id.
     var onTrailTap: ((String) -> Void)?
+    /// The chosen way to the selected trail, drawn dashed in `approachColor`.
+    var approachLine: MKPolyline?
+    var approachColor: UIColor = .brandGreen
 
     func makeUIView(context: Context) -> MKMapView {
         let map = MKMapView()
@@ -932,7 +980,9 @@ struct RouteFinderMapView: UIViewRepresentable {
             context.coordinator.lastRouteIds = currentIds
             context.coordinator.lastSelectedId = UUID()  // reset sentinel
 
-            map.removeOverlays(map.overlays.filter { ($0 is MKPolyline && !($0 is TrailPolyline)) || $0 is MarkerCircle })
+            map.removeOverlays(map.overlays.filter {
+                ($0 is MKPolyline && !($0 is TrailPolyline) && !($0 is ApproachPolyline)) || $0 is MarkerCircle
+            })
 
             if routes.isEmpty {
                 // No routes — map stays at its current zoom.
@@ -1027,6 +1077,61 @@ struct RouteFinderMapView: UIViewRepresentable {
         }
 
         updateTrails(on: map, context: context)
+        updateApproach(on: map, context: context)
+    }
+
+    // MARK: The way to a trail
+
+    /// Draws the chosen route to the selected trail and frames it with the
+    /// trail, in the part of the map the panel leaves visible. Framing again
+    /// when the panel's height changes: the directions arrive after the
+    /// trail opens and make the panel taller, and a frame measured against
+    /// the shorter panel put the route behind it.
+    private func updateApproach(on map: MKMapView, context: Context) {
+        let coordinator = context.coordinator
+        var reframe = false
+        if coordinator.lastApproachSource !== approachLine || coordinator.lastApproachColor != approachColor {
+            coordinator.lastApproachSource = approachLine
+            coordinator.lastApproachColor = approachColor
+            map.removeOverlays(map.overlays.filter { $0 is ApproachPolyline })
+            if let source = approachLine, source.pointCount > 1 {
+                for isCasing in [true, false] {
+                    let line = ApproachPolyline(points: source.points(), count: source.pointCount)
+                    line.isCasing = isCasing
+                    line.color = approachColor
+                    map.addOverlay(line, level: .aboveLabels)
+                }
+                reframe = true
+            }
+        }
+        if selectedTrailID != nil, abs(coordinator.lastFramedInset - bottomInset) > 8 {
+            reframe = true
+        }
+        guard reframe, let id = selectedTrailID, let item = trails.first(where: { $0.id == id }) else { return }
+        var rect = item.polylines.joined().reduce(MKMapRect.null) { r, c in
+            let p = MKMapPoint(c)
+            return r.union(MKMapRect(x: p.x, y: p.y, width: 0, height: 0))
+        }
+        if let line = approachLine { rect = rect.union(line.boundingMapRect) }
+        guard !rect.isNull else { return }
+        coordinator.lastFramedInset = bottomInset
+        map.setVisibleMapRect(rect,
+                              edgePadding: UIEdgeInsets(top: 70, left: 36, bottom: bottomInset + 28, right: 36),
+                              animated: true)
+    }
+
+    static func style(_ renderer: MKPolylineRenderer, for line: ApproachPolyline) {
+        renderer.lineCap = .round
+        renderer.lineJoin = .round
+        if line.isCasing {
+            renderer.strokeColor = UIColor(Color.earthCard)
+            renderer.lineWidth = 8
+            renderer.alpha = 0.85
+        } else {
+            renderer.strokeColor = line.color
+            renderer.lineWidth = 4.5
+            renderer.lineDashPattern = [0.5, 9]
+        }
     }
 
     // MARK: Trails
@@ -1105,6 +1210,7 @@ struct RouteFinderMapView: UIViewRepresentable {
                 map.setVisibleMapRect(rect,
                                       edgePadding: UIEdgeInsets(top: 70, left: 36, bottom: bottomInset + 28, right: 36),
                                       animated: true)
+                coordinator.lastFramedInset = bottomInset
             }
         } else if selectedTrailID == nil, let region = coordinator.regionBeforeTrail {
             coordinator.regionBeforeTrail = nil
@@ -1142,6 +1248,9 @@ struct RouteFinderMapView: UIViewRepresentable {
         var lastMutedBase = false
         var regionBeforeTrail: MKCoordinateRegion?
         var hasSetInitialRegion = false
+        var lastApproachSource: MKPolyline?
+        var lastApproachColor: UIColor?
+        var lastFramedInset: CGFloat = 0
         init(_ p: RouteFinderMapView) { parent = p }
 
         /// Selects the trail whose line passes within a fingertip of the tap.
@@ -1179,6 +1288,11 @@ struct RouteFinderMapView: UIViewRepresentable {
             if let line = overlay as? TrailPolyline {
                 let r = MKPolylineRenderer(polyline: line)
                 RouteFinderMapView.style(r, for: line, selectedId: parent.selectedTrailID)
+                return r
+            }
+            if let line = overlay as? ApproachPolyline {
+                let r = MKPolylineRenderer(polyline: line)
+                RouteFinderMapView.style(r, for: line)
                 return r
             }
             if let marker = overlay as? MarkerCircle {
