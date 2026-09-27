@@ -162,6 +162,38 @@ struct TrailPackDeliveryTests {
         #expect(try #require(real.source(for: "nc")).packInfo.trailCount == bundledCount, "bundled pack is back")
     }
 
+    // MARK: Launch
+
+    @Test("An installed pack that will not open at launch falls back to the bundled pack and offers a re-download")
+    func corruptInstallFallsBackAtLaunch() async throws {
+        let dir = scratchDirectory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        try Data("not a database".utf8).write(to: dir.appendingPathComponent("nc.wktpack"))
+        try Data(#"{"nc":1}"#.utf8).write(to: dir.appendingPathComponent("installed.json"))
+
+        let registry = TrailAttributionRegistry()
+        let remote = FakeRemote(regions: [record("nc")], fileToServe: try fixtureURL)
+        let library = TrailPackLibrary(registry: registry, remote: remote, packsDirectory: dir)
+        library.loadBundled(from: .main)  // the host app, which ships nc.wktpack
+
+        let nc = try #require(library.source(for: "nc"), "the home region went dark")
+        #expect(nc.packInfo.trailCount > 9_000, "the bundled pack, not the fixture")
+        #expect(registry.attributions.map(\.sourceID) == ["osm"])
+        #expect(library.loadErrors["nc"]?.hasPrefix("Pack is malformed") == true, "\(library.loadErrors)")
+        #expect(library.installed == ["nc": 1], "kept, so the regions screen knows it was downloaded")
+        guard case .failed(let why) = library.state(of: record("nc")) else {
+            Issue.record("expected .failed, got \(library.state(of: record("nc")))"); return
+        }
+        #expect(why == library.loadErrors["nc"])
+
+        // Downloading again replaces the broken file and clears the error.
+        await library.download(record("nc", version: 2))
+        #expect(try #require(library.source(for: "nc")).packInfo.trailCount == 6)
+        #expect(library.loadErrors["nc"] == nil)
+        #expect(library.state(of: record("nc", version: 2)) == .installed(packVersion: 2))
+    }
+
     // MARK: CloudKit record parsing
 
     @Test("Parses a TrailRegionPack record and rejects one missing required fields")

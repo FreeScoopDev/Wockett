@@ -17,7 +17,14 @@ import Foundation
 @Observable
 final class TrailPackLibrary {
 
-    static let shared = TrailPackLibrary()
+    /// Under -WKTUITest the installed-pack directory is a fresh empty one, so
+    /// UI tests see only the bundled packs whatever manual testing left on the
+    /// simulator (an installed "nc" pack replaced the bundled one, 2026-09-27).
+    /// `isWKTUITestMode` is compiled out of Release, so shipping builds always
+    /// use Application Support.
+    static let shared = TrailPackLibrary(packsDirectory: isWKTUITestMode
+        ? FileManager.default.temporaryDirectory.appendingPathComponent("TrailPacks-UITest-\(UUID().uuidString)", isDirectory: true)
+        : nil)
 
     /// Regions shipped inside the app bundle, as `<region>.wktpack`. The
     /// bundled copy is the trimmed one (named trails only); a downloaded
@@ -87,8 +94,15 @@ final class TrailPackLibrary {
             }
             open(url: url, region: region)
         }
-        for region in installed.keys.sorted() {
-            open(url: packURL(for: region), region: region)
+        for region in installed.keys.sorted() where open(url: packURL(for: region), region: region) == nil {
+            // `open` closed the bundled pack before trying the download, so a
+            // corrupt or unreadable download would leave the home region with
+            // no trails at all (2026-09-27). Reopen the bundled copy, but keep
+            // the error: the regions screen shows it and offers a re-download,
+            // which is why the manifest entry stays.
+            let error = loadErrors[region]
+            reopenFallback(for: region, bundle: bundle)
+            loadErrors[region] = error
         }
     }
 
@@ -138,6 +152,9 @@ final class TrailPackLibrary {
 
     func state(of record: TrailRegionRecord) -> RegionState {
         if let t = transient[record.region] { return t }
+        // Installed, but the file would not open at launch: what is open is
+        // the bundled copy or nothing, so say why and offer the download again.
+        if installed[record.region] != nil, let error = loadErrors[record.region] { return .failed(error) }
         if let version = installed[record.region] {
             return record.packVersion > version
                 ? .updateAvailable(installed: version, latest: record.packVersion)
