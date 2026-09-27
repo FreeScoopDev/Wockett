@@ -17,7 +17,14 @@ import Foundation
 @Observable
 final class TrailPackLibrary {
 
-    static let shared = TrailPackLibrary()
+    /// Under -WKTUITest the installed-pack directory is a fresh empty one, so
+    /// UI tests see only the bundled packs whatever manual testing left on the
+    /// simulator (an installed "nc" pack replaced the bundled one, 2026-09-27).
+    /// `isWKTUITestMode` is compiled out of Release, so shipping builds always
+    /// use Application Support.
+    static let shared = TrailPackLibrary(packsDirectory: isWKTUITestMode
+        ? FileManager.default.temporaryDirectory.appendingPathComponent("TrailPacks-UITest-\(UUID().uuidString)", isDirectory: true)
+        : nil)
 
     /// Regions shipped inside the app bundle, as `<region>.wktpack`. The
     /// bundled copy is the trimmed one (named trails only); a downloaded
