@@ -96,3 +96,8 @@ __pycache__/
 *.egg-info/
 .venv/
 venv/
+
+# Claude Code: local settings and worktrees stay out of git; the shared
+# toolkit config (.claude/app.json) is the one tracked file.
+.claude/*
+!.claude/app.json
