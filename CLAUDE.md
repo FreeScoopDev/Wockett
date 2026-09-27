@@ -257,14 +257,19 @@ redundant.
 
 **An assertion that cannot fail is worse than none.** This applies to guards and
 scripts, not just tests. A check that derives its expectations from the same
-thing it is verifying passes vacuously — `scripts/lint.sh` hardcodes its expected
-exclusion list for exactly this reason, and has been verified to fire when the
-config is removed.
+thing it is verifying passes vacuously — `scripts/lint.sh` takes its expected
+exclusion list from `.claude/app.json`, a separate file from `.swiftlint.yml`, for
+exactly this reason, and aborts when the two disagree (verified 2026-09-27 by
+removing one entry from `.swiftlint.yml` only).
 
 ## Running things
 
 Use the scripts. They exist because the obvious invocations are wrong in
-non-obvious ways.
+non-obvious ways. Since 2026-09-27 each is a thin wrapper around Joe's shared
+toolkit in `~/.claude/toolkit/bin/`, configured by `.claude/app.json`; the same
+runner serves his other app without either repo depending on the other. CI does
+not call them, so a clone without the toolkit still builds and passes CI.
+`scripts/test.sh` also treats a run of 0 tests as a failure.
 
     scripts/test.sh              # full scheme (unit + UI) — what CI runs
     scripts/test.sh --unit-only  # faster, but NOT what CI runs

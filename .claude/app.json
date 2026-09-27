@@ -1,0 +1,18 @@
+{
+  "app": "Wockett",
+  "project": "PoCSquat.xcodeproj",
+  "scheme": "PoCSquat",
+  "unitTestTarget": "WockettTests",
+  "uiTestTarget": "WockettUITests",
+  "xcodebuildExtraArgs": [],
+  "lintExcluded": ["WockettTests", "prompts", "docs"],
+  "versionSource": "Versions.xcconfig",
+  "reviewFocus": [
+    "Colors, fonts and icons go through DesignSystem.swift and WktSymbol / .wktIcon(); no hardcoded systemName strings or hand-copied colour literals.",
+    "Activity-appropriate language: a run says run, a ride says ride. Any hardcoded 'Walk' on a surface that can show another activity is a bug (ActivityMode).",
+    "Session lifecycle: anything touching an active session survives backgrounding, force-quit, and the Live Activity / mini-tile end paths. HealthKit workouts and Live Activities end on every exit path.",
+    "Notifications go through NotificationService, and any delivery guard accepts .provisional.",
+    "UI-test accessibility identifiers listed in CLAUDE.md keep working; tab bar buttons are addressed by title.",
+    "No NSLocationAlwaysAndWhenInUseUsageDescription unless code calls requestAlwaysAuthorization (Always was rejected 2026-09-09)."
+  ]
+}
