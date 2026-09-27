@@ -411,6 +411,18 @@ class JoinUnnamedTests(unittest.TestCase):
         self.build(ways)
         self.assertEqual((self.full["w1"]["allows_bike"], self.full["w1"]["allows_foot"]), (0, 1))
 
+    def test_access_needs_half_the_length_to_allow_it(self):
+        # A 1.0 km cycleway continued by an untagged footway. Bikes are
+        # allowed on 1,000 of 2,200 m (45%): no. On 1,200 of 2,200 m: yes.
+        short = [north("w1", 35.7800, 35.7890, **SIDEPATH),
+                 north("w2", 35.7890, 35.7998, highway="footway", surface="asphalt")]
+        long = [north("w1", 35.7800, 35.7908, **SIDEPATH),
+                north("w2", 35.7908, 35.7998, highway="footway", surface="asphalt")]
+        self.build(short)
+        self.assertEqual(self.full["w1"]["allows_bike"], 0)
+        self.build(long)
+        self.assertEqual(self.full["w1"]["allows_bike"], 1)
+
     def test_access_needs_one_member_that_allows_it(self):
         ways = [north("w1", 35.780, 35.790, highway="footway", surface="asphalt"),
                 north("w2", 35.790, 35.800, highway="footway", surface="asphalt")]
@@ -548,6 +560,57 @@ class JoinUnnamedTests(unittest.TestCase):
         self.build(ways, roads=road)
         self.assertEqual(self.full["w1"]["name"], "Main Street Path (North Side)")
         self.assertEqual(self.full["w2"]["name"], "Main Street Path (South Side)")
+
+    @staticmethod
+    def _offset_line(p0, p1, metres):
+        """The segment p0-p1 moved `metres` to its right."""
+        lat0 = p0[1]
+        kx = 111_320 * math.cos(math.radians(lat0))
+        dx, dy = (p1[0] - p0[0]) * kx, (p1[1] - p0[1]) * 111_320
+        n = math.hypot(dx, dy)
+        rx, ry = dy / n * metres, -dx / n * metres   # right-hand normal
+        return [[p0[0] + rx / kx, p0[1] + ry / 111_320], [p1[0] + rx / kx, p1[1] + ry / 111_320]]
+
+    def test_side_labels_follow_the_road_not_each_piece(self):
+        # A road runs north, then bends to 50° east of north. Paths on both
+        # sides of each leg. The second leg's pieces run more east than
+        # north, but the road as a whole is north-south, so all four are
+        # East or West — never "North Side" opposite "East Side".
+        kx = 111_320 * math.cos(math.radians(35.79))
+        r0, r1 = [LON, 35.775], [LON, 35.790]
+        r2 = [r1[0] + 1300 * math.sin(math.radians(50)) / kx, r1[1] + 1300 * math.cos(math.radians(50)) / 111_320]
+        road = [feature("w100", [r0, r1, r2], highway="primary", name="Bend Road")]
+        a0, a1 = [LON, 35.7765], [LON, 35.7880]
+        f = 0.15   # start the second-leg pieces a little past the bend
+        b0 = [r1[0] + f * (r2[0] - r1[0]), r1[1] + f * (r2[1] - r1[1])]
+        ways = [feature("w1", self._offset_line(a0, a1, 20), **SIDEPATH),    # east of leg 1
+                feature("w2", self._offset_line(a0, a1, -20), **SIDEPATH),   # west of leg 1
+                feature("w3", self._offset_line(b0, r2, 20), **SIDEPATH),    # right of leg 2
+                feature("w4", self._offset_line(b0, r2, -20), **SIDEPATH)]   # left of leg 2
+        stats, _, _ = self.build(ways, roads=road)
+        names = {k: self.full[k]["name"] for k in ("w1", "w2", "w3", "w4")}
+        self.assertEqual(names, {"w1": "Bend Road Path (East Side)", "w2": "Bend Road Path (West Side)",
+                                 "w3": "Bend Road Path (East Side)", "w4": "Bend Road Path (West Side)"})
+
+    def test_two_paths_on_the_same_side_get_no_side(self):
+        road = [feature("w100", [[LON, 35.775], [LON, 35.800]], highway="primary", name="Duck Road")]
+        ways = [north("w1", 35.780, 35.795, lon=LON + 0.00016, **SIDEPATH),   # ~15 m east
+                north("w2", 35.780, 35.795, lon=LON + 0.00038, **SIDEPATH)]   # ~34 m east
+        stats, _, _ = self.build(ways, roads=road)
+        self.assertEqual((self.full["w1"]["name"], self.full["w2"]["name"]), ("Duck Road Path", "Duck Road Path"))
+        self.assertEqual((stats.derived_side_suffixed, stats.derived_same_side_pairs), (0, 1))
+
+    def test_a_path_with_a_same_side_neighbour_gets_no_side_from_another_pair(self):
+        # w1 and w2 are both east of the road; w3 is west, beside both. Each
+        # east path pairs with w3 on opposite sides, but labelling both
+        # "East Side" would make them identical again.
+        road = [feature("w100", [[LON, 35.775], [LON, 35.800]], highway="primary", name="Duck Road")]
+        ways = [north("w1", 35.780, 35.795, lon=LON + 0.00016, **SIDEPATH),
+                north("w2", 35.780, 35.795, lon=LON + 0.00038, **SIDEPATH),
+                north("w3", 35.780, 35.795, lon=LON - 0.00022, **SIDEPATH)]
+        stats, _, _ = self.build(ways, roads=road)
+        self.assertEqual((self.full["w1"]["name"], self.full["w2"]["name"]), ("Duck Road Path", "Duck Road Path"))
+        self.assertEqual(stats.derived_same_side_pairs, 1)
 
     def test_sidepaths_on_opposite_sides_but_not_side_by_side_get_no_side(self):
         # East of the road for one stretch, west of it further on: two

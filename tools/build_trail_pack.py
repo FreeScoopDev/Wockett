@@ -316,6 +316,7 @@ class Stats:
     derived_names: int = 0
     derived_suppressed_named: int = 0
     derived_side_suffixed: int = 0
+    derived_same_side_pairs: int = 0
     skipped_sidewalk: int = 0
     skipped_crossing: int = 0
     skipped_unnamed: int = 0
@@ -605,6 +606,9 @@ def merge_named_ways(
     return out
 
 
+ACCESS_MIN_SHARE = 0.5
+
+
 def _merged_row(parts, coords: list[list[float]], base: Optional[Trail] = None):
     """One Trail from several.
 
@@ -614,11 +618,14 @@ def _merged_row(parts, coords: list[list[float]], base: Optional[Trail] = None):
     few metres of road crosswalk, usually tagged with nothing, and letting
     them vote took bike access off the whole Duck sidepath (bicycle=designated
     cycleways joined by untagged crossings) and 3.5 km of the Charlotte Rail
-    Trail. Among the rest, a mode (foot, bike, horse) is allowed when at least
-    one member allows it and no member forbids it outright (_forbids: an
-    explicit no). A member that is merely silent — an untagged footway in a
-    cycleway corridor — neither allows nor forbids. Dog access is the most
-    restrictive value any member states or infers from access tags."""
+    Trail. Among the rest, a mode (foot, bike, horse) is allowed when no
+    member forbids it outright (_forbids: an explicit no) and the members
+    that allow it make up at least ACCESS_MIN_SHARE of the row's non-crossing
+    length: 2 m of bicycle=designated does not make a 2.5 km dirt corridor a
+    bike route. A member that is merely silent — an untagged footway in a
+    cycleway corridor — does not forbid, it only fails to count toward the
+    share. Dog access is the most restrictive value any member states or
+    infers from access tags."""
     first = base or parts[0][0]
     refs = sorted(t.source_ref for t, _ in parts)
     length_m = line_length_m(coords)
@@ -629,7 +636,9 @@ def _merged_row(parts, coords: list[list[float]], base: Optional[Trail] = None):
 
     def allowed(allows: str, forbids: str) -> int:
         members = [t for t, _ in parts]
-        return 1 if (any(getattr(t, allows) for t in members)
+        total = sum(t.length_m for t in members)
+        allowing = sum(t.length_m for t in members if getattr(t, allows))
+        return 1 if (allowing > 0 and allowing >= ACCESS_MIN_SHARE * total
                      and not any(getattr(t, forbids) for t in members)) else 0
 
     tagged = [(t.dog_access, t.dog_access_provenance) for t, _ in parts if t.dog_access_provenance != "default"]
@@ -1209,10 +1218,13 @@ def _share_within(coords: Sequence[Sequence[float]], other: Sequence[Sequence[fl
     return near / len(samples)
 
 
-def _road_side(coords: Sequence[Sequence[float]], roads: RoadIndex, road: str) -> Optional[str]:
-    """Which side of `road` this line runs on, as a compass side."""
+def _road_offset(coords: Sequence[Sequence[float]], roads: RoadIndex, road: str):
+    """Summed offset (east, north metres) from `road` to this line, and the
+    road's direction as a doubled-angle sum (cos 2θ, sin 2θ): positive cos 2θ
+    means the road runs more east-west than north-south, whichever way its
+    ways happen to be drawn."""
     nid = roads.names.index(road)
-    sx = sy = 0.0
+    sx = sy = c2 = s2 = 0.0
     for lon, lat, _ in _samples(coords, _DERIVED_NAME_SAMPLE_M):
         px, py = _local_xy((lon, lat), lat)
         best = None
@@ -1227,17 +1239,13 @@ def _road_side(coords: Sequence[Sequence[float]], roads: RoadIndex, road: str) -
                 continue
             t = max(0.0, min(1.0, ((px - ax) * dx + (py - ay) * dy) / seg2))
             ox, oy = px - (ax + t * dx), py - (ay + t * dy)
-            if best is None or math.hypot(ox, oy) < math.hypot(*best):
-                best = (ox, oy)
-        if best is not None and math.hypot(*best) <= DERIVED_NAME_MAX_DISTANCE_M:
+            if best is None or math.hypot(ox, oy) < math.hypot(best[0], best[1]):
+                best = (ox, oy, dx, dy)
+        if best is not None and math.hypot(best[0], best[1]) <= DERIVED_NAME_MAX_DISTANCE_M:
             sx, sy = sx + best[0], sy + best[1]
-    ax, ay = _local_xy(coords[0], coords[0][1])
-    bx, by = _local_xy(coords[-1], coords[0][1])
-    if sx == 0 and sy == 0:
-        return None
-    if abs(by - ay) >= abs(bx - ax):  # the road runs north-south
-        return "East Side" if sx > 0 else "West Side"
-    return "North Side" if sy > 0 else "South Side"
+            theta = math.atan2(best[3], best[2])
+            c2, s2 = c2 + math.cos(2 * theta), s2 + math.sin(2 * theta)
+    return sx, sy, c2, s2
 
 
 def apply_derived_names(
@@ -1277,21 +1285,43 @@ def apply_derived_names(
 
     for road in sorted(by_road):
         group = by_road[road]
-        sides = {}
+        pairs = []
         for i, (a, ca) in enumerate(group):
             for b, cb in group[i + 1:]:
                 if max(_share_within(ca, cb, SIDE_BY_SIDE_MAX_DISTANCE_M),
-                       _share_within(cb, ca, SIDE_BY_SIDE_MAX_DISTANCE_M)) < SIDE_BY_SIDE_MIN_SHARE:
-                    continue
-                for t, c in ((a, ca), (b, cb)):
-                    if id(t) not in sides:
-                        sides[id(t)] = _road_side(c, roads, road)
-                side_a, side_b = sides[id(a)], sides[id(b)]
-                if side_a and side_b and side_a != side_b:
-                    for t, side in ((a, side_a), (b, side_b)):
-                        if not t.name.endswith(")"):
-                            t.name = f"{t.name} ({side})"
-                            stats.derived_side_suffixed += 1
+                       _share_within(cb, ca, SIDE_BY_SIDE_MAX_DISTANCE_M)) >= SIDE_BY_SIDE_MIN_SHARE:
+                    pairs.append((a, b))
+        if not pairs:
+            continue
+        # One compass axis for the whole road, from the road's own direction,
+        # so every piece along it is labelled on the same axis. Judging each
+        # row by its own start and end called one piece "North Side" and the
+        # piece opposite it "East Side".
+        offsets = {id(t): _road_offset(c, roads, road) for t, c in group}
+        east_west = sum(o[2] for o in offsets.values()) >= 0
+        labels = ("North Side", "South Side") if east_west else ("East Side", "West Side")
+
+        def lean(t: Trail) -> float:
+            o = offsets[id(t)]
+            return o[1] if east_west else o[0]
+
+        # Both on one side (two strands of path on the same side of a road):
+        # a side label cannot tell them apart, and giving each the label it
+        # earned from some other pair made them identical ("Blue Ridge Road
+        # Path (East Side)" twice). Neither gets one. Counted, so it shows.
+        same_side = set()
+        for a, b in pairs:
+            if lean(a) * lean(b) >= 0:
+                stats.derived_same_side_pairs += 1
+                same_side |= {id(a), id(b)}
+        for a, b in pairs:
+            la, lb = lean(a), lean(b)
+            if la * lb >= 0 or id(a) in same_side or id(b) in same_side:
+                continue
+            for t, l in ((a, la), (b, lb)):
+                if not t.name.endswith(")"):
+                    t.name = f"{t.name} ({labels[0] if l > 0 else labels[1]})"
+                    stats.derived_side_suffixed += 1
 
 
 # ---------------------------------------------------------------------------
@@ -1731,7 +1761,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     print(f"  joined unnamed     {stats.joined_unnamed_ways:,} ways -> "
           f"{stats.unnamed_corridors:,} corridors")
     print(f"  derived names      {stats.derived_names:,} ({stats.derived_side_suffixed:,} with a side; "
-          f"{stats.derived_suppressed_named:,} withheld: they continue a named trail)")
+          f"{stats.derived_suppressed_named:,} withheld: they continue a named trail; "
+          f"{stats.derived_same_side_pairs:,} side-by-side pairs on one side, no side given)")
     print(f"  points {stats.points_before:,} -> {stats.points_after:,} "
           f"({reduction:.1f}% removed)")
     print(f"  dog access         " + ", ".join(
