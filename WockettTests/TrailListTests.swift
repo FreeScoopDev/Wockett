@@ -146,13 +146,14 @@ struct TrailListTests {
         #expect(TrailText.summary(for: item).contains("4 sections"))
     }
 
-    @Test("A gap just over the join distance keeps two rows; just under joins")
+    @Test("A 31 m gap keeps two rows; a 29 m gap joins")
     func unnamedGapSplits() {
-        let join = TrailListBuilder.unnamedJoinMeters
-        let apart = grouped([piece(1, from: 0, to: 200), piece(2, from: 200 + join + 1, to: 400)])
+        // Literal distances, not derived from the constant, so a changed
+        // threshold turns this red. 30 m: the pack drops pieces under 30 m.
+        let apart = grouped([piece(1, from: 0, to: 200), piece(2, from: 231, to: 400)])
         #expect(apart.count == 2)
         #expect(apart.allSatisfy { !$0.isGroup && $0.name == "Paved Bike Path" })
-        let joined = grouped([piece(1, from: 0, to: 200), piece(2, from: 200 + join - 1, to: 400)])
+        let joined = grouped([piece(1, from: 0, to: 200), piece(2, from: 229, to: 400)])
         #expect(joined.count == 1)
     }
 
