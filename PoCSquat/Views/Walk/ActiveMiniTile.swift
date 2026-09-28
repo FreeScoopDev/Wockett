@@ -28,19 +28,10 @@ struct ActiveMiniTileContainer: View {
         }
         .confirmationDialog("End \(walkStore.activeRoute?.activityMode.sessionLabel ?? "Walk")?", isPresented: $showEndConfirmation, titleVisibility: .visible) {
             Button("Save & End \(walkStore.activeRoute?.activityMode.sessionLabel ?? "Walk")") {
-                guard walkStore.session != nil else { return }
-                walkStore.saveAndEndActiveSession()
+                walkStore.end(.save)
             }
             Button("Discard \(walkStore.activeRoute?.activityMode.sessionLabel ?? "Walk")", role: .destructive) {
-                guard let session = walkStore.session else { return }
-                let dist          = session.totalDistanceCovered
-                let elapsed       = Int(session.elapsedTime)
-                let pausedDuration = session.totalPausedDuration
-                session.discardWorkoutSession()
-                session.stop()
-                walkStore.endSession()
-                NotificationService.shared.cancelWaterBreaks()
-                Task { await WalkLiveActivityManager.shared.end(distanceCovered: dist, elapsedSeconds: elapsed, pausedDuration: pausedDuration) }
+                walkStore.end(.discard)
             }
             Button("Cancel", role: .cancel) {}
         } message: {

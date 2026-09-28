@@ -565,6 +565,41 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
         return mps > 0 ? remainingDistance / mps : nil
     }
 
+    // MARK: - Pet credit
+    //
+    // Which pets walked which part of this walk. Kept on the session so it
+    // survives the walk screen being minimised and reaches every way a walk
+    // ends. Until 2026-09-28 it lived in the walk screen's @State: minimising
+    // wiped it, and the mini tile and Live Activity saved no pet credit.
+
+    /// Distance covered when each pet now on the walk joined it.
+    private(set) var petJoinedAt: [UUID: Double] = [:]
+    /// Distance each pet walked in stretches that have already ended.
+    private var petWalkedBefore: [UUID: Double] = [:]
+
+    /// Every pet that was on this walk at any point.
+    var sessionPetIds: Set<UUID> { Set(petJoinedAt.keys).union(petWalkedBefore.keys) }
+
+    /// A pet joins the walk at the distance covered so far. No-op if it is
+    /// already on it, so re-adopting the active pets never resets a stretch.
+    func petJoined(_ id: UUID) {
+        guard petJoinedAt[id] == nil else { return }
+        petJoinedAt[id] = totalDistanceCovered
+    }
+
+    /// A pet leaves the walk; the stretch it walked is kept.
+    func petLeft(_ id: UUID) {
+        guard let since = petJoinedAt.removeValue(forKey: id) else { return }
+        petWalkedBefore[id, default: 0] += max(0, totalDistanceCovered - since)
+    }
+
+    /// Distance each pet has walked so far, counting a stretch in progress.
+    var petDistances: [UUID: Double] {
+        var walked = petWalkedBefore
+        for (id, since) in petJoinedAt { walked[id, default: 0] += max(0, totalDistanceCovered - since) }
+        return walked
+    }
+
     var completedSession: WalkSession {
         WalkSession(
             id: UUID(),
