@@ -51,7 +51,9 @@ struct StepCounterView: View {
             .onChange(of: showMyRoutes) { _, isShowing in
                 if !isShowing && walkStore.isActive { showResumeWalk = true }
             }
-            .fullScreenCover(item: $earnedBadge) { badge in
+            .fullScreenCover(item: $earnedBadge, onDismiss: {
+                ReviewPrompter.shared.noteHighlight()
+            }) { badge in
                 BadgeEarnedView(badge: badge)
             }
             .sheet(isPresented: $showResumeWalk) {

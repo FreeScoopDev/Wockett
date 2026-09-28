@@ -148,6 +148,8 @@ struct SquatCounterApp: App {
             .onChange(of: WalkIntentInbox.shared.pending) { _, _ in
                 handleWalkIntent()
             }
+            // After a personal record or a new badge, once per version.
+            .asksForReviewWhenDue()
             // The Control Center button runs in the widget process and can only
             // leave its request in the app group; read it every time the app
             // comes to the front, since a running app gets no launch.
