@@ -1,0 +1,126 @@
+# Full test run for every pull request, on GitHub's own macOS runner.
+#
+# Why here and not Xcode Cloud (2026-09-28): the usage page showed 18 h 19 m
+# of the 25 included hours used this period, 150 CI Tests builds at 7 min
+# each, and when the hours run out the required check never reports and
+# every PR blocks until the period resets. The repository is public, so GitHub-hosted runners are free, macOS
+# included, and the macos-26 image ships the same Xcode 26.6 (17F113) that
+# Xcode Cloud pins. The 2026-09-04 reason for leaving GitHub Actions (10x
+# billing on a private repo) no longer applies. Xcode Cloud keeps Release
+# Flow only; see docs/ci.md.
+#
+# What runs: the full PoCSquat scheme (unit + UI) through the shared toolkit's
+# bin/test.sh, pinned to one toolkit commit, so CI and a local scripts/test.sh
+# judge a run by the same three signals: xcodebuild's exit code, the literal
+# ** TEST SUCCEEDED **, and a non-zero count in the xcresult bundle.
+#
+# Docs-only changes skip the macOS job. A job skipped by `if:` reports
+# Success and still satisfies a required check; a path filter on the trigger
+# would leave the check "Expected" forever and block the merge.
+
+name: Tests
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+# A newer push to the same PR cancels the run in progress, as Xcode Cloud's
+# auto-cancel did.
+concurrency:
+  group: tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    name: What changed
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      app: ${{ steps.classify.outputs.app }}
+      tools: ${{ steps.classify.outputs.tools }}
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # On a push to main everything runs; only a pull request is classified.
+      # The classifier reads the changed paths on stdin and prints the two
+      # outputs, so it can be break-tested by hand: see .github/scripts.
+      - name: Classify the changed files
+        id: classify
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" != "pull_request" ]; then
+            printf 'app=true\ntools=true\n' | tee -a "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git diff --name-only "$BASE" "$HEAD" \
+            | bash .github/scripts/classify_changes.sh \
+            | tee -a "$GITHUB_OUTPUT"
+
+  ios:
+    name: Tests (iOS)
+    needs: changes
+    if: needs.changes.outputs.app == 'true'
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      # Pinned to a commit, not main, so a toolkit change is a deliberate bump
+      # here (same reasoning as the Xcode pin). Bump it together with the
+      # toolkit's own PRs.
+      - name: Check out the shared toolkit
+        uses: actions/checkout@v4
+        with:
+          repository: FreeScoopDev/app-toolkit
+          ref: 240f4f3e335acac8c7fa6d4f5bb942af6434e0c2
+          path: toolkit
+
+      - name: Select Xcode 26.6
+        run: |
+          sudo xcode-select -s /Applications/Xcode_26.6.app
+          xcodebuild -version
+
+      # No signing setup, and signing is not disabled: a simulator build is
+      # ad-hoc signed with its entitlements. With CODE_SIGNING_ALLOWED=NO the
+      # app has no entitlements and CKContainer(identifier:) traps at launch,
+      # inside TrailPackLibrary.shared in SquatCounterApp.init() (2026-09-28).
+      - name: Run the full PoCSquat scheme
+        # bin/test.sh keeps its log and result bundle under $TMPDIR when a run
+        # fails; runner.temp is where the upload step looks. (The `runner`
+        # context is not available in a job-level env, only in steps.)
+        env:
+          TMPDIR: ${{ runner.temp }}
+        run: bash toolkit/bin/test.sh "$GITHUB_WORKSPACE"
+
+      # A failing run keeps the xcodebuild log, its stderr and the xcresult
+      # bundle (screenshots and the accessibility tree for UI failures).
+      - name: Upload the log and result bundle on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: ${{ runner.temp }}/wockett-test*
+          retention-days: 7
+
+  tools:
+    name: Trail pack builder tests
+    needs: changes
+    if: needs.changes.outputs.tools == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Run the builder's unit tests
+        run: python3 -m unittest discover -s tools/tests -v

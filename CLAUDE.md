@@ -64,6 +64,13 @@ way unless there's a strong reason; adding the first one is a real decision.
   `cloudKitDatabase:` config returns fine, then CoreData sets CloudKit up
   *asynchronously* and traps on failure. `try?` cannot catch that. This killed
   every CI test run for days. `AppModelContainer.isRunningUnderTests` skips it.
+- **`CKContainer(identifier:)` traps at creation without the iCloud entitlement**,
+  and `TrailPackLibrary.shared` creates one inside `SquatCounterApp.init()`.
+  A build with `CODE_SIGNING_ALLOWED=NO` has no entitlements at all, so the
+  app dies before its first screen and every test in the scheme fails with
+  "crashed before establishing connection". Simulator builds ad-hoc sign
+  with their entitlements and need no certificate; leave signing alone in
+  CI. Cost a full local run on 2026-09-28.
 - **`.safeAreaInset` already respects the safe area** even when the view it is
   attached to calls `.ignoresSafeArea()`. The modifier places its content inside
   the container's safe area regardless; `.ignoresSafeArea()` governs the view
