@@ -14,7 +14,7 @@ struct EndWalkLiveActivityIntent: LiveActivityIntent {
     @MainActor
     func perform() async throws -> some IntentResult {
         #if !WOCKET_WIDGET
-        ActiveWalkStore.shared.saveAndEndActiveSession()
+        ActiveWalkStore.shared.end(.save)
         // If the session was already gone (orphaned Live Activity from a prior process),
         // reap it via the system list so it disappears cleanly.
         if ActiveWalkStore.shared.session == nil {

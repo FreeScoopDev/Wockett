@@ -9,60 +9,73 @@ final class ActiveWalkStore {
     private(set) var activeRoute: NavigableRoute?
     private(set) var isStarted: Bool = false
     private(set) var historyStore: WalkHistoryStore?
+    private let notifications: NotificationService
+    /// Set by `end`: a walk ends once, however many paths try. Cleared when
+    /// the session is released.
+    @ObservationIgnored private var sessionEnded = false
 
     /// `shared` is the app's store; tests build their own with an in-memory
     /// history store.
-    init(historyStore: WalkHistoryStore? = nil) {
+    init(historyStore: WalkHistoryStore? = nil, notifications: NotificationService? = nil) {
         self.historyStore = historyStore
+        self.notifications = notifications ?? .shared
     }
 
     func configure(historyStore: WalkHistoryStore) {
         self.historyStore = historyStore
     }
 
-    /// Snapshots the current session into Walk History. Does NOT stop the session or
-    /// clear the store — callers are responsible for that ordering. Safe to call with
-    /// default args when per-pet distance data isn't available (e.g. from the mini tile).
-    @discardableResult
-    func buildAndSaveSession(
-        petDistances: [UUID: Double] = [:],
-        activePetIds: [UUID] = [],
-        isCommunityRoute: Bool = false
-    ) -> WalkSession? {
-        guard let session, let historyStore else { return nil }
-        var s = session.completedSession
-        s.activePetIds = activePetIds
-        s.petDistances = petDistances
-        s.isCommunityRoute = isCommunityRoute
-        historyStore.add(s)
-        // Saved: the checkpoint has done its job. stop() deletes it too, but
-        // the walk screen's completion path saves without stopping.
-        ActiveWalkSnapshotStore.clear()
-        BackgroundTaskManager.shared.scheduleCloudKitSync()
-        return s
-    }
-
     var isActive: Bool { session != nil }
 
-    /// Saves the active walk and tears down the session in one call.
-    /// For exit points that have no access to per-pet distance accrual
-    /// (mini tile, Live Activity button) — the walk is saved but pets
-    /// won't get distance credit for this session.
+    // MARK: - Ending a walk
+
+    enum EndOutcome { case save, discard }
+
+    /// The one way a walk ends, whoever ends it: the walk screen's Finish and
+    /// Discard, the break prompt, the driving banner, route completion, the
+    /// mini tile and the Live Activity. Until 2026-09-28 seven places
+    /// re-implemented this, and each left something out: free walks never
+    /// finished their Health workout, the mini tile and Live Activity saved no
+    /// pet credit, the driving banner ended the Live Activity twice.
+    ///
+    /// Save: the walk goes to Walk History with every pet's credit and its
+    /// Health workout is finished. Discard: the Health workout is thrown away.
+    /// Either way tracking stops, the checkpoint is deleted, water-break
+    /// reminders are cancelled and the Live Activity ends.
+    ///
+    /// `releaseSession: false` keeps the stopped session for the walk
+    /// screen's summary; the screen calls `endSession()` when it goes away.
+    /// Returns the saved walk; nil for a discard or a walk already ended.
     @discardableResult
-    func saveAndEndActiveSession() -> WalkSession? {
-        guard let session, let route = activeRoute else { return nil }
-        let dist           = session.totalDistanceCovered
-        let elapsed        = Int(session.elapsedTime)
-        let pausedDuration = session.totalPausedDuration
-        let capturedSession = session
-        let saved          = buildAndSaveSession(isCommunityRoute: route.isCommunityRoute)
-        session.stop()
-        endSession()
-        NotificationService.shared.cancelWaterBreaks()
-        Task {
-            await WalkLiveActivityManager.shared.end(distanceCovered: dist, elapsedSeconds: elapsed, pausedDuration: pausedDuration)
-            await capturedSession.finishWorkoutSession()
+    func end(_ outcome: EndOutcome, releaseSession: Bool = true) -> WalkSession? {
+        guard let session, let route = activeRoute, !sessionEnded else { return nil }
+        sessionEnded = true
+        let distance = session.totalDistanceCovered
+        let elapsed  = Int(session.elapsedTime)
+        let paused   = session.totalPausedDuration
+        var saved: WalkSession?
+        switch outcome {
+        case .save:
+            if let historyStore {
+                var walk = session.completedSession
+                let pets = session.petDistances
+                walk.activePetIds = Array(pets.keys)
+                walk.petDistances = pets
+                walk.isCommunityRoute = route.isCommunityRoute
+                historyStore.add(walk)
+                BackgroundTaskManager.shared.scheduleCloudKitSync()
+                saved = walk
+            }
+        case .discard:
+            session.discardWorkoutSession()
         }
+        session.stop()
+        notifications.cancelWaterBreaks()
+        Task {
+            await WalkLiveActivityManager.shared.end(distanceCovered: distance, elapsedSeconds: elapsed, pausedDuration: paused)
+            if outcome == .save { await session.finishWorkoutSession() }
+        }
+        if releaseSession { endSession() }
         return saved
     }
 
@@ -147,12 +160,11 @@ final class ActiveWalkStore {
     }
 
     /// A guided walk reached its end. With the walk screen up, the screen
-    /// saves it (with per-pet distances) and shows the summary. Without it,
-    /// minimised to the mini tile, nothing else would, so it is saved here
-    /// the way the mini tile's own Save & End does, without pet credit.
+    /// ends it and shows the summary. Without it, minimised to the mini tile,
+    /// nothing else would, so it ends here, pet credit included.
     func sessionDidComplete() {
         guard let session, !session.isSessionScreenVisible else { return }
-        saveAndEndActiveSession()
+        end(.save)
     }
 
     /// Called when the user declines to resume a recovered walk.
@@ -188,6 +200,7 @@ final class ActiveWalkStore {
         session = nil
         activeRoute = nil
         isStarted = false
+        sessionEnded = false
     }
 
     // MARK: - Reopen signal

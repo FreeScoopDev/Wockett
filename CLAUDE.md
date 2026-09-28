@@ -165,6 +165,13 @@ way unless there's a strong reason; adding the first one is a real decision.
   would lose by the race (a walk they asked to save) persisted, not held in
   memory. Cost: "Start Walk" silently did nothing on a cold launch until
   2026-09-09.
+- **A walk ends through `ActiveWalkStore.end(.save / .discard)`**, whoever
+  ends it. It saves with pet credit (kept on the session, not the walk
+  screen), finishes or discards the Health workout, stops tracking, deletes
+  the checkpoint, cancels water breaks and ends the Live Activity. Until
+  2026-09-28 seven places re-implemented that and each left something out;
+  free walks never reached Health. The walk screen passes
+  `releaseSession: false` and releases the session when its summary goes.
 - **A walk with no route is an established shape**, not a special case:
   `waypoints: []` ships as Indoor Walks (`StationaryWalkView`) and manually
   added Past Walks (`WalkHistoryView`), and now saved untracked walks. Give it a

@@ -486,14 +486,14 @@ struct SnapshotRestoreTests {
         #expect(store.session != nil)
     }
 
-    @Test @MainActor func saveAndEnd_savesOnce() throws {
+    @Test @MainActor func end_savesOnce() throws {
         let history = try inMemoryHistory()
         let store = ActiveWalkStore(historyStore: history)
         let mgr = try #require(store.beginSession(route: outAndBack()))
         mgr.writesSnapshots = false
-        #expect(store.saveAndEndActiveSession() != nil)
+        #expect(store.end(.save) != nil)
         #expect(history.sessions.count == 1)
-        #expect(store.saveAndEndActiveSession() == nil)
+        #expect(store.end(.save) == nil)
         #expect(history.sessions.count == 1)
     }
 
@@ -504,7 +504,8 @@ struct SnapshotRestoreTests {
         mgr.writesSnapshots = false
         ActiveWalkSnapshotStore.save(mgr.snapshot)
         #expect(ActiveWalkSnapshotStore.hasPending)
-        #expect(store.buildAndSaveSession() != nil)
+        #expect(store.end(.save, releaseSession: false) != nil)
+        #expect(store.session != nil, "kept for the summary")
         #expect(ActiveWalkSnapshotStore.hasPending == false)
     }
 
@@ -524,5 +525,88 @@ struct SnapshotRestoreTests {
         #expect(ActiveWalkSnapshotStore.hasPending == false)
         #expect(store.hasRestorableWalk == false)
         #expect(store.restoreIfNeeded() == nil)
+    }
+
+    // MARK: - One way to end a walk (2026-09-28)
+    //
+    // Seven places used to end a walk, each leaving something out. These pin
+    // what ActiveWalkStore.end does for all of them.
+
+    private func quietNotifications() throws -> (NotificationService, FakeNotificationCenter) {
+        let suite = "wkt.tests.end.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defaults.removePersistentDomain(forName: suite)
+        let center = FakeNotificationCenter()
+        return (NotificationService(center: center, defaults: defaults), center)
+    }
+
+    @Test @MainActor func end_creditsEachPet_forTheStretchItWalked() throws {
+        let history = try inMemoryHistory()
+        let store = ActiveWalkStore(historyStore: history)
+        let mgr = try #require(store.beginSession(route: outAndBack()))
+        mgr.writesSnapshots = false
+        let dog = UUID(), cat = UUID()
+        mgr.petJoined(dog)
+        mgr.totalDistanceCovered = 400
+        mgr.petJoined(cat)
+        mgr.petJoined(dog)                        // already on the walk: no reset
+        mgr.totalDistanceCovered = 1000
+        mgr.petLeft(dog)
+        mgr.totalDistanceCovered = 1500
+        let saved = try #require(store.end(.save))   // the mini tile's and Live Activity's path
+        #expect(saved.petDistances[dog] == 1000)
+        #expect(saved.petDistances[cat] == 1100)
+        #expect(Set(saved.activePetIds) == [dog, cat])
+        #expect(history.sessions.count == 1)
+        #expect(store.session == nil)
+    }
+
+    @Test @MainActor func end_keepingTheSessionForTheSummary_stillEndsOnce() throws {
+        let history = try inMemoryHistory()
+        let store = ActiveWalkStore(historyStore: history)
+        let mgr = try #require(store.beginSession(route: outAndBack()))
+        mgr.writesSnapshots = false
+        #expect(store.end(.save, releaseSession: false) != nil)
+        #expect(store.session != nil, "the walk screen still needs it for the summary")
+        #expect(store.end(.save) == nil)
+        #expect(store.end(.discard) == nil)
+        #expect(history.sessions.count == 1)
+        store.endSession()
+        #expect(store.session == nil)
+    }
+
+    @Test @MainActor func end_discard_savesNothing_andClearsTheCheckpoint() throws {
+        let history = try inMemoryHistory()
+        let store = ActiveWalkStore(historyStore: history)
+        let mgr = try #require(store.beginSession(route: outAndBack()))
+        mgr.writesSnapshots = false
+        ActiveWalkSnapshotStore.save(mgr.snapshot)
+        #expect(store.end(.discard) == nil)
+        #expect(history.sessions.isEmpty)
+        #expect(ActiveWalkSnapshotStore.loadAnyAge() == nil)
+        #expect(store.session == nil)
+    }
+
+    @Test @MainActor func end_cancelsWaterBreaks_whateverTheOutcome() throws {
+        for outcome in [ActiveWalkStore.EndOutcome.save, .discard] {
+            let (notifications, center) = try quietNotifications()
+            let store = ActiveWalkStore(historyStore: try inMemoryHistory(), notifications: notifications)
+            let mgr = try #require(store.beginSession(route: outAndBack()))
+            mgr.writesSnapshots = false
+            store.end(outcome)
+            #expect(center.removedPending.flatMap { $0 }.contains(NotificationKind.waterBreak(1).identifier))
+        }
+    }
+
+    @Test @MainActor func aNewWalk_afterOneEnded_endsToo() throws {
+        let history = try inMemoryHistory()
+        let store = ActiveWalkStore(historyStore: history)
+        let first = try #require(store.beginSession(route: outAndBack()))
+        first.writesSnapshots = false
+        store.end(.save)
+        let second = try #require(store.beginSession(route: outAndBack()))
+        second.writesSnapshots = false
+        #expect(store.end(.save) != nil)
+        #expect(history.sessions.count == 2)
     }
 }
