@@ -99,12 +99,8 @@ final class BackgroundTaskManager {
     /// widget only changed when the app was opened.
     private func refreshStepCount() async {
         guard HKHealthStore.isHealthDataAvailable() else { return }
-        // Tracking "day" starts at 3 AM local time, the same day Home uses.
-        let cal      = Calendar.current
-        var comps    = cal.dateComponents([.year, .month, .day], from: Date())
-        comps.hour = 3
-        let dayStart = cal.date(from: comps) ?? cal.startOfDay(for: Date())
-        let predicate = HKQuery.predicateForSamples(withStart: dayStart, end: Date())
+        // The same 3 AM-to-now day the Home ring and the Siri answer use.
+        let predicate = HKQuery.predicateForSamples(withStart: StepManager.trackingDayStart(), end: Date())
 
         async let steps    = todaySum(HKQuantityType(.stepCount),              unit: .count(), predicate: predicate)
         async let distance = todaySum(HKQuantityType(.distanceWalkingRunning), unit: .meter(), predicate: predicate)

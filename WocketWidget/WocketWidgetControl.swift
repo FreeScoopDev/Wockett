@@ -30,14 +30,13 @@ private struct OpenWockettForWalkIntent: AppIntent {
 
     func perform() async throws -> some IntentResult {
         // This runs in the widget process, so the request goes through the app
-        // group. The app's WalkIntentInbox reads these three keys at launch and
-        // whenever it comes to the front; keep the strings equal to its `Keys`.
-        // The time is what lets the app ignore a request it never got to act
-        // on (or one left behind by 1.13, which wrote no time).
-        let ud = UserDefaults(suiteName: "group.com.scoops.wockett")
-        ud?.set(true,      forKey: "intent_startWalkPending")
-        ud?.set("walking", forKey: "intent_activityMode")
-        ud?.set(Date(),    forKey: "intent_postedAt")
+        // group; the app's WalkIntentInbox reads it at launch and whenever it
+        // comes to the front. The time lets the app ignore a request it never
+        // got to act on (or one left behind by 1.13, which wrote no time).
+        let ud = AppGroup.defaults
+        ud?.set(true,      forKey: AppGroup.IntentKey.startWalkPending)
+        ud?.set("walking", forKey: AppGroup.IntentKey.activityMode)
+        ud?.set(Date(),    forKey: AppGroup.IntentKey.postedAt)
         return .result()
     }
 }
