@@ -131,6 +131,7 @@ final class StepManager: ObservableObject {
 
     private let healthStore = HKHealthStore()
     private let pedometer   = CMPedometer()
+    private var observerQuery: HKObserverQuery?
 
     var currentGoal: Int {
         if useCustomSchedule {
@@ -164,7 +165,16 @@ final class StepManager: ObservableObject {
         return now < t ? t.addingTimeInterval(-86400) : t
     }
 
-    init() { loadPersistedValues() }
+    init() {
+        loadPersistedValues()
+        // Register the observer at launch, not only after Home asks for
+        // authorisation: Health's background delivery launches the app in the
+        // background, where no view appears, and only a query registered by
+        // then receives the update.
+        if trackingMode == .healthKit, !isWKTUITestMode, !AppModelContainer.isRunningUnderTests {
+            observeHealthKit()
+        }
+    }
 
     func initialize() async {
         switch trackingMode {
@@ -334,12 +344,7 @@ final class StepManager: ObservableObject {
     }
 
     private func writeWidgetData(steps: Int, distance: Double) {
-        let ud = UserDefaults(suiteName: "group.com.scoops.wockett")
-        ud?.set(steps,        forKey: "wkt_widget_steps")
-        ud?.set(currentGoal,  forKey: "wkt_widget_goal")
-        ud?.set(distance,     forKey: "wkt_widget_distanceMeters")
-        ud?.set(Date(),       forKey: "wkt_widget_lastRefresh")
-        WidgetCenter.shared.reloadTimelines(ofKind: "WocketStepWidget")
+        WidgetSnapshot.write(steps: steps, distanceMeters: distance, goal: currentGoal)
     }
 
     private func fetchTodaySum(_ type: HKQuantityType, unit: HKUnit, predicate: NSPredicate) async -> Double {
@@ -352,11 +357,25 @@ final class StepManager: ObservableObject {
         }
     }
 
+    /// Watches for new step samples, in the foreground and, with background
+    /// delivery, while the app is not running. Safe to call more than once:
+    /// enabling delivery again is a no-op and the query is registered once.
     private func observeHealthKit() {
+        guard HKHealthStore.isHealthDataAvailable() else { return }
         let stepType = HKQuantityType(.stepCount)
-        let q = HKObserverQuery(sampleType: stepType, predicate: nil) { [weak self] _, _, _ in
-            Task { [weak self] in await self?.fetchHealthKitSteps() }
+        // Hourly is the finest frequency HealthKit allows for step counts.
+        healthStore.enableBackgroundDelivery(for: stepType, frequency: .hourly) { _, _ in }
+        guard observerQuery == nil else { return }
+        let q = HKObserverQuery(sampleType: stepType, predicate: nil) { [weak self] _, completion, _ in
+            Task { @MainActor [weak self] in
+                await self?.fetchHealthKitSteps()
+                // Tell HealthKit the delivery was handled. Until 1.14 this was
+                // never called, which stops background deliveries after a few
+                // misses.
+                completion()
+            }
         }
+        observerQuery = q
         healthStore.execute(q)
     }
 
