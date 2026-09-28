@@ -176,10 +176,10 @@ before any git work.** Change the process there, not here.
 Wockett's specifics:
 
 - **Required checks** on `main` (`.claude/app.json` → `requiredChecks`):
-  `Wockett | CI Tests | Test - iOS`, `Language-consistency guard`, `SwiftLint`
-  (the last required since 2026-09-09, once its error-severity backlog reached
-  zero). `~/.claude/toolkit/bin/repo-check.sh .` confirms GitHub still
-  matches.
+  `Tests (iOS)` (GitHub Actions, the full scheme, since 2026-09-28),
+  `Language-consistency guard`, `SwiftLint` (required since 2026-09-09, once
+  its error-severity backlog reached zero). `~/.claude/toolkit/bin/repo-check.sh .`
+  confirms GitHub still matches.
 - **The picture** is the "Wockett Ship Path" artifact
   (https://claude.ai/artifact/7XiSmyWHE78VkVhrajyzR7). The process was
   simplified on 2026-09-23, after 1.12 took a changelog cut, two stacked PRs
@@ -191,9 +191,12 @@ Wockett's specifics:
   `v1.11`. There is no post-release `Versions.xcconfig` PR.
 - **An emergency manual archive** builds whatever is on disk in
   `~/Desktop/Apps/PoCSquat`, which is how build 84 went out without #53.
-- **CI** is Xcode Cloud (25 hours/month, included in the Developer Program).
-  GitHub Actions runs only the Linux guards; the macOS jobs were removed
-  2026-09-04 because they billed at 10x and were slower and flakier.
+- **CI** is GitHub Actions since 2026-09-28: `tests.yml` runs the full
+  `PoCSquat` scheme on `macos-26` (the same Xcode 26.6 Xcode Cloud pins)
+  through the toolkit's `bin/test.sh`, free because the repository is public;
+  docs-only changes skip the macOS job. Xcode Cloud runs Release Flow only,
+  which keeps its 25 included hours a month for archives. The macOS jobs had
+  been removed on 2026-09-04 because they billed at 10x on a private repo.
 
 ## Verifying claims
 
@@ -245,9 +248,10 @@ not call them, so a clone without the toolkit still builds and passes CI.
 - **`xcodebuild test | tail` reports the exit code of `tail`.** A failed run
   looks green. Never pipe when the exit code matters; check for the literal
   `** TEST SUCCEEDED **`.
-- **The `PoCSquat` scheme runs `WockettTests` *and* `WockettUITests`,** and Xcode
-  Cloud's Test action uses "Use Scheme Setting". Running `-only-testing:WockettTests`
-  is a smaller suite than CI and will not catch what CI catches.
+- **The `PoCSquat` scheme runs `WockettTests` *and* `WockettUITests`,** and CI
+  runs the full scheme through the same `bin/test.sh`. Running
+  `-only-testing:WockettTests` is a smaller suite than CI and will not catch
+  what CI catches.
 - **SwiftLint resolves `excluded:` relative to the config file's own directory.**
   `swiftlint --config /tmp/x.yml` silently lints the excluded test targets and
   inflates every count, with output that looks completely normal.

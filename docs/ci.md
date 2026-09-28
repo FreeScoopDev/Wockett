@@ -23,7 +23,7 @@ was read as "protection was removed" on 2026-09-08. Use this instead:
 
 | Required check | Provider | Runner | Bills at |
 | --- | --- | --- | --- |
-| `Wockett \| CI Tests \| Test - iOS` | Xcode Cloud | macOS | Included in Developer Program (25 h/month) |
+| `Tests (iOS)` | GitHub Actions | `macos-26` (Xcode 26.6) | Free: public repository |
 | `Language-consistency guard` | GitHub Actions | `ubuntu-latest` | 1× |
 | `SwiftLint` | GitHub Actions | `ubuntu-latest`, `ghcr.io/realm/swiftlint` container | 1× |
 
@@ -152,13 +152,21 @@ no iCloud entitlement, and an unsigned build has no entitlements at all. The
 old workflow got away with it only because nothing created a container at
 launch before 1.12.
 
-**Status: advisory until it has been proven.** The plan, from `NEW-APP.md`
-part 4: a throwaway PR with a deliberately broken unit test must turn
-`Tests (iOS)` red; then `.claude/app.json`'s `requiredChecks` swaps
-`Wockett | CI Tests | Test - iOS` for `Tests (iOS)`, `repo-check.sh --apply`
-updates the ruleset, and Joe removes the *Pull Request Changes* start
-condition from Xcode Cloud's `CI Tests` workflow. Xcode Cloud then runs
-Release Flow only. Update the table at the top of this file at that point.
+**Required since 2026-09-28.** Proven the way `NEW-APP.md` part 4 asks: a
+throwaway PR with a deliberately broken unit test (#96) turned `Tests (iOS)`
+red, and its failed run uploaded the log and result bundle. `.claude/app.json`'s
+`requiredChecks` then swapped `Wockett | CI Tests | Test - iOS` for
+`Tests (iOS)`, `repo-check.sh --apply` updated the ruleset, and Joe removed
+the *Pull Request Changes* start condition from Xcode Cloud's `CI Tests`
+workflow. Xcode Cloud runs Release Flow only.
+
+The first real run on #95 took **32 minutes** for the full scheme, against
+Xcode Cloud's 7, and `testAccessoryBar` failed once at 324 s (the flake #92
+instrumented; the bundle upload that would have shown its screen is what the
+`TEST_OUTPUT_DIR` fix restores). The runner is a 3-core M-series machine
+with no build cache. Splitting the unit and UI targets into two parallel
+jobs, or caching DerivedData, are the two obvious ways to cut the wait if it
+matters.
 
 ## Xcode Cloud
 
@@ -169,7 +177,13 @@ pointed at `https://github.com/FreeScoopDev/Wockett.git` / `PoCSquat.xcodeproj`.
 Neither has "Restrict Editing" enabled, so any team member can change them —
 which is the other half of why this file exists.
 
-### `CI Tests` — the workflow that gates `main`
+### `CI Tests` — formerly the workflow that gated `main`
+
+**Switched off on 2026-09-28**: Joe removed its *Pull Request Changes* start
+condition, so it no longer runs on PRs and consumes no compute hours; PR
+tests run on GitHub Actions (`tests.yml`, above). The workflow definition is
+kept in App Store Connect and described here as it was, in case it is ever
+needed again.
 
 | | |
 | --- | --- |
