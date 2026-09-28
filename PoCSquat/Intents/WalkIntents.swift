@@ -4,8 +4,12 @@ import SwiftUI
 // MARK: - Start Walk Intent
 //
 // "Hey Siri, start a walk with Wockett"
-// "Hey Siri, start a 30-minute walk"
 // Also surfaces in the Shortcuts app for automation.
+//
+// The intent runs in the app process (openAppWhenRun brings the app to the
+// front) and posts to WalkIntentInbox; SquatCounterApp consumes it and Home
+// opens the walk screen. Until 1.14 it set a flag that nothing read, so
+// Siri only opened the app.
 
 struct StartWalkIntent: AppIntent {
     static var title: LocalizedStringResource = "Start a Walk"
@@ -13,36 +17,34 @@ struct StartWalkIntent: AppIntent {
 
     static var openAppWhenRun: Bool = true
 
-    @Parameter(title: "Duration", description: "Optional walk duration in minutes.")
-    var durationMinutes: Int?
-
-    @Parameter(title: "Mode", description: "Walking, cycling, or indoor.")
+    @Parameter(title: "Mode", description: "Walking, running, cycling, or indoor.")
     var mode: WalkModeAppEnum?
 
     static var parameterSummary: some ParameterSummary {
-        Summary("Start a \(\.$durationMinutes) minute \(\.$mode) session")
+        Summary("Start a \(\.$mode) session")
     }
 
     func perform() async throws -> some IntentResult {
-        // Deep-link into a free walk via the notification approach.
-        // The app reads this on foreground and opens the correct walk mode.
-        let ud = UserDefaults.standard
-        ud.set(durationMinutes, forKey: "intent_durationMinutes")
-        ud.set(mode?.rawValue ?? "walking", forKey: "intent_activityMode")
-        ud.set(true, forKey: "intent_startWalkPending")
+        let mode = WalkIntentInbox.mode(fromIntentValue: self.mode?.rawValue)
+        await WalkIntentInbox.shared.post(WalkIntentRequest(mode: mode))
         return .result()
     }
 }
 
-// MARK: - Log Today's Steps Intent
+// MARK: - Today's Steps Intent
 
 struct GetStepsIntent: AppIntent {
     static var title: LocalizedStringResource = "Get Today's Steps"
     static var description = IntentDescription("Returns today's step count from Wockett.")
 
-    func perform() async throws -> some IntentResult & ReturnsValue<Int> {
-        let steps = UserDefaults.standard.integer(forKey: "bg_todaySteps")
-        return .result(value: steps)
+    func perform() async throws -> some IntentResult & ReturnsValue<Int> & ProvidesDialog {
+        let dayStart = StepManager.trackingDayStart()
+        let steps = await SiriStepsAnswer.fromHealth(dayStart: dayStart)
+            ?? SiriStepsAnswer.cached(in: UserDefaults(suiteName: SiriStepsAnswer.appGroup))
+        guard let steps else {
+            return .result(value: 0, dialog: "Wockett can't read your steps right now. Open the app to refresh them.")
+        }
+        return .result(value: steps, dialog: "You've taken \(steps.formatted()) steps today.")
     }
 }
 

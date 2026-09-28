@@ -29,6 +29,9 @@ enum RoutesDestination: Hashable {
 
 final class TabRouter: ObservableObject {
     @Published var selected: AppTab = .home
-    @Published var pendingCommunityDestination: CommunityDestination? = nil
-    @Published var pendingRoutesDestination: RoutesDestination? = nil
+    @Published var pendingCommunityDestination: CommunityDestination?
+    @Published var pendingRoutesDestination: RoutesDestination?
+    /// A walk Siri or the Control Center button asked for; Home opens the
+    /// walk screen in this mode and clears it.
+    @Published var pendingWalkStart: ActivityMode?
 }

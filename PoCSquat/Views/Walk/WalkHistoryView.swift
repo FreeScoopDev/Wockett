@@ -268,15 +268,35 @@ struct ManualWalkEntrySheet: View {
     @State private var walkDate = Date()
     @State private var durationHours = 0
     @State private var durationMinutes = 30
-    @State private var distanceKm = ""
+    @State private var distanceText = ""
     @State private var stepCount = ""
     @State private var routeName = ""
     @State private var useSteps = false
 
+    // Kilometres on a metric phone, miles otherwise: the rule the goal editor
+    // and every distance label use. Until 1.14 this form asked everyone for
+    // kilometres and multiplied by 1000, so a US user typing their 3-mile
+    // walk logged 3 km.
+    private static var useMetric: Bool { Locale.current.measurementSystem == .metric }
+    private static var unitWord: String { useMetric ? "Kilometres" : "Miles" }
+    private static var unitHint: String { useMetric ? "Distance in km (e.g. 3.5)" : "Distance in miles (e.g. 2.5)" }
+
+    /// The typed distance in metres, or nil when it is not a positive number.
+    nonisolated static func meters(fromDistanceText text: String, useMetric: Bool) -> Double? {
+        guard let value = Double(text.trimmingCharacters(in: .whitespaces)), value > 0 else { return nil }
+        return value * (useMetric ? 1000 : 1609.344)
+    }
+
+    /// Steps typed instead of a distance, at the app's 0.762 m stride.
+    nonisolated static func meters(fromStepsText text: String) -> Double? {
+        guard let steps = Double(text.trimmingCharacters(in: .whitespaces)), steps > 0 else { return nil }
+        return steps * 0.762
+    }
+
     private var distanceMeters: Double? {
-        if useSteps, let steps = Double(stepCount), steps > 0 { return steps * 0.762 }
-        if !useSteps, let km = Double(distanceKm), km > 0 { return km * 1000 }
-        return nil
+        useSteps
+            ? Self.meters(fromStepsText: stepCount)
+            : Self.meters(fromDistanceText: distanceText, useMetric: Self.useMetric)
     }
 
     private var isValid: Bool {
@@ -315,7 +335,7 @@ struct ManualWalkEntrySheet: View {
                         sectionCard("Distance") {
                             VStack(spacing: 12) {
                                 Picker("", selection: $useSteps) {
-                                    Text("Kilometres").tag(false)
+                                    Text(Self.unitWord).tag(false)
                                     Text("Steps").tag(true)
                                 }
                                 .pickerStyle(.segmented)
@@ -326,7 +346,7 @@ struct ManualWalkEntrySheet: View {
                                         .foregroundColor(.earthCream)
                                         .padding(12).background(Color.earthBg).cornerRadius(10)
                                 } else {
-                                    TextField("Distance in km (e.g. 3.5)", text: $distanceKm)
+                                    TextField(Self.unitHint, text: $distanceText)
                                         .keyboardType(.decimalPad)
                                         .foregroundColor(.earthCream)
                                         .padding(12).background(Color.earthBg).cornerRadius(10)

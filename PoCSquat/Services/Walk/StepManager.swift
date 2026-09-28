@@ -153,12 +153,16 @@ final class StepManager: ObservableObject {
     var progress:        Double { min(1.0, Double(todaySteps) / Double(max(1, currentGoal))) }
 
     /// Tracking "day" starts at 3 AM local time (not midnight).
-    var dayStart: Date {
-        let cal = Calendar.current
-        var c = cal.dateComponents([.year, .month, .day], from: Date())
+    var dayStart: Date { Self.trackingDayStart() }
+
+    /// The start of the tracking day containing `now`: 3 AM local time, or
+    /// the previous day's 3 AM before that. Static so the Siri steps intent
+    /// counts over the same day as the Home ring.
+    nonisolated static func trackingDayStart(now: Date = Date(), calendar cal: Calendar = .current) -> Date {
+        var c = cal.dateComponents([.year, .month, .day], from: now)
         c.hour = 3; c.minute = 0; c.second = 0
-        guard let t = cal.date(from: c) else { return cal.startOfDay(for: Date()) }
-        return Date() < t ? t.addingTimeInterval(-86400) : t
+        guard let t = cal.date(from: c) else { return cal.startOfDay(for: now) }
+        return now < t ? t.addingTimeInterval(-86400) : t
     }
 
     init() {
