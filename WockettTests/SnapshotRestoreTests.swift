@@ -508,6 +508,13 @@ struct SnapshotRestoreTests {
         #expect(ActiveWalkSnapshotStore.hasPending == false)
     }
 
+    @Test func completedCheckpoint_isNeverOfferedForResume() {
+        ActiveWalkSnapshotStore.save(makeSnapshot(isCompleted: true))
+        #expect(ActiveWalkSnapshotStore.loadAnyAge() != nil, "it is still on disk for the salvage path")
+        #expect(ActiveWalkSnapshotStore.load() == nil)
+        #expect(ActiveWalkSnapshotStore.hasPending == false)
+    }
+
     @Test @MainActor func completedCheckpoint_atLaunch_isSavedNotOfferedForResume() throws {
         ActiveWalkSnapshotStore.save(makeSnapshot(isCompleted: true))
         let history = try inMemoryHistory()
