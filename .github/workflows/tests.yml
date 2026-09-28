@@ -82,7 +82,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: FreeScoopDev/app-toolkit
-          ref: 240f4f3e335acac8c7fa6d4f5bb942af6434e0c2
+          ref: 268c29166eff2c03b3427adbbc3e8ebbf9fd7701
           path: toolkit
 
       - name: Select Xcode 26.6
@@ -95,11 +95,12 @@ jobs:
       # app has no entitlements and CKContainer(identifier:) traps at launch,
       # inside TrailPackLibrary.shared in SquatCounterApp.init() (2026-09-28).
       - name: Run the full PoCSquat scheme
-        # bin/test.sh keeps its log and result bundle under $TMPDIR when a run
-        # fails; runner.temp is where the upload step looks. (The `runner`
-        # context is not available in a job-level env, only in steps.)
+        # bin/test.sh keeps its log and result bundle under TEST_OUTPUT_DIR
+        # when a run fails, where the upload step looks. Setting TMPDIR was
+        # tried first: Apple's `mktemp -t` ignores it, and the first failed
+        # run uploaded nothing (2026-09-28).
         env:
-          TMPDIR: ${{ runner.temp }}
+          TEST_OUTPUT_DIR: ${{ runner.temp }}/wockett-tests
         run: bash toolkit/bin/test.sh "$GITHUB_WORKSPACE"
 
       # A failing run keeps the xcodebuild log, its stderr and the xcresult
@@ -109,7 +110,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: test-results
-          path: ${{ runner.temp }}/wockett-test*
+          path: ${{ runner.temp }}/wockett-tests
           retention-days: 7
 
   tools:
