@@ -94,28 +94,31 @@ final class BackgroundTaskManager {
 
     // MARK: - HealthKit step refresh
 
+    /// Today's steps and distance, written where the widget reads them.
+    /// Until 1.14 this wrote `bg_todaySteps`, which nothing read, so the
+    /// widget only changed when the app was opened.
     private func refreshStepCount() async {
         guard HKHealthStore.isHealthDataAvailable() else { return }
-        let stepType = HKQuantityType(.stepCount)
+        // Tracking "day" starts at 3 AM local time, the same day Home uses.
         let cal      = Calendar.current
         var comps    = cal.dateComponents([.year, .month, .day], from: Date())
         comps.hour = 3
         let dayStart = cal.date(from: comps) ?? cal.startOfDay(for: Date())
         let predicate = HKQuery.predicateForSamples(withStart: dayStart, end: Date())
 
-        let steps: Double = await withCheckedContinuation { cont in
-            let q = HKStatisticsQuery(
-                quantityType: stepType,
-                quantitySamplePredicate: predicate,
-                options: .cumulativeSum
-            ) { _, result, _ in
-                cont.resume(returning: result?.sumQuantity()?.doubleValue(for: .count()) ?? 0)
+        async let steps    = todaySum(HKQuantityType(.stepCount),              unit: .count(), predicate: predicate)
+        async let distance = todaySum(HKQuantityType(.distanceWalkingRunning), unit: .meter(), predicate: predicate)
+        let (s, d) = await (steps, distance)
+        WidgetSnapshot.write(steps: Int(s), distanceMeters: d)
+    }
+
+    private func todaySum(_ type: HKQuantityType, unit: HKUnit, predicate: NSPredicate) async -> Double {
+        await withCheckedContinuation { cont in
+            let q = HKStatisticsQuery(quantityType: type, quantitySamplePredicate: predicate,
+                                      options: .cumulativeSum) { _, result, _ in
+                cont.resume(returning: result?.sumQuantity()?.doubleValue(for: unit) ?? 0)
             }
             healthStore.execute(q)
         }
-
-        // Persist to UserDefaults so the widget can read it without launching the app
-        UserDefaults(suiteName: "group.com.scoops.wockett")?.set(Int(steps), forKey: "bg_todaySteps")
-        UserDefaults(suiteName: "group.com.scoops.wockett")?.set(Date(), forKey: "bg_lastRefresh")
     }
 }
