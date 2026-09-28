@@ -35,6 +35,9 @@ final class ActiveWalkStore {
         s.petDistances = petDistances
         s.isCommunityRoute = isCommunityRoute
         historyStore.add(s)
+        // Saved: the checkpoint has done its job. stop() deletes it too, but
+        // the walk screen's completion path saves without stopping.
+        ActiveWalkSnapshotStore.clear()
         BackgroundTaskManager.shared.scheduleCloudKitSync()
         return s
     }
@@ -71,6 +74,7 @@ final class ActiveWalkStore {
         let route = snapshot.route.navigableRoute
         let mgr = NavigationSessionManager(route: route)
         mgr.onRouteChanged = { [weak self] in self?.activeRoute = $0 }
+        mgr.onCompleted = { [weak self] in self?.sessionDidComplete() }
         mgr.restore(from: snapshot)
         session = mgr
         activeRoute = route
@@ -103,13 +107,17 @@ final class ActiveWalkStore {
     func salvageStaleWalkIfNeeded() {
         guard session == nil,
               let historyStore,
-              let snapshot = ActiveWalkSnapshotStore.loadAnyAge(),
-              Date().timeIntervalSince(snapshot.checkpointDate) > ActiveWalkSnapshotStore.maxSnapshotAge
+              let snapshot = ActiveWalkSnapshotStore.loadAnyAge()
+        else { return }
+        // A finished guided walk the app died before saving is saved now,
+        // whatever its age or length: the person reached the end.
+        let completed = snapshot.isCompleted == true
+        guard completed || Date().timeIntervalSince(snapshot.checkpointDate) > ActiveWalkSnapshotStore.maxSnapshotAge
         else { return }
         defer { ActiveWalkSnapshotStore.clear() }
 
         // Ignore trivial walks — same 50m threshold used by the Free Walk summary auto-save.
-        guard snapshot.totalDistanceCovered >= 50 else { return }
+        guard completed || snapshot.totalDistanceCovered >= 50 else { return }
 
         let path = Self.salvagedWaypoints(for: snapshot)
 
@@ -138,6 +146,15 @@ final class ActiveWalkStore {
             : route.historyWaypoints.map { WaypointCoord($0) }
     }
 
+    /// A guided walk reached its end. With the walk screen up, the screen
+    /// saves it (with per-pet distances) and shows the summary. Without it,
+    /// minimised to the mini tile, nothing else would, so it is saved here
+    /// the way the mini tile's own Save & End does, without pet credit.
+    func sessionDidComplete() {
+        guard let session, !session.isSessionScreenVisible else { return }
+        saveAndEndActiveSession()
+    }
+
     /// Called when the user declines to resume a recovered walk.
     func declineRestore() {
         ActiveWalkSnapshotStore.clear()
@@ -156,6 +173,7 @@ final class ActiveWalkStore {
         let route = route.followingRecordedLine()
         let mgr = NavigationSessionManager(route: route)
         mgr.onRouteChanged = { [weak self] in self?.activeRoute = $0 }
+        mgr.onCompleted = { [weak self] in self?.sessionDidComplete() }
         session = mgr
         activeRoute = route
         isStarted = false

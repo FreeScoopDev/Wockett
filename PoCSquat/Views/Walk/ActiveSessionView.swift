@@ -1045,19 +1045,20 @@ struct ActiveSessionView: View {
 
     private func handleWalkComplete() {
         let pets = finalizePetDistances()
-        var s = session.completedSession
         let cap = session
-        s.activePetIds = pets.activePetIds
-        s.petDistances = pets.distances
-        s.isCommunityRoute = route.isCommunityRoute
         let previousSessions = historyStore.sessions
+        // Through the store, like every other save, so the checkpoint is
+        // cleared the moment the walk is in history.
+        guard let s = walkStore.buildAndSaveSession(
+            petDistances: pets.distances,
+            activePetIds: pets.activePetIds,
+            isCommunityRoute: route.isCommunityRoute
+        ) else { return }
         let prs = checkNewPRs(newSession: s, against: previousSessions)
         if !prs.isEmpty {
             WalkAudioCueService.shared.announce(
                 "Personal record! New \(prs.map(\.title).joined(separator: " and "))!")
         }
-        historyStore.add(s)
-        BackgroundTaskManager.shared.scheduleCloudKitSync()
         Task {
             await WalkLiveActivityManager.shared.end(
                 distanceCovered: s.totalDistance,

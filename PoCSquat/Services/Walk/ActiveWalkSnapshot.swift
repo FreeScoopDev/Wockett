@@ -166,6 +166,7 @@ enum ActiveWalkSnapshotStore {
     /// (salvage to history); nothing here silently deletes a user's walk.
     static func load() -> ActiveWalkSnapshot? {
         guard let snapshot = loadAnyAge(),
+              snapshot.isCompleted != true,   // a finished walk is saved, never resumed
               Date().timeIntervalSince(snapshot.checkpointDate) <= maxSnapshotAge
         else { return nil }
         return snapshot

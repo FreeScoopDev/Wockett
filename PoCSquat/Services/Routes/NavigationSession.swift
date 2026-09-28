@@ -290,6 +290,7 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
     }
 
     private func beginTracking() {
+        stopped = false
         UIApplication.shared.isIdleTimerDisabled = true
         locationManager.startUpdatingLocation()
         let storedMins = UserDefaults.standard.integer(forKey: "walk_breakPromptMinutes")
@@ -397,10 +398,17 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
     }
 
     func stop() {
+        stopTracking()
+        ActiveWalkSnapshotStore.clear()
+    }
+
+    /// Everything `stop()` does except deleting the checkpoint. `finish()`
+    /// uses it: the walk is over but not yet saved.
+    private func stopTracking() {
+        stopped = true
         autoPausedForInactivity = false
         NotificationService.shared.withdraw(.offTrail)
         NotificationService.shared.withdraw(.trailArrival)
-        ActiveWalkSnapshotStore.clear()
         locationManager.stopUpdatingLocation()
         pedometer.stopUpdates()
         timer?.invalidate()
@@ -418,8 +426,14 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
     /// tests and would otherwise write into the file those tests check.
     var writesSnapshots = true
 
+    /// Set by stopTracking(). A late event (a location fix in flight, the
+    /// write at the end of advanceWaypoint()) must not put a checkpoint back
+    /// after stop() deleted it: until 2026-09-28 every completed guided walk
+    /// left one behind, which the next launch offered to resume.
+    private var stopped = false
+
     private func writeSnapshot() {
-        guard writesSnapshots else { return }
+        guard writesSnapshots, !stopped else { return }
         ActiveWalkSnapshotStore.save(snapshot)
     }
 
@@ -444,7 +458,8 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
             checkpointDate: Date(),
             trackPoints: thinned.map { WaypointCoord($0) },
             trailAlong: trailProgress?.along,
-            legStartDistance: legStartDistance
+            legStartDistance: legStartDistance,
+            isCompleted: isCompleted
         )
     }
 
@@ -827,9 +842,16 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
 
     private func finish() {
         isCompleted = true
-        stop()
+        // The walk is over but not yet saved. Keep the checkpoint, marked
+        // completed, so a kill before the save still reaches Walk History
+        // (salvaged at launch, never offered for resume). Every save path
+        // clears it; until 2026-09-28 stop() deleted it here, before anything
+        // had saved the walk.
+        writeSnapshot()
+        stopTracking()
         fireBackgroundNotification(title: "Walk complete! 🎉", body: "Great work on \(route.name)")
         WalkAudioCueService.shared.announce("Walk complete! Great job on \(route.name).")
+        onCompleted?()
     }
 
     private func postAutoPauseNotification() {
