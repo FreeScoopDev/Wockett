@@ -110,6 +110,15 @@ way unless there's a strong reason; adding the first one is a real decision.
 - **Colours and fonts** come from `DesignSystem.swift`, which has dual target
   membership so the widget can't drift. There are ~164 legacy raw
   `.font(.system(size:))` sites; fix opportunistically, don't sweep.
+- **App-group keys live in `AppGroup.swift`** (repo root, dual target
+  membership like `DesignSystem.swift`), and `WidgetSnapshot` is the one
+  writer of the widget's numbers. No `"group.com.scoops.wockett"` or
+  `"wkt_widget_*"` literals elsewhere: until 2026-09-28 the background
+  refresh wrote `bg_todaySteps`, the widget read `wkt_widget_steps`, and the
+  widget only changed when the app was opened. A new root file needs the
+  four `project.pbxproj` entries `ProEntitlement.swift` has (file reference,
+  two build files, root group, both Sources phases); the synchronized
+  folders only cover their own target.
 - **Shared UI components look the same everywhere they appear.** Joe's explicit
   standard (2026-09-04). If a component gains a variant, roll it to every screen
   that uses it rather than keeping two.
