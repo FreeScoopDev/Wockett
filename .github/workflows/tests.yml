@@ -71,10 +71,6 @@ jobs:
     if: needs.changes.outputs.app == 'true'
     runs-on: macos-26
     timeout-minutes: 60
-    env:
-      # bin/test.sh keeps its log and result bundle under $TMPDIR when a run
-      # fails; pointing that at runner.temp lets the upload step find them.
-      TMPDIR: ${{ runner.temp }}
     steps:
       - name: Check out repo
         uses: actions/checkout@v4
@@ -99,6 +95,11 @@ jobs:
       # app has no entitlements and CKContainer(identifier:) traps at launch,
       # inside TrailPackLibrary.shared in SquatCounterApp.init() (2026-09-28).
       - name: Run the full PoCSquat scheme
+        # bin/test.sh keeps its log and result bundle under $TMPDIR when a run
+        # fails; runner.temp is where the upload step looks. (The `runner`
+        # context is not available in a job-level env, only in steps.)
+        env:
+          TMPDIR: ${{ runner.temp }}
         run: bash toolkit/bin/test.sh "$GITHUB_WORKSPACE"
 
       # A failing run keeps the xcodebuild log, its stderr and the xcresult
