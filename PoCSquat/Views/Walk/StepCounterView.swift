@@ -71,6 +71,9 @@ struct StepCounterView: View {
             } message: {
                 Text("Wockett closed unexpectedly during an active session. Your progress up to the last checkpoint was saved.")
             }
+            .onChange(of: tabRouter.pendingWalkStart) { _, mode in
+                if let mode { startWalkFromIntent(mode) }
+            }
             .onChange(of: walkStore.reopenRequested) { _, requested in
                 guard requested else { return }
                 walkStore.consumeReopenRequest()
@@ -203,7 +206,21 @@ struct StepCounterView: View {
         .background(Color.earthBg.ignoresSafeArea())
     }
 
+    /// A walk Siri or the Control Center button asked for (see
+    /// `WalkIntentInbox`): the same screen the mode tile opens.
+    private func startWalkFromIntent(_ mode: ActivityMode) {
+        tabRouter.pendingWalkStart = nil
+        if mode == .stationary {
+            showStationary = true
+        } else {
+            freeWalkMode = mode
+            showFreeWalk = true
+        }
+    }
+
     private func handleAppear() {
+        // The App may have consumed the intent before this view existed.
+        if let mode = tabRouter.pendingWalkStart { startWalkFromIntent(mode) }
         // A UI test that terminates the app mid-session leaves a checkpoint behind,
         // so the NEXT test launches into the "Resume Your Activity?" alert, which is
         // modal and blocks the tab bar. Discard the checkpoint instead of prompting
