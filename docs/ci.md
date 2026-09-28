@@ -116,6 +116,50 @@ Fixing it: remove the unwrap. Do not add a `swiftlint:disable` comment — an
 annotation is precisely the thing two SwiftLint runs may honour differently,
 and it was the wrong first guess here.
 
+## GitHub Actions — `.github/workflows/tests.yml`
+
+Added 2026-09-28. Runs the **full `PoCSquat` scheme** (unit + UI) on GitHub's
+`macos-26` runner for every pull request and every push to `main`, through
+the shared toolkit's `bin/test.sh` (checked out at a pinned commit), so CI and
+a local `scripts/test.sh` judge a run by the same three signals. The runner
+image ships Xcode 26.6 (17F113), the build Xcode Cloud pins, and the job
+selects it explicitly.
+
+Why it exists: on 2026-09-28 the Xcode Cloud usage page showed 18 h 19 m of
+the 25 included hours used this period, 150 `CI Tests` builds at 7 minutes
+each against 14 minutes for six Release Flow archives. When the hours run out, the required check never
+reports and every PR sits at "Expected" until the month resets. The repository
+is public, so GitHub-hosted runners, macOS included, are free; the 2026-09-04
+reason for leaving GitHub Actions (10x billing on a private repo) is gone.
+
+| Job | What it does |
+| --- | --- |
+| `What changed` | Linux. Classifies the PR's changed paths with `.github/scripts/classify_changes.sh`. |
+| `Tests (iOS)` | macOS. The full scheme. **Skipped** when every changed path is one the app build cannot see (docs, changelog entries, `prompts/`, `audits/`, `tools/`, the pack-build scripts, the guards workflow, lint config). A job skipped by `if:` reports Success and still satisfies a required check; a path filter on the trigger would leave the check "Expected" and block the merge. Anything unrecognised, and an empty diff, runs it. |
+| `Trail pack builder tests` | Linux. `python3 -m unittest discover -s tools/tests`, only when `tools/` changed. |
+
+A newer push to the same PR cancels the run in progress. A failing run uploads
+the xcodebuild log, its stderr and the xcresult bundle as the `test-results`
+artifact (7 days).
+
+**No signing setup, and do not disable signing.** A simulator build is
+ad-hoc signed with its entitlements and needs no certificate. The 2026-09-04
+workflow passed `CODE_SIGNING_ALLOWED=NO`; tried again on 2026-09-28, that
+crashed the app at launch, before any test ran (`EXC_BREAKPOINT` on the main
+thread, in `CKContainer.init(identifier:)` under `TrailPackLibrary.shared`,
+called from `SquatCounterApp.init()`). `CKContainer` traps when the app has
+no iCloud entitlement, and an unsigned build has no entitlements at all. The
+old workflow got away with it only because nothing created a container at
+launch before 1.12.
+
+**Status: advisory until it has been proven.** The plan, from `NEW-APP.md`
+part 4: a throwaway PR with a deliberately broken unit test must turn
+`Tests (iOS)` red; then `.claude/app.json`'s `requiredChecks` swaps
+`Wockett | CI Tests | Test - iOS` for `Tests (iOS)`, `repo-check.sh --apply`
+updates the ruleset, and Joe removes the *Pull Request Changes* start
+condition from Xcode Cloud's `CI Tests` workflow. Xcode Cloud then runs
+Release Flow only. Update the table at the top of this file at that point.
+
 ## Xcode Cloud
 
 Configured at App Store Connect → Wockett → Xcode Cloud → Manage Workflows.
