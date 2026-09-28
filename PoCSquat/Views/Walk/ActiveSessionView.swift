@@ -270,6 +270,7 @@ struct ActiveSessionView: View {
             }
         }
         .fullScreenCover(isPresented: $showActivitySummary, onDismiss: {
+            if !summaryPRs.isEmpty { ReviewPrompter.shared.noteHighlight() }
             endSessionOnDismiss = true
             dismiss()
         }) {
