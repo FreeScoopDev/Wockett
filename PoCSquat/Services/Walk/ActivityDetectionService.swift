@@ -23,6 +23,9 @@ final class ActivityDetectionService {
     var detectedActivity: DetectedActivity = .unknown
     var showWalkSuggestion: Bool = false
     var isAutomotiveHighConfidence: Bool = false
+    /// The latest report when Core Motion was confident about it, else nil.
+    /// A session's auto-resume watches this.
+    private(set) var confidentActivity: DetectedActivity?
 
     private let motionManager = CMMotionActivityManager()
     private var suggestionDismissedAt: Date?
@@ -65,6 +68,7 @@ final class ActivityDetectionService {
         }
 
         isAutomotiveHighConfidence = activity.automotive && activity.confidence == .high
+        confidentActivity = activity.confidence == .high ? detectedActivity : nil
 
         // Only suggest tracking if: user is walking/cycling, high confidence,
         // and not within the cooldown window
