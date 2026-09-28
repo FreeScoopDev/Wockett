@@ -67,7 +67,10 @@ struct ProEntitlementStoreTests {
     /// and on a loaded Xcode Cloud runner it sometimes didn't (PR #53, three
     /// failures in a PR that never touched Purchases).
     @discardableResult
-    private func eventually(timeout: Duration = .seconds(5),
+    /// 30 s, not 5: a GitHub-hosted macOS runner under load took longer than
+    /// 5 s to deliver the debounced refresh (2026-09-28), and a longer wait
+    /// only costs time when the condition never holds.
+    private func eventually(timeout: Duration = .seconds(30),
                             _ condition: () -> Bool) async -> Bool {
         let deadline = ContinuousClock.now + timeout
         while !condition() {
