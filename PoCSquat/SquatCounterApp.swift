@@ -25,6 +25,7 @@ struct SquatCounterApp: App {
     @StateObject private var tabRouter:    TabRouter
     @State private var communityRoutesModel = CommunityRoutesModel()
     @State private var showSplash = !isWKTUITestMode
+    @Environment(\.scenePhase) private var scenePhase
 
     init() {
         BackgroundTaskManager.shared.registerTasks()
@@ -143,6 +144,16 @@ struct SquatCounterApp: App {
             .onChange(of: NotificationService.shared.pendingAction) { _, _ in
                 handleNotificationAction()
             }
+            // Siri's intent runs in this process while the app is up.
+            .onChange(of: WalkIntentInbox.shared.pending) { _, _ in
+                handleWalkIntent()
+            }
+            // The Control Center button runs in the widget process and can only
+            // leave its request in the app group; read it every time the app
+            // comes to the front, since a running app gets no launch.
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .active { handleWalkIntent() }
+            }
             .modelContainer(container)
             .task {
                 // Boot ordering: configure + salvage run synchronously (no suspension)
@@ -163,6 +174,7 @@ struct SquatCounterApp: App {
                 // running sets this from the delegate, which can happen before this
                 // view exists — `onChange` would never see it.
                 handleNotificationAction()
+                handleWalkIntent()
                 ActivityDetectionService.shared.startDetection()
                 NotificationService.shared.registerCategories()
                 NotificationService.shared.pruneExpiredWalkReminders()
@@ -194,6 +206,20 @@ struct SquatCounterApp: App {
             tabRouter.selected = .health
         default:
             break
+        }
+    }
+
+    /// Acts on a walk Siri or the Control Center button asked for. Home opens
+    /// the walk screen; a walk already in progress is brought back instead of
+    /// being replaced.
+    @MainActor
+    private func handleWalkIntent() {
+        guard let request = WalkIntentInbox.shared.consume() else { return }
+        tabRouter.selected = .home
+        if ActiveWalkStore.shared.isActive {
+            ActiveWalkStore.shared.requestReopen()
+        } else {
+            tabRouter.pendingWalkStart = request.mode
         }
     }
 
