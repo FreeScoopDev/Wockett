@@ -76,26 +76,22 @@ struct WalkIntentInboxTests {
 
     // MARK: - Steps fallback
 
-    @Test func cachedSteps_takesTheFresherOfTheTwoWriters() throws {
+    @Test func cachedSteps_isTheWidgetCount_whenRefreshedToday() throws {
         let defaults = try throwawayDefaults()
         let now = Date()
-        defaults.set(5_000, forKey: "wkt_widget_steps")
-        defaults.set(now.addingTimeInterval(-60), forKey: "wkt_widget_lastRefresh")
-        defaults.set(7_000, forKey: "bg_todaySteps")
-        defaults.set(now.addingTimeInterval(-600), forKey: "bg_lastRefresh")
+        WidgetSnapshot.write(steps: 5_000, distanceMeters: 3_800, to: defaults,
+                             now: now.addingTimeInterval(-60), reloadWidget: false)
         #expect(SiriStepsAnswer.cached(in: defaults, now: now) == 5_000)
-
-        defaults.set(now, forKey: "bg_lastRefresh")
-        #expect(SiriStepsAnswer.cached(in: defaults, now: now) == 7_000)
     }
 
     @Test func cachedSteps_isNilWhenNothingWasRefreshedToday() throws {
         let defaults = try throwawayDefaults()
         let now = Date()
-        defaults.set(5_000, forKey: "wkt_widget_steps")
-        defaults.set(now.addingTimeInterval(-2 * 86_400), forKey: "wkt_widget_lastRefresh")
+        WidgetSnapshot.write(steps: 5_000, distanceMeters: 3_800, to: defaults,
+                             now: now.addingTimeInterval(-2 * 86_400), reloadWidget: false)
         #expect(SiriStepsAnswer.cached(in: defaults, now: now) == nil)
         #expect(SiriStepsAnswer.cached(in: nil, now: now) == nil)
+        #expect(SiriStepsAnswer.cached(in: try throwawayDefaults(), now: now) == nil)
     }
 
     // MARK: - Tracking day

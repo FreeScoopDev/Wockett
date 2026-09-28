@@ -28,15 +28,14 @@ struct WalkIntentRequest: Equatable {
 final class WalkIntentInbox {
     static let shared = WalkIntentInbox()
 
-    /// Keys in the app group. The widget target cannot see this file, so
-    /// `WocketWidgetControl.swift` repeats the three strings; keep them equal.
+    /// The app-group keys, shared with the widget through `AppGroup.swift`.
     enum Keys {
-        static let pending  = "intent_startWalkPending"
-        static let mode     = "intent_activityMode"
-        static let postedAt = "intent_postedAt"
+        static let pending  = AppGroup.IntentKey.startWalkPending
+        static let mode     = AppGroup.IntentKey.activityMode
+        static let postedAt = AppGroup.IntentKey.postedAt
     }
 
-    static let appGroup = "group.com.scoops.wockett"
+    static let appGroup = AppGroup.identifier
 
     /// A request older than this is stale: the app it was meant for never
     /// came to the front, or it predates the timestamp (1.13).
@@ -122,20 +121,13 @@ enum SiriStepsAnswer {
         }
     }
 
-    /// The freshest count the app or its background refresh wrote for the
-    /// widget, if either was refreshed today; nil otherwise.
+    /// The count last written for the widget (by the app or its background
+    /// refresh, both through `WidgetSnapshot`), if it was refreshed today.
     static func cached(in store: UserDefaults?, now: Date = Date(),
                        calendar: Calendar = .current) -> Int? {
-        guard let store else { return nil }
-        let candidates: [(steps: Int, refreshed: Date?)] = [
-            (store.integer(forKey: "wkt_widget_steps"), store.object(forKey: "wkt_widget_lastRefresh") as? Date),
-            (store.integer(forKey: "bg_todaySteps"),    store.object(forKey: "bg_lastRefresh") as? Date)
-        ]
-        let today = candidates.compactMap { candidate -> (Int, Date)? in
-            guard let refreshed = candidate.refreshed,
-                  calendar.isDate(refreshed, inSameDayAs: now) else { return nil }
-            return (candidate.steps, refreshed)
-        }
-        return today.max { $0.1 < $1.1 }?.0
+        guard let values = WidgetSnapshot.read(from: store),
+              let refreshed = values.lastRefresh,
+              calendar.isDate(refreshed, inSameDayAs: now) else { return nil }
+        return values.steps
     }
 }
