@@ -186,15 +186,17 @@ which is the other half of why this file exists.
 ### `CI Tests` — formerly the workflow that gated `main`
 
 **Changed on 2026-09-28**: its *Pull Request Changes* start condition was
-replaced by a **daily schedule on `main`**, so the full scheme still runs
-once a day on Xcode Cloud's fast, reliable hardware (about 3.5 hours a month)
-while PR tests run on GitHub Actions (`tests.yml`, above). A red daily run is
-the UI regression signal while the Actions UI job is advisory. The rest of
-the workflow is described here as it was.
+replaced by **On a Schedule for a Branch: `main`, daily at 2:00 AM Eastern
+Time** (Joe set it in App Store Connect that day), so the full scheme still
+runs once a day on Xcode Cloud's fast, reliable hardware (about 3.5 hours a
+month) while PR tests run on GitHub Actions (`tests.yml`, above). A red daily
+run is the UI regression signal while the Actions UI job is advisory. Each
+run still consumes one build number. The rest of the workflow is described
+here as it was.
 
 | | |
 | --- | --- |
-| Start condition | **Pull Request Changes** — source `Any Branches`, target `main`, starts if any file changes |
+| Start condition | **On a Schedule for a Branch** — branch `main`, daily at 2:00 AM Eastern Time (since 2026-09-28; was *Pull Request Changes*, source `Any Branches`, target `main`) |
 | Auto-cancel | On. A newer push to the same source branch cancels the running build. |
 | Action | **Test - iOS** — platform iOS, scheme `PoCSquat`, **Required to Pass**, Test Option `Test (Use Scheme Setting)`, 1 destination |
 | Environment | Xcode **26.6 (17F113)**, macOS **Tahoe 26.5.1** — pinned explicitly, not `Latest Release`. macOS moved from 26.6.2 (25G83) on 2026-09-15, see below. |
