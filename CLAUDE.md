@@ -176,10 +176,12 @@ before any git work.** Change the process there, not here.
 Wockett's specifics:
 
 - **Required checks** on `main` (`.claude/app.json` → `requiredChecks`):
-  `Tests (iOS)` (GitHub Actions, the full scheme, since 2026-09-28),
+  `Unit tests (iOS)` (GitHub Actions, since 2026-09-28),
   `Language-consistency guard`, `SwiftLint` (required since 2026-09-09, once
   its error-severity backlog reached zero). `~/.claude/toolkit/bin/repo-check.sh .`
-  confirms GitHub still matches.
+  confirms GitHub still matches. `UI smoke tests (iOS)` runs on every PR but
+  is advisory until the runner has proven it can run the UI target
+  (`docs/ci.md` has the numbers and the rule for promoting it).
 - **The picture** is the "Wockett Ship Path" artifact
   (https://claude.ai/artifact/7XiSmyWHE78VkVhrajyzR7). The process was
   simplified on 2026-09-23, after 1.12 took a changelog cut, two stacked PRs
@@ -191,12 +193,15 @@ Wockett's specifics:
   `v1.11`. There is no post-release `Versions.xcconfig` PR.
 - **An emergency manual archive** builds whatever is on disk in
   `~/Desktop/Apps/PoCSquat`, which is how build 84 went out without #53.
-- **CI** is GitHub Actions since 2026-09-28: `tests.yml` runs the full
-  `PoCSquat` scheme on `macos-26` (the same Xcode 26.6 Xcode Cloud pins)
-  through the toolkit's `bin/test.sh`, free because the repository is public;
-  docs-only changes skip the macOS job. Xcode Cloud runs Release Flow only,
-  which keeps its 25 included hours a month for archives. The macOS jobs had
-  been removed on 2026-09-04 because they billed at 10x on a private repo.
+- **CI** is GitHub Actions since 2026-09-28: `tests.yml` runs `WockettTests`
+  and `WockettUITests` as two parallel jobs on `macos-26` (the same Xcode
+  26.6 Xcode Cloud pins) through the toolkit's `bin/test.sh`, free because the
+  repository is public; docs-only changes skip both. The runner is slow: a
+  full-scheme run took 32 minutes against Xcode Cloud's 7, and the UI target
+  was flaky on it, which is why only the unit job is required. Xcode Cloud
+  runs the full scheme once a day on `main` and Release Flow archives, which
+  keeps its 25 included hours a month. The macOS jobs had been removed on
+  2026-09-04 because they billed at 10x on a private repo.
 
 ## Verifying claims
 
@@ -248,10 +253,12 @@ not call them, so a clone without the toolkit still builds and passes CI.
 - **`xcodebuild test | tail` reports the exit code of `tail`.** A failed run
   looks green. Never pipe when the exit code matters; check for the literal
   `** TEST SUCCEEDED **`.
-- **The `PoCSquat` scheme runs `WockettTests` *and* `WockettUITests`,** and CI
-  runs the full scheme through the same `bin/test.sh`. Running
-  `-only-testing:WockettTests` is a smaller suite than CI and will not catch
-  what CI catches.
+- **The `PoCSquat` scheme runs `WockettTests` *and* `WockettUITests`.** CI
+  runs each target as its own job through the same `bin/test.sh`, and only
+  the unit job blocks a merge, so a UI regression can reach `main` if nobody
+  reads the advisory job. Run `scripts/test.sh` (the full scheme) locally
+  before pushing anything that touches the UI; `--unit-only` will not catch
+  what the smoke tests catch.
 - **SwiftLint resolves `excluded:` relative to the config file's own directory.**
   `swiftlint --config /tmp/x.yml` silently lints the excluded test targets and
   inflates every count, with output that looks completely normal.

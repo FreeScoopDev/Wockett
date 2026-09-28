@@ -9,10 +9,12 @@
 # billing on a private repo) no longer applies. Xcode Cloud keeps Release
 # Flow only; see docs/ci.md.
 #
-# What runs: the full PoCSquat scheme (unit + UI) through the shared toolkit's
-# bin/test.sh, pinned to one toolkit commit, so CI and a local scripts/test.sh
-# judge a run by the same three signals: xcodebuild's exit code, the literal
-# ** TEST SUCCEEDED **, and a non-zero count in the xcresult bundle.
+# What runs: the two test targets as two parallel jobs, each through the
+# shared toolkit's bin/test.sh at one pinned toolkit commit, so CI and a local
+# scripts/test.sh judge a run by the same three signals: xcodebuild's exit
+# code, the literal ** TEST SUCCEEDED **, and a non-zero count in the xcresult
+# bundle. "Unit tests (iOS)" is the required check; "UI smoke tests (iOS)" is
+# advisory until the runner has proven it can run them (docs/ci.md).
 #
 # Docs-only changes skip the macOS job. A job skipped by `if:` reports
 # Success and still satisfies a required check; a path filter on the trigger
@@ -65,12 +67,12 @@ jobs:
             | bash .github/scripts/classify_changes.sh \
             | tee -a "$GITHUB_OUTPUT"
 
-  ios:
-    name: Tests (iOS)
+  unit:
+    name: Unit tests (iOS)
     needs: changes
     if: needs.changes.outputs.app == 'true'
     runs-on: macos-26
-    timeout-minutes: 60
+    timeout-minutes: 45
     steps:
       - name: Check out repo
         uses: actions/checkout@v4
@@ -82,7 +84,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: FreeScoopDev/app-toolkit
-          ref: 268c29166eff2c03b3427adbbc3e8ebbf9fd7701
+          ref: ae80891596ff42467b598a828306ca2a9d21667b
           path: toolkit
 
       - name: Select Xcode 26.6
@@ -94,22 +96,68 @@ jobs:
       # ad-hoc signed with its entitlements. With CODE_SIGNING_ALLOWED=NO the
       # app has no entitlements and CKContainer(identifier:) traps at launch,
       # inside TrailPackLibrary.shared in SquatCounterApp.init() (2026-09-28).
-      - name: Run the full PoCSquat scheme
-        # bin/test.sh keeps its log and result bundle under TEST_OUTPUT_DIR
-        # when a run fails, where the upload step looks. Setting TMPDIR was
-        # tried first: Apple's `mktemp -t` ignores it, and the first failed
-        # run uploaded nothing (2026-09-28).
+      # bin/test.sh keeps its log and result bundle under TEST_OUTPUT_DIR
+      # when a run fails, where the upload step looks (Apple's mktemp -t
+      # ignores TMPDIR, so that was not enough).
+      - name: Run the unit tests (WockettTests)
         env:
           TEST_OUTPUT_DIR: ${{ runner.temp }}/wockett-tests
-        run: bash toolkit/bin/test.sh "$GITHUB_WORKSPACE"
+        run: bash toolkit/bin/test.sh "$GITHUB_WORKSPACE" --unit-only
 
-      # A failing run keeps the xcodebuild log, its stderr and the xcresult
-      # bundle (screenshots and the accessibility tree for UI failures).
       - name: Upload the log and result bundle on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: test-results
+          name: unit-test-results
+          path: ${{ runner.temp }}/wockett-tests
+          retention-days: 7
+
+  ui:
+    # Advisory, not required (docs/ci.md says why and what would change it):
+    # on this runner the seven smoke tests took 80-680 s each, one failed
+    # on a UI query timeout, and once the UI test runner never started.
+    # Its own job, one pre-booted simulator and no parallel clones give it
+    # the best chance; its result is on every PR either way.
+    name: UI smoke tests (iOS)
+    needs: changes
+    if: needs.changes.outputs.app == 'true'
+    runs-on: macos-26
+    timeout-minutes: 75
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Check out the shared toolkit
+        uses: actions/checkout@v4
+        with:
+          repository: FreeScoopDev/app-toolkit
+          ref: ae80891596ff42467b598a828306ca2a9d21667b
+          path: toolkit
+
+      - name: Select Xcode 26.6
+        run: |
+          sudo xcode-select -s /Applications/Xcode_26.6.app
+          xcodebuild -version
+
+      # The runner timed out "while preparing to run tests" once when the UI
+      # runner had to boot the simulator itself; boot it first and wait.
+      - name: Boot the simulator
+        run: |
+          UDID=$(bash toolkit/bin/ci_pick_simulator.sh)
+          xcrun simctl boot "$UDID" || true
+          xcrun simctl bootstatus "$UDID" -b
+
+      - name: Run the UI smoke tests (WockettUITests)
+        env:
+          TEST_OUTPUT_DIR: ${{ runner.temp }}/wockett-tests
+          TEST_XCODEBUILD_ARGS: -parallel-testing-enabled NO -maximum-concurrent-test-simulator-destinations 1
+        run: bash toolkit/bin/test.sh "$GITHUB_WORKSPACE" --ui-only
+
+      - name: Upload the log and result bundle on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-test-results
           path: ${{ runner.temp }}/wockett-tests
           retention-days: 7
 

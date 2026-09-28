@@ -23,7 +23,7 @@ was read as "protection was removed" on 2026-09-08. Use this instead:
 
 | Required check | Provider | Runner | Bills at |
 | --- | --- | --- | --- |
-| `Tests (iOS)` | GitHub Actions | `macos-26` (Xcode 26.6) | Free: public repository |
+| `Unit tests (iOS)` | GitHub Actions | `macos-26` (Xcode 26.6) | Free: public repository |
 | `Language-consistency guard` | GitHub Actions | `ubuntu-latest` | 1× |
 | `SwiftLint` | GitHub Actions | `ubuntu-latest`, `ghcr.io/realm/swiftlint` container | 1× |
 
@@ -118,12 +118,12 @@ and it was the wrong first guess here.
 
 ## GitHub Actions — `.github/workflows/tests.yml`
 
-Added 2026-09-28. Runs the **full `PoCSquat` scheme** (unit + UI) on GitHub's
-`macos-26` runner for every pull request and every push to `main`, through
-the shared toolkit's `bin/test.sh` (checked out at a pinned commit), so CI and
-a local `scripts/test.sh` judge a run by the same three signals. The runner
-image ships Xcode 26.6 (17F113), the build Xcode Cloud pins, and the job
-selects it explicitly.
+Added 2026-09-28. Runs the two test targets as **two parallel jobs** on
+GitHub's `macos-26` runner for every pull request and every push to `main`,
+each through the shared toolkit's `bin/test.sh` (checked out at a pinned
+commit), so CI and a local `scripts/test.sh` judge a run by the same three
+signals. The runner image ships Xcode 26.6 (17F113), the build Xcode Cloud
+pins, and each job selects it explicitly.
 
 Why it exists: on 2026-09-28 the Xcode Cloud usage page showed 18 h 19 m of
 the 25 included hours used this period, 150 `CI Tests` builds at 7 minutes
@@ -135,7 +135,8 @@ reason for leaving GitHub Actions (10x billing on a private repo) is gone.
 | Job | What it does |
 | --- | --- |
 | `What changed` | Linux. Classifies the PR's changed paths with `.github/scripts/classify_changes.sh`. |
-| `Tests (iOS)` | macOS. The full scheme. **Skipped** when every changed path is one the app build cannot see (docs, changelog entries, `prompts/`, `audits/`, `tools/`, the pack-build scripts, the guards workflow, lint config). A job skipped by `if:` reports Success and still satisfies a required check; a path filter on the trigger would leave the check "Expected" and block the merge. Anything unrecognised, and an empty diff, runs it. |
+| `Unit tests (iOS)` | macOS. `WockettTests` (`--unit-only`). **Required.** **Skipped** when every changed path is one the app build cannot see (docs, changelog entries, `prompts/`, `audits/`, `tools/`, the pack-build scripts, the guards workflow, lint config). A job skipped by `if:` reports Success and still satisfies a required check; a path filter on the trigger would leave the check "Expected" and block the merge. Anything unrecognised, and an empty diff, runs it. |
+| `UI smoke tests (iOS)` | macOS. `WockettUITests` (`--ui-only`), one pre-booted simulator, no parallel clones. **Advisory**, see below. Same skip rule. |
 | `Trail pack builder tests` | Linux. `python3 -m unittest discover -s tools/tests`, only when `tools/` changed. |
 
 A newer push to the same PR cancels the run in progress. A failing run uploads
@@ -152,21 +153,26 @@ no iCloud entitlement, and an unsigned build has no entitlements at all. The
 old workflow got away with it only because nothing created a container at
 launch before 1.12.
 
-**Required since 2026-09-28.** Proven the way `NEW-APP.md` part 4 asks: a
-throwaway PR with a deliberately broken unit test (#96) turned `Tests (iOS)`
-red, and its failed run uploaded the log and result bundle. `.claude/app.json`'s
-`requiredChecks` then swapped `Wockett | CI Tests | Test - iOS` for
-`Tests (iOS)`, `repo-check.sh --apply` updated the ruleset, and Joe removed
-the *Pull Request Changes* start condition from Xcode Cloud's `CI Tests`
-workflow. Xcode Cloud runs Release Flow only.
+**`Unit tests (iOS)` is required since 2026-09-28; `UI smoke tests (iOS)` is
+advisory.** Proven the way `NEW-APP.md` part 4 asks: a throwaway PR with a
+deliberately broken unit test (#96) turned the check red, and its failed run
+uploaded the log and result bundle. `.claude/app.json`'s `requiredChecks`
+then swapped `Wockett | CI Tests | Test - iOS` for `Unit tests (iOS)`,
+`repo-check.sh --apply` updated the ruleset, and Joe changed Xcode Cloud's
+`CI Tests` start condition (below).
 
-The first real run on #95 took **32 minutes** for the full scheme, against
-Xcode Cloud's 7, and `testAccessoryBar` failed once at 324 s (the flake #92
-instrumented; the bundle upload that would have shown its screen is what the
-`TEST_OUTPUT_DIR` fix restores). The runner is a 3-core M-series machine
-with no build cache. Splitting the unit and UI targets into two parallel
-jobs, or caching DerivedData, are the two obvious ways to cut the wait if it
-matters.
+Why the UI job is advisory: the runner is a 3-core M-series machine with no
+build cache, and the three full-scheme runs on 2026-09-28 showed the UI
+target cannot yet be trusted to it. Run 1 (#95): 32 min, `testAccessoryBar`
+failed at 324 s. Run 2 (#97): 33 min, the UI test runner "timed out while
+preparing to run tests" after all 393 unit tests had passed. Run 3 (#96): 42
+min, the seven smoke tests took 42 to 684 s each, `testRoutesReachable`
+timed out on a UI query, and one timing-sensitive unit test missed a 5 s
+poll (now 30 s). The unit target passed every time. Until the UI job has
+gone green on, say, five consecutive PRs, a red UI job is a signal to read,
+not a block; run `scripts/test.sh` (the full scheme) locally before pushing
+a change that touches the UI, as the process already asks. When it has
+proven itself, add `UI smoke tests (iOS)` to `requiredChecks` and re-apply.
 
 ## Xcode Cloud
 
@@ -179,11 +185,12 @@ which is the other half of why this file exists.
 
 ### `CI Tests` — formerly the workflow that gated `main`
 
-**Switched off on 2026-09-28**: Joe removed its *Pull Request Changes* start
-condition, so it no longer runs on PRs and consumes no compute hours; PR
-tests run on GitHub Actions (`tests.yml`, above). The workflow definition is
-kept in App Store Connect and described here as it was, in case it is ever
-needed again.
+**Changed on 2026-09-28**: its *Pull Request Changes* start condition was
+replaced by a **daily schedule on `main`**, so the full scheme still runs
+once a day on Xcode Cloud's fast, reliable hardware (about 3.5 hours a month)
+while PR tests run on GitHub Actions (`tests.yml`, above). A red daily run is
+the UI regression signal while the Actions UI job is advisory. The rest of
+the workflow is described here as it was.
 
 | | |
 | --- | --- |

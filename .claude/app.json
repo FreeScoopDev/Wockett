@@ -13,7 +13,7 @@
   "versionSource": "Versions.xcconfig",
   "github": "FreeScoopDev/Wockett",
   "requiredChecks": [
-    "Tests (iOS)",
+    "Unit tests (iOS)",
     "Language-consistency guard",
     "SwiftLint"
   ],
