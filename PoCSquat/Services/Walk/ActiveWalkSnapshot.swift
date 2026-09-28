@@ -106,12 +106,16 @@ struct ActiveWalkSnapshot: Codable {
     /// Distance covered when the current route began: 0, or where a session
     /// heading to a trail turned into the trail walk. Optional for the same reason.
     let legStartDistance: Double?
+    /// True once a guided walk reached its end. Such a checkpoint is a walk
+    /// waiting to be saved, never one to resume. Optional for the same reason.
+    let isCompleted: Bool?
 
     init(route: RouteData, startTime: Date, totalDistanceCovered: Double,
          pausedDuration: TimeInterval, isPaused: Bool, pauseStartDate: Date?,
          currentWaypointIndex: Int, currentLap: Int, triggeredCheckpoints: Set<Int>,
          splitTimes: [SplitTimeRecord], liveSteps: Int, checkpointDate: Date,
-         trackPoints: [WaypointCoord]? = nil, trailAlong: Double? = nil, legStartDistance: Double? = nil) {
+         trackPoints: [WaypointCoord]? = nil, trailAlong: Double? = nil, legStartDistance: Double? = nil,
+         isCompleted: Bool? = nil) {
         self.route = route; self.startTime = startTime
         self.totalDistanceCovered = totalDistanceCovered
         self.pausedDuration = pausedDuration; self.isPaused = isPaused
@@ -122,6 +126,7 @@ struct ActiveWalkSnapshot: Codable {
         self.trackPoints = trackPoints
         self.trailAlong = trailAlong
         self.legStartDistance = legStartDistance
+        self.isCompleted = isCompleted
     }
 }
 

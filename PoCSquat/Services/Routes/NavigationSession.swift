@@ -150,6 +150,8 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
     /// session heading to a trail turned into the trail walk. ActiveWalkStore
     /// republishes the route so the map redraws it.
     var onRouteChanged: ((NavigableRoute) -> Void)?
+    /// Called once when a guided walk reaches its end (`finish()`).
+    var onCompleted: (() -> Void)?
 
     // Heading to a trail (2026-09-26): the route carries `approach`, and
     // within `TrailWalkPlanner.startRadiusMeters` of the trail the session
@@ -662,7 +664,8 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
         advanceWaypoint()
     }
 
-    private func advanceWaypoint() {
+    /// Internal, not private, so tests can walk a route to its end.
+    func advanceWaypoint() {
         let arrivedIndex = currentWaypointIndex
         let step = WaypointStep.after(index: currentWaypointIndex, lap: currentLap, count: route.waypoints.count,
                                       isLoop: route.isLoop, lapCount: route.lapCount)

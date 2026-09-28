@@ -10,7 +10,11 @@ final class ActiveWalkStore {
     private(set) var isStarted: Bool = false
     private(set) var historyStore: WalkHistoryStore?
 
-    private init() {}
+    /// `shared` is the app's store; tests build their own with an in-memory
+    /// history store.
+    init(historyStore: WalkHistoryStore? = nil) {
+        self.historyStore = historyStore
+    }
 
     func configure(historyStore: WalkHistoryStore) {
         self.historyStore = historyStore
