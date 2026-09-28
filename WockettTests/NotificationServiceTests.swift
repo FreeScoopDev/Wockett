@@ -12,6 +12,9 @@ final class FakeNotificationCenter: NotificationCentering {
     var removedDelivered: [[String]] = []
     var authRequests: [UNAuthorizationOptions] = []
     var categories: Set<UNNotificationCategory> = []
+    /// Set to make `add` throw, as the real center does for a malformed
+    /// request or when it is out of room.
+    var addError: Error?
 
     init(status: UNAuthorizationStatus = .authorized) { self.status = status }
 
@@ -21,7 +24,10 @@ final class FakeNotificationCenter: NotificationCentering {
         if grant { status = options.contains(.provisional) ? .provisional : .authorized }
         return grant
     }
-    func add(_ request: UNNotificationRequest) async throws { added.append(request) }
+    func add(_ request: UNNotificationRequest) async throws {
+        if let addError { throw addError }
+        added.append(request)
+    }
     func removePending(withIdentifiers ids: [String]) { removedPending.append(ids) }
     func removeDelivered(withIdentifiers ids: [String]) { removedDelivered.append(ids) }
     func pendingIdentifiers() async -> [String] { added.map(\.identifier) }
@@ -59,8 +65,12 @@ struct NotificationServiceTests {
         await svc.schedule(.offTrail, title: "Off A", body: "b", trigger: nil)
         await svc.schedule(.offTrail, title: "Off A", body: "b", trigger: nil)
         #expect(Set(center.added.map(\.identifier)) == ["nav-off-trail"], "one identifier, so each replaces the last")
+        // Count the cancels: the two schedule() calls above already removed
+        // this id, so `.last` alone was satisfied without withdraw() doing it.
+        let cancelsBefore = center.removedPending.count
         svc.withdraw(.offTrail)
         #expect(center.removedDelivered == [["nav-off-trail"]])
+        #expect(center.removedPending.count == cancelsBefore + 1)
         #expect(center.removedPending.last == ["nav-off-trail"])
     }
 
@@ -83,11 +93,12 @@ struct NotificationServiceTests {
         #expect(qc.added.count == 1)
     }
 
-    @Test func quietDeliveryIsRequestedOnlyWhenNeverAsked() async {
+    @Test func quietDeliveryIsRequestedOnlyWhenNeverAsked() async throws {
         let (fresh, fc, _) = make(status: .notDetermined)
         await fresh.requestQuietDeliveryIfNeverAsked()
         #expect(fc.authRequests.count == 1)
-        #expect(fc.authRequests[0].contains(.provisional))
+        let first = try #require(fc.authRequests.first, "no request was made")
+        #expect(first.contains(.provisional))
         #expect(fresh.authorizationStatus == .provisional)
         #expect(fresh.isDelivering)
 
@@ -328,6 +339,22 @@ struct NotificationServiceTests {
     @Test func deniedAddFailsAndStoresNothing() async {
         let (svc, center, defaults) = make(status: .denied)
         center.grant = false
+        #expect(await svc.addWalkReminder(WalkReminder(title: "w", schedule: .daily(hour: 8, minute: 0))) == false)
+        #expect(center.added.isEmpty)
+        #expect(svc.walkReminders.isEmpty)
+        #expect(defaults.data(forKey: NotificationService.walkRemindersKey) == nil)
+        // A denial returns before schedule() runs at all. schedule() always
+        // removes the pending copy first, so this is what shows the guard fired,
+        // rather than the delivery check inside schedule() covering for it.
+        #expect(center.removedPending.isEmpty)
+    }
+
+    /// Authorized, but the center refuses the request: nothing is remembered,
+    /// so Settings never lists a reminder iOS does not hold.
+    @Test func aReminderTheCenterRefusesIsNotKept() async {
+        struct AddFailed: Error {}
+        let (svc, center, defaults) = make(status: .authorized)
+        center.addError = AddFailed()
         #expect(await svc.addWalkReminder(WalkReminder(title: "w", schedule: .daily(hour: 8, minute: 0))) == false)
         #expect(center.added.isEmpty)
         #expect(svc.walkReminders.isEmpty)

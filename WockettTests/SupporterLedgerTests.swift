@@ -49,8 +49,15 @@ struct SupporterLedgerTests {
         #expect(sut.tipCount == 0)
         #expect(sut.hasTipped == false)
         #expect(sut.hasEarnedPro == false)
-        #expect(sut.pointsToPro == SupporterLedger.proThresholdPoints)
+        // A literal, not the constant: an expected value taken from the thing
+        // under test passes whatever the threshold is (2026-09-28 audit).
+        #expect(sut.pointsToPro == 4)
         #expect(sut.firstTipDate == nil)
+    }
+
+    @Test func pointsToPro_isNeverNegative() {
+        let (sut, _) = ledger(seed: [entry(1, .large)])
+        #expect(sut.pointsToPro == 0, "past the threshold, nothing is owed, not minus four")
     }
 
     // MARK: The threshold — the cases the promise actually turns on
@@ -205,6 +212,15 @@ struct SupporterLedgerTests {
         let reloaded = SupporterLedger(store: store)
         #expect(reloaded.hasEarnedPro)
         #expect(reloaded.tipCount == 1)
+    }
+
+    /// The store may hand entries back in any order (a history reconcile can
+    /// write them newest first); the ledger sorts on load, so `firstTipDate`
+    /// is the first tip and not the first row.
+    @Test func entriesLoadedOutOfOrder_areSortedOldestFirst() {
+        let (sut, _) = ledger(seed: [entry(2, .small, offset: 600), entry(1, .small)])
+        #expect(sut.firstTipDate == base)
+        #expect(sut.entries.map(\.transactionID) == [1, 2])
     }
 
     @Test func entriesAreOrderedOldestFirst() {

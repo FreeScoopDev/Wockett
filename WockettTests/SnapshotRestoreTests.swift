@@ -117,8 +117,8 @@ struct SnapshotRestoreTests {
         #expect(decoded.totalDistanceCovered    == 1234.5)
         #expect(decoded.pausedDuration          == 90)
         #expect(decoded.isPaused                == true)
-        #expect(decoded.pauseStartDate != nil)
-        #expect(abs(decoded.pauseStartDate!.timeIntervalSince(pauseDate)) < 0.001)
+        let decodedPauseStart = try #require(decoded.pauseStartDate)
+        #expect(abs(decodedPauseStart.timeIntervalSince(pauseDate)) < 0.001)
         #expect(decoded.currentWaypointIndex    == 3)
         #expect(decoded.currentLap              == 2)
         #expect(decoded.triggeredCheckpoints    == [1, 3])
@@ -278,19 +278,20 @@ struct SnapshotRestoreTests {
         #expect(abs(result - 460) < 0.001)
     }
 
-    @Test func restoredPausedDuration_elapsedHonestyInvariant() {
-        // After restore the computed elapsed must equal what it was at checkpoint time —
-        // dead time never leaks into elapsed.
-        // Setup: startTime 1000s before checkpoint, 60s prior pauses, walk active at death.
-        // elapsedAtCheckpoint = 1000 - 60 = 940s
-        let now        = Date()
-        let checkpoint = now.addingTimeInterval(-300)
+    /// A restored session's elapsed time is what it was at the checkpoint: the
+    /// dead time since is folded into pausedDuration, never into elapsed. This
+    /// drives the real restore (`applySnapshot`), not the arithmetic on its own:
+    /// the earlier version recomputed the answer itself, and stayed green when
+    /// the session stopped subtracting the pauses (2026-09-28 audit).
+    @Test @MainActor func restoredSession_elapsedDoesNotIncludeDeadTime() {
+        // startTime 1000 s before the checkpoint, 60 s of pauses, active at death:
+        // elapsed at the checkpoint = 940 s, however long the app was closed.
+        let checkpoint = Date().addingTimeInterval(-300)
         let startTime  = checkpoint.addingTimeInterval(-1000)
-
+        let crumbs = [WaypointCoord(CLLocationCoordinate2D(latitude: 37.77, longitude: -122.43)),
+                      WaypointCoord(CLLocationCoordinate2D(latitude: 37.78, longitude: -122.44))]
         let snapshot = ActiveWalkSnapshot(
-            route: .init(NavigableRoute(
-                name: "t", waypoints: [], lapCount: 1, isLoop: false, totalDistance: 0
-            )),
+            route: .init(NavigableRoute(name: "t", waypoints: [], lapCount: 1, isLoop: false, totalDistance: 0)),
             startTime: startTime,
             totalDistanceCovered: 0,
             pausedDuration: 60,
@@ -301,14 +302,20 @@ struct SnapshotRestoreTests {
             triggeredCheckpoints: [],
             splitTimes: [],
             liveSteps: 0,
-            checkpointDate: checkpoint
+            checkpointDate: checkpoint,
+            trackPoints: crumbs
         )
 
-        let restoredPaused  = NavigationSessionManager.restoredPausedDuration(for: snapshot, now: now)
-        let restoredElapsed = now.timeIntervalSince(startTime) - restoredPaused
+        let mgr = NavigationSessionManager(route: snapshot.route.navigableRoute)
+        mgr.writesSnapshots = false
+        mgr.applySnapshot(snapshot)
 
-        let elapsedAtCheckpoint = checkpoint.timeIntervalSince(startTime) - 60.0  // 940s
-        #expect(abs(restoredElapsed - elapsedAtCheckpoint) < 0.001)
+        // applySnapshot reads Date() itself, so allow a second of slack.
+        #expect(abs(mgr.elapsedTime - 940) < 1.0)
+        #expect(mgr.isPaused == false)
+        // The breadcrumbs come back too; a restore that drops them loses the
+        // free walk's line from history and the share card.
+        #expect(mgr.trackPoints.count == crumbs.count)
     }
 
     // MARK: - salvagedElapsed
@@ -390,9 +397,12 @@ struct SnapshotRestoreTests {
         // Round-trip with trackPoints present
         let data    = try JSONEncoder().encode(snapshot)
         let decoded = try JSONDecoder().decode(ActiveWalkSnapshot.self, from: data)
-        #expect(decoded.trackPoints?.count == 3)
-        #expect(abs(decoded.trackPoints![0].latitude  - 37.77) < 0.0001)
-        #expect(abs(decoded.trackPoints![2].longitude - (-122.45)) < 0.0001)
+        // `try #require`, not `!`: a nil here should read as a failed expectation,
+        // not as the test host crashing on a force-unwrap.
+        let points = try #require(decoded.trackPoints)
+        #expect(points.count == 3)
+        #expect(abs(points[0].latitude  - 37.77) < 0.0001)
+        #expect(abs(points[2].longitude - (-122.45)) < 0.0001)
 
         // Decoding old JSON with no trackPoints key → nil (backward compatible)
         var json = try JSONSerialization.jsonObject(with: data) as! [String: Any]

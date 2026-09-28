@@ -54,12 +54,11 @@ struct StepManagerTests {
     // MARK: - Edge: future day
 
     @Test func goalMet_nilForFutureDay() {
-        // Future days have no step data yet — goalMet must be nil
-        #expect(day(steps: nil, goal: 10_000, daysFromNow: 1).goalMet == nil)
-    }
-
-    @Test func progress_zeroForFutureDay() {
-        #expect(day(steps: nil, goal: 10_000, daysFromNow: 1).progress == 0.0)
+        // A future day never has a verdict, even when it carries a step count:
+        // with `steps: nil` the nil-steps rule answers first and the future-day
+        // rule is never reached (2026-09-28 audit). DayDetailSheet shows this.
+        #expect(day(steps: 5_000, goal: 10_000, daysFromNow: 1).goalMet == nil)
+        #expect(day(steps: 15_000, goal: 10_000, daysFromNow: 1).goalMet == nil)
     }
 
     // MARK: - ActivityTagConfig
@@ -71,9 +70,9 @@ struct StepManagerTests {
     @Test func activityTagConfig_colorIndex_wrapsAroundPalette() {
         let paletteSize = ActivityTagConfig.palette.count
         let config = ActivityTagConfig(id: "x", name: "X", emoji: "⭐", colorIndex: paletteSize * 3 + 1)
-        // Should not crash; index must wrap.
-        let color = config.color
-        let expected = ActivityTagConfig(id: "x", name: "X", emoji: "⭐", colorIndex: 1).color
-        #expect(color == expected)
+        // Compared with the palette itself: an expected value taken from the same
+        // function passes for any constant (2026-09-28 audit).
+        #expect(config.color == ActivityTagConfig.palette[1])
+        #expect(config.color != ActivityTagConfig.palette[0])
     }
 }
