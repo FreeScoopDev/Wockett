@@ -75,7 +75,7 @@ nonisolated struct ProEntitlementSnapshot: Codable, Equatable {
     var source: ProEntitlementSource
     var updatedAt: Date
 
-    static let appGroup = "group.com.scoops.wockett"
+    static let appGroup = AppGroup.identifier
     static let defaultsKey = "pro.entitlement.snapshot"
 
     static let unknown = ProEntitlementSnapshot(isPro: false, source: .none, updatedAt: .distantPast)

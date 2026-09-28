@@ -6,16 +6,9 @@ private enum WS {
     static let walk = "figure.walk"
 }
 
-// MARK: - App Group keys (must match BackgroundTaskManager + WidgetDataWriter)
-
-private let appGroup = "group.com.scoops.wockett"
-private enum WKey {
-    static let steps    = "wkt_widget_steps"
-    static let goal     = "wkt_widget_goal"
-    static let streak   = "wkt_widget_streak"
-    static let distance = "wkt_widget_distanceMeters"
-    static let refresh  = "wkt_widget_lastRefresh"
-}
+// App group keys come from AppGroup.swift, compiled into both targets, so
+// the app's writer (WidgetSnapshot) and this reader cannot drift.
+private typealias WKey = AppGroup.WidgetKey
 
 // Colors now come from the shared DesignSystem.swift (earthXXX tokens) --
 // this target used to carry its own separately-hardcoded, non-adaptive copy.
@@ -66,12 +59,12 @@ struct StepWidgetProvider: TimelineProvider {
     }
 
     private func currentEntry() -> StepEntry {
-        let ud      = UserDefaults(suiteName: appGroup)
+        let ud      = AppGroup.defaults
         let steps   = ud?.integer(forKey: WKey.steps)    ?? 0
         let goal    = ud?.integer(forKey: WKey.goal)     ?? 10_000
         let streak  = ud?.integer(forKey: WKey.streak)   ?? 0
-        let dist    = ud?.double(forKey: WKey.distance)  ?? 0
-        let refresh = ud?.object(forKey: WKey.refresh)   as? Date
+        let dist    = ud?.double(forKey: WKey.distanceMeters)  ?? 0
+        let refresh = ud?.object(forKey: WKey.lastRefresh)   as? Date
         return StepEntry(date: .now, steps: steps, goal: goal,
                          streak: streak, distanceMeters: dist, lastRefresh: refresh)
     }
@@ -234,7 +227,7 @@ private struct CircularStepView: View {
 // MARK: - Widget Definition
 
 struct WocketStepWidget: Widget {
-    let kind = "WocketStepWidget"
+    let kind = AppGroup.stepWidgetKind
 
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: kind, provider: StepWidgetProvider()) { entry in
