@@ -1,6 +1,7 @@
 import Testing
 import Foundation
 import CoreLocation
+import SwiftData
 @testable import PoCSquat
 
 // Serialized because several tests write to the same shared file and would race
@@ -40,7 +41,8 @@ struct SnapshotRestoreTests {
         isPaused: Bool = false,
         pauseStartDate: Date? = nil,
         pausedDuration: TimeInterval = 90,
-        checkpointDate: Date = Date()
+        checkpointDate: Date = Date(),
+        isCompleted: Bool? = nil
     ) -> ActiveWalkSnapshot {
         ActiveWalkSnapshot(
             route: .init(makeRoute()),
@@ -57,7 +59,8 @@ struct SnapshotRestoreTests {
                 .init(label: "40%", elapsed: 600)
             ],
             liveSteps: 4200,
-            checkpointDate: checkpointDate
+            checkpointDate: checkpointDate,
+            isCompleted: isCompleted
         )
     }
 
@@ -410,5 +413,116 @@ struct SnapshotRestoreTests {
         let patched = try JSONSerialization.data(withJSONObject: json)
         let legacy  = try JSONDecoder().decode(ActiveWalkSnapshot.self, from: patched)
         #expect(legacy.trackPoints == nil)
+    }
+
+    // MARK: - A completed walk is kept until it is saved (2026-09-28)
+    //
+    // Guided completion used to call stop(), which deleted the checkpoint before
+    // anything had saved the walk; only the walk screen's onChange(isCompleted)
+    // saved it, so a walk finished with the screen closed (minimised to the mini
+    // tile) was lost if the app died, and advanceWaypoint() then rewrote a
+    // checkpoint for the finished walk, which the next launch offered to resume.
+
+    private func inMemoryHistory() throws -> WalkHistoryStore {
+        let config = ModelConfiguration(schema: AppModelContainer.schema, isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: AppModelContainer.schema, configurations: config)
+        return WalkHistoryStore(context: ModelContext(container))
+    }
+
+    /// Two waypoints, no laps: `advanceWaypoint()` twice reaches the end.
+    private func outAndBack() -> NavigableRoute {
+        NavigableRoute(name: "Out and back",
+                       waypoints: [CLLocationCoordinate2D(latitude: 37.77, longitude: -122.43),
+                                   CLLocationCoordinate2D(latitude: 37.78, longitude: -122.44)],
+                       lapCount: 1, isLoop: false, totalDistance: 1500,
+                       isCustomRoute: true, isCommunityRoute: false, activityMode: .walking)
+    }
+
+    @Test @MainActor func guidedCompletion_keepsACompletedCheckpoint_untilSaved() throws {
+        let mgr = NavigationSessionManager(route: outAndBack())
+        mgr.writesSnapshots = true
+        mgr.advanceWaypoint()
+        mgr.advanceWaypoint()
+        #expect(mgr.isCompleted)
+        let kept = try #require(ActiveWalkSnapshotStore.loadAnyAge(), "the finished walk must still be on disk")
+        #expect(kept.isCompleted == true)
+        mgr.stop()
+        #expect(ActiveWalkSnapshotStore.loadAnyAge() == nil)
+    }
+
+    @Test @MainActor func stoppedSession_neverRewritesItsCheckpoint() throws {
+        let mgr = NavigationSessionManager(route: makeRoute())   // 3 laps: one advance is not the end
+        mgr.writesSnapshots = true
+        mgr.advanceWaypoint()
+        #expect(ActiveWalkSnapshotStore.loadAnyAge() != nil)
+        mgr.stop()
+        mgr.advanceWaypoint()   // a late event after stop()
+        #expect(ActiveWalkSnapshotStore.loadAnyAge() == nil, "a stopped session must not resurrect its checkpoint")
+    }
+
+    @Test @MainActor func completedWalk_withTheWalkScreenClosed_isSavedAndEnded() throws {
+        let history = try inMemoryHistory()
+        let store = ActiveWalkStore(historyStore: history)
+        let mgr = try #require(store.beginSession(route: outAndBack()))
+        mgr.writesSnapshots = false
+        mgr.isSessionScreenVisible = false
+        mgr.advanceWaypoint()
+        mgr.advanceWaypoint()
+        #expect(mgr.isCompleted)
+        #expect(history.sessions.count == 1)
+        #expect(store.session == nil)
+    }
+
+    @Test @MainActor func completedWalk_withTheWalkScreenUp_isLeftForTheScreenToSave() throws {
+        let history = try inMemoryHistory()
+        let store = ActiveWalkStore(historyStore: history)
+        let mgr = try #require(store.beginSession(route: outAndBack()))
+        mgr.writesSnapshots = false
+        mgr.isSessionScreenVisible = true
+        mgr.advanceWaypoint()
+        mgr.advanceWaypoint()
+        #expect(mgr.isCompleted)
+        #expect(history.sessions.isEmpty, "the screen saves it, with per-pet distances")
+        #expect(store.session != nil)
+    }
+
+    @Test @MainActor func saveAndEnd_savesOnce() throws {
+        let history = try inMemoryHistory()
+        let store = ActiveWalkStore(historyStore: history)
+        let mgr = try #require(store.beginSession(route: outAndBack()))
+        mgr.writesSnapshots = false
+        #expect(store.saveAndEndActiveSession() != nil)
+        #expect(history.sessions.count == 1)
+        #expect(store.saveAndEndActiveSession() == nil)
+        #expect(history.sessions.count == 1)
+    }
+
+    @Test @MainActor func savingTheWalk_clearsTheCheckpoint() throws {
+        let history = try inMemoryHistory()
+        let store = ActiveWalkStore(historyStore: history)
+        let mgr = try #require(store.beginSession(route: outAndBack()))
+        mgr.writesSnapshots = false
+        ActiveWalkSnapshotStore.save(mgr.snapshot)
+        #expect(ActiveWalkSnapshotStore.hasPending)
+        #expect(store.buildAndSaveSession() != nil)
+        #expect(ActiveWalkSnapshotStore.hasPending == false)
+    }
+
+    @Test func completedCheckpoint_isNeverOfferedForResume() {
+        ActiveWalkSnapshotStore.save(makeSnapshot(isCompleted: true))
+        #expect(ActiveWalkSnapshotStore.loadAnyAge() != nil, "it is still on disk for the salvage path")
+        #expect(ActiveWalkSnapshotStore.load() == nil)
+        #expect(ActiveWalkSnapshotStore.hasPending == false)
+    }
+
+    @Test @MainActor func completedCheckpoint_atLaunch_isSavedNotOfferedForResume() throws {
+        ActiveWalkSnapshotStore.save(makeSnapshot(isCompleted: true))
+        let history = try inMemoryHistory()
+        let store = ActiveWalkStore(historyStore: history)
+        store.salvageStaleWalkIfNeeded()
+        #expect(history.sessions.count == 1)
+        #expect(ActiveWalkSnapshotStore.hasPending == false)
+        #expect(store.hasRestorableWalk == false)
+        #expect(store.restoreIfNeeded() == nil)
     }
 }
