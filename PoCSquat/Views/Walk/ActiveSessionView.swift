@@ -704,7 +704,7 @@ struct ActiveSessionView: View {
 
             VStack(spacing: 2) {
                 SessionToggleRow(icon: .speakerOn, tint: .earthGreen, title: "Voice cues",
-                                 detail: "Announces each \(Locale.current.measurementSystem == .us ? "mile" : "kilometer") and your pace",
+                                 detail: "Announces each \(WalkAudioCueService.usesMiles ? "mile" : "kilometer") and your pace",
                                  isOn: Binding(get: { WalkAudioCueService.shared.isEnabled },
                                                set: { WalkAudioCueService.shared.isEnabled = $0 }))
                 SessionToggleRow(icon: .hydration, tint: .accentInfo, title: "Water breaks",
