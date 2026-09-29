@@ -21,22 +21,11 @@ final class HomeWeatherLocator: NSObject {
         let m = CLLocationManager()
         m.delegate = self
         m.desiredAccuracy = kCLLocationAccuracyKilometer
+        // The status is handled in locationManagerDidChangeAuthorization, which
+        // CoreLocation calls as soon as the delegate is set. Reading
+        // `m.authorizationStatus` here instead is a synchronous call to locationd
+        // on the main thread, while Home is appearing.
         manager = m
-        let status = m.authorizationStatus
-        #if DEBUG
-        print("[Weather] fetchIfAuthorized — status: \(status.rawValue)")
-        #endif
-        switch status {
-        case .authorizedWhenInUse, .authorizedAlways:
-            fetchState = .loading
-            m.requestLocation()
-        case .notDetermined:
-            m.requestWhenInUseAuthorization()
-        case .denied, .restricted:
-            fetchState = .denied
-        @unknown default:
-            break
-        }
     }
 
     @MainActor
@@ -71,6 +60,8 @@ extension HomeWeatherLocator: CLLocationManagerDelegate {
             manager.requestLocation()
         } else if status == .denied || status == .restricted {
             fetchState = .denied
+        } else if status == .notDetermined {
+            manager.requestWhenInUseAuthorization()
         }
     }
 

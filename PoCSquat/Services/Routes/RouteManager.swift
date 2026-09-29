@@ -52,7 +52,12 @@ final class RouteManager: NSObject, ObservableObject, CLLocationManagerDelegate 
         super.init()
         locationManager.delegate = self
         locationManager.desiredAccuracy = kCLLocationAccuracyHundredMeters
-        authStatus = locationManager.authorizationStatus
+        // No `authStatus = locationManager.authorizationStatus` here. This init
+        // runs on the main thread while SwiftUI builds the first scene, and that
+        // read is a synchronous XPC call to locationd: a stack sample of a simulator
+        // launch caught it waiting 15 s+ with nothing drawn (2026-09-28). CoreLocation
+        // calls locationManagerDidChangeAuthorization as soon as the delegate is
+        // set, and that callback fills in authStatus.
     }
 
     // MARK: - Public
