@@ -345,8 +345,11 @@ struct StepCounterView: View {
         }
     }
 
+    // RouteManager's published status, not a fresh CLLocationManager: this is
+    // read on every Home render, and `authorizationStatus` on a new manager is a
+    // synchronous call to locationd on the main thread.
     private var gpsIsReady: Bool {
-        let status = CLLocationManager().authorizationStatus
+        let status = routeManager.authStatus
         return status == .authorizedAlways || status == .authorizedWhenInUse
     }
 
