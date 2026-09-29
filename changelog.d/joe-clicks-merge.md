@@ -1,2 +1,0 @@
-### Internal
-- Joe merges every PR with **Squash and merge**, as before 2026-09-27. That day the process switched to Claude queuing GitHub auto-merge, but Claude Code's auto-mode safety check refuses `gh pr merge --auto` as "merging without review", and a permission rule allowing it does not override that. It never once ran: #88 to #108 were all merged by Joe's click, and every session stalled at the same step. The process now says so, in the shared toolkit's `PROCESS.md` and here. The repo's "Allow auto-merge" setting stays on; nothing uses it.
