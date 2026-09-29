@@ -27,7 +27,7 @@ final class HealthWorkoutWriter {
 
     func start(at date: Date) async {
         guard HKHealthStore.isHealthDataAvailable() else { return }
-        guard healthStore.authorizationStatus(for: .workoutType()) == .sharingAuthorized else { return }
+        guard await Self.canWriteWorkouts() else { return }
 
         startDate = date
 
@@ -44,6 +44,22 @@ final class HealthWorkoutWriter {
         self.routeBuilder = workoutBuilder.seriesBuilder(for: HKSeriesType.workoutRoute()) as? HKWorkoutRouteBuilder
 
         try? await workoutBuilder.beginCollection(at: date)
+    }
+
+    /// Whether Health lets Wockett save workouts. `@concurrent` so the read runs
+    /// off the main thread: `authorizationStatus(for:)` is a synchronous call to
+    /// the Health daemon, and both callers start a walk from the main actor, which
+    /// a plain `async` function inherits under Approachable Concurrency. A stack
+    /// sample of a UI test (2026-09-28) caught the main thread waiting here for
+    /// about 100 s right after Walk was tapped, with the session screen frozen.
+    /// `status` exists so a test can see which thread the read runs on.
+    @concurrent
+    static func canWriteWorkouts(
+        status: @Sendable () -> HKAuthorizationStatus = {
+            HKHealthStore().authorizationStatus(for: .workoutType())
+        }
+    ) async -> Bool {
+        status() == .sharingAuthorized
     }
 
     // Feed location updates in real-time for the GPS route.
