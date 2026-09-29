@@ -127,7 +127,7 @@ way unless there's a strong reason; adding the first one is a real decision.
   `changelog.d/`, not in `CHANGELOG.md`. `changelog.d/README.md` has the format.
   The release PR gathers the files into `CHANGELOG.md`. Two open PRs that both
   edited `[Unreleased]` conflicted every time, and a conflicted PR cannot
-  auto-merge.
+  merge until it is fixed.
 - **Accessibility identifiers** on marker views need
   `.accessibilityElement(children: .contain)` or they never reach the
   accessibility tree. UI tests depend on: `home.statCard`, `home.tile.walk`,
@@ -184,8 +184,8 @@ way unless there's a strong reason; adding the first one is a real decision.
 
 The process is shared by every app and lives in the toolkit
 (`FreeScoopDev/app-toolkit`, checked out at `~/.claude/toolkit`): every
-change, auto-merge, `changelog.d/`, the release PR and Joe's five release
-steps, git rules. **If you cannot see its "Every change: no Joe step"
+change, `changelog.d/`, the release PR and Joe's five release steps, git
+rules. **If you cannot see its "Every change: Joe's one step is Merge"
 section, the import did not load: read `~/.claude/toolkit/PROCESS.md` now,
 before any git work.** Change the process there, not here.
 
@@ -329,13 +329,14 @@ not call them, so a clone without the toolkit still builds and passes CI.
   just operating it.
 - Terminal commands as one complete copy-paste block, with a plain-English note
   on what it does.
-- **Claude commits, pushes branches, queues auto-merge and pushes release
-  tags; Joe merges only the release PR.** Agreed 2026-09-23, auto-merge added
-  2026-09-27. A routine PR merges itself once the required checks pass. A merge
-  on `main` reaches users only through Joe's Release Flow build, QA and Submit.
-  Claude never pushes to `main`, never force-pushes, never merges past a
-  failing or missing check, and never auto-merges the release PR. Joe no
-  longer runs git commands for routine work.
+- **Claude commits, pushes branches and pushes release tags; Joe merges
+  every PR.** Agreed 2026-09-23. Auto-merge was adopted on 2026-09-27 and
+  dropped on 2026-09-28: Claude Code's auto-mode safety check refuses
+  `gh pr merge --auto` even with a permission rule allowing it, so it never
+  once ran. Claude never pushes to `main`, never force-pushes, never merges
+  and never queues auto-merge. A merge on `main` reaches users only through
+  Joe's Release Flow build, QA and Submit. Joe no longer runs git commands
+  for routine work.
 - **Never move what is checked out in `~/Desktop/Apps/PoCSquat`.** That folder is
   Joe's; git there is read-only with `--no-optional-locks`, because past
   sessions left `.git/index.lock` files behind. Do all branch work in a
