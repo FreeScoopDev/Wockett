@@ -190,6 +190,8 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
     var showBreakPrompt: Bool = false
     private var breakPromptShownAt: Date?
     var autoPausedForInactivity = false
+    private var autoResumeWatch: AutoResumeWatch?
+    private var autoResumeTimer: Timer?
 
     // Driving detection — compares GPS speed and CoreMotion automotive classification.
     private var drivingDetector = DrivingDetector(speedCeiling: 3.5)
@@ -353,9 +355,7 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
                                         isPaused: self.isPaused,
                                         promptShownAt: self.breakPromptShownAt,
                                         now: now) {
-                    self.autoPausedForInactivity = true
-                    self.pause()
-                    self.postAutoPauseNotification()
+                    self.autoPause(at: now)
                 }
                 if !self.drivingAffirmedByUser, !self.drivingSuspected {
                     let isAutomotive = ActivityDetectionService.shared.isAutomotiveHighConfidence
@@ -369,15 +369,100 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
     }
 
     func pause() {
+        pause(keepingAwake: false)
+    }
+
+    /// `keepingAwake` leaves low-power location running so iOS does not
+    /// suspend the app, which is what lets an auto-pause hear Core Motion.
+    /// Fixes that arrive while paused are ignored.
+    private func pause(keepingAwake: Bool) {
         guard !isPaused else { return }
         isPaused = true
         pauseStart = Date()
         timer?.invalidate()
         timer = nil
-        locationManager.stopUpdatingLocation()
+        if keepingAwake {
+            locationManager.desiredAccuracy = kCLLocationAccuracyHundredMeters
+            locationManager.distanceFilter = 100
+        } else {
+            locationManager.stopUpdatingLocation()
+        }
         UIApplication.shared.isIdleTimerDisabled = false
         resetOffTrail()
         writeSnapshot()
+    }
+
+    // MARK: - Auto-pause and auto-resume
+
+    /// Internal, not private, so tests can start the watch without waiting
+    /// out the break prompt.
+    func autoPause(at now: Date) {
+        autoPausedForInactivity = true
+        pause(keepingAwake: true)
+        autoResumeWatch = AutoResumeWatch(mode: route.activityMode, pausedAt: now)
+        autoResumeTimer?.invalidate()
+        autoResumeTimer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.autoResumeTick(confident: ActivityDetectionService.shared.confidentActivity, at: Date())
+            }
+        }
+        postAutoPauseNotification()
+        pushLiveActivityState()
+    }
+
+    /// Internal, not private, so tests can drive it without Core Motion.
+    func autoResumeTick(confident: ActivityDetectionService.DetectedActivity?, at now: Date) {
+        guard isPaused, var watch = autoResumeWatch else { return }
+        let decision = watch.observe(confident, at: now)
+        autoResumeWatch = watch
+        switch decision {
+        case .keepWatching:
+            return
+        case .giveUp:
+            // Past the window: pause fully, as a manual pause does.
+            endAutoResumeWatch()
+            locationManager.stopUpdatingLocation()
+        case .resume:
+            dismissBreakPrompt()
+            resume()
+            let label = route.activityMode.sessionLabel
+            WalkAudioCueService.shared.announce("You're moving again. Resuming your \(label.lowercased()).")
+            Task {
+                // Same kind as the pause notice, so it replaces it.
+                await NotificationService.shared.schedule(.autoPause, title: "\(label) resumed",
+                    body: "You started moving again, so Wockett picked up tracking where it paused.",
+                    trigger: nil)
+            }
+            pushLiveActivityState()
+        }
+    }
+
+    private func endAutoResumeWatch() {
+        autoResumeTimer?.invalidate()
+        autoResumeTimer = nil
+        autoResumeWatch = nil
+        locationManager.desiredAccuracy = kCLLocationAccuracyBestForNavigation
+        locationManager.distanceFilter = 5
+    }
+
+    /// The Live Activity cannot rely on the walk screen's onChange, which only
+    /// runs while the screen renders; an auto-pause usually happens pocketed.
+    private func pushLiveActivityState() {
+        let dist = totalDistanceCovered
+        let elapsed = elapsedTime
+        let paused = isPaused
+        let pace = dist > 100 && elapsed > 10 ? elapsed / (dist / 1000) : nil
+        let pausedTotal = totalPausedDuration
+        Task {
+            await WalkLiveActivityManager.shared.update(
+                distanceCovered: dist,
+                elapsedSeconds: Int(elapsed),
+                isPaused: paused,
+                paceSecsPerKm: pace,
+                pausedDuration: pausedTotal,
+                pauseTime: paused ? Date() : nil
+            )
+        }
     }
 
     func resume() {
@@ -387,6 +472,7 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
             pauseStart = nil
         }
         autoPausedForInactivity = false
+        endAutoResumeWatch()
         breakPromptShownAt = nil
         isPaused = false
         UIApplication.shared.isIdleTimerDisabled = true
@@ -407,6 +493,7 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
     private func stopTracking() {
         stopped = true
         autoPausedForInactivity = false
+        endAutoResumeWatch()
         NotificationService.shared.withdraw(.offTrail)
         NotificationService.shared.withdraw(.trailArrival)
         locationManager.stopUpdatingLocation()
@@ -629,7 +716,9 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
     nonisolated func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         guard let loc = locations.last, loc.horizontalAccuracy < 50 else { return }
         Task { @MainActor [weak self] in
-            guard let self else { return }
+            // An auto-pause keeps location running only to stay awake; its
+            // fixes are not part of the walk.
+            guard let self, !self.isPaused else { return }
             self.elapsedTime = Date().timeIntervalSince(self.startTime) - self.pausedDuration
             if let last = self.lastLocation {
                 let delta = loc.distance(from: last)
@@ -662,9 +751,8 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
             // actively rendering. This is what keeps the lock screen's distance/
             // pace/timer moving during a normal backgrounded walk, not just when
             // Pause/Resume happens to push an update.
-            // isPaused: false is intentional — didUpdateLocations only fires while
-            // location updates are flowing; pause() stops them, so we can't arrive
-            // here while actually paused.
+            // isPaused: false is intentional — fixes that arrive while paused
+            // (an auto-pause keeps location running) returned above.
             await WalkLiveActivityManager.shared.update(
                 distanceCovered: self.totalDistanceCovered,
                 elapsedSeconds: Int(self.elapsedTime),

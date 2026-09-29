@@ -142,7 +142,8 @@ struct ActiveSessionView: View {
                 }
                 .onChange(of: petStore.activePets.count) { _, count in handlePetCountChange(count) }
                 .onChange(of: session.showBreakPrompt) { _, show in
-                    if show { showBreakPromptAlert = true }
+                    // False when an auto-resume cleared the prompt.
+                    showBreakPromptAlert = show
                 }
                 .onChange(of: session.drivingSuspected) { _, suspected in
                     if suspected { showDrivingBanner = true }
