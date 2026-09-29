@@ -2,7 +2,7 @@
 
 Each change adds **one new file here** instead of editing `CHANGELOG.md`. Two
 open PRs that both edit `CHANGELOG.md` conflict at the same line every time,
-and a conflicted PR cannot auto-merge. Two PRs that each add a new file never
+and a conflicted PR cannot merge until it is fixed. Two PRs that each add a new file never
 conflict.
 
 ## Format
