@@ -64,6 +64,11 @@ way unless there's a strong reason; adding the first one is a real decision.
   `cloudKitDatabase:` config returns fine, then CoreData sets CloudKit up
   *asynchronously* and traps on failure. `try?` cannot catch that. This killed
   every CI test run for days. `AppModelContainer.isRunningUnderTests` skips it.
+  **A `ModelConfiguration` with no `cloudKitDatabase:` is not local**: the
+  default is `.automatic`, which syncs whenever the app has the iCloud
+  entitlement. The "local" fallback lacked `.none` until 2026-09-29, so every
+  locally signed test run synced anyway (CI, unsigned, did not).
+  `AppModelContainerTests` guards it, but only fails in a signed build.
 - **`CKContainer(identifier:)` traps at creation without the iCloud entitlement**,
   and `TrailPackLibrary.shared` creates one inside `SquatCounterApp.init()`.
   A build with `CODE_SIGNING_ALLOWED=NO` has no entitlements at all, so the

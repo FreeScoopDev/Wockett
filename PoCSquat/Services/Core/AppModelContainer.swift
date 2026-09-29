@@ -48,8 +48,14 @@ enum AppModelContainer {
             }
         }
 
-        // Attempt 2: Local persistent store (no CloudKit)
-        let localConfig = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
+        // Attempt 2: Local persistent store (no CloudKit). `.none` must be explicit:
+        // ModelConfiguration defaults to `.automatic`, which turns CloudKit sync on
+        // whenever the app carries the iCloud entitlement. Until 2026-09-29 this
+        // store synced in every locally signed test run, the skip above
+        // notwithstanding; stack samples showed NSCloudKitMirroringDelegate running
+        // under -WKTUITest in 4 of 5 launches.
+        let localConfig = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false,
+                                             cloudKitDatabase: .none)
         if let container = try? ModelContainer(for: schema, configurations: localConfig) {
             runMigrationIfNeeded(context: ModelContext(container))
             return container
