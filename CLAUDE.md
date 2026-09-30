@@ -76,6 +76,22 @@ way unless there's a strong reason; adding the first one is a real decision.
   "crashed before establishing connection". Simulator builds ad-hoc sign
   with their entitlements and need no certificate; leave signing alone in
   CI. Cost a full local run on 2026-09-28.
+- **CloudKit Production only has what was deployed from Development**, and
+  Development only gains a record type or field when a Debug build syncs a
+  value for it. Production cannot add either by itself, so a model nobody
+  exercised in Debug silently never syncs for users; the failure shows only in
+  the device's sync logs. `CD_BookmarkedLocationRecord` was missing from
+  Production for a month, along with the four `CD_<name>_ckAsset` fields a
+  `Data` property overflows into when it is large (long walks, big custom
+  routes); fixed by hand in Development and deployed on 2026-09-29. Check it:
+  export Production (CloudKit Console → iCloud.Scoops.PoCSquat → Production →
+  Schema → Export Schema…) and run
+  `~/.claude/toolkit/bin/cloudkit-schema-check.sh <checkout> <export.ckdb>`;
+  it exits 0 when Production has every field the SwiftData models need
+  (verified to exit 1 on the pre-fix export). It covers only `CD_` types; the
+  hand-written `CKRecord` types (SharedRoute, Challenge, …) are compared by
+  hand. Deploying cannot be undone, so read the Deploy dialog's full list
+  before confirming.
 - **`.safeAreaInset` already respects the safe area** even when the view it is
   attached to calls `.ignoresSafeArea()`. The modifier places its content inside
   the container's safe area regardless; `.ignoresSafeArea()` governs the view
@@ -212,6 +228,10 @@ Wockett's specifics:
   `https://itunes.apple.com/lookup?id=6794364736`. Release Flow reports to
   Slack `#wockett_release_updates`. Tags are lightweight, like `v1.9` to
   `v1.11`. There is no post-release `Versions.xcconfig` PR.
+  If the release adds or changes a SwiftData model property, the release
+  PR runs `cloudkit-schema-check.sh` against a fresh Production export, and
+  any missing field goes on the Ship Card as a Console step before Start
+  Build.
 - **An emergency manual archive** builds whatever is on disk in
   `~/Desktop/Apps/PoCSquat`, which is how build 84 went out without #53.
 - **CI** is GitHub Actions since 2026-09-28: `tests.yml` runs `WockettTests`
