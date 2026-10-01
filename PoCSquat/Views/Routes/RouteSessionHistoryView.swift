@@ -27,17 +27,12 @@ struct RouteSessionHistoryView: View {
         .navigationBarTitleDisplayMode(.inline)
     }
 
+    // The route's own activity, never a fixed "run": a route's history
+    // said "Run" for walking routes until 2026-09-25, and "No Runs Yet" here.
     private var emptyState: some View {
-        VStack(spacing: 16) {
-            Image(wkt: .history).wktIcon(.hero, tint: .earthMuted)
-                .accessibilityHidden(true)
-            Text("No Runs Yet")
-                .font(.wktHeading(17)).foregroundColor(.earthCream)
-            Text("Complete a walk on \"\(route.name)\" to see your history here")
-                .font(.wktBody(15)).foregroundColor(.earthMuted)
-                .multilineTextAlignment(.center)
-        }
-        .padding()
+        WktEmptyState(symbol: .history,
+                      title: "No \(route.activityMode.noun)s yet",
+                      message: "Finish a \(route.activityMode.noun) on \"\(route.name)\" to see your history here")
     }
 
     private var sessionList: some View {
@@ -45,7 +40,7 @@ struct RouteSessionHistoryView: View {
             ForEach(sessions) { session in
                 RouteSessionRow(session: session)
                     .listRowBackground(Color.earthCard)
-                    .listRowSeparatorTint(Color.earthMuted.opacity(0.2))
+                    .listRowSeparatorTint(Color.earthTrack)
             }
         }
         .listStyle(.plain)
@@ -67,23 +62,16 @@ struct RouteSessionRow: View {
 
     var body: some View {
         HStack(spacing: 14) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 10)
-                    .fill(Color.earthGreen.opacity(0.15))
-                    .frame(width: 46, height: 46)
-                Image(systemName: ActivityMode(rawValue: session.activityType)?.icon ?? "figure.walk")
-                    .foregroundColor(.earthGreen)
-                    .font(.system(size: 18, weight: .medium))
-            }
+            WktIconBadge(symbol: (ActivityMode(rawValue: session.activityType) ?? .walking).wktSymbol)
             VStack(alignment: .leading, spacing: 4) {
                 Text(Self.dateFmt.string(from: session.date))
-                    .font(.subheadline.bold()).foregroundColor(.earthCream)
+                    .font(.wktRowTitle).foregroundColor(.earthCream)
                 HStack(spacing: 10) {
                     Label { Text(session.distanceText) }    icon: { Image(wkt: .distance).wktIcon(.inline, tint: .earthMuted) }
                     Label { Text(session.timeText) }        icon: { Image(wkt: .time).wktIcon(.inline, tint: .earthMuted) }
                     Label { Text(session.paceOrSpeedText) } icon: { Image(wkt: .pace).wktIcon(.inline, tint: .earthMuted) }
                 }
-                .font(.footnote).foregroundColor(.earthMuted)
+                .font(.wktLabel).foregroundColor(.earthMuted)
             }
             Spacer()
         }

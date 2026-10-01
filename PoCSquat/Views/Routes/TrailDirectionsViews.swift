@@ -74,7 +74,7 @@ struct TrailDirectionsSection: View {
         VStack(spacing: 8) {
             mapsPrimaryButton(title: "Directions to the trail", launchMode: nil)
             Text("Turn on location for Wockett to show the way from where you are, and to offer the trail \(activityMode.noun) when you get there.")
-                .font(.wktBody(12))
+                .font(.wktLabel)
                 .foregroundColor(.earthMuted)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity)
@@ -92,27 +92,21 @@ struct TrailDirectionsSection: View {
 
     private func failed(_ message: String) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top, spacing: 10) {
-                Image(wkt: .cloudOff).wktIcon(.row, tint: .earthMuted)
-                VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .top, spacing: 12) {
+                WktIconBadge(symbol: .cloudOff, tint: .earthMuted)
+                VStack(alignment: .leading, spacing: 8) {
                     Text(message)
-                        .font(.wktBody(15))
+                        .font(.wktBodyText)
                         .foregroundColor(.earthCream)
                         .fixedSize(horizontal: false, vertical: true)
-                    Button {
+                    WktPillButton(title: "Try again") {
                         directions.retry()
                         requestDirections()
-                    } label: {
-                        Text("Try again")
-                            .font(.wktBody(13))
-                            .foregroundColor(.earthGreen)
-                            .frame(minHeight: 44, alignment: .leading)
-                            .contentShape(Rectangle())
                     }
                     .accessibilityIdentifier("routes.trailDirectionsRetry")
                 }
             }
-            .wktCard(padding: 12)
+            .wktCard()
             mapsPrimaryButton(title: "Directions to the trail", launchMode: nil)
         }
     }
@@ -176,7 +170,7 @@ struct TrailDirectionsSection: View {
                 HStack(spacing: 6) {
                     Image(wkt: session.wktSymbol).wktIcon(.inline, tint: accent)
                     Text(session.sessionLabel)
-                        .font(.wktBody(13))
+                        .font(.wktLabel)
                         .foregroundColor(.earthMuted)
                     Spacer(minLength: 0)
                     // Always laid out, so choosing a tile does not change its height.
@@ -185,39 +179,40 @@ struct TrailDirectionsSection: View {
                 }
                 if let route, let seconds {
                     Text(TrailDirectionsPlanner.durationText(seconds))
-                        .font(.wktDisplay(22))
+                        .font(.wktCardTitle)
                         .foregroundColor(.earthCream)
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
                     Text(TrailText.distance(route.distance))
-                        .font(.wktBody(13))
+                        .font(.wktLabel)
                         .foregroundColor(.earthMuted)
                 } else if isLoading {
                     ProgressView()
                         .tint(accent)
                         .frame(height: 28)
                     Text("Finding the way…")
-                        .font(.wktBody(13))
+                        .font(.wktLabel)
                         .foregroundColor(.earthMuted)
                 } else {
                     Text("Not available")
-                        .font(.wktHeading(17))
+                        .font(.wktRowTitle)
                         .foregroundColor(.earthMuted)
                         .frame(minHeight: 28, alignment: .leading)
                     Text("No \(session.noun) route here")
-                        .font(.wktBody(13))
+                        .font(.wktLabel)
                         .foregroundColor(.earthMuted)
                 }
             }
             // Side by side, both tiles take the taller one's height.
             .frame(maxHeight: .infinity, alignment: .top)
-            .wktCard(padding: 12)
-            // The hairline TrailCard and RouteCard have; the activity's
-            // colour when chosen.
-            .overlay(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .stroke(isSelected ? accent : Color.earthMuted.opacity(0.15), lineWidth: isSelected ? 2 : 1)
-            )
+            .wktCard(padding: 14)
+            // The activity's colour around the chosen tile.
+            .overlay {
+                if isSelected {
+                    RoundedRectangle(cornerRadius: 22, style: .continuous)
+                        .strokeBorder(accent, lineWidth: 2)
+                }
+            }
         }
         .buttonStyle(BounceButtonStyle(scale: 0.97))
         .disabled(route == nil)
@@ -250,22 +245,17 @@ struct TrailDirectionsSection: View {
                 onStart(approach.navigableRoute(from: origin, to: target,
                                                 distanceMeters: route.distance, activityMode: session))
             } label: {
-                Label {
-                    Text("Start \(session.sessionLabel) to Trail")
-                } icon: {
-                    Image(wkt: session.wktSymbol).wktIcon(.row, tint: prominent ? .white : .earthGreen,
-                                                          onFill: prominent)
+                // Secondary when Maps' drive leads, so the screen keeps one primary.
+                if prominent {
+                    WktPrimaryLabel(title: "Start \(session.sessionLabel) to Trail", symbol: session.wktSymbol)
+                } else {
+                    WktSecondaryLabel(title: "Start \(session.sessionLabel) to Trail", symbol: session.wktSymbol)
                 }
-                .font(.wktBody(17))
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, prominent ? 18 : 14)
-                .background(prominent ? Color.earthGreenFill : Color.earthCard)
-                .foregroundColor(prominent ? .white : .earthGreen)
-                .cornerRadius(14)
             }
+            .buttonStyle(BounceButtonStyle(scale: 0.98))
             .accessibilityIdentifier("routes.trailApproachStart")
             Text("When you reach the trail, Wockett offers to carry on along it as the trail \(session.noun).")
-                .font(.wktBody(12))
+                .font(.wktLabel)
                 .foregroundColor(.earthMuted)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity)
@@ -275,18 +265,9 @@ struct TrailDirectionsSection: View {
     /// The full-width primary: no location, no route, or a trail a drive away.
     private func mapsPrimaryButton(title: String, launchMode: String?) -> some View {
         Button { openInMaps(launchMode: launchMode) } label: {
-            Label {
-                Text(title)
-            } icon: {
-                Image(wkt: .openInMaps).wktIcon(.row, tint: .white, onFill: true)
-            }
-            .font(.wktBody(17))
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 18)
-            .background(Color.earthGreenFill)
-            .foregroundColor(.white)
-            .cornerRadius(14)
+            WktPrimaryLabel(title: title, symbol: .openInMaps)
         }
+        .buttonStyle(BounceButtonStyle(scale: 0.98))
         .accessibilityIdentifier("routes.trailDirections")
     }
 
@@ -297,7 +278,7 @@ struct TrailDirectionsSection: View {
                 Image(wkt: .openInMaps).wktIcon(.inline, tint: .earthMuted)
                 Text("Open in Apple Maps")
             }
-            .font(.wktBody(15))
+            .font(.wktBodyText)
             .foregroundColor(.earthMuted)
             .frame(maxWidth: .infinity, minHeight: 44)
             .contentShape(Rectangle())

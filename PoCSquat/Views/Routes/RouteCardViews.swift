@@ -38,37 +38,32 @@ struct RouteCard: View {
     var body: some View {
         Button(action: onSelect) {
             HStack(spacing: 16) {
-                ZStack {
-                    Circle()
-                        .fill(routeColor.opacity(isSelected ? 0.3 : 0.18))
-                        .frame(width: 54, height: 54)
-                    Image(wkt: cardIcon)
-                        .wktIcon(.row, tint: routeColor)
-                        .rotationEffect(.degrees(cardIconAngle))
-                }
+                // The route's own map colour, so the card and its line match.
+                Image(wkt: cardIcon)
+                    .wktIcon(.row, tint: routeColor)
+                    .rotationEffect(.degrees(cardIconAngle))
+                    .frame(width: 48, height: 48)
+                    .background(routeColor.opacity(isSelected ? 0.3 : 0.16),
+                                in: RoundedRectangle(cornerRadius: 14, style: .continuous))
 
                 VStack(alignment: .leading, spacing: 6) {
                     Text(route.label ?? "\(route.directionName) \(route.isLoop ? "loop" : "route")")
-                        .font(.wktHeading(17)).foregroundColor(.earthCream)
+                        .font(.wktRowTitle).foregroundColor(.earthCream)
                     HStack(spacing: 14) {
                         Label { Text(route.distanceText) } icon: { Image(wkt: .distance).wktIcon(.inline, tint: .earthMuted) }
                         Label { Text(route.timeText) }     icon: { Image(wkt: .time).wktIcon(.inline, tint: .earthMuted) }
                     }
-                    .font(.wktBody(13)).foregroundColor(.earthMuted)
+                    .font(.wktLabel).foregroundColor(.earthMuted)
                     if let elev = route.elevationSummary {
                         Text(elev)
-                            .font(.wktBody(12)).foregroundColor(routeColor.opacity(0.85))
+                            .font(.wktLabel).foregroundColor(routeColor)
                     }
                     HStack(spacing: 8) {
                         Text("~\(route.estimatedSteps.formatted()) steps")
-                            .font(.wktBody(13)).foregroundColor(.earthGreen)
+                            .font(.wktLabel).foregroundColor(.earthGreen)
                         DifficultyBadge(difficulty: .fromDistance(route.perLapDistance), compact: true)
                         if route.lapCount > 1 {
-                            Text("×\(route.lapCount) laps")
-                                .font(.wktBody(12)).foregroundColor(.earthOrange)
-                                .padding(.horizontal, 6).padding(.vertical, 3)
-                                .background(Color.earthOrange.opacity(0.15))
-                                .cornerRadius(20)
+                            WktStatusChip(text: "×\(route.lapCount) laps", dot: .earthOrange)
                         }
                     }
                 }
@@ -100,14 +95,14 @@ struct RouteCard: View {
                     }
                 }
             }
-            // wktCard's shape, kept custom for the selected tint and stroke.
-            .padding()
+            // wktCard's shape, with the selected route's tint and stroke.
+            .padding(WktSpacing.cardPadding)
             .background(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
                     .fill(isSelected ? routeColor.opacity(0.1) : Color.earthCard)
                     .overlay(
-                        RoundedRectangle(cornerRadius: 18, style: .continuous)
-                            .stroke(isSelected ? routeColor.opacity(0.5) : Color.earthMuted.opacity(0.15), lineWidth: 1)
+                        RoundedRectangle(cornerRadius: 22, style: .continuous)
+                            .strokeBorder(isSelected ? routeColor.opacity(0.5) : Color.earthStroke, lineWidth: 1)
                     )
             )
         }
@@ -131,9 +126,9 @@ struct CommunityRouteCard: View {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(route.name)
-                        .font(.wktHeading(17)).foregroundColor(.earthCream)
+                        .font(.wktRowTitle).foregroundColor(.earthCream)
                     Text("by \(route.authorName)")
-                        .font(.wktBody(12)).foregroundColor(.earthMuted)
+                        .font(.wktLabel).foregroundColor(.earthMuted)
                 }
                 Spacer()
                 DifficultyBadge(difficulty: route.difficulty, compact: true)
@@ -144,7 +139,7 @@ struct CommunityRouteCard: View {
                 Label { Text(route.timeText) } icon: { Image(wkt: .time).wktIcon(.inline, tint: .earthMuted) }
                 Label { Text("\(route.estimatedSteps.formatted()) steps") } icon: { Image(wkt: .walk).wktIcon(.inline, tint: .earthMuted) }
             }
-            .font(.wktBody(12)).foregroundColor(.earthMuted)
+            .font(.wktLabel).foregroundColor(.earthMuted)
 
             HStack {
                 Button(action: onWockett) {
@@ -154,9 +149,10 @@ struct CommunityRouteCard: View {
                         Text(hasVoted
                              ? "\(route.wocketts) Wocketted!"
                              : "\(route.wocketts) Wockett\(route.wocketts == 1 ? "" : "s")")
-                            .font(.wktBody(15))
+                            .font(.wktLabel)
                     }
                     .foregroundColor(hasVoted ? .earthGreen : .earthMuted)
+                    .frame(minHeight: 44)
                     .animation(.spring(duration: 0.2), value: hasVoted)
                 }
                 .disabled(hasVoted)
@@ -166,11 +162,11 @@ struct CommunityRouteCard: View {
                 if let onSave {
                     Button(action: onSave) {
                         Image(wkt: .saved)
-                            .wktIcon(.inline, tint: isSaved ? .earthGreen : .earthMuted, filled: isSaved)
-                            .padding(.horizontal, 10).padding(.vertical, 8)
-                            .background(Color.earthCard)
-                            .cornerRadius(10)
-                            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.earthMuted.opacity(0.2), lineWidth: 1))
+                            .wktIcon(.inline, tint: isSaved ? .earthGreen : .earthCream, filled: isSaved)
+                            .frame(width: 36, height: 36)
+                            .background(Color.earthRaised, in: Circle())
+                            .padding(4)
+                            .contentShape(Rectangle())
                     }
                     .disabled(isSaved)
                     .accessibilityLabel("Save route")
@@ -178,17 +174,7 @@ struct CommunityRouteCard: View {
                     .accessibilityAddTraits(isSaved ? .isSelected : [])
                 }
 
-                Button(action: onStart) {
-                    Label {
-                        Text("Start Walk")
-                    } icon: {
-                        Image(wkt: .walk).wktIcon(.inline, tint: .white, onFill: true)
-                    }
-                    .font(.wktBody(15))
-                    .padding(.horizontal, 16).padding(.vertical, 8)
-                    .background(Color.earthGreenFill).foregroundColor(.white)
-                    .cornerRadius(10)
-                }
+                WktPillButton(title: "Start Walk", action: onStart)
             }
         }
         .wktCard()
@@ -236,62 +222,45 @@ struct PostToCommunitySheet: View {
         NavigationStack {
             ZStack {
                 Color.earthBg.ignoresSafeArea()
-                VStack(spacing: 28) {
-                    HStack(spacing: 12) {
-                        statTile(value: route.distanceText, label: "Distance", icon: .distance)
-                        statTile(value: route.timeText,     label: "Time",     icon: .time)
-                        statTile(value: "~\(route.estimatedSteps.formatted())", label: "Steps", icon: .walk)
+                VStack(spacing: WktSpacing.betweenSections) {
+                    HStack(spacing: WktSpacing.betweenCards) {
+                        WktIconStatTile(value: route.distanceText, label: "Distance", symbol: .distance)
+                        WktIconStatTile(value: route.timeText,     label: "Time",     symbol: .time)
+                        WktIconStatTile(value: "~\(route.estimatedSteps.formatted())", label: "Steps", symbol: .walk)
                     }
-                    .padding(.horizontal)
 
-                    VStack(alignment: .leading, spacing: 8) {
-                        WktSectionHeader(title: "Route name")
-                            .padding(.horizontal)
+                    WktSection(title: "Route name") {
                         TextField("Name your route…", text: $routeName)
+                            .font(.wktBodyText)
                             .foregroundColor(.earthCream)
-                            .padding(14)
-                            .background(Color.earthCard)
-                            .cornerRadius(12)
-                            .padding(.horizontal)
+                            .padding(.horizontal, WktSpacing.cardPadding)
+                            .frame(minHeight: 52)
+                            .wktCardBackground()
                     }
 
                     if let err = errorMessage {
                         Text(err)
-                            .font(.wktBody(12)).foregroundColor(.earthOrange)
+                            .font(.wktLabel).foregroundColor(.earthOrange)
                             .multilineTextAlignment(.center)
-                            .padding(.horizontal)
                     }
 
                     Button(action: post) {
-                        Group {
-                            if isPosting {
-                                ProgressView().tint(.white)
-                            } else if didPost {
-                                Label {
-                                    Text("Shared!")
-                                } icon: {
-                                    Image(wkt: .success).wktIcon(.row, tint: .white, filled: true, onFill: true)
-                                }
-                            } else {
-                                Label {
-                                    Text("Post & Save to My Routes")
-                                } icon: {
-                                    Image(wkt: .share).wktIcon(.row, tint: .white, onFill: true)
-                                }
-                            }
+                        if isPosting {
+                            ProgressView().tint(.white)
+                                .frame(maxWidth: .infinity, minHeight: 56)
+                                .background(Color.earthGreenFill, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                        } else {
+                            WktPrimaryLabel(title: didPost ? "Shared!" : "Post & Save to My Routes",
+                                            symbol: didPost ? .success : .share)
+                                .opacity(didPost ? 0.6 : 1)
                         }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 16)
-                        .background(didPost ? Color.earthGreenFill.opacity(0.6) : Color.earthGreenFill)
-                        .foregroundColor(.white)
-                        .font(.wktBody(17))
-                        .cornerRadius(14)
-                        .padding(.horizontal)
                     }
+                    .buttonStyle(BounceButtonStyle(scale: 0.98))
                     .disabled(isPosting || didPost || routeName.trimmingCharacters(in: .whitespaces).isEmpty)
 
                     Spacer()
                 }
+                .padding(.horizontal, WktSpacing.screen)
                 .padding(.top, 24)
             }
             .navigationTitle("Share Route")
@@ -355,17 +324,5 @@ struct PostToCommunitySheet: View {
                 isPosting = false
             }
         }
-    }
-
-    private func statTile(value: String, label: String, icon: WktSymbol) -> some View {
-        VStack(spacing: 6) {
-            Image(wkt: icon).wktIcon(.row, tint: .earthGreen)
-            Text(value).font(.wktHeading(17)).foregroundColor(.earthCream)
-            Text(label).font(.wktBody(12)).foregroundColor(.earthMuted)
-        }
-        .frame(maxWidth: .infinity)
-        // Third-width tiles: 12 pt sides leave room for "12.4 km" on one line.
-        .padding(.vertical, 4)
-        .wktCard(padding: 12)
     }
 }

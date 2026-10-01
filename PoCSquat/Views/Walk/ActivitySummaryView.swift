@@ -127,20 +127,7 @@ struct ActivitySummaryView: View {
     // MARK: - Subviews
 
     private func statTile(value: String, label: String, icon: WktSymbol, color: Color) -> some View {
-        VStack(spacing: 8) {
-            WktIconBadge(symbol: icon, tint: color)
-            Text(value)
-                .font(.wktRowTitle)
-                .foregroundColor(.earthCream)
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-            Text(label).font(.wktLabel).foregroundColor(.earthMuted)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 16)
-        .wktCardBackground()
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(value) \(label)")
+        WktIconStatTile(value: value, label: label, symbol: icon, tint: color)
     }
 
     private var prBanner: some View {

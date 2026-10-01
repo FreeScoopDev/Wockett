@@ -343,20 +343,7 @@ private struct StationarySummarySheet: View {
         Task { await manager.finishWorkout() }
     }
 
-    /// The same tile as the outdoor summary's (`ActivitySummaryView`).
     private func tile(_ value: String, _ label: String, _ icon: WktSymbol) -> some View {
-        VStack(spacing: 8) {
-            WktIconBadge(symbol: icon, tint: purple)
-            Text(value)
-                .font(.wktRowTitle)
-                .foregroundColor(.earthCream)
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-            Text(label).font(.wktLabel).foregroundColor(.earthMuted)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 16)
-        .wktCardBackground()
-        .accessibilityElement(children: .combine)
+        WktIconStatTile(value: value, label: label, symbol: icon, tint: purple)
     }
 }
