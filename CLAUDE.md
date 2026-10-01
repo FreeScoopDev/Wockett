@@ -127,10 +127,10 @@ way unless there's a strong reason; adding the first one is a real decision.
 
 - **Icons** go through `WktSymbol` + `.wktIcon()`. No hardcoded `systemName:`
   or `systemImage:` strings. Variable-driven `systemName:` from a model
-  property is fine and intended. This entry said "currently zero" until
-  2026-09-30, when a search including `Label(…, systemImage: cond ? "a" : "b")`
-  found them in five files. Four are fixed; `PetDetailSheet` still has some.
-  Search for both spellings.
+  property is fine and intended. There are zero again since 2026-10-01; keep
+  it that way. This entry said "currently zero" on 2026-09-30 while five
+  files had them, because the search missed
+  `Label(…, systemImage: cond ? "a" : "b")`: search for both spellings.
 - **Colours and fonts** come from `DesignSystem.swift`, which has dual target
   membership so the widget can't drift. There are ~164 legacy raw
   `.font(.system(size:))` sites; fix opportunistically, don't sweep.
@@ -156,9 +156,9 @@ way unless there's a strong reason; adding the first one is a real decision.
   A metric screen uses `Design/WktDetailPieces.swift`; a step ring is
   `WktGoalRing`; a mid-session notice is a `WktBanner`; pick-one controls
   are `WktSegmentedPicker` / `WktChoiceChip`; tags that may not fit one line
-  go in a `WktFlowRow`. Home, Community, Health, the walk session and Routes
-  are converted; Walk history, Settings and the widget still have the old
-  `wktTechnical` labels and hand-drawn cards. The share card (`ActivitySummaryCard`) keeps fixed point sizes on
+  go in a `WktFlowRow`. Home, Community, Health, the walk session, Routes,
+  Walk history and the pet screens are converted; Settings and the widget
+  still have the old `wktTechnical` labels and hand-drawn cards. The share card (`ActivitySummaryCard`) keeps fixed point sizes on
   purpose: it is drawn into a fixed-size image. Convert one area per PR.
 - **The changelog entry ships with the change**, in the same commit, explaining
   *why* — not just what. Since 2026-09-27 it goes in its own file in
