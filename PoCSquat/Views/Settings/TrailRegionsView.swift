@@ -20,26 +20,27 @@ struct TrailRegionsView: View {
                 }
                 if library.catalog.isEmpty && !library.isRefreshingCatalog {
                     Text(library.catalogError ?? "No regions are published yet.")
-                        .font(.caption).foregroundColor(.earthMuted)
+                        .font(.wktLabel).foregroundColor(.earthMuted)
                         .listRowBackground(Color.earthCard)
                 }
             } header: {
-                Text("Regions")
+                WktListHeader(title: "Regions")
             } footer: {
                 Text("Wockett includes North Carolina's named trails. Download a region for every trail in it, or add more regions. Downloads are stored on this device only and are not backed up — they can always be fetched again.")
-                    .font(.caption).foregroundColor(.earthMuted)
+                    .font(.wktLabel).foregroundColor(.earthMuted)
             }
 
             if let error = library.catalogError, !library.catalog.isEmpty {
                 Section {
-                    Label { Text(error) } icon: { Image(wkt: .cloudError).wktIcon(.row, tint: .orange) }
-                        .font(.caption).foregroundColor(.earthMuted)
+                    Label { Text(error) } icon: { Image(wkt: .cloudError).wktIcon(.row, tint: .earthOrange) }
+                        .font(.wktLabel).foregroundColor(.earthMuted)
                         .listRowBackground(Color.earthCard)
                 }
             }
         }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
+        .font(.wktRowTitle)
         .background(Color.earthBg.ignoresSafeArea())
         .navigationTitle("Trail Regions")
         .navigationBarTitleDisplayMode(.inline)
@@ -75,7 +76,7 @@ private struct RegionRow: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text(record.regionName).foregroundColor(.earthCream)
                 Text(detail(for: state))
-                    .font(.caption).foregroundColor(.earthMuted)
+                    .font(.wktLabel).foregroundColor(.earthMuted)
             }
             Spacer()
             action(for: state)
@@ -117,7 +118,7 @@ private struct RegionRow: View {
         case .downloading:
             ProgressView().frame(minWidth: 44, minHeight: 44)
         case .needsAppUpdate:
-            Image(wkt: .warning).wktIcon(.inline, tint: .orange)
+            Image(wkt: .warning).wktIcon(.inline, tint: .earthOrange)
                 .frame(minWidth: 44, minHeight: 44)
                 .accessibilityLabel("Needs a newer version of Wockett")
         }
@@ -128,7 +129,7 @@ private struct RegionRow: View {
             Task { await library.download(record) }
         } label: {
             Label { Text(title) } icon: { Image(wkt: .cloudDownload).wktIcon(.inline, tint: .earthGreen) }
-                .font(.subheadline)
+                .font(.wktBodyText)
                 .foregroundColor(.earthGreen)
                 .frame(minHeight: 44)
         }

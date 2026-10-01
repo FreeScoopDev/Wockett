@@ -27,11 +27,11 @@ struct TrailDataCreditsView: View {
     var body: some View {
         if !library.packInfos.isEmpty || !registry.attributions.isEmpty {
             VStack(alignment: .leading, spacing: 8) {
-                Text("Trail data").font(.subheadline).foregroundColor(.earthCream)
+                Text("Trail data").font(.wktBodyText).foregroundColor(.earthCream)
 
                 ForEach(library.packInfos, id: \.region) { info in
                     Text(describe(info))
-                        .font(.caption).foregroundColor(.earthMuted)
+                        .font(.wktLabel).foregroundColor(.earthMuted)
                 }
 
                 ForEach(registry.attributions) { attribution in
@@ -40,7 +40,7 @@ struct TrailDataCreditsView: View {
                     } label: {
                         HStack(spacing: 4) {
                             Text("\(attribution.attribution) · \(attribution.license)")
-                                .font(.caption)
+                                .font(.wktLabel)
                                 .multilineTextAlignment(.leading)
                             if attribution.url != nil {
                                 Image(wkt: .openExternal).wktIcon(.inline, tint: .earthGreen)
