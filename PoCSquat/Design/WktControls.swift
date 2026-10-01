@@ -150,15 +150,36 @@ struct WktPillButton: View {
 }
 
 /// A 36 pt rounded square with a tinted fill and the glyph in the tint.
+/// `size` 48 is the large version heading a detail screen.
 struct WktIconBadge: View {
-    let symbol: WktSymbol
+    private let image: Image
     var tint: Color = .earthGreen
+    var size: CGFloat = 36
+
+    init(symbol: WktSymbol, tint: Color = .earthGreen, size: CGFloat = 36) {
+        self.image = Image(wkt: symbol)
+        self.tint = tint
+        self.size = size
+    }
+
+    /// For a symbol a model supplies (a readiness level, a gait status), which
+    /// CLAUDE.md allows to be variable-driven rather than a `WktSymbol` case.
+    init(systemName: String, tint: Color = .earthGreen, size: CGFloat = 36) {
+        self.image = Image(systemName: systemName)
+        self.tint = tint
+        self.size = size
+    }
+
+    @ScaledMetric(relativeTo: .body) private var scale: CGFloat = 1
 
     var body: some View {
-        Image(wkt: symbol)
-            .wktIcon(.row, tint: tint)
-            .frame(width: 36, height: 36)
-            .background(tint.opacity(0.16), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+        image
+            // 20 pt (`WktIconSize.row`) in the standard badge; half the badge in a larger one.
+            .font(.system(size: (size > 36 ? size * 0.5 : WktIconSize.row.points) * scale, weight: .semibold))
+            .symbolRenderingMode(.hierarchical)
+            .foregroundStyle(tint)
+            .frame(width: size, height: size)
+            .background(tint.opacity(0.16), in: RoundedRectangle(cornerRadius: size * 0.3, style: .continuous))
             .accessibilityHidden(true)
     }
 }
@@ -193,5 +214,53 @@ struct WktEmptyState: View {
             }
         }
         .padding(.horizontal, 40)
+    }
+}
+
+/// The user's own progress toward a step goal: an orange ring on the track,
+/// with whatever the screen puts in the middle. Orange is the user's goal
+/// everywhere; green is the crew's and the action colour.
+struct WktGoalRing<Center: View>: View {
+    let progress: Double
+    var lineWidth: CGFloat = 10
+    @ViewBuilder let center: () -> Center
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .stroke(Color.earthTrack, lineWidth: lineWidth)
+            Circle()
+                .trim(from: 0, to: min(1, max(0, progress)))
+                .stroke(Color.earthOrange, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+                .animation(.easeInOut(duration: 0.6), value: progress)
+            center()
+                .padding(lineWidth + 4)
+        }
+        // Inset by half the stroke so the ring never clips at its frame.
+        .padding(lineWidth / 2)
+    }
+}
+
+/// A 36 pt round icon button on `earthRaised` with a 44 pt tap target: the
+/// previous / next / calendar controls beside a heading.
+struct WktRoundIconButton: View {
+    let symbol: WktSymbol
+    let label: String
+    var disabled = false
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(wkt: symbol)
+                .wktIcon(.inline, tint: disabled ? .earthMuted.opacity(0.35) : .earthCream)
+                .frame(width: 36, height: 36)
+                .background(Color.earthRaised, in: Circle())
+                .padding(4)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(BounceButtonStyle(scale: 0.92))
+        .disabled(disabled)
+        .accessibilityLabel(label)
     }
 }

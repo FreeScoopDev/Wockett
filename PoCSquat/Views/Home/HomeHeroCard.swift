@@ -80,19 +80,11 @@ struct HomeHeroCard<Chips: View>: View {
     private var stepsRow: some View {
         Button(action: onStepsTap) {
             HStack(spacing: WktSpacing.cardPadding) {
-                ZStack {
-                    Circle()
-                        .stroke(Color.earthTrack, lineWidth: 10)
-                    Circle()
-                        .trim(from: 0, to: progress)
-                        .stroke(Color.earthOrange, style: StrokeStyle(lineWidth: 10, lineCap: .round))
-                        .rotationEffect(.degrees(-90))
-                        .animation(.easeInOut(duration: 0.6), value: progress)
+                WktGoalRing(progress: progress) {
                     Text("\(Int((progress * 100).rounded()))%")
                         .font(.wktHeading(20))
                         .foregroundColor(.earthCream)
                         .minimumScaleFactor(0.6)
-                        .padding(14)
                 }
                 .frame(width: 92, height: 92)
 

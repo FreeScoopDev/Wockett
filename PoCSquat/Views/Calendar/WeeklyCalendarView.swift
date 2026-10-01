@@ -15,78 +15,56 @@ struct WeeklyCalendarView: View {
 
     private var weekLabel: String {
         switch weekOffset {
-        case 0:  return "This Week"
-        case -1: return "Last Week"
-        case 1:  return "Next Week"
-        case let n where n < 0: return "\(-n) Weeks Ago"
-        default: return "In \(weekOffset) Weeks"
+        case 0:  return "This week"
+        case -1: return "Last week"
+        case 1:  return "Next week"
+        case let n where n < 0: return "\(-n) weeks ago"
+        default: return "In \(weekOffset) weeks"
         }
     }
 
+    // A `WktSection` in shape: the week's name as the heading, with the week
+    // controls where its link would be, and one card under it holding the
+    // seven days and the 30-day trend, like Home's "This week" card.
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            // Week navigation header
-            HStack(spacing: 8) {
-                Button {
-                    slideFromLeading = true
-                    onWeekChange(-1)
-                } label: {
-                    Image(wkt: .chevronLeft)
-                        .wktIcon(.inline, tint: weekOffset <= -52 ? .earthMuted.opacity(0.25) : .earthMuted)
-                }
-                .disabled(weekOffset <= -52)
-                .accessibilityLabel("Previous week")
-
-                ZStack {
+        VStack(alignment: .leading, spacing: WktSpacing.betweenCards) {
+            HStack(spacing: 4) {
+                ZStack(alignment: .leading) {
                     Text(weekLabel)
-                        .font(weekOffset == 0 ? .subheadline.bold() : .caption.bold())
-                        .foregroundColor(weekOffset == 0 ? .earthCream : .earthMuted)
+                        .font(.wktSection)
+                        .foregroundColor(.earthCream)
+                        .accessibilityAddTraits(.isHeader)
                         .id(weekOffset)
                         .transition(.asymmetric(
                             insertion: .move(edge: slideFromLeading ? .leading : .trailing).combined(with: .opacity),
                             removal:   .move(edge: slideFromLeading ? .trailing : .leading).combined(with: .opacity)
                         ))
                 }
-                .frame(maxWidth: .infinity)
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .clipped()
                 .animation(.easeInOut(duration: 0.22), value: weekOffset)
 
-                Button { onCalendarTap() } label: {
-                    Image(wkt: .calendar)
-                        .wktIcon(.inline, tint: .earthMuted)
+                WktRoundIconButton(symbol: .chevronLeft, label: "Previous week", disabled: weekOffset <= -52) {
+                    slideFromLeading = true
+                    onWeekChange(-1)
                 }
-                .accessibilityLabel("Open month calendar")
-
-                Button {
+                WktRoundIconButton(symbol: .calendar, label: "Open month calendar", action: onCalendarTap)
+                WktRoundIconButton(symbol: .chevronRight, label: "Next week", disabled: weekOffset >= 52) {
                     slideFromLeading = false
                     onWeekChange(1)
-                } label: {
-                    Image(wkt: .chevronRight)
-                        .wktIcon(.inline, tint: weekOffset >= 52 ? .earthMuted.opacity(0.25) : .earthMuted)
                 }
-                .disabled(weekOffset >= 52)
-                .accessibilityLabel("Next week")
             }
-            .padding(.horizontal, 20)
 
-            // 7-day cells
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
+            VStack(alignment: .leading, spacing: WktSpacing.cardPadding) {
+                HStack(spacing: 4) {
                     ForEach(days) { day in
                         DayCell(day: day) { onDayTap(day) }
                     }
                 }
-                .padding(.horizontal, 16)
+                WktDivider()
+                TrendChartSection(stepManager: stepManager)
             }
-
-            // 30-day trend chart
-            Divider()
-                .background(Color.earthMuted.opacity(0.1))
-                .padding(.horizontal, 20)
-                .padding(.top, 4)
-
-            TrendChartSection(stepManager: stepManager)
-                .padding(.top, 2)
+            .wktCard(padding: 12)
         }
         .gesture(
             DragGesture(minimumDistance: 40, coordinateSpace: .local)
@@ -124,9 +102,9 @@ private struct TrendChartSection: View {
         VStack(alignment: .leading, spacing: 8) {
             // Header row
             HStack(alignment: .firstTextBaseline) {
-                Text("Last 30 Days")
-                    .font(.caption.bold())
-                    .foregroundColor(.earthCream)
+                Text("Last 30 days")
+                    .font(.wktLabel)
+                    .foregroundColor(.earthMuted)
                 Spacer()
                 HStack(spacing: 12) {
                     if let a = avg {
@@ -138,14 +116,13 @@ private struct TrendChartSection: View {
                     }
                 }
             }
-            .padding(.horizontal, 20)
+            .padding(.horizontal, 4)
 
             // Chart
             if points.isEmpty {
-                Color.earthMuted.opacity(0.06)
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(Color.earthTrack.opacity(0.5))
                     .frame(height: 72)
-                    .cornerRadius(8)
-                    .padding(.horizontal, 20)
             } else {
                 Chart {
                     ForEach(points) { pt in
@@ -171,7 +148,7 @@ private struct TrendChartSection: View {
                         .foregroundStyle(Color.earthOrange.opacity(0.5))
                         .annotation(position: .top, alignment: .leading) {
                             Text("Goal")
-                                .font(.system(size: 8))
+                                .font(.wktBody(9))
                                 .foregroundColor(.earthOrange.opacity(0.7))
                         }
                     // Today's dot
@@ -187,26 +164,26 @@ private struct TrendChartSection: View {
                 }
                 .chartXAxis {
                     AxisMarks(values: .stride(by: .day, count: 7)) { _ in
-                        AxisGridLine().foregroundStyle(Color.earthMuted.opacity(0.08))
+                        AxisGridLine().foregroundStyle(Color.earthTrack)
                         AxisValueLabel(format: .dateTime.month(.abbreviated).day())
-                            .font(.system(size: 8))
+                            .font(.wktBody(9))
                             .foregroundStyle(Color.earthMuted)
                     }
                 }
                 .chartYAxis {
                     AxisMarks(values: .automatic(desiredCount: 3)) { v in
-                        AxisGridLine().foregroundStyle(Color.earthMuted.opacity(0.08))
+                        AxisGridLine().foregroundStyle(Color.earthTrack)
                         AxisValueLabel {
                             if let d = v.as(Double.self) {
                                 Text(formatK(Int(d)))
-                                    .font(.system(size: 8))
+                                    .font(.wktBody(9))
                                     .foregroundStyle(Color.earthMuted)
                             }
                         }
                     }
                 }
                 .frame(height: 80)
-                .padding(.horizontal, 20)
+                .padding(.horizontal, 4)
             }
         }
         .task { await load() }
@@ -235,10 +212,10 @@ private struct TrendChartSection: View {
     private func miniStat(label: String, value: String) -> some View {
         HStack(spacing: 3) {
             Text(value)
-                .font(.system(size: 10, weight: .bold, design: .rounded))
+                .font(.wktLabel)
                 .foregroundColor(.earthCream)
             Text(label)
-                .font(.system(size: 10))
+                .font(.wktLabel)
                 .foregroundColor(.earthMuted)
         }
     }
@@ -256,26 +233,28 @@ private struct DayCell: View {
     let day: CalendarDay
     let onTap: () -> Void
 
-    private static let dayFmt: DateFormatter = {
-        let f = DateFormatter(); f.dateFormat = "EEE"; return f
-    }()
     private static let numFmt: DateFormatter = {
         let f = DateFormatter(); f.dateFormat = "d"; return f
     }()
 
+    // Seven of these share the card's width (about 42 pt each), so the
+    // day number and step count use the label size and the tag the one
+    // smaller size the calendar needs.
     var body: some View {
-        VStack(spacing: 5) {
-            Text(Self.dayFmt.string(from: day.date).uppercased())
-                .font(.system(size: 9, weight: .bold))
+        VStack(spacing: 6) {
+            Text(day.date, format: .dateTime.weekday(.abbreviated))
+                .font(.wktLabel)
                 .foregroundColor(day.isToday ? .earthGreen : .earthMuted)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
 
             Text(Self.numFmt.string(from: day.date))
-                .font(.caption.bold())
+                .font(.wktRowTitle)
                 .foregroundColor(day.isToday ? .earthCream : .earthMuted)
 
             ZStack {
                 Circle()
-                    .stroke(Color.earthMuted.opacity(day.isFuture ? 0.08 : 0.18), lineWidth: 4)
+                    .stroke(Color.earthTrack.opacity(day.isFuture ? 0.5 : 1), lineWidth: 4)
 
                 if !day.isFuture, let steps = day.steps {
                     let prog = min(1.0, Double(steps) / Double(max(1, day.goal)))
@@ -291,44 +270,44 @@ private struct DayCell: View {
                 Group {
                     if day.isFuture {
                         Image(wkt: .subtract)
-                            .font(.system(size: 9)).foregroundColor(.earthMuted.opacity(0.3))
+                            .font(.system(size: 9)).foregroundColor(.earthMuted.opacity(0.4))
                     } else if day.isToday {
                         Image(wkt: .walk)
-                            .font(.system(size: 10)).foregroundColor(.earthGreen)
+                            .font(.system(size: 11)).foregroundColor(.earthGreen)
                     } else if let met = day.goalMet {
                         if met {
                             Image(wkt: .check)
-                                .font(.system(size: 9, weight: .bold))
+                                .font(.system(size: 10, weight: .bold))
                                 .foregroundColor(.earthGreen)
                         } else if let steps = day.steps, steps > 0 {
                             Text("\(Int(Double(steps) / Double(max(1, day.goal)) * 100))%")
-                                .font(.system(size: 8, weight: .bold))
-                                .foregroundColor(.orange)
+                                .font(.wktBody(9))
+                                .foregroundColor(.earthOrange)
+                                .minimumScaleFactor(0.7)
                         } else {
                             Image(wkt: .dismiss)
-                                .font(.system(size: 8))
-                                .foregroundColor(.earthMuted.opacity(0.4))
+                                .font(.system(size: 9))
+                                .foregroundColor(.earthMuted.opacity(0.5))
                         }
                     }
                 }
             }
-            .frame(width: 38, height: 38)
+            .frame(width: 34, height: 34)
 
             if let emoji = day.tagEmoji, let color = day.tagColor {
                 Text(emoji)
                     .font(.system(size: 10))
                     .padding(.horizontal, 3).padding(.vertical, 1)
-                    .background(color.opacity(0.18))
-                    .cornerRadius(4)
+                    .background(color.opacity(0.18), in: Capsule())
                     .frame(height: 15)
             } else if let tag = day.tag {
                 Text(tag)
-                    .font(.system(size: 7, weight: .bold))
+                    .font(.wktBody(9))
                     .lineLimit(1)
-                    .padding(.horizontal, 5).padding(.vertical, 2)
-                    .background(Color.earthCard)
+                    .minimumScaleFactor(0.7)
+                    .padding(.horizontal, 4).padding(.vertical, 1)
+                    .background(Color.earthRaised, in: Capsule())
                     .foregroundColor(.earthMuted)
-                    .cornerRadius(5)
                     .frame(height: 15)
             } else {
                 Color.clear.frame(height: 15)
@@ -336,20 +315,28 @@ private struct DayCell: View {
 
             if let steps = day.steps {
                 Text(steps >= 1_000 ? "\(steps / 1_000)K" : "\(steps)")
-                    .font(.system(size: 9, weight: .semibold))
+                    .font(.wktLabel)
                     .foregroundColor(day.goalMet == true ? .earthGreen : .earthMuted)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
             } else {
-                Text("—").font(.system(size: 9)).foregroundColor(.earthMuted.opacity(0.3))
+                Text("—").font(.wktLabel).foregroundColor(.earthMuted.opacity(0.4))
             }
         }
-        .frame(width: 50)
+        .frame(maxWidth: .infinity)
         .padding(.vertical, 10)
-        .background(day.isToday ? Color.earthCard : Color.clear)
-        .cornerRadius(12)
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(day.isToday ? Color.earthGreen.opacity(0.35) : Color.clear, lineWidth: 1)
-        )
+        .background(day.isToday ? Color.earthRaised : Color.clear,
+                    in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .contentShape(Rectangle())
         .onTapGesture { onTap() }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilityText)
+        .accessibilityAddTraits(.isButton)
+    }
+
+    private var accessibilityText: String {
+        let name = day.isToday ? "Today" : day.date.formatted(.dateTime.weekday(.wide).month().day())
+        guard !day.isFuture, let steps = day.steps else { return name }
+        return "\(name), \(steps.formatted()) of \(day.goal.formatted()) steps"
     }
 }

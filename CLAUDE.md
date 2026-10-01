@@ -126,8 +126,11 @@ way unless there's a strong reason; adding the first one is a real decision.
 ## Conventions
 
 - **Icons** go through `WktSymbol` + `.wktIcon()`. No hardcoded `systemName:`
-  strings (there are currently zero — keep it that way). Variable-driven
-  `systemName:` from a model property is fine and intended.
+  or `systemImage:` strings. Variable-driven `systemName:` from a model
+  property is fine and intended. This entry said "currently zero" until
+  2026-09-30, when a search including `Label(…, systemImage: cond ? "a" : "b")`
+  found them in five files; Health's are fixed, and `PetDetailSheet`, `StationaryWalkView` and
+  `ActivitySummaryShareSheet` still have some. Search for both spellings.
 - **Colours and fonts** come from `DesignSystem.swift`, which has dual target
   membership so the widget can't drift. There are ~164 legacy raw
   `.font(.system(size:))` sites; fix opportunistically, don't sweep.
@@ -150,9 +153,10 @@ way unless there's a strong reason; adding the first one is a real decision.
   `WktDivider`, `WktProgressBar`, `WktStatusChip` (status is a chip, never a
   card), `WktPrimaryButton` (one per screen) / `WktSecondaryButton`,
   `WktPillButton`, `WktIconBadge`, `wktChoiceBackground` and `WktEmptyState`.
-  Home and Community are converted; Health, the walk session, Routes, Walk
-  history, Settings and the widget still have the old `wktTechnical` labels and
-  hand-drawn cards. Convert one area per PR.
+  A metric screen uses `Design/WktDetailPieces.swift`; a step ring is
+  `WktGoalRing`. Home, Community and Health are converted; the walk session,
+  Routes, Walk history, Settings and the widget still have the old
+  `wktTechnical` labels and hand-drawn cards. Convert one area per PR.
 - **The changelog entry ships with the change**, in the same commit, explaining
   *why* — not just what. Since 2026-09-27 it goes in its own file in
   `changelog.d/`, not in `CHANGELOG.md`. `changelog.d/README.md` has the format.

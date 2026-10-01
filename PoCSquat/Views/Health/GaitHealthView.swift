@@ -130,8 +130,8 @@ enum GaitStatus {
     /// circle.dotted has no fill variant; the other two are drawn filled.
     var filled: Bool { self != .notice }
 
-    /// String form for RecoveryCard (TodayHeroView), which still takes a
-    /// `systemImage:` name.
+    /// String form for RecoveryCard (RecoveryViews), whose readiness badge
+    /// takes a model-supplied symbol name.
     var icon: String { symbol.name + (filled ? ".fill" : "") }
 }
 
@@ -155,7 +155,7 @@ struct GaitMetricConfig: Identifiable {
     static let all: [GaitMetricConfig] = [
         GaitMetricConfig(
             id: "speed",
-            title: "Walking Speed",
+            title: "Walking speed",
             symbol: .walkMotion,
             unit: "km/h",
             higherIsBetter: true,
@@ -186,7 +186,7 @@ struct GaitMetricConfig: Identifiable {
         ),
         GaitMetricConfig(
             id: "stride",
-            title: "Step Length",
+            title: "Step length",
             symbol: .cadenceArrow,
             unit: "cm",
             higherIsBetter: true,
@@ -216,7 +216,7 @@ struct GaitMetricConfig: Identifiable {
         ),
         GaitMetricConfig(
             id: "support",
-            title: "Double Support",
+            title: "Double support",
             symbol: .balanceFigure,
             unit: "%",
             higherIsBetter: false,
@@ -246,7 +246,7 @@ struct GaitMetricConfig: Identifiable {
         ),
         GaitMetricConfig(
             id: "asymmetry",
-            title: "Step Asymmetry",
+            title: "Step asymmetry",
             symbol: .strideWidth,
             unit: "%",
             higherIsBetter: false,
@@ -284,28 +284,25 @@ struct GaitHealthSection: View {
     @State private var selectedConfigId: String? = nil
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack {
-                Label {
-                    Text("Walking Health")
-                } icon: {
-                    Image(wkt: .readiness).wktIcon(.row, tint: .earthCream)
-                }
-                .font(.wktHeading(17))
-                .foregroundColor(.earthCream)
+        VStack(alignment: .leading, spacing: WktSpacing.betweenCards) {
+            // WktSectionHeader's look, with a spinner where its link would be.
+            HStack(alignment: .firstTextBaseline) {
+                Text("Walking health")
+                    .font(.wktSection)
+                    .foregroundColor(.earthCream)
+                    .accessibilityAddTraits(.isHeader)
                 Spacer()
                 if service.isLoading {
                     ProgressView().scaleEffect(0.75).tint(.earthGreen)
                 }
             }
-            .padding(.horizontal, 20)
 
             if !service.isLoading && !service.hasAnyData {
                 emptyState
             } else {
                 LazyVGrid(
-                    columns: [GridItem(.flexible()), GridItem(.flexible())],
-                    spacing: 12
+                    columns: Array(repeating: GridItem(.flexible(), spacing: WktSpacing.betweenCards), count: 2),
+                    spacing: WktSpacing.betweenCards
                 ) {
                     ForEach(GaitMetricConfig.all) { config in
                         GaitMetricCard(
@@ -315,13 +312,11 @@ struct GaitHealthSection: View {
                         )
                     }
                 }
-                .padding(.horizontal, 20)
             }
 
             Text("Measured by iPhone sensors during detected walking bouts. Tap a card for details.")
-                .font(.wktBody(11))
-                .foregroundColor(.earthMuted.opacity(0.55))
-                .padding(.horizontal, 20)
+                .font(.wktLabel)
+                .foregroundColor(.earthMuted)
         }
         .task {
             if service.snapshots.isEmpty { await service.load() }
@@ -338,21 +333,19 @@ struct GaitHealthSection: View {
     }
 
     private var emptyState: some View {
-        HStack(spacing: 14) {
-            Image(wkt: .walk)
-                .wktIcon(.row, tint: .earthMuted)
-            VStack(alignment: .leading, spacing: 4) {
+        HStack(spacing: 12) {
+            WktIconBadge(symbol: .walk, tint: .earthMuted)
+            VStack(alignment: .leading, spacing: 2) {
                 Text("No gait data yet")
-                    .font(.wktHeading(15))
+                    .font(.wktRowTitle)
                     .foregroundColor(.earthCream)
                 Text("Walk with your iPhone to start tracking walking health metrics.")
-                    .font(.wktBody(12))
+                    .font(.wktLabel)
                     .foregroundColor(.earthMuted)
             }
             Spacer()
         }
         .wktCard()
-        .padding(.horizontal, 20)
     }
 }
 
@@ -389,48 +382,42 @@ private struct GaitMetricCard: View {
     var body: some View {
         Button(action: onTap) {
             VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 5) {
-                    Image(wkt: config.symbol)
-                        .wktIcon(.inline, tint: .earthGreen)
-                    Text(config.title)
-                        .font(.wktHeading(12))
-                        .foregroundColor(.earthCream)
-                        .lineLimit(1)
+                HStack(spacing: 8) {
+                    WktIconBadge(symbol: config.symbol)
                     Spacer()
                     Image(wkt: .chevronRight)
-                        .font(.system(size: 9, weight: .semibold))
-                        .foregroundColor(.earthMuted.opacity(0.4))
+                        .wktIcon(.inline, tint: .earthMuted)
                 }
+                Text(config.title)
+                    .font(.wktLabel)
+                    .foregroundColor(.earthMuted)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
 
                 if let cur = currentAvg {
                     Text(config.format(cur))
-                        .font(.wktHeading(17).monospacedDigit())
+                        .font(.wktRowTitle.monospacedDigit())
                         .foregroundColor(.earthCream)
 
                     HStack(spacing: 6) {
                         let st = config.statusOf(cur)
-                        Label {
-                            Text(st.label)
-                        } icon: {
-                            Image(wkt: st.symbol).symbolVariant(st.filled ? .fill : .none)
-                        }
-                        .font(.wktBody(11))
-                        .foregroundColor(st.color)
-                        Spacer()
+                        WktStatusChip(text: st.label, dot: st.color)
+                        Spacer(minLength: 0)
                         if let t = trendPct { trendBadge(t) }
                     }
                 } else {
                     Text("–")
-                        .font(.wktHeading(20))
+                        .font(.wktCardTitle)
                         .foregroundColor(.earthMuted)
-                        .padding(.bottom, 2)
                 }
 
                 if !chartPts.isEmpty { sparkline }
             }
-            .wktCard(padding: 12)
+            .frame(maxHeight: .infinity, alignment: .top)
+            .wktCard(padding: 14)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(BounceButtonStyle(scale: 0.97))
+        .accessibilityElement(children: .combine)
     }
 
     private func trendBadge(_ pct: Double) -> some View {
@@ -440,8 +427,10 @@ private struct GaitMetricCard: View {
             Image(wkt: isUp ? .arrowUp : .arrowDown)
             Text(String(format: "%.0f%%", abs(pct)))
         }
-        .font(.wktBody(11))
+        .font(.wktLabel)
         .foregroundColor(isGood ? .earthGreen : .earthOrange)
+        .lineLimit(1)
+        .fixedSize()
     }
 
     private var sparkline: some View {
@@ -529,7 +518,7 @@ struct GaitMetricDetailContentView: View {
         ZStack {
             Color.earthBg.ignoresSafeArea()
             ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
+                VStack(alignment: .leading, spacing: WktSpacing.betweenSections) {
                     heroHeader
                     if !chartPts.isEmpty { trendChartSection }
                     statsGrid
@@ -538,7 +527,9 @@ struct GaitMetricDetailContentView: View {
                     affectsSection
                     tipsSection
                 }
-                .padding(.bottom, 40)
+                .padding(.horizontal, WktSpacing.screen)
+                .padding(.top, 8)
+                .padding(.bottom, WktSpacing.betweenSections)
             }
         }
         .navigationTitle(config.title)
@@ -548,65 +539,30 @@ struct GaitMetricDetailContentView: View {
     // MARK: Hero header
 
     private var heroHeader: some View {
-        HStack(alignment: .top, spacing: 16) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 14)
-                    .fill(Color.earthGreen.opacity(0.12))
-                    .frame(width: 56, height: 56)
-                Image(wkt: config.symbol).wktIcon(.row, tint: .earthGreen)
+        WktMetricHero(
+            badge: WktIconBadge(symbol: config.symbol, size: 48),
+            value: sevenDayAvg.map { config.format($0) } ?? "No data yet",
+            valueColor: sevenDayAvg == nil ? .earthMuted : .earthCream,
+            subtitle: "7-day average · Normal: \(config.normalRange)"
+        ) {
+            if let st = currentStatus {
+                WktStatusChip(text: st.label, dot: st.color)
             }
-
-            VStack(alignment: .leading, spacing: 4) {
-                if let avg = sevenDayAvg {
-                    Text(config.format(avg))
-                        .font(.wktDisplay(28))
-                        .foregroundColor(.earthCream)
-                    HStack(spacing: 8) {
-                        if let st = currentStatus {
-                            Label {
-                                Text(st.label)
-                            } icon: {
-                                Image(wkt: st.symbol).symbolVariant(st.filled ? .fill : .none)
-                            }
-                            .font(.wktBody(12))
-                            .foregroundColor(st.color)
-                            .padding(.horizontal, 8).padding(.vertical, 3)
-                            .background(st.color.opacity(0.12))
-                            .cornerRadius(8)
-                        }
-                        if let t = trendPct {
-                            let isGood = (config.higherIsBetter && t >= 0) || (!config.higherIsBetter && t <= 0)
-                            Label {
-                                Text(String(format: "%+.1f%% vs prior week", t))
-                            } icon: {
-                                Image(wkt: t >= 0 ? .arrowUp : .arrowDown)
-                            }
-                            .font(.wktBody(11))
-                            .foregroundColor(isGood ? .earthGreen : .earthOrange)
-                        }
-                    }
-                } else {
-                    Text("No data yet")
-                        .font(.wktHeading(20))
-                        .foregroundColor(.earthMuted)
+            if let t = trendPct {
+                let isGood = (config.higherIsBetter && t >= 0) || (!config.higherIsBetter && t <= 0)
+                WktStatusChip(text: String(format: "%+.1f%% vs prior week", t),
+                              textColor: isGood ? .earthGreen : .earthOrange) {
+                    Image(wkt: t >= 0 ? .arrowUp : .arrowDown)
+                        .wktIcon(.inline, tint: isGood ? .earthGreen : .earthOrange)
                 }
-                Text("7-day average · Normal: \(config.normalRange)")
-                    .font(.wktBody(11))
-                    .foregroundColor(.earthMuted)
             }
-            Spacer()
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 8)
     }
 
     // MARK: Trend chart
 
     private var trendChartSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            WktSectionHeader(title: "30-Day Trend")
-                .padding(.horizontal, 20)
-
+        WktSection(title: "30-day trend") {
             Chart {
                 // Area fill
                 ForEach(chartPts) { pt in
@@ -642,7 +598,7 @@ struct GaitMetricDetailContentView: View {
             }
             .chartXAxis {
                 AxisMarks(values: .stride(by: .day, count: 7)) { _ in
-                    AxisGridLine().foregroundStyle(Color.earthMuted.opacity(0.1))
+                    AxisGridLine().foregroundStyle(Color.earthTrack)
                     AxisValueLabel(format: .dateTime.month(.abbreviated).day(), centered: true)
                         .font(.wktBody(9))
                         .foregroundStyle(Color.earthMuted)
@@ -650,7 +606,7 @@ struct GaitMetricDetailContentView: View {
             }
             .chartYAxis {
                 AxisMarks(values: .automatic(desiredCount: 4)) { value in
-                    AxisGridLine().foregroundStyle(Color.earthMuted.opacity(0.1))
+                    AxisGridLine().foregroundStyle(Color.earthTrack)
                     AxisValueLabel {
                         if let d = value.as(Double.self) {
                             Text(config.format(d))
@@ -661,48 +617,27 @@ struct GaitMetricDetailContentView: View {
                 }
             }
             .frame(height: 180)
-            .padding(.horizontal, 20)
+            .wktCard()
         }
     }
 
     // MARK: Stats grid
 
     private var statsGrid: some View {
-        let items: [(label: String, value: String?, note: String)] = [
-            ("7-Day Avg",  sevenDayAvg.map  { config.format($0) }, "this week"),
-            ("30-Day Avg", thirtyDayAvg.map { config.format($0) }, "last 30 days"),
-            ("Personal Best", bestValue.map { config.format($0) }, config.higherIsBetter ? "highest recorded" : "lowest recorded"),
-            ("Trend",      trendPct.map { String(format: "%+.1f%%", $0) }, "vs prior 7 days")
-        ]
-
-        return LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-            ForEach(items.indices, id: \.self) { i in
-                let item = items[i]
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(item.label)
-                        .wktTechnical(10)
-                        .foregroundColor(.earthMuted)
-                    Text(item.value ?? "–")
-                        .font(.wktHeading(18).monospacedDigit())
-                        .foregroundColor(.earthCream)
-                        .minimumScaleFactor(0.7)
-                        .lineLimit(1)
-                    Text(item.note)
-                        .font(.wktBody(10))
-                        .foregroundColor(.earthMuted.opacity(0.6))
-                }
-                .wktCard(padding: 14)
-            }
-        }
-        .padding(.horizontal, 20)
+        WktStatGrid(items: [
+            .init(label: "7-day avg", value: sevenDayAvg.map { config.format($0) } ?? "–", note: "this week"),
+            .init(label: "30-day avg", value: thirtyDayAvg.map { config.format($0) } ?? "–", note: "last 30 days"),
+            .init(label: "Personal best", value: bestValue.map { config.format($0) } ?? "–",
+                  note: config.higherIsBetter ? "highest recorded" : "lowest recorded"),
+            .init(label: "Trend", value: trendPct.map { String(format: "%+.1f%%", $0) } ?? "–",
+                  note: "vs prior 7 days")
+        ])
     }
 
     // MARK: Day-of-week
 
     private var dowSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            WktSectionHeader(title: "Day-of-Week Pattern")
-
+        WktSection(title: "Day-of-week pattern") {
             let maxVal = dowAverages.map(\.value).max() ?? 1
             let minVal = dowAverages.map(\.value).min() ?? 0
 
@@ -713,32 +648,32 @@ struct GaitMetricDetailContentView: View {
                         : 0.5
                     VStack(spacing: 4) {
                         Text(config.format(entry.value))
-                            .font(.wktBody(8).monospacedDigit())
+                            .font(.wktBody(9).monospacedDigit())
                             .foregroundColor(.earthMuted)
                             .lineLimit(1)
                             .minimumScaleFactor(0.5)
-                        RoundedRectangle(cornerRadius: 4)
-                            .fill(config.statusOf(entry.value).color.opacity(0.75))
+                        Capsule()
+                            .fill(config.statusOf(entry.value).color)
                             .frame(height: max(12, 60 * normalized))
+                            .frame(maxWidth: 22)
                         Text(entry.label)
-                            .wktTechnical(10)
+                            .font(.wktLabel)
                             .foregroundColor(.earthMuted)
                     }
                     .frame(maxWidth: .infinity)
                 }
             }
             .frame(height: 90, alignment: .bottom)
+            .wktCard()
         }
-        .wktCard()
-        .padding(.horizontal, 20)
     }
 
     // MARK: About
 
     private var aboutSection: some View {
-        infoSection(title: "About This Metric", icon: .info, filled: true, color: Color.accentHealth) {
+        WktInfoSection(title: "About this metric") {
             Text(config.explanation)
-                .font(.wktBody(15))
+                .font(.wktBodyText)
                 .foregroundColor(.earthMuted)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -747,70 +682,17 @@ struct GaitMetricDetailContentView: View {
     // MARK: What Affects
 
     private var affectsSection: some View {
-        infoSection(title: "What Affects It", icon: .chartBar, filled: true, color: .earthOrange) {
-            VStack(alignment: .leading, spacing: 8) {
-                ForEach(config.whatAffects, id: \.self) { item in
-                    HStack(alignment: .top, spacing: 10) {
-                        Circle()
-                            .fill(Color.earthOrange.opacity(0.7))
-                            .frame(width: 5, height: 5)
-                            .padding(.top, 6)
-                        Text(item)
-                            .font(.wktBody(15))
-                            .foregroundColor(.earthMuted)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-            }
+        WktInfoSection(title: "What affects it") {
+            WktBulletList(items: config.whatAffects)
         }
     }
 
     // MARK: Tips
 
     private var tipsSection: some View {
-        infoSection(title: "How to Improve", icon: .tip, color: .earthGreen) {
-            VStack(alignment: .leading, spacing: 12) {
-                ForEach(config.tips.indices, id: \.self) { i in
-                    HStack(alignment: .top, spacing: 12) {
-                        ZStack {
-                            Circle()
-                                .fill(Color.earthGreen.opacity(0.15))
-                                .frame(width: 24, height: 24)
-                            Text("\(i + 1)")
-                                .font(.wktHeading(11))
-                                .foregroundColor(.earthGreen)
-                        }
-                        Text(config.tips[i])
-                            .font(.wktBody(15))
-                            .foregroundColor(.earthMuted)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-            }
+        WktInfoSection(title: "How to improve") {
+            WktNumberedList(items: config.tips)
         }
-    }
-
-    // MARK: Section layout helper
-
-    private func infoSection<Content: View>(
-        title: String,
-        icon: WktSymbol,
-        filled: Bool = false,
-        color: Color,
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Label {
-                Text(title)
-            } icon: {
-                Image(wkt: icon).wktIcon(.inline, tint: color, filled: filled)
-            }
-            .font(.wktHeading(15))
-            .foregroundColor(color)
-            content()
-        }
-        .wktCard()
-        .padding(.horizontal, 20)
     }
 }
 
