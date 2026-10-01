@@ -24,83 +24,82 @@ struct PetDetailSheet: View {
             ZStack {
                 Color.earthBg.ignoresSafeArea()
                 ScrollView {
-                    VStack(spacing: 24) {
-                        ZStack {
-                            Circle()
-                                .stroke(pet.accentColor.opacity(0.2), lineWidth: 18)
-                                .frame(width: 160, height: 160)
-                            Circle()
-                                .trim(from: 0, to: progress)
-                                .stroke(pet.accentColor, style: StrokeStyle(lineWidth: 18, lineCap: .round))
-                                .rotationEffect(.degrees(-90))
-                                .frame(width: 160, height: 160)
-                                .animation(.easeInOut(duration: 0.7), value: progress)
-                            VStack(spacing: 4) {
-                                Text(pet.displayEmoji).font(.system(size: 40))
-                                Text("\(Int(progress * 100))%")
-                                    .font(.system(size: 22, weight: .bold, design: .rounded))
-                                    .foregroundColor(.earthCream)
+                    VStack(alignment: .leading, spacing: WktSpacing.betweenSections) {
+                        VStack(spacing: 8) {
+                            WktGoalRing(progress: progress, lineWidth: 16, tint: pet.accentColor) {
+                                VStack(spacing: 4) {
+                                    Text(pet.displayEmoji).font(.system(size: 40)) // the pet's own emoji (data)
+                                    Text("\(Int(progress * 100))%")
+                                        .font(.wktCardTitle)
+                                        .foregroundColor(.earthCream)
+                                }
+                            }
+                            .frame(width: 176, height: 176)
+                            .accessibilityElement(children: .ignore)
+                            .accessibilityLabel("\(pet.name), \(Int(progress * 100)) percent of today's goal")
+
+                            Text(pet.name)
+                                .font(.wktCardTitle).foregroundColor(.earthCream)
+                            if let breed = pet.breed {
+                                Text(breed).font(.wktBodyText).foregroundColor(.earthMuted)
                             }
                         }
+                        .frame(maxWidth: .infinity)
                         .padding(.top, 8)
 
-                        Text(pet.name)
-                            .font(.title2.bold()).foregroundColor(.earthCream)
-                        if let breed = pet.breed {
-                            Text(breed).font(.subheadline).foregroundColor(.earthMuted)
+                        VStack(spacing: WktSpacing.betweenCards) {
+                            HStack(spacing: WktSpacing.betweenCards) {
+                                WktIconStatTile(value: todaySteps.formatted(), label: "Steps today",
+                                                symbol: .steps, tint: pet.accentColor)
+                                WktIconStatTile(value: pet.goalSteps.formatted(), label: "Daily goal",
+                                                symbol: .finish, tint: .earthMuted)
+                            }
+                            HStack(spacing: WktSpacing.betweenCards) {
+                                WktIconStatTile(value: "\(totalWalks)", label: "Total walks", symbol: .history)
+                                WktIconStatTile(value: MKDistanceFormatter.abbreviated.string(fromDistance: totalDist),
+                                                label: "Total distance", symbol: .distance)
+                            }
+                            HStack(spacing: WktSpacing.betweenCards) {
+                                WktIconStatTile(value: streak > 0 ? "\(streak)d" : "—", label: "Walk streak",
+                                                symbol: .calories, tint: streak > 0 ? .earthOrange : .earthMuted)
+                                WktIconStatTile(value: "\(recentSessions.count)", label: "Walks this week",
+                                                symbol: .calendar, tint: .earthMuted)
+                            }
                         }
-
-                        HStack(spacing: 12) {
-                            detailTile(value: todaySteps.formatted(), label: "Steps Today", icon: "figure.walk", color: pet.accentColor)
-                            detailTile(value: pet.goalSteps.formatted(), label: "Daily Goal", icon: "flag.fill", color: .earthMuted)
-                        }
-                        .padding(.horizontal)
-
-                        HStack(spacing: 12) {
-                            detailTile(value: "\(totalWalks)", label: "Total Walks", icon: "clock.arrow.circlepath", color: .earthGreen)
-                            detailTile(value: MKDistanceFormatter.abbreviated.string(fromDistance: totalDist), label: "Total Distance", icon: "ruler", color: .earthGreen)
-                        }
-                        .padding(.horizontal)
-
-                        HStack(spacing: 12) {
-                            detailTile(value: streak > 0 ? "\(streak)d" : "—", label: "Walk Streak", icon: "flame.fill", color: streak > 0 ? .earthOrange : .earthMuted)
-                            detailTile(value: "\(recentSessions.count)", label: "Walks This Week", icon: "calendar", color: .earthMuted)
-                        }
-                        .padding(.horizontal)
 
                         if !recentSessions.isEmpty {
-                            VStack(alignment: .leading, spacing: 10) {
-                                Text("Last 7 Days")
-                                    .font(.headline).foregroundColor(.earthCream)
-                                    .padding(.horizontal)
-
-                                HStack(spacing: 12) {
-                                    detailTile(value: weeklySteps.formatted(), label: "Steps", icon: "figure.walk", color: pet.accentColor)
-                                    detailTile(value: MKDistanceFormatter.abbreviated.string(fromDistance: weeklyDist), label: "Distance", icon: "ruler", color: pet.accentColor)
+                            WktSection(title: "Last 7 days") {
+                                HStack(spacing: WktSpacing.betweenCards) {
+                                    WktIconStatTile(value: weeklySteps.formatted(), label: "Steps",
+                                                    symbol: .steps, tint: pet.accentColor)
+                                    WktIconStatTile(value: MKDistanceFormatter.abbreviated.string(fromDistance: weeklyDist),
+                                                    label: "Distance", symbol: .distance, tint: pet.accentColor)
                                 }
-                                .padding(.horizontal)
-
-                                ForEach(recentSessions.prefix(5)) { session in
-                                    HStack {
-                                        VStack(alignment: .leading, spacing: 2) {
-                                            Text(session.routeName).font(.subheadline).foregroundColor(.earthCream).lineLimit(1)
-                                            Text(session.formattedDate).font(.caption).foregroundColor(.earthMuted)
+                                VStack(spacing: 0) {
+                                    ForEach(Array(recentSessions.prefix(5).enumerated()), id: \.element.id) { index, session in
+                                        if index > 0 { WktDivider() }
+                                        HStack {
+                                            VStack(alignment: .leading, spacing: 2) {
+                                                Text(session.routeName).font(.wktRowTitle).foregroundColor(.earthCream).lineLimit(1)
+                                                Text(session.formattedDate).font(.wktLabel).foregroundColor(.earthMuted)
+                                            }
+                                            Spacer()
+                                            VStack(alignment: .trailing, spacing: 2) {
+                                                Text(session.distanceText).font(.wktRowTitle).foregroundColor(pet.accentColor)
+                                                Text("\(session.estimatedSteps.formatted()) steps").font(.wktLabel).foregroundColor(.earthMuted)
+                                            }
                                         }
-                                        Spacer()
-                                        VStack(alignment: .trailing, spacing: 2) {
-                                            Text(session.distanceText).font(.subheadline.bold()).foregroundColor(pet.accentColor)
-                                            Text("\(session.estimatedSteps.formatted()) steps").font(.caption).foregroundColor(.earthMuted)
-                                        }
+                                        .padding(.vertical, 10)
+                                        .accessibilityElement(children: .combine)
                                     }
-                                    .padding(.horizontal).padding(.vertical, 8)
-                                    .background(Color.earthCard).cornerRadius(10)
-                                    .padding(.horizontal)
                                 }
+                                .wktCard(padding: 14)
                             }
                         }
 
                         Spacer(minLength: 32)
                     }
+                    .padding(.horizontal, WktSpacing.screen)
                 }
             }
             .navigationTitle(pet.name)
@@ -124,15 +123,5 @@ struct PetDetailSheet: View {
             }
         }
         .presentationDetents([.large])
-    }
-
-    private func detailTile(value: String, label: String, icon: String, color: Color) -> some View {
-        VStack(spacing: 6) {
-            Image(systemName: icon).foregroundColor(color).font(.title3)
-            Text(value).font(.headline.bold()).foregroundColor(.earthCream)
-            Text(label).font(.caption).foregroundColor(.earthMuted)
-        }
-        .frame(maxWidth: .infinity).padding(.vertical, 18)
-        .background(Color.earthCard).cornerRadius(14)
     }
 }

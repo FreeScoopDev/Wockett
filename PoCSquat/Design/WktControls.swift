@@ -226,6 +226,9 @@ struct WktEmptyState: View {
 struct WktGoalRing<Center: View>: View {
     let progress: Double
     var lineWidth: CGFloat = 10
+    /// Orange for the user. A pet's own screen passes the pet's colour, as
+    /// the walk summary and the Community crew card show each pet.
+    var tint: Color = .earthOrange
     @ViewBuilder let center: () -> Center
 
     var body: some View {
@@ -234,7 +237,7 @@ struct WktGoalRing<Center: View>: View {
                 .stroke(Color.earthTrack, lineWidth: lineWidth)
             Circle()
                 .trim(from: 0, to: min(1, max(0, progress)))
-                .stroke(Color.earthOrange, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
+                .stroke(tint, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
                 .rotationEffect(.degrees(-90))
                 .animation(.easeInOut(duration: 0.6), value: progress)
             center()
