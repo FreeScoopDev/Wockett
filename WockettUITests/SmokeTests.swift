@@ -313,4 +313,25 @@ final class SmokeTests: XCTestCase {
         app.buttons["routes.trailBack"].tap()
         XCTAssertTrue(firstCard.waitForExistence(timeout: 10))
     }
+
+    // MARK: - 8. Step goal editor
+
+    /// Settings → Daily Step Goal opens the goal editor and Cancel closes it.
+    /// From 1.10 to 1.12 nothing presented the editor at all, so the goal,
+    /// the weekly schedule and the tags could not be changed; this is the
+    /// check that the way in still exists.
+    func testStepGoalEditorOpensFromSettings() {
+        XCTAssertTrue(el("home.statCard").waitForExistence(timeout: 10))
+        tab("Settings").tap()
+        XCTAssertTrue(el("settings.root").waitForExistence(timeout: 30))
+
+        let row = app.buttons["settings.stepGoal"]
+        XCTAssertTrue(row.waitForExistence(timeout: 10), "Daily Step Goal row missing from Settings")
+        row.tap()
+
+        let editor = app.navigationBars["Daily Goal"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 10), "Goal editor did not open")
+        editor.buttons["Cancel"].tap()
+        XCTAssertTrue(editor.waitForNonExistence(timeout: 10), "Cancel must close the goal editor")
+    }
 }
