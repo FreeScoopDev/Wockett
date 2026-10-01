@@ -16,8 +16,7 @@ struct HealthHubView: View {
         ZStack {
             Color.earthBg.ignoresSafeArea()
             ScrollView {
-
-                VStack(spacing: 24) {
+                VStack(alignment: .leading, spacing: WktSpacing.betweenSections) {
                     RecoveryCard()
                     WeeklyCalendarView(
                         days: stepManager.weeklyCalendar,
@@ -37,10 +36,11 @@ struct HealthHubView: View {
                     )
                     GaitHealthSection()
                     HealthFunStatsCard(sessions: historyStore.sessions, todaySteps: stepManager.todaySteps)
-                        .padding(.horizontal)
                     activityHistoryCard
                 }
-                .padding(.bottom, 40)
+                .padding(.horizontal, WktSpacing.screen)
+                .padding(.top, 8)
+                .padding(.bottom, WktSpacing.betweenSections)
             }
             .refreshable {
                 await stepManager.refreshWeeklyCalendar(
@@ -73,34 +73,26 @@ struct HealthHubView: View {
 
     private var activityHistoryCard: some View {
         Button { pushWalkHistory = true } label: {
-            HStack(spacing: 16) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(Color.earthOrange.opacity(0.15))
-                        .frame(width: 48, height: 48)
-                    Image(wkt: .history)
-                        .wktIcon(.row, tint: .earthOrange)
-                        .accessibilityHidden(true)
-                }
-                .accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 12) {
+                WktIconBadge(symbol: .history, tint: .earthOrange)
+                VStack(alignment: .leading, spacing: 2) {
                     Text("Activity History")
-                        .font(.wktHeading(17))
+                        .font(.wktRowTitle)
                         .foregroundColor(.earthCream)
                     let count = historyStore.sessions.count
                     Text(count == 0 ? "No activities yet" : "\(count) activit\(count == 1 ? "y" : "ies")")
-                        .font(.wktBody(13))
+                        .font(.wktLabel)
                         .foregroundColor(.earthMuted)
                 }
                 Spacer()
                 Image(wkt: .chevronRight)
-                    .wktIcon(.inline, tint: .earthMuted.opacity(0.5))
+                    .wktIcon(.inline, tint: .earthMuted)
                     .accessibilityHidden(true)
             }
             .wktCard()
         }
         .buttonStyle(BounceButtonStyle(scale: 0.97))
-        .padding(.horizontal)
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -149,22 +141,25 @@ struct HealthFunStatsCard: View {
 
     var body: some View {
         if facts.isEmpty { EmptyView() } else {
-            VStack(alignment: .leading, spacing: 10) {
-                WktSectionHeader(title: "Your Journey in Perspective")
-                HStack(spacing: 10) {
+            WktSection(title: "Your journey in perspective") {
+                HStack(alignment: .top, spacing: WktSpacing.betweenCards) {
                     ForEach(facts) { fact in
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(fact.emoji).font(.title2)
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(fact.emoji)
+                                .font(.title2) // the fact's own emoji (data)
+                                .accessibilityHidden(true)
                             Text(fact.headline)
-                                .font(.wktHeading(12))
+                                .font(.wktRowTitle)
                                 .foregroundColor(.earthCream)
-                                .lineLimit(2)
+                                .lineLimit(3)
                                 .fixedSize(horizontal: false, vertical: true)
                             Text(fact.detail)
-                                .font(.wktBody(10))
+                                .font(.wktLabel)
                                 .foregroundColor(.earthMuted)
                         }
-                        .wktCard(padding: 12)
+                        .frame(maxHeight: .infinity, alignment: .top)
+                        .wktCard()
+                        .accessibilityElement(children: .combine)
                     }
                 }
             }

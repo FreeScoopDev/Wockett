@@ -135,85 +135,79 @@ struct MonthCalendarView: View {
         NavigationStack {
             ZStack {
                 Color.earthBg.ignoresSafeArea()
-                VStack(spacing: 0) {
-                    // Month navigation header
-                    HStack {
-                        Button {
-                            monthShiftDirection = false
-                            shiftMonth(-1)
-                        } label: {
-                            Image(wkt: .chevronLeft).wktIcon(.inline, tint: .earthMuted)
-                        }
-                        .accessibilityLabel("Previous month")
+                ScrollView {
+                    VStack(alignment: .leading, spacing: WktSpacing.betweenSections) {
+                        VStack(alignment: .leading, spacing: WktSpacing.betweenCards) {
+                            // The month as the heading, previous / next beside it.
+                            HStack(spacing: 4) {
+                                ZStack(alignment: .leading) {
+                                    Text(Self.monthFmt.string(from: monthStart))
+                                        .font(.wktSection).foregroundColor(.earthCream)
+                                        .accessibilityAddTraits(.isHeader)
+                                        .id(monthStart)
+                                        .transition(.asymmetric(
+                                            insertion: .move(edge: monthShiftDirection ? .trailing : .leading).combined(with: .opacity),
+                                            removal: .move(edge: monthShiftDirection ? .leading : .trailing).combined(with: .opacity)
+                                        ))
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .clipped()
+                                .animation(.easeInOut(duration: 0.22), value: monthStart)
 
-                        ZStack {
-                            Text(Self.monthFmt.string(from: monthStart))
-                                .font(.headline).foregroundColor(.earthCream)
-                                .id(monthStart)
-                                .transition(.asymmetric(
-                                    insertion: .move(edge: monthShiftDirection ? .trailing : .leading).combined(with: .opacity),
-                                    removal: .move(edge: monthShiftDirection ? .leading : .trailing).combined(with: .opacity)
-                                ))
-                        }
-                        .frame(maxWidth: .infinity)
-                        .clipped()
-                        .animation(.easeInOut(duration: 0.22), value: monthStart)
+                                WktRoundIconButton(symbol: .chevronLeft, label: "Previous month") {
+                                    monthShiftDirection = false
+                                    shiftMonth(-1)
+                                }
+                                WktRoundIconButton(symbol: .chevronRight, label: "Next month", disabled: isFutureMonth) {
+                                    monthShiftDirection = true
+                                    shiftMonth(1)
+                                }
+                            }
 
-                        Button {
-                            monthShiftDirection = true
-                            shiftMonth(1)
-                        } label: {
-                            Image(wkt: .chevronRight)
-                                .wktIcon(.inline, tint: isFutureMonth ? .earthMuted.opacity(0.3) : .earthMuted)
-                        }
-                        .disabled(isFutureMonth)
-                        .accessibilityLabel("Next month")
-                    }
-                    .padding(.horizontal, 20).padding(.vertical, 14)
-
-                    HStack(spacing: 0) {
-                        ForEach(["S","M","T","W","T","F","S"], id: \.self) { d in
-                            Text(d).font(.caption2.bold()).foregroundColor(.earthMuted)
-                                .frame(maxWidth: .infinity)
-                        }
-                    }
-                    .padding(.horizontal, 8).padding(.bottom, 4)
-
-                    Divider().background(Color.earthMuted.opacity(0.15)).padding(.horizontal, 8)
-
-                    ScrollView {
-                        VStack(spacing: 0) {
-                            // Day grid
-                            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 2), count: 7), spacing: 2) {
-                                ForEach(daysInGrid.indices, id: \.self) { idx in
-                                    if let date = daysInGrid[idx] {
-                                        MonthDayCell(
-                                            date: date,
-                                            steps: stepsFor(date),
-                                            goal: goalFor(date),
-                                            onTap: { selectedDay = calendarDay(for: date) }
-                                        )
-                                    } else {
-                                        Color.clear.frame(height: 64)
+                            VStack(spacing: 8) {
+                                HStack(spacing: 0) {
+                                    ForEach(Array(Calendar.current.veryShortStandaloneWeekdaySymbols.enumerated()), id: \.offset) { _, d in
+                                        Text(d).font(.wktLabel).foregroundColor(.earthMuted)
+                                            .frame(maxWidth: .infinity)
+                                    }
+                                }
+                                .accessibilityHidden(true)
+                                WktDivider()
+                                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 2), count: 7), spacing: 2) {
+                                    ForEach(daysInGrid.indices, id: \.self) { idx in
+                                        if let date = daysInGrid[idx] {
+                                            MonthDayCell(
+                                                date: date,
+                                                steps: stepsFor(date),
+                                                goal: goalFor(date),
+                                                onTap: { selectedDay = calendarDay(for: date) }
+                                            )
+                                        } else {
+                                            Color.clear.frame(height: 64)
+                                        }
                                     }
                                 }
                             }
-                            .padding(.horizontal, 8).padding(.top, 4)
+                            .wktCard(padding: 10)
+                        }
 
-                            // Monthly stats + trend chart
-                            let stats = monthlyStats
-                            if !stats.isEmpty {
-                                monthStatsBar(stats)
-                                    .padding(.horizontal, 12)
-                                    .padding(.top, 20)
-
-                                monthTrendChart
-                                    .padding(.horizontal, 12)
-                                    .padding(.top, 12)
-                                    .padding(.bottom, 28)
+                        // Monthly stats + trend chart
+                        let stats = monthlyStats
+                        if !stats.isEmpty {
+                            WktSection(title: "This month") {
+                                WktStatGrid(items: [
+                                    .init(label: "Total steps", value: formatK(stats.total), note: "this month"),
+                                    .init(label: "Daily avg", value: formatK(stats.avg), note: "active days"),
+                                    .init(label: "Goals met", value: "\(stats.goalsMet)", note: "of \(stats.daysWithData) days"),
+                                    .init(label: "Best day", value: formatK(stats.best), note: "single day")
+                                ])
                             }
+                            monthTrendChart
                         }
                     }
+                    .padding(.horizontal, WktSpacing.screen)
+                    .padding(.top, 8)
+                    .padding(.bottom, WktSpacing.betweenSections)
                 }
             }
             .navigationTitle("Activity Calendar")
@@ -231,46 +225,13 @@ struct MonthCalendarView: View {
         .task { await fetchHKSteps() }
     }
 
-    // MARK: - Stats Bar
-
-    private func monthStatsBar(_ stats: MonthStats) -> some View {
-        LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
-            statTile(label: "Total Steps", value: formatK(stats.total), note: "this month")
-            statTile(label: "Daily Avg", value: formatK(stats.avg), note: "active days")
-            statTile(label: "Goals Met", value: "\(stats.goalsMet)", note: "of \(stats.daysWithData) days")
-            statTile(label: "Best Day", value: formatK(stats.best), note: "single day")
-        }
-    }
-
-    private func statTile(label: String, value: String, note: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(value)
-                .font(.system(size: 22, weight: .bold, design: .rounded))
-                .foregroundColor(.earthCream)
-            Text(label)
-                .font(.caption.bold())
-                .foregroundColor(.earthCream)
-            Text(note)
-                .font(.system(size: 10))
-                .foregroundColor(.earthMuted)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(14)
-        .background(Color.earthCard)
-        .cornerRadius(16)
-    }
-
     // MARK: - Trend Chart
 
     @ViewBuilder
     private var monthTrendChart: some View {
         let pts = monthTrendPts
         if !pts.isEmpty {
-            VStack(alignment: .leading, spacing: 10) {
-                Text("Monthly Trend")
-                    .font(.caption.bold())
-                    .foregroundColor(.earthCream)
-
+            WktSection(title: "Monthly trend") {
                 Chart {
                     ForEach(pts) { pt in
                         AreaMark(
@@ -295,7 +256,7 @@ struct MonthCalendarView: View {
                         .foregroundStyle(Color.earthOrange.opacity(0.5))
                         .annotation(position: .top, alignment: .leading) {
                             Text("Goal")
-                                .font(.system(size: 8))
+                                .font(.wktBody(9))
                                 .foregroundColor(.earthOrange.opacity(0.7))
                         }
                     if let td = pts.first(where: { Calendar.current.isDateInToday($0.date) }), td.steps > 0 {
@@ -309,29 +270,27 @@ struct MonthCalendarView: View {
                 }
                 .chartXAxis {
                     AxisMarks(values: .stride(by: .day, count: 7)) { _ in
-                        AxisGridLine().foregroundStyle(Color.earthMuted.opacity(0.08))
+                        AxisGridLine().foregroundStyle(Color.earthTrack)
                         AxisValueLabel(format: .dateTime.day())
-                            .font(.system(size: 8))
+                            .font(.wktBody(9))
                             .foregroundStyle(Color.earthMuted)
                     }
                 }
                 .chartYAxis {
                     AxisMarks(values: .automatic(desiredCount: 3)) { v in
-                        AxisGridLine().foregroundStyle(Color.earthMuted.opacity(0.08))
+                        AxisGridLine().foregroundStyle(Color.earthTrack)
                         AxisValueLabel {
                             if let d = v.as(Double.self) {
                                 Text(formatK(Int(d)))
-                                    .font(.system(size: 8))
+                                    .font(.wktBody(9))
                                     .foregroundStyle(Color.earthMuted)
                             }
                         }
                     }
                 }
                 .frame(height: 140)
+                .wktCard()
             }
-            .padding(14)
-            .background(Color.earthCard)
-            .cornerRadius(16)
         }
     }
 
@@ -378,12 +337,12 @@ private struct MonthDayCell: View {
     var body: some View {
         VStack(spacing: 2) {
             Text("\(cal.component(.day, from: date))")
-                .font(.system(size: 11, weight: isToday ? .bold : .regular))
-                .foregroundColor(isToday ? .earthGreen : isFuture ? .earthMuted.opacity(0.35) : .earthCream)
+                .font(.wktLabel)
+                .foregroundColor(isToday ? .earthGreen : isFuture ? .earthMuted.opacity(0.5) : .earthCream)
 
             ZStack {
                 Circle()
-                    .stroke(Color.earthMuted.opacity(isFuture ? 0.07 : 0.18), lineWidth: 3)
+                    .stroke(Color.earthTrack.opacity(isFuture ? 0.5 : 1), lineWidth: 3)
                 if !isFuture, progress > 0 {
                     Circle()
                         .trim(from: 0, to: progress)
@@ -405,8 +364,9 @@ private struct MonthDayCell: View {
                                 .foregroundColor(.earthGreen)
                         } else if let s = steps, s > 0 {
                             Text("\(Int(Double(s) / Double(max(1, goal)) * 100))%")
-                                .font(.system(size: 6, weight: .bold))
-                                .foregroundColor(.orange)
+                                .font(.wktBody(7))
+                                .foregroundColor(.earthOrange)
+                                .minimumScaleFactor(0.7)
                         } else {
                             Image(wkt: .dismiss)
                                 .font(.system(size: 6))
@@ -419,20 +379,32 @@ private struct MonthDayCell: View {
 
             if let label = stepsLabel {
                 Text(label)
-                    .font(.system(size: 7, weight: .semibold))
+                    .font(.wktBody(9))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
                     .foregroundColor(goalMet == true ? .earthGreen : .earthMuted)
             } else if isFuture {
                 Text(goal >= 1_000 ? "\(goal / 1_000)K" : "\(goal)")
-                    .font(.system(size: 7))
-                    .foregroundColor(.earthMuted.opacity(0.3))
+                    .font(.wktBody(9))
+                    .foregroundColor(.earthMuted.opacity(0.5))
             } else {
-                Text("—").font(.system(size: 7)).foregroundColor(.earthMuted.opacity(0.25))
+                Text("—").font(.wktBody(9)).foregroundColor(.earthMuted.opacity(0.4))
             }
         }
+        .frame(maxWidth: .infinity)
         .frame(height: 64)
-        .background(isToday ? Color.earthCard.opacity(0.6) : Color.clear)
-        .cornerRadius(8)
+        .background(isToday ? Color.earthRaised : Color.clear,
+                    in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .contentShape(Rectangle())
         .onTapGesture { onTap() }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilityText)
+        .accessibilityAddTraits(.isButton)
+    }
+
+    private var accessibilityText: String {
+        let name = date.formatted(.dateTime.weekday(.wide).month().day())
+        guard !isFuture, let steps else { return name }
+        return "\(name), \(steps.formatted()) of \(goal.formatted()) steps"
     }
 }

@@ -55,6 +55,7 @@ enum WktSymbol {
     case sleep              // bed.double
     case readiness          // waveform.path.ecg
     case calories           // flame
+    case night              // moon (sleep advice)
 
     // Community
     case records            // trophy
@@ -192,6 +193,7 @@ enum WktSymbol {
         case .sleep:          return "bed.double"
         case .readiness:      return "waveform.path.ecg"
         case .calories:       return "flame"
+        case .night:          return "moon"
         case .records:        return "trophy"
         case .badges:         return "medal"
         case .calendar:       return "calendar"

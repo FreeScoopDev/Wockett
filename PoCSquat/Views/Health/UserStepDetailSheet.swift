@@ -15,82 +15,75 @@ struct UserStepDetailSheet: View {
     private var weeklySteps: Int { recentSessions.reduce(0) { $0 + $1.estimatedSteps } }
     private var weeklyDistance: Double { recentSessions.reduce(0) { $0 + $1.totalDistance } }
 
+    private func distance(_ meters: Double) -> String {
+        let f = MKDistanceFormatter(); f.unitStyle = .abbreviated
+        return f.string(fromDistance: meters)
+    }
+
     var body: some View {
         NavigationStack {
             ZStack {
                 Color.earthBg.ignoresSafeArea()
                 ScrollView {
-                    VStack(spacing: 24) {
-                        ZStack {
-                            Circle()
-                                .stroke(Color.earthMuted.opacity(0.15), lineWidth: 18)
-                                .frame(width: 160, height: 160)
-                            Circle()
-                                .trim(from: 0, to: stepManager.progress)
-                                .stroke(
-                                    LinearGradient(colors: [.earthGreen, .earthOrange], startPoint: .topLeading, endPoint: .bottomTrailing),
-                                    style: StrokeStyle(lineWidth: 18, lineCap: .round)
-                                )
-                                .rotationEffect(.degrees(-90))
-                                .frame(width: 160, height: 160)
-                                .animation(.easeInOut(duration: 0.6), value: stepManager.progress)
+                    VStack(alignment: .leading, spacing: WktSpacing.betweenSections) {
+                        WktGoalRing(progress: stepManager.progress, lineWidth: 16) {
                             VStack(spacing: 2) {
                                 Text("\(Int(stepManager.progress * 100))%")
-                                    .font(.wktDisplay(32))
+                                    .font(.wktMetric)
                                     .foregroundColor(.earthCream)
                                 Text("of goal")
-                                    .font(.wktBody(12)).foregroundColor(.earthMuted)
+                                    .font(.wktLabel).foregroundColor(.earthMuted)
                             }
                         }
+                        .frame(width: 176, height: 176)
+                        .frame(maxWidth: .infinity)
                         .padding(.top, 8)
+                        .accessibilityElement(children: .combine)
 
-                        HStack(spacing: 12) {
-                            detailTile(value: stepManager.todaySteps.formatted(), label: "Steps Today", icon: .steps, color: .earthGreen)
-                            detailTile(value: stepManager.currentGoal.formatted(), label: "Daily Goal", icon: .finish, filled: true, color: .earthOrange, subtitle: {
-                                let f = MKDistanceFormatter(); f.unitStyle = .abbreviated
-                                return "≈ \(f.string(fromDistance: Double(stepManager.currentGoal) * 0.762))"
-                            }())
+                        WktSection(title: "Today") {
+                            WktStatGrid(items: [
+                                .init(label: "Steps today", value: stepManager.todaySteps.formatted(), note: "so far"),
+                                .init(label: "Daily goal", value: stepManager.currentGoal.formatted(),
+                                      note: "≈ \(distance(Double(stepManager.currentGoal) * 0.762))"),
+                                .init(label: "Remaining", value: stepManager.remainingSteps.formatted(), note: "steps"),
+                                .init(label: "Distance left", value: distance(stepManager.remainingMeters), note: "to your goal")
+                            ])
                         }
-                        .padding(.horizontal)
-
-                        HStack(spacing: 12) {
-                            detailTile(value: stepManager.remainingSteps.formatted(), label: "Remaining", icon: .arrowRightCircle, color: .earthMuted)
-                            let f = MKDistanceFormatter(); let _ = f.unitStyle = .abbreviated
-                            detailTile(value: f.string(fromDistance: stepManager.remainingMeters), label: "Distance Left", icon: .distance, color: .earthMuted)
-                        }
-                        .padding(.horizontal)
 
                         if !recentSessions.isEmpty {
-                            VStack(alignment: .leading, spacing: 10) {
-                                WktSectionHeader(title: "Last 7 Days")
-                                    .padding(.horizontal)
-
-                                HStack(spacing: 12) {
-                                    detailTile(value: weeklySteps.formatted(), label: "Steps", icon: .steps, color: .earthGreen)
-                                    let df = MKDistanceFormatter(); let _ = df.unitStyle = .abbreviated
-                                    detailTile(value: df.string(fromDistance: weeklyDistance), label: "Distance", icon: .distance, color: .earthGreen)
-                                }
-                                .padding(.horizontal)
-
-                                ForEach(recentSessions.prefix(5)) { session in
-                                    HStack {
-                                        VStack(alignment: .leading, spacing: 2) {
-                                            Text(session.routeName).font(.wktBody(15)).foregroundColor(.earthCream).lineLimit(1)
-                                            Text(session.formattedDate).font(.wktBody(12)).foregroundColor(.earthMuted)
+                            WktSection(title: "Last 7 days") {
+                                WktStatGrid(items: [
+                                    .init(label: "Steps", value: weeklySteps.formatted(), note: "from activities"),
+                                    .init(label: "Distance", value: distance(weeklyDistance), note: "from activities")
+                                ])
+                                VStack(spacing: 0) {
+                                    ForEach(Array(recentSessions.prefix(5).enumerated()), id: \.element.id) { index, session in
+                                        if index > 0 { WktDivider() }
+                                        HStack {
+                                            VStack(alignment: .leading, spacing: 2) {
+                                                Text(session.routeName)
+                                                    .font(.wktRowTitle).foregroundColor(.earthCream).lineLimit(1)
+                                                Text(session.formattedDate)
+                                                    .font(.wktLabel).foregroundColor(.earthMuted)
+                                            }
+                                            Spacer()
+                                            VStack(alignment: .trailing, spacing: 2) {
+                                                Text(session.distanceText)
+                                                    .font(.wktRowTitle).foregroundColor(.earthGreen)
+                                                Text("\(session.estimatedSteps.formatted()) steps")
+                                                    .font(.wktLabel).foregroundColor(.earthMuted)
+                                            }
                                         }
-                                        Spacer()
-                                        VStack(alignment: .trailing, spacing: 2) {
-                                            Text(session.distanceText).font(.wktHeading(15)).foregroundColor(.earthGreen)
-                                            Text("\(session.estimatedSteps.formatted()) steps").font(.wktBody(12)).foregroundColor(.earthMuted)
-                                        }
+                                        .padding(.vertical, 10)
+                                        .accessibilityElement(children: .combine)
                                     }
-                                    .wktCard(padding: 12)
-                                    .padding(.horizontal)
                                 }
+                                .wktCard(padding: 14)
                             }
                         }
-                        Spacer(minLength: 32)
                     }
+                    .padding(.horizontal, WktSpacing.screen)
+                    .padding(.bottom, WktSpacing.betweenSections)
                 }
             }
             .navigationTitle("Your Progress")
@@ -102,21 +95,5 @@ struct UserStepDetailSheet: View {
             }
         }
         .presentationDetents([.large])
-    }
-
-    private func detailTile(
-        value: String, label: String, icon: WktSymbol, filled: Bool = false, color: Color, subtitle: String? = nil
-    ) -> some View {
-        VStack(spacing: 6) {
-            Image(wkt: icon).wktIcon(.row, tint: color, filled: filled)
-            Text(value).font(.wktHeading(17)).foregroundColor(.earthCream)
-            if let subtitle {
-                Text(subtitle).font(.wktBody(11)).foregroundColor(.earthMuted)
-            }
-            Text(label).font(.wktBody(12)).foregroundColor(.earthMuted)
-        }
-        // Centred tile: the full-width frame keeps it centred inside wktCard's leading frame.
-        .frame(maxWidth: .infinity)
-        .wktCard(padding: 18)
     }
 }

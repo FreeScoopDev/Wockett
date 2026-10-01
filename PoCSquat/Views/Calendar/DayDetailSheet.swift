@@ -22,110 +22,83 @@ struct DayDetailSheet: View {
             ZStack {
                 Color.earthBg.ignoresSafeArea()
                 ScrollView {
-                    VStack(spacing: 24) {
-                        // Ring — circles are inset by stroke/2 so they don't clip
-                        ZStack {
-                            Circle()
-                                .stroke(Color.earthMuted.opacity(0.15), lineWidth: 14)
-                                .padding(7)
-                            if !day.isFuture && day.progress > 0 {
-                                Circle()
-                                    .trim(from: 0, to: day.progress)
-                                    .stroke(
-                                        LinearGradient(colors: [.earthGreen, .earthOrange],
-                                                       startPoint: .topLeading, endPoint: .bottomTrailing),
-                                        style: StrokeStyle(lineWidth: 14, lineCap: .round)
-                                    )
-                                    .rotationEffect(.degrees(-90))
-                                    .padding(7)
-                            }
+                    VStack(alignment: .leading, spacing: WktSpacing.betweenSections) {
+                        WktGoalRing(progress: day.isFuture ? 0 : day.progress, lineWidth: 14) {
                             VStack(spacing: 4) {
                                 if let steps = day.steps {
                                     Text(steps.formatted())
-                                        .font(.system(size: 38, weight: .bold, design: .rounded))
+                                        .font(.wktMetric)
                                         .foregroundColor(.earthCream)
-                                    Text("/ \(day.goal.formatted())")
-                                        .font(.caption).foregroundColor(.earthMuted)
+                                        .minimumScaleFactor(0.6)
+                                    Text("of \(day.goal.formatted())")
+                                        .font(.wktLabel).foregroundColor(.earthMuted)
                                 } else if day.isFuture {
                                     Text(day.goal.formatted())
-                                        .font(.system(size: 32, weight: .bold, design: .rounded))
-                                        .foregroundColor(.earthMuted.opacity(0.5))
+                                        .font(.wktCardTitle)
+                                        .foregroundColor(.earthMuted)
                                     Text("planned")
-                                        .font(.caption).foregroundColor(.earthMuted.opacity(0.4))
+                                        .font(.wktLabel).foregroundColor(.earthMuted)
                                 } else {
                                     Text("—")
-                                        .font(.system(size: 38, weight: .bold, design: .rounded))
-                                        .foregroundColor(.earthMuted.opacity(0.4))
+                                        .font(.wktMetric)
+                                        .foregroundColor(.earthMuted)
                                     Text("no data")
-                                        .font(.caption).foregroundColor(.earthMuted.opacity(0.4))
+                                        .font(.wktLabel).foregroundColor(.earthMuted)
                                 }
                             }
                         }
                         .frame(width: 180, height: 180)
+                        .frame(maxWidth: .infinity)
+                        .accessibilityElement(children: .combine)
 
-                        // Tag + accomplishment badge
-                        HStack(spacing: 10) {
+                        // Tag + accomplishment chips
+                        HStack(spacing: 8) {
                             if let emoji = day.tagEmoji, let color = day.tagColor, let tag = day.tag {
-                                HStack(spacing: 5) {
-                                    Text(emoji)
-                                    Text(tag)
+                                WktStatusChip(text: tag, textColor: color) {
+                                    Text(emoji).font(.wktLabel) // the tag's own emoji (data)
                                 }
-                                .font(.caption.bold())
-                                .padding(.horizontal, 12).padding(.vertical, 6)
-                                .background(color.opacity(0.15))
-                                .foregroundColor(color)
-                                .cornerRadius(20)
                             }
                             if day.isFuture {
-                                Label {
-                                    Text("Scheduled")
-                                } icon: {
+                                WktStatusChip(text: "Scheduled", textColor: .earthMuted) {
                                     Image(wkt: .calendarClock).wktIcon(.inline, tint: .earthMuted)
                                 }
-                                .font(.caption.bold()).foregroundColor(.earthMuted)
                             } else if let met = day.goalMet {
-                                Label(met ? "Goal achieved" : "Goal not met",
-                                      systemImage: met ? "checkmark.seal.fill" : "xmark.circle")
-                                    .font(.caption.bold())
-                                    .foregroundColor(met ? .earthGreen : .earthMuted)
+                                WktStatusChip(text: met ? "Goal achieved" : "Goal not met",
+                                              textColor: met ? .earthGreen : .earthMuted) {
+                                    Image(wkt: met ? .success : .close)
+                                        .wktIcon(.inline, tint: met ? .earthGreen : .earthMuted, filled: met)
+                                }
                             }
                         }
+                        .frame(maxWidth: .infinity)
 
                         // Stats row — always show goal; add steps/progress for non-future days
                         HStack(spacing: 0) {
                             statCell(label: "Goal", value: day.goal.formatted())
                             if let steps = day.steps {
-                                Divider().frame(height: 40)
+                                columnDivider
                                 statCell(label: "Steps", value: steps.formatted())
-                                Divider().frame(height: 40)
+                                columnDivider
                                 statCell(label: "Progress", value: "\(Int(day.progress * 100))%")
-                                Divider().frame(height: 40)
+                                columnDivider
                                 statCell(label: "Distance", value: Self.formatDist(Double(steps) * 0.762))
                             }
                         }
-                        .padding(.vertical, 8)
-                        .background(Color.earthCard)
-                        .cornerRadius(14)
-                        .padding(.horizontal)
+                        .wktCard(padding: 14)
 
                         // Reminder button for future days
                         if day.isFuture {
                             Button {
                                 Task { await scheduleReminder() }
                             } label: {
-                                Label(
-                                    reminderScheduled ? "Added to Reminders" : "Add to Reminders",
-                                    systemImage: reminderScheduled ? "checkmark.circle.fill" : "bell.badge.plus"
-                                )
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 14)
-                                .background(reminderScheduled ? Color.earthCard : Color.earthGreenFill)
-                                .foregroundColor(reminderScheduled ? .earthGreen : .white)
-                                .fontWeight(.semibold)
-                                .cornerRadius(12)
+                                if reminderScheduled {
+                                    WktSecondaryLabel(title: "Added to Reminders", symbol: .success)
+                                } else {
+                                    WktPrimaryLabel(title: "Add to Reminders", symbol: .notifications)
+                                }
                             }
+                            .buttonStyle(BounceButtonStyle(scale: 0.98))
                             .disabled(reminderScheduled)
-                            .padding(.horizontal)
                             .alert("Couldn't Add Reminder", isPresented: $showReminderError) {
                                 Button("OK", role: .cancel) {}
                             } message: {
@@ -135,19 +108,23 @@ struct DayDetailSheet: View {
 
                         // Walk sessions
                         if !daySessions.isEmpty {
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("Walks").font(.caption.bold()).foregroundColor(.earthMuted)
-                                    .padding(.horizontal, 20)
-                                ForEach(daySessions) { session in
-                                    sessionRow(session)
+                            WktSection(title: "Walks") {
+                                VStack(spacing: 0) {
+                                    ForEach(Array(daySessions.enumerated()), id: \.element.id) { index, session in
+                                        if index > 0 { WktDivider() }
+                                        sessionRow(session)
+                                    }
                                 }
+                                .wktCard(padding: 14)
                             }
                         } else if !day.isFuture {
                             Text("No walks recorded this day")
-                                .font(.caption).foregroundColor(.earthMuted.opacity(0.6))
+                                .font(.wktBodyText).foregroundColor(.earthMuted)
+                                .frame(maxWidth: .infinity)
                         }
                     }
-                    .padding(.vertical, 24)
+                    .padding(.horizontal, WktSpacing.screen)
+                    .padding(.vertical, WktSpacing.betweenSections)
                 }
             }
             .navigationTitle(Self.fullDateFmt.string(from: day.date))
@@ -194,32 +171,39 @@ struct DayDetailSheet: View {
         return f.string(fromDistance: meters)
     }
 
+    private var columnDivider: some View {
+        Rectangle().fill(Color.earthTrack).frame(width: 1, height: 40)
+    }
+
     private func statCell(label: String, value: String) -> some View {
         VStack(spacing: 4) {
-            Text(value).font(.headline.monospacedDigit()).foregroundColor(.earthCream)
-            Text(label).font(.caption).foregroundColor(.earthMuted)
+            Text(value)
+                .font(.wktRowTitle.monospacedDigit())
+                .foregroundColor(.earthCream)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+            Text(label).font(.wktLabel).foregroundColor(.earthMuted)
         }
         .frame(maxWidth: .infinity)
+        .accessibilityElement(children: .combine)
     }
 
     private func sessionRow(_ session: WalkSession) -> some View {
         HStack {
             VStack(alignment: .leading, spacing: 4) {
                 Text(session.routeName)
-                    .font(.subheadline).foregroundColor(.earthCream)
+                    .font(.wktRowTitle).foregroundColor(.earthCream)
                 HStack(spacing: 12) {
                     Label { Text(session.distanceText) } icon: { Image(wkt: .distance).wktIcon(.inline, tint: .earthMuted) }
                     Label { Text(session.timeText) } icon: { Image(wkt: .time).wktIcon(.inline, tint: .earthMuted) }
                 }
-                .font(.caption).foregroundColor(.earthMuted)
+                .font(.wktLabel).foregroundColor(.earthMuted)
             }
             Spacer()
             Text("\(session.estimatedSteps.formatted()) steps")
-                .font(.caption.bold()).foregroundColor(.earthGreen)
+                .font(.wktLabel).foregroundColor(.earthGreen)
         }
-        .padding(.horizontal, 16).padding(.vertical, 12)
-        .background(Color.earthCard)
-        .cornerRadius(12)
-        .padding(.horizontal)
+        .padding(.vertical, 10)
+        .accessibilityElement(children: .combine)
     }
 }

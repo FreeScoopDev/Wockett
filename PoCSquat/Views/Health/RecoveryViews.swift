@@ -11,6 +11,9 @@ enum RecoveryMetricType: String, Identifiable {
 
 // MARK: - Recovery Card
 
+// The first card on Health, as the Today card is on Home: last night's
+// sleep, readiness and active calories, each opening its detail sheet, with
+// the readiness hint and the gait status underneath.
 struct RecoveryCard: View {
     private var recovery = RecoveryService.shared
     private var gait     = GaitHealthService.shared
@@ -19,65 +22,42 @@ struct RecoveryCard: View {
     @State private var pushGaitDetail  = false
 
     var body: some View {
-        VStack(spacing: 0) {
+        VStack(alignment: .leading, spacing: WktSpacing.cardPadding) {
             HStack(spacing: 0) {
-                pillButton(metric: .sleep,
-                    icon:  "bed.double.fill",
+                metricButton(.sleep,
+                    badge: WktIconBadge(symbol: .sleep, tint: .accentHealth),
                     label: "Sleep",
-                    value: recovery.sleepFormatted ?? "–",
-                    color: Color.accentHealth
-                )
-                pillDivider
-                pillButton(metric: .readiness,
-                    icon:  recovery.readiness.icon,
+                    value: recovery.sleepFormatted ?? "–")
+                columnDivider
+                metricButton(.readiness,
+                    badge: WktIconBadge(systemName: recovery.readiness.icon, tint: recovery.readiness.color),
                     label: "Readiness",
-                    value: recovery.readiness.label,
-                    color: recovery.readiness.color
-                )
-                pillDivider
-                pillButton(metric: .calories,
-                    icon:  "flame.fill",
-                    label: "Active Cal",
-                    value: recovery.activeCal.map { "\(Int($0))" } ?? "–",
-                    color: .earthOrange
-                )
+                    value: recovery.readiness.label)
+                columnDivider
+                metricButton(.calories,
+                    badge: WktIconBadge(symbol: .calories, tint: .earthOrange),
+                    label: "Active cal",
+                    value: recovery.activeCal.map { "\(Int($0))" } ?? "–")
             }
-            .padding(.vertical, 13)
 
             if recovery.readiness != .unknown || gaitStatus != nil {
-                Divider().background(Color.earthMuted.opacity(0.13))
-
-                HStack(spacing: 6) {
+                WktDivider()
+                HStack(alignment: .center, spacing: 8) {
                     if recovery.readiness != .unknown {
-                        Image(systemName: recovery.readiness.icon)
-                            .font(.caption2)
-                            .foregroundColor(recovery.readiness.color)
-                        Text(recovery.readiness.hint)
-                            .font(.caption2)
+                        Text(readinessLine)
+                            .font(.wktLabel)
                             .foregroundColor(.earthMuted)
-                        if let flt = recovery.flightsClimbed, flt > 0 {
-                            Text("· \(flt) floor\(flt == 1 ? "" : "s")")
-                                .font(.caption2)
-                                .foregroundColor(.earthMuted.opacity(0.55))
-                        }
+                            .fixedSize(horizontal: false, vertical: true)
                     }
-                    Spacer()
-                    if let (label, color, icon) = gaitStatus {
-                        Button { pushGaitDetail = true } label: {
-                            Label("Gait: \(label)", systemImage: icon)
-                                .font(.caption2.bold())
-                                .foregroundColor(color)
-                        }
-                        .buttonStyle(.plain)
+                    Spacer(minLength: 0)
+                    if let (label, color, _) = gaitStatus {
+                        WktStatusChip(text: "Gait: \(label)", dot: color) { pushGaitDetail = true }
+                            .accessibilityHint("Shows walking speed")
                     }
                 }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 8)
             }
         }
-        .background(Color.earthCard)
-        .cornerRadius(16)
-        .padding(.horizontal, 20)
+        .wktCard()
         .task { if recovery.activeCal == nil { await recovery.load() } }
         .sheet(item: $selectedMetric) { metric in
             RecoveryMetricDetailSheet(metric: metric)
@@ -89,6 +69,14 @@ struct RecoveryCard: View {
         }
     }
 
+    private var readinessLine: String {
+        var line = recovery.readiness.hint
+        if let flt = recovery.flightsClimbed, flt > 0 {
+            line += " · \(flt) floor\(flt == 1 ? "" : "s")"
+        }
+        return line
+    }
+
     private var gaitStatus: (label: String, color: Color, icon: String)? {
         let recent = gait.snapshots.suffix(7).compactMap { $0.speedMps }
         guard !recent.isEmpty else { return nil }
@@ -98,39 +86,33 @@ struct RecoveryCard: View {
         return (st.label, st.color, st.icon)
     }
 
-    private var pillDivider: some View {
+    private var columnDivider: some View {
         Rectangle()
-            .fill(Color.earthMuted.opacity(0.13))
-            .frame(width: 1, height: 34)
+            .fill(Color.earthTrack)
+            .frame(width: 1, height: 56)
     }
 
-    private func pillButton(
-        metric: RecoveryMetricType,
-        icon: String, label: String, value: String, color: Color
-    ) -> some View {
+    private func metricButton(_ metric: RecoveryMetricType, badge: WktIconBadge,
+                              label: String, value: String) -> some View {
         Button { selectedMetric = metric } label: {
-            VStack(spacing: 5) {
-                Image(systemName: icon)
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundColor(color)
+            VStack(spacing: 6) {
+                badge
                 Text(value)
-                    .font(.system(size: 14, weight: .bold, design: .rounded).monospacedDigit())
+                    .font(.wktRowTitle.monospacedDigit())
                     .foregroundColor(.earthCream)
                     .minimumScaleFactor(0.72)
                     .lineLimit(1)
-                HStack(spacing: 2) {
-                    Text(label)
-                        .font(.system(size: 10))
-                        .foregroundColor(.earthMuted)
-                    Image(wkt: .chevronRight)
-                        .font(.system(size: 7, weight: .semibold))
-                        .foregroundColor(.earthMuted.opacity(0.45))
-                }
+                Text(label)
+                    .font(.wktLabel)
+                    .foregroundColor(.earthMuted)
+                    .lineLimit(1)
             }
             .frame(maxWidth: .infinity)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(BounceButtonStyle(scale: 0.95))
+        .accessibilityElement(children: .combine)
+        .accessibilityHint("Shows details")
     }
 }
 
@@ -148,14 +130,16 @@ struct RecoveryMetricDetailSheet: View {
             ZStack {
                 Color.earthBg.ignoresSafeArea()
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 24) {
+                    VStack(alignment: .leading, spacing: WktSpacing.betweenSections) {
                         switch metric {
                         case .sleep:      sleepContent
                         case .readiness:  readinessContent
                         case .calories:   caloriesContent
                         }
                     }
-                    .padding(.bottom, 40)
+                    .padding(.horizontal, WktSpacing.screen)
+                    .padding(.top, 8)
+                    .padding(.bottom, WktSpacing.betweenSections)
                 }
             }
             .navigationTitle(metricTitle)
@@ -189,8 +173,7 @@ struct RecoveryMetricDetailSheet: View {
 
         return Group {
             heroHeader(
-                icon: "bed.double.fill",
-                color: Color.accentHealth,
+                badge: WktIconBadge(symbol: .sleep, tint: .accentHealth, size: 48),
                 value: recovery.sleepFormatted ?? "–",
                 subtitle: "Last night",
                 statusLabel: sleepStatus?.label,
@@ -198,7 +181,7 @@ struct RecoveryMetricDetailSheet: View {
             )
 
             if !recovery.sleepHistory.isEmpty {
-                chartSection(title: "30-Night History") {
+                chartSection(title: "30-night history") {
                     Chart(recovery.sleepHistory) { entry in
                         BarMark(
                             x: .value("Night", entry.date, unit: .day),
@@ -210,43 +193,42 @@ struct RecoveryMetricDetailSheet: View {
                             .lineStyle(StrokeStyle(lineWidth: 1.2, dash: [5, 4]))
                             .foregroundStyle(Color.earthGreen.opacity(0.45))
                             .annotation(position: .trailing) {
-                                Text("7h").font(.system(size: 9)).foregroundColor(.earthGreen.opacity(0.7))
+                                Text("7h").font(.wktBody(9)).foregroundColor(.earthGreen.opacity(0.7))
                             }
                     }
                     .chartXAxis {
                         AxisMarks(values: .stride(by: .day, count: 7)) { _ in
                             AxisValueLabel(format: .dateTime.month(.abbreviated).day())
-                                .font(.system(size: 9)).foregroundStyle(Color.earthMuted)
-                            AxisGridLine().foregroundStyle(Color.earthMuted.opacity(0.1))
+                                .font(.wktBody(9)).foregroundStyle(Color.earthMuted)
+                            AxisGridLine().foregroundStyle(Color.earthTrack)
                         }
                     }
                     .chartYAxis {
                         AxisMarks(values: [0, 4, 7, 9]) { v in
                             AxisValueLabel {
                                 if let d = v.as(Double.self) {
-                                    Text("\(Int(d))h").font(.system(size: 9)).foregroundStyle(Color.earthMuted)
+                                    Text("\(Int(d))h").font(.wktBody(9)).foregroundStyle(Color.earthMuted)
                                 }
                             }
-                            AxisGridLine().foregroundStyle(Color.earthMuted.opacity(0.1))
+                            AxisGridLine().foregroundStyle(Color.earthTrack)
                         }
                     }
                 }
             }
 
             statsGrid([
-                ("Last Night",   recovery.sleepFormatted ?? "–",                             "recorded"),
-                ("7-Night Avg",  sevenAvg.map(RecoveryService.formatHours) ?? "–",           "last 7 nights"),
-                ("Best Night",   bestNight.map(RecoveryService.formatHours) ?? "–",          "last 30 nights"),
-                ("Short Nights", shortNights > 0 ? "\(shortNights)" : "0",                   "under 7h, last 30d")
+                ("Last night",   recovery.sleepFormatted ?? "–",                             "recorded"),
+                ("7-night avg",  sevenAvg.map(RecoveryService.formatHours) ?? "–",           "last 7 nights"),
+                ("Best night",   bestNight.map(RecoveryService.formatHours) ?? "–",          "last 30 nights"),
+                ("Short nights", shortNights > 0 ? "\(shortNights)" : "0",                   "under 7h, last 30d")
             ])
 
-            infoSection(title: "What This Measures", icon: "info.circle.fill",
-                        color: Color.accentHealth) {
+            infoSection(title: "What this measures") {
                 Text("Sleep duration is estimated from Apple Watch or iPhone motion sensors detecting when you're still. Apple Health records sleep in stages — Core (light sleep), Deep (slow-wave), and REM — as well as time in bed and any awake periods. This view shows total asleep time after merging all sources to avoid double-counting.")
-                    .font(.subheadline).foregroundColor(.earthMuted).fixedSize(horizontal: false, vertical: true)
+                    .font(.wktBodyText).foregroundColor(.earthMuted).fixedSize(horizontal: false, vertical: true)
             }
 
-            infoSection(title: "What Affects Sleep Quality", icon: "moon.fill", color: .earthOrange) {
+            infoSection(title: "What affects sleep quality") {
                 bulletList([
                     "Consistent bedtime — your circadian rhythm is strongest when anchored to a regular schedule",
                     "Caffeine after 2pm — caffeine has a ~6h half-life and disrupts sleep architecture",
@@ -257,7 +239,7 @@ struct RecoveryMetricDetailSheet: View {
                 ])
             }
 
-            infoSection(title: "How to Improve", icon: "lightbulb.fill", color: .earthGreen) {
+            infoSection(title: "How to improve") {
                 numberedList([
                     "Set a consistent wake-up time — even on weekends — as the foundation of sleep hygiene.",
                     "Create a 20-minute wind-down: dim lights, no screens, light reading or stretching.",
@@ -297,8 +279,7 @@ struct RecoveryMetricDetailSheet: View {
 
         return Group {
             heroHeader(
-                icon: recovery.readiness.icon,
-                color: recovery.readiness.color,
+                badge: WktIconBadge(systemName: recovery.readiness.icon, tint: recovery.readiness.color, size: 48),
                 value: recovery.readiness.label,
                 subtitle: recovery.readiness.hint,
                 statusLabel: nil,
@@ -306,7 +287,7 @@ struct RecoveryMetricDetailSheet: View {
             )
 
             if !recovery.hrvHistory.isEmpty {
-                chartSection(title: "HRV — 30-Day Trend") {
+                chartSection(title: "HRV, last 30 days") {
                     Chart {
                         ForEach(recovery.hrvHistory) { entry in
                             AreaMark(x: .value("Day", entry.date), y: .value("ms", entry.value))
@@ -325,25 +306,25 @@ struct RecoveryMetricDetailSheet: View {
                                 .lineStyle(StrokeStyle(lineWidth: 1.2, dash: [5, 4]))
                                 .foregroundStyle(Color.earthMuted.opacity(0.5))
                                 .annotation(position: .trailing) {
-                                    Text("Avg").font(.system(size: 9)).foregroundColor(.earthMuted.opacity(0.7))
+                                    Text("Avg").font(.wktBody(9)).foregroundColor(.earthMuted.opacity(0.7))
                                 }
                         }
                     }
                     .chartXAxis {
                         AxisMarks(values: .stride(by: .day, count: 7)) { _ in
                             AxisValueLabel(format: .dateTime.month(.abbreviated).day())
-                                .font(.system(size: 9)).foregroundStyle(Color.earthMuted)
-                            AxisGridLine().foregroundStyle(Color.earthMuted.opacity(0.1))
+                                .font(.wktBody(9)).foregroundStyle(Color.earthMuted)
+                            AxisGridLine().foregroundStyle(Color.earthTrack)
                         }
                     }
                     .chartYAxis {
                         AxisMarks(values: .automatic(desiredCount: 4)) { v in
                             AxisValueLabel {
                                 if let d = v.as(Double.self) {
-                                    Text("\(Int(d))ms").font(.system(size: 9)).foregroundStyle(Color.earthMuted)
+                                    Text("\(Int(d))ms").font(.wktBody(9)).foregroundStyle(Color.earthMuted)
                                 }
                             }
-                            AxisGridLine().foregroundStyle(Color.earthMuted.opacity(0.1))
+                            AxisGridLine().foregroundStyle(Color.earthTrack)
                         }
                     }
                 }
@@ -352,24 +333,23 @@ struct RecoveryMetricDetailSheet: View {
             scoreBreakdown(sleepScore: sleepScore, hrvScore: hrvScore)
 
             statsGrid([
-                ("HRV Now",       recovery.hrv.map       { String(format: "%.0fms", $0) } ?? "–", "heart rate variability"),
-                ("HRV Baseline",  recovery.hrvBaseline.map { String(format: "%.0fms", $0) } ?? "–", "30-day personal avg"),
-                ("7-Day HRV Avg", hrvAvg.map              { String(format: "%.0fms", $0) } ?? "–", "this week"),
-                ("Sleep Input",   recovery.sleepFormatted ?? "–",                                   "last night")
+                ("HRV now",       recovery.hrv.map       { String(format: "%.0fms", $0) } ?? "–", "heart rate variability"),
+                ("HRV baseline",  recovery.hrvBaseline.map { String(format: "%.0fms", $0) } ?? "–", "30-day personal avg"),
+                ("7-day HRV avg", hrvAvg.map              { String(format: "%.0fms", $0) } ?? "–", "this week"),
+                ("Sleep input",   recovery.sleepFormatted ?? "–",                                   "last night")
             ])
 
-            infoSection(title: "How Readiness Is Calculated", icon: "info.circle.fill",
-                        color: recovery.readiness.color) {
+            infoSection(title: "How readiness is calculated") {
                 Text("Readiness combines two signals: your Heart Rate Variability (HRV) compared to your personal 30-day baseline, and last night's sleep duration. Both signals are scored 0–2 and averaged. A combined score above 1.7 is Push, above 0.8 is Active, and below that is Recover. If only one signal is available, it's used alone.")
-                    .font(.subheadline).foregroundColor(.earthMuted).fixedSize(horizontal: false, vertical: true)
+                    .font(.wktBodyText).foregroundColor(.earthMuted).fixedSize(horizontal: false, vertical: true)
             }
 
-            infoSection(title: "What Is HRV?", icon: "waveform.path.ecg", color: Color.accentHealth) {
+            infoSection(title: "What is HRV?") {
                 Text("Heart Rate Variability is the variation in time between consecutive heartbeats. Counterintuitively, more variation is better — it means your autonomic nervous system is adaptable. A high HRV relative to your baseline indicates your body recovered well. HRV is recorded by Apple Watch during sleep or during Breathe sessions.")
-                    .font(.subheadline).foregroundColor(.earthMuted).fixedSize(horizontal: false, vertical: true)
+                    .font(.wktBodyText).foregroundColor(.earthMuted).fixedSize(horizontal: false, vertical: true)
             }
 
-            infoSection(title: "What Affects Readiness", icon: "chart.bar.fill", color: .earthOrange) {
+            infoSection(title: "What affects readiness") {
                 bulletList([
                     "Sleep quality and duration — the single largest driver of readiness",
                     "Overtraining or high training load from previous days",
@@ -380,7 +360,7 @@ struct RecoveryMetricDetailSheet: View {
                 ])
             }
 
-            infoSection(title: "How to Improve", icon: "lightbulb.fill", color: .earthGreen) {
+            infoSection(title: "How to improve") {
                 numberedList([
                     "Prioritise sleep — it's the most powerful single intervention for HRV.",
                     "Build a balanced training load: alternate high-effort days with easy recovery days.",
@@ -404,8 +384,7 @@ struct RecoveryMetricDetailSheet: View {
 
         return Group {
             heroHeader(
-                icon: "flame.fill",
-                color: .earthOrange,
+                badge: WktIconBadge(symbol: .calories, tint: .earthOrange, size: 48),
                 value: recovery.activeCal.map { "\(Int($0)) cal" } ?? "–",
                 subtitle: "Active calories today",
                 statusLabel: nil,
@@ -413,7 +392,7 @@ struct RecoveryMetricDetailSheet: View {
             )
 
             if !recovery.calHistory.isEmpty {
-                chartSection(title: "30-Day Active Calories") {
+                chartSection(title: "Active calories, last 30 days") {
                     Chart {
                         ForEach(recovery.calHistory) { entry in
                             BarMark(
@@ -428,25 +407,25 @@ struct RecoveryMetricDetailSheet: View {
                                 .lineStyle(StrokeStyle(lineWidth: 1.2, dash: [5, 4]))
                                 .foregroundStyle(Color.earthMuted.opacity(0.55))
                                 .annotation(position: .trailing) {
-                                    Text("Avg").font(.system(size: 9)).foregroundColor(.earthMuted.opacity(0.7))
+                                    Text("Avg").font(.wktBody(9)).foregroundColor(.earthMuted.opacity(0.7))
                                 }
                         }
                     }
                     .chartXAxis {
                         AxisMarks(values: .stride(by: .day, count: 7)) { _ in
                             AxisValueLabel(format: .dateTime.month(.abbreviated).day())
-                                .font(.system(size: 9)).foregroundStyle(Color.earthMuted)
-                            AxisGridLine().foregroundStyle(Color.earthMuted.opacity(0.1))
+                                .font(.wktBody(9)).foregroundStyle(Color.earthMuted)
+                            AxisGridLine().foregroundStyle(Color.earthTrack)
                         }
                     }
                     .chartYAxis {
                         AxisMarks(values: .automatic(desiredCount: 4)) { v in
                             AxisValueLabel {
                                 if let d = v.as(Double.self) {
-                                    Text("\(Int(d))").font(.system(size: 9)).foregroundStyle(Color.earthMuted)
+                                    Text("\(Int(d))").font(.wktBody(9)).foregroundStyle(Color.earthMuted)
                                 }
                             }
-                            AxisGridLine().foregroundStyle(Color.earthMuted.opacity(0.1))
+                            AxisGridLine().foregroundStyle(Color.earthTrack)
                         }
                     }
                 }
@@ -454,22 +433,22 @@ struct RecoveryMetricDetailSheet: View {
 
             statsGrid([
                 ("Today",        recovery.activeCal.map { "\(Int($0)) cal" } ?? "–", "so far"),
-                ("7-Day Avg",    sevenAvg.map  { "\(Int($0)) cal" } ?? "–",          "this week"),
-                ("Best Day",     best.map      { "\(Int($0)) cal" } ?? "–",          "last 30 days"),
-                ("30-Day Total", monthTotal > 0 ? "\(Int(monthTotal)) cal" : "–",    "last 30 days")
+                ("7-day avg",    sevenAvg.map  { "\(Int($0)) cal" } ?? "–",          "this week"),
+                ("Best day",     best.map      { "\(Int($0)) cal" } ?? "–",          "last 30 days"),
+                ("30-day total", monthTotal > 0 ? "\(Int(monthTotal)) cal" : "–",    "last 30 days")
             ])
 
-            infoSection(title: "What This Measures", icon: "info.circle.fill", color: .earthOrange) {
+            infoSection(title: "What this measures") {
                 Text("Active calories (also called Exercise Calories) are the calories your body burns above its resting baseline due to movement. This is distinct from Total Calories, which includes your resting metabolic rate. Active calories are tracked using iPhone and Apple Watch motion, heart rate, and personal health data to estimate energy expenditure during movement.")
-                    .font(.subheadline).foregroundColor(.earthMuted).fixedSize(horizontal: false, vertical: true)
+                    .font(.wktBodyText).foregroundColor(.earthMuted).fixedSize(horizontal: false, vertical: true)
             }
 
-            infoSection(title: "NEAT — The Hidden Calorie Burn", icon: "figure.walk", color: Color.accentHealth) {
+            infoSection(title: "NEAT, the hidden calorie burn") {
                 Text("Non-Exercise Activity Thermogenesis (NEAT) is movement that isn't formal exercise — fidgeting, walking to meetings, taking stairs, standing vs sitting. Research shows NEAT can account for up to 2,000 extra calories per day in highly active people. Most wearable calorie estimates include NEAT, making it a key lever for total daily energy.")
-                    .font(.subheadline).foregroundColor(.earthMuted).fixedSize(horizontal: false, vertical: true)
+                    .font(.wktBodyText).foregroundColor(.earthMuted).fixedSize(horizontal: false, vertical: true)
             }
 
-            infoSection(title: "What Affects Daily Calories", icon: "chart.bar.fill", color: .earthOrange) {
+            infoSection(title: "What affects daily calories") {
                 bulletList([
                     "Physical activity type and intensity — cardio burns more acutely, strength more over 24h",
                     "Non-exercise movement (NEAT) — standing, walking, and fidgeting add up significantly",
@@ -479,7 +458,7 @@ struct RecoveryMetricDetailSheet: View {
                 ])
             }
 
-            infoSection(title: "How to Burn More", icon: "lightbulb.fill", color: .earthGreen) {
+            infoSection(title: "How to burn more") {
                 numberedList([
                     "Increase NEAT first — stand instead of sit, walk during calls, take stairs. Small choices add hundreds of calories.",
                     "Add one brisk 20-minute walk to your day — it's the most sustainable calorie-burning activity for most people.",
@@ -493,169 +472,74 @@ struct RecoveryMetricDetailSheet: View {
 
     // MARK: - Shared layout helpers
 
+    // Thin adapters onto the shared metric-screen pieces (WktDetailPieces.swift),
+    // so the three metrics above read as plain data.
+
+    @ViewBuilder
     private func heroHeader(
-        icon: String, color: Color,
+        badge: WktIconBadge,
         value: String, subtitle: String,
         statusLabel: String?, statusColor: Color?
     ) -> some View {
-        HStack(alignment: .top, spacing: 16) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 14)
-                    .fill(color.opacity(0.12))
-                    .frame(width: 56, height: 56)
-                Image(systemName: icon)
-                    .font(.system(size: 24, weight: .medium))
-                    .foregroundColor(color)
+        if let label = statusLabel, let color = statusColor {
+            WktMetricHero(badge: badge, value: value, subtitle: subtitle) {
+                WktStatusChip(text: label, dot: color)
             }
-            VStack(alignment: .leading, spacing: 4) {
-                Text(value)
-                    .font(.system(size: 28, weight: .bold, design: .rounded).monospacedDigit())
-                    .foregroundColor(.earthCream)
-                if let label = statusLabel, let scolor = statusColor {
-                    Text(label)
-                        .font(.caption.bold())
-                        .foregroundColor(scolor)
-                        .padding(.horizontal, 8).padding(.vertical, 3)
-                        .background(scolor.opacity(0.12))
-                        .cornerRadius(8)
-                }
-                Text(subtitle)
-                    .font(.caption2)
-                    .foregroundColor(.earthMuted)
-            }
-            Spacer()
+        } else {
+            WktMetricHero(badge: badge, value: value, subtitle: subtitle)
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 8)
     }
 
-    private func chartSection<C: View>(title: String, @ViewBuilder content: () -> C) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(title)
-                .font(.subheadline.bold())
-                .foregroundColor(.earthCream)
-                .padding(.horizontal, 20)
+    private func chartSection<C: View>(title: String, @ViewBuilder content: @escaping () -> C) -> some View {
+        WktSection(title: title) {
             content()
                 .frame(height: 160)
-                .padding(.horizontal, 20)
+                .wktCard()
         }
     }
 
     private func statsGrid(_ items: [(String, String, String)]) -> some View {
-        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-            ForEach(items.indices, id: \.self) { i in
-                let (label, value, note) = items[i]
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(label)
-                        .font(.caption2.bold())
-                        .foregroundColor(.earthMuted)
-                    Text(value)
-                        .font(.system(size: 18, weight: .bold, design: .rounded).monospacedDigit())
-                        .foregroundColor(.earthCream)
-                        .minimumScaleFactor(0.7)
-                        .lineLimit(1)
-                    Text(note)
-                        .font(.system(size: 10))
-                        .foregroundColor(.earthMuted.opacity(0.6))
-                }
-                .padding(14)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.earthCard)
-                .cornerRadius(14)
-            }
-        }
-        .padding(.horizontal, 20)
+        WktStatGrid(items: items.map { WktStatGrid.Item(label: $0.0, value: $0.1, note: $0.2) })
     }
 
     private func infoSection<Content: View>(
-        title: String, icon: String, color: Color,
-        @ViewBuilder content: () -> Content
+        title: String,
+        @ViewBuilder content: @escaping () -> Content
     ) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Label(title, systemImage: icon)
-                .font(.subheadline.bold())
-                .foregroundColor(color)
-            content()
-        }
-        .padding(16)
-        .background(Color.earthCard)
-        .cornerRadius(16)
-        .padding(.horizontal, 20)
+        WktInfoSection(title: title, content: content)
     }
 
-    private func bulletList(_ items: [String]) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            ForEach(items, id: \.self) { item in
-                HStack(alignment: .top, spacing: 10) {
-                    Circle()
-                        .fill(Color.earthOrange.opacity(0.7))
-                        .frame(width: 5, height: 5)
-                        .padding(.top, 6)
-                    Text(item)
-                        .font(.subheadline)
-                        .foregroundColor(.earthMuted)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-        }
-    }
+    private func bulletList(_ items: [String]) -> some View { WktBulletList(items: items) }
 
-    private func numberedList(_ items: [String]) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            ForEach(items.indices, id: \.self) { i in
-                HStack(alignment: .top, spacing: 12) {
-                    ZStack {
-                        Circle()
-                            .fill(Color.earthGreen.opacity(0.15))
-                            .frame(width: 24, height: 24)
-                        Text("\(i + 1)")
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundColor(.earthGreen)
-                    }
-                    Text(items[i])
-                        .font(.subheadline)
-                        .foregroundColor(.earthMuted)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-        }
-    }
+    private func numberedList(_ items: [String]) -> some View { WktNumberedList(items: items) }
 
     private func scoreBreakdown(sleepScore: String, hrvScore: String) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Score Breakdown")
-                .font(.subheadline.bold())
-                .foregroundColor(.earthCream)
-            HStack(spacing: 12) {
-                scoreComponent(icon: "bed.double.fill",
-                               color: Color.accentHealth,
+        WktSection(title: "Score breakdown") {
+            HStack(spacing: WktSpacing.betweenCards) {
+                scoreComponent(badge: WktIconBadge(symbol: .sleep, tint: .accentHealth),
                                label: "Sleep", value: sleepScore)
-                scoreComponent(icon: "waveform.path.ecg",
-                               color: recovery.readiness.color,
+                scoreComponent(badge: WktIconBadge(symbol: .readiness, tint: recovery.readiness.color),
                                label: "HRV", value: hrvScore)
             }
         }
-        .padding(16)
-        .background(Color.earthCard)
-        .cornerRadius(16)
-        .padding(.horizontal, 20)
     }
 
-    private func scoreComponent(icon: String, color: Color, label: String, value: String) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Label(label, systemImage: icon)
-                .font(.caption.bold())
-                .foregroundColor(color)
+    private func scoreComponent(badge: WktIconBadge, label: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                badge
+                Text(label)
+                    .font(.wktLabel)
+                    .foregroundColor(.earthMuted)
+            }
             Text(value)
-                .font(.system(size: 14, weight: .semibold, design: .rounded))
+                .font(.wktRowTitle)
                 .foregroundColor(.earthCream)
                 .minimumScaleFactor(0.7)
                 .lineLimit(1)
         }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(color.opacity(0.08))
-        .cornerRadius(10)
+        .wktCard()
+        .accessibilityElement(children: .combine)
     }
 
     private func sleepLevel(_ hours: Double) -> (label: String, color: Color) {
