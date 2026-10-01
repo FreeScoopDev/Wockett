@@ -136,3 +136,30 @@ struct WktInfoSection<Content: View>: View {
         }
     }
 }
+
+/// A third-width stat card with its icon on top: distance, time, steps on a
+/// summary. Three sit side by side.
+struct WktIconStatTile: View {
+    let value: String
+    let label: String
+    let symbol: WktSymbol
+    var tint: Color = .earthGreen
+
+    var body: some View {
+        VStack(spacing: 8) {
+            WktIconBadge(symbol: symbol, tint: tint)
+            Text(value)
+                .font(.wktRowTitle)
+                .foregroundColor(.earthCream)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+            Text(label).font(.wktLabel).foregroundColor(.earthMuted)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 16)
+        .padding(.horizontal, 6)
+        .wktCardBackground()
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(value) \(label)")
+    }
+}

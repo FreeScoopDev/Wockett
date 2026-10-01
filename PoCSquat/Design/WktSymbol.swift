@@ -50,6 +50,8 @@ enum WktSymbol {
     case time               // clock
     case pace               // speedometer
     case elevation          // chart.line.uptrend.xyaxis
+    case hiking             // figure.hiking (moderate difficulty)
+    case mountain           // mountain.2 (use filled: true for mountain.2.fill)
     case cadence            // waveform.path (steps per minute)
 
     // Health
@@ -191,6 +193,8 @@ enum WktSymbol {
         case .time:           return "clock"
         case .pace:           return "speedometer"
         case .elevation:      return "chart.line.uptrend.xyaxis"
+        case .hiking:         return "figure.hiking"
+        case .mountain:       return "mountain.2"
         case .cadence:        return "waveform.path"
         case .sleep:          return "bed.double"
         case .readiness:      return "waveform.path.ecg"

@@ -62,7 +62,7 @@ struct TrailsPanel: View {
             LazyVStack(spacing: 10) {
                 HStack(alignment: .firstTextBaseline) {
                     Text("Trails near you")
-                        .font(.wktHeading(20))
+                        .font(.wktSection)
                         .foregroundColor(.earthCream)
                     Spacer()
                     Menu {
@@ -80,8 +80,9 @@ struct TrailsPanel: View {
                             Text(groupSections ? "Grouped" : "Sections")
                             Image(wkt: .chevronDown).wktIcon(.inline, tint: .earthGreen)
                         }
-                        .font(.wktBody(13))
+                        .font(.wktBodyText)
                         .foregroundColor(.earthGreen)
+                        .frame(minHeight: 44)
                     }
                     .accessibilityLabel("List options")
                     .accessibilityValue((groupSections ? "Grouped" : "Listed separately")
@@ -92,7 +93,7 @@ struct TrailsPanel: View {
 
                 if let message = emptyMessage {
                     Text(message)
-                        .font(.wktBody(15))
+                        .font(.wktBodyText)
                         .foregroundColor(.earthMuted)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 28)
@@ -152,16 +153,7 @@ struct TrailFilterChips: View {
     }
 
     private func chip(_ title: String, isOn: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(title)
-                .font(.wktBody(12))
-                .padding(.horizontal, 14).padding(.vertical, 9)
-                .background(isOn ? Color.earthGreenFill : Color.earthCard)
-                .foregroundColor(isOn ? .white : .earthCream)
-                .cornerRadius(20)
-        }
-        .buttonStyle(BounceButtonStyle(scale: 0.94))
-        .accessibilityAddTraits(isOn ? .isSelected : [])
+        WktChoiceChip(title: title, selected: isOn, action: action)
     }
 }
 
@@ -174,20 +166,15 @@ struct TrailCard: View {
 
     var body: some View {
         Button(action: onSelect) {
-            HStack(spacing: 16) {
-                ZStack {
-                    Circle()
-                        .fill(Color.earthGreen.opacity(0.16))
-                        .frame(width: 50, height: 50)
-                    Image(wkt: item.isLoop ? .loop : .routeTrail).wktIcon(.row, tint: .earthGreen)
-                }
-                VStack(alignment: .leading, spacing: 5) {
+            HStack(alignment: .top, spacing: 12) {
+                WktIconBadge(symbol: item.isLoop ? .loop : .routeTrail)
+                VStack(alignment: .leading, spacing: 6) {
                     Text(item.name)
-                        .font(.wktHeading(17))
+                        .font(.wktRowTitle)
                         .foregroundColor(.earthCream)
                         .multilineTextAlignment(.leading)
                     Text(TrailText.summary(for: item))
-                        .font(.wktBody(13))
+                        .font(.wktLabel)
                         .foregroundColor(.earthMuted)
                     TrailTagRow(item: item, activityMode: activityMode)
                 }
@@ -195,12 +182,6 @@ struct TrailCard: View {
                 Image(wkt: .chevronRight).wktIcon(.inline, tint: .earthMuted)
             }
             .wktCard()
-            // The hairline RouteCard also has: it keeps the card's edge on the
-            // translucent panel.
-            .overlay(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .stroke(Color.earthMuted.opacity(0.15), lineWidth: 1)
-            )
         }
         .buttonStyle(.plain)
     }
@@ -213,14 +194,9 @@ struct TrailTagRow: View {
     var body: some View {
         let tags = TrailText.tags(for: item)
         if !tags.isEmpty {
-            HStack(spacing: 6) {
+            WktFlowRow {
                 ForEach(tags, id: \.text) { tag in
-                    Text(tag.text)
-                        .font(.wktBody(12))
-                        .foregroundColor(tag.isDogRule ? .accentRide : .earthMuted)
-                        .padding(.horizontal, 8).padding(.vertical, 3)
-                        .background((tag.isDogRule ? Color.accentRide : Color.earthMuted).opacity(0.14))
-                        .cornerRadius(10)
+                    WktStatusChip(text: tag.text, dot: tag.isDogRule ? .accentRide : .earthMuted)
                 }
             }
         }
@@ -252,18 +228,19 @@ struct TrailDetailView: View {
                         Image(wkt: .chevronLeft).wktIcon(.inline, tint: .earthGreen)
                         Text("Back")
                     }
-                    .font(.wktBody(15))
+                    .font(.wktBodyText)
                     .foregroundColor(.earthGreen)
+                    .frame(minHeight: 44)
                 }
                 .accessibilityLabel("Back to trails")
                 .accessibilityIdentifier("routes.trailBack")
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(item.name)
-                        .font(.wktHeading(22))
+                        .font(.wktCardTitle)
                         .foregroundColor(.earthCream)
                     Text(TrailText.detailSubtitle(for: item))
-                        .font(.wktBody(15))
+                        .font(.wktBodyText)
                         .foregroundColor(.earthMuted)
                 }
 
@@ -308,17 +285,12 @@ struct TrailDetailView: View {
     private func startButton(_ plan: TrailWalkPlan) -> some View {
         VStack(spacing: 8) {
             Button { onStart(plan) } label: {
-                Label("Start \(activityMode.sessionLabel)", systemImage: activityMode.icon)
-                    .font(.wktBody(17))
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 18)
-                    .background(Color.earthGreenFill)
-                    .foregroundColor(.white)
-                    .cornerRadius(14)
+                WktPrimaryLabel(title: "Start \(activityMode.sessionLabel)", symbol: activityMode.wktSymbol)
             }
+            .buttonStyle(BounceButtonStyle(scale: 0.98))
             .accessibilityIdentifier("routes.trailStart")
             Text(TrailText.startCaption(for: plan))
-                .font(.wktBody(12))
+                .font(.wktLabel)
                 .foregroundColor(.earthMuted)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity)
@@ -327,43 +299,48 @@ struct TrailDetailView: View {
 
     private func stat(_ label: String, _ value: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(label.uppercased()).wktTechnical(10).foregroundColor(.earthMuted)
-            // Display, as the Community hub's stat tiles.
-            Text(value).font(.wktDisplay(22)).foregroundColor(.earthCream)
+            Text(label).font(.wktLabel).foregroundColor(.earthMuted)
+            // Card title size, as the Community hub's stat tiles.
+            Text(value).font(.wktCardTitle).foregroundColor(.earthCream)
                 .lineLimit(1).minimumScaleFactor(0.7)
         }
-        .wktCard(padding: 12)
+        .wktCard(padding: 14)
         .accessibilityElement(children: .combine)
     }
 
     private var dogRule: some View {
         HStack(alignment: .top, spacing: 10) {
-            Image(wkt: item.confidentDogAccess == nil ? .info : .pets)
-                .wktIcon(.row, tint: item.confidentDogAccess == nil ? .earthMuted : .accentRide)
+            WktIconBadge(symbol: item.confidentDogAccess == nil ? .info : .pets,
+                         tint: item.confidentDogAccess == nil ? .earthMuted : .accentRide)
             Text(TrailText.dogRuleSentence(item.confidentDogAccess))
-                .font(.wktBody(15))
+                .font(.wktBodyText)
                 .foregroundColor(.earthCream)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .wktCard(padding: 12)
+        .wktCard()
         .accessibilityElement(children: .combine)
     }
 
     private var sectionList: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            WktSectionHeader(title: "\(item.sections.count) sections nearby")
-            ForEach(Array(item.sections.enumerated()), id: \.element.id) { index, section in
-                HStack {
-                    Text("Section \(index + 1)")
-                    Spacer()
-                    Text(sectionLine(section))
+        WktSection(title: "\(item.sections.count) sections nearby") {
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(Array(item.sections.enumerated()), id: \.element.id) { index, section in
+                    if index > 0 { WktDivider() }
+                    HStack {
+                        Text("Section \(index + 1)")
+                            .font(.wktRowTitle)
+                            .foregroundColor(.earthCream)
+                        Spacer()
+                        Text(sectionLine(section))
+                            .font(.wktLabel)
+                            .foregroundColor(.earthMuted)
+                    }
+                    .padding(.vertical, 10)
+                    .accessibilityElement(children: .combine)
                 }
-                .font(.wktBody(13))
-                .foregroundColor(.earthMuted)
-                .accessibilityElement(children: .combine)
             }
+            .wktCard(padding: 14)
         }
-        .wktCard(padding: 12)
     }
 
     private func sectionLine(_ section: TrailFeature) -> String {

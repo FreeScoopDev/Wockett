@@ -154,10 +154,11 @@ way unless there's a strong reason; adding the first one is a real decision.
   card), `WktPrimaryButton` (one per screen) / `WktSecondaryButton`,
   `WktPillButton`, `WktIconBadge`, `wktChoiceBackground` and `WktEmptyState`.
   A metric screen uses `Design/WktDetailPieces.swift`; a step ring is
-  `WktGoalRing`; a mid-session notice is a `WktBanner`. Home, Community,
-  Health and the walk session are converted; Routes, Walk history, Settings
-  and the widget still have the old `wktTechnical` labels and hand-drawn
-  cards. The share card (`ActivitySummaryCard`) keeps fixed point sizes on
+  `WktGoalRing`; a mid-session notice is a `WktBanner`; pick-one controls
+  are `WktSegmentedPicker` / `WktChoiceChip`; tags that may not fit one line
+  go in a `WktFlowRow`. Home, Community, Health, the walk session and Routes
+  are converted; Walk history, Settings and the widget still have the old
+  `wktTechnical` labels and hand-drawn cards. The share card (`ActivitySummaryCard`) keeps fixed point sizes on
   purpose: it is drawn into a fixed-size image. Convert one area per PR.
 - **The changelog entry ships with the change**, in the same commit, explaining
   *why* — not just what. Since 2026-09-27 it goes in its own file in

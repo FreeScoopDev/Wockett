@@ -28,6 +28,7 @@ struct DestinationSearchSheet: View {
                     HStack(spacing: 10) {
                         Image(wkt: .find).wktIcon(.inline, tint: .earthMuted)
                         TextField("Café, park, gym, landmark...", text: $searchText)
+                            .font(.wktBodyText)
                             .foregroundColor(.earthCream)
                             .autocorrectionDisabled()
                             .submitLabel(.search)
@@ -38,22 +39,15 @@ struct DestinationSearchSheet: View {
                             .accessibilityLabel("Clear search")
                         }
                     }
-                    .padding(12)
-                    .background(Color.earthCard)
-                    .cornerRadius(12)
-                    .padding()
+                    .padding(.horizontal, WktSpacing.cardPadding)
+                    .frame(minHeight: 52)
+                    .wktCardBackground()
+                    .padding(WktSpacing.screen)
 
                     if searchText.isEmpty {
                         Spacer()
-                        VStack(spacing: 12) {
-                            Image(wkt: .place).wktIcon(.hero, tint: .earthMuted)
-                                .accessibilityHidden(true)
-                            Text("Search for anywhere you'd like to walk — a café, park, gym, landmark, or friend's street.")
-                                .font(.wktBody(15))
-                                .multilineTextAlignment(.center)
-                                .foregroundColor(.earthMuted)
-                                .padding(.horizontal, 32)
-                        }
+                        WktEmptyState(symbol: .place,
+                                      message: "Search for anywhere you'd like to walk — a café, park, gym, landmark, or friend's street.")
                         Spacer()
                     } else if isSearching {
                         Spacer()
@@ -62,7 +56,7 @@ struct DestinationSearchSheet: View {
                     } else if results.isEmpty {
                         Spacer()
                         Text("No places found")
-                            .font(.wktBody(15))
+                            .font(.wktBodyText)
                             .foregroundColor(.earthMuted)
                         Spacer()
                     } else {
@@ -145,17 +139,16 @@ private struct SearchResultRow: View {
     var body: some View {
         Button(action: onTap) {
             HStack(spacing: 12) {
-                Image(wkt: .mapPinFill)
-                    .wktIcon(.row, tint: .earthGreen, filled: true)
+                WktIconBadge(symbol: .mapPinFill)
 
                 VStack(alignment: .leading, spacing: 3) {
                     Text(result.mapItem.name ?? "Unknown place")
                         .foregroundColor(.earthCream)
-                        .font(.wktBody(17))
+                        .font(.wktRowTitle)
                     if let sub = subtitle {
                         Text(sub)
                             .foregroundColor(.earthMuted)
-                            .font(.wktBody(15))
+                            .font(.wktLabel)
                             .lineLimit(1)
                     }
                 }
@@ -164,7 +157,7 @@ private struct SearchResultRow: View {
 
                 if let dist = distanceText {
                     Text(dist)
-                        .font(.wktBody(15))
+                        .font(.wktLabel)
                         .foregroundColor(.earthMuted)
                 }
             }
@@ -263,11 +256,12 @@ struct NearbyPlacesSheet: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 Text("Pick a vibe and we'll find somewhere to walk to.")
-                    .font(.wktBody(15))
+                    .font(.wktBodyText)
                     .foregroundColor(.earthMuted)
-                    .padding(.horizontal)
+                    .padding(.horizontal, WktSpacing.screen)
 
-                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: WktSpacing.betweenCards), count: 2),
+                          spacing: WktSpacing.betweenCards) {
                     ForEach(POICategory.all) { category in
                         Button {
                             selectedCategory = category
@@ -275,9 +269,9 @@ struct NearbyPlacesSheet: View {
                         } label: {
                             VStack(spacing: 10) {
                                 Text(category.emoji)
-                                    .font(.system(size: 42))
+                                    .font(.system(size: 42)) // the category's emoji (data)
                                 Text(category.name)
-                                    .font(.wktHeading(15))
+                                    .font(.wktRowTitle)
                                     .foregroundColor(.earthCream)
                                     .multilineTextAlignment(.center)
                             }
@@ -287,14 +281,11 @@ struct NearbyPlacesSheet: View {
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 6)
                             .wktCard()
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                                    .stroke(Color.earthGreen.opacity(0.2), lineWidth: 1)
-                            )
                         }
+                        .buttonStyle(BounceButtonStyle(scale: 0.97))
                     }
                 }
-                .padding(.horizontal)
+                .padding(.horizontal, WktSpacing.screen)
             }
             .padding(.top, 8)
             .padding(.bottom, 32)
@@ -308,17 +299,17 @@ struct NearbyPlacesSheet: View {
                 Spacer()
                 ProgressView().tint(.earthGreen)
                 Text("Finding \(category.name.lowercased()) nearby…")
-                    .font(.wktBody(15)).foregroundColor(.earthMuted)
+                    .font(.wktBodyText).foregroundColor(.earthMuted)
                 Spacer()
             }
         } else if results.isEmpty {
             VStack(spacing: 14) {
                 Spacer()
-                Text(category.emoji).font(.system(size: 52))
+                Text(category.emoji).font(.system(size: 52)) // the category's emoji (data)
                 Text("None found nearby")
-                    .font(.wktHeading(17)).foregroundColor(.earthCream)
+                    .font(.wktRowTitle).foregroundColor(.earthCream)
                 Text("Try a different category or expand your walk radius.")
-                    .font(.wktBody(15)).foregroundColor(.earthMuted)
+                    .font(.wktBodyText).foregroundColor(.earthMuted)
                     .multilineTextAlignment(.center).padding(.horizontal, 32)
                 Spacer()
             }
@@ -466,8 +457,7 @@ private struct MiniRouteShape: View {
             }
         }
         .frame(width: 64, height: 64)
-        .background(Color.earthCard)
-        .cornerRadius(10)
+        .background(Color.earthRaised, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .task(id: "\(origin.latitude),\(destination.latitude)") { await fetchRoute() }
     }
 
@@ -536,31 +526,24 @@ private struct NearbyPlaceRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 12) {
-                ZStack {
-                    Circle()
-                        .fill((item.pointOfInterestCategory?.tagColor ?? .earthGreen).opacity(0.15))
-                        .frame(width: 44, height: 44)
-                    Text(item.pointOfInterestCategory?.tagEmoji ?? "📍")
-                        .font(.system(size: 20))
-                }
+                Text(item.pointOfInterestCategory?.tagEmoji ?? "📍") // the category's emoji (data)
+                    .font(.system(size: 20))
+                    .frame(width: 44, height: 44)
+                    .background((item.pointOfInterestCategory?.tagColor ?? .earthGreen).opacity(0.16),
+                                in: RoundedRectangle(cornerRadius: 13, style: .continuous))
 
                 VStack(alignment: .leading, spacing: 5) {
                     Text(item.name ?? "Unknown place")
                         .foregroundColor(.earthCream)
-                        .font(.wktBody(17))
+                        .font(.wktRowTitle)
                     if let sub = subtitle {
                         Text(sub)
                             .foregroundColor(.earthMuted)
-                            .font(.wktBody(15))
+                            .font(.wktLabel)
                             .lineLimit(1)
                     }
                     if let cat = item.pointOfInterestCategory {
-                        Text("\(cat.tagEmoji) \(cat.tagLabel)")
-                            .font(.wktBody(12))
-                            .padding(.horizontal, 8).padding(.vertical, 3)
-                            .background(cat.tagColor.opacity(0.15))
-                            .foregroundColor(cat.tagColor)
-                            .cornerRadius(20)
+                        WktStatusChip(text: cat.tagLabel, dot: cat.tagColor)
                     }
                 }
 
@@ -575,42 +558,16 @@ private struct NearbyPlaceRow: View {
                     }
                     if let dist = distanceText {
                         Text(dist)
-                            .font(.wktBody(12))
+                            .font(.wktLabel)
                             .foregroundColor(.earthMuted)
                     }
                 }
             }
 
             HStack(spacing: 8) {
-                Button { onWalkThere() } label: {
-                    Label {
-                        Text("Walk There")
-                    } icon: {
-                        Image(wkt: .arrowRight).wktIcon(.inline, tint: .earthGreen)
-                    }
-                    .font(.wktBody(12))
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 7)
-                    .background(Color.earthGreen.opacity(0.15))
-                    .foregroundColor(.earthGreen)
-                    .cornerRadius(8)
-                }
-                Button { onLoopBack() } label: {
-                    Label {
-                        Text("& Back")
-                    } icon: {
-                        Image(wkt: .loop).wktIcon(.inline, tint: .earthMuted)
-                    }
-                    .font(.wktBody(12))
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 7)
-                    .background(Color.earthCard)
-                    .foregroundColor(.earthMuted)
-                    .cornerRadius(8)
-                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.earthMuted.opacity(0.3), lineWidth: 1))
-                }
+                WktPillButton(title: "Walk There", action: onWalkThere)
+                WktPillButton(title: "There & Back", tint: .earthCream, action: onLoopBack)
             }
-            .buttonStyle(.plain)
         }
         .padding(.vertical, 8)
         .contextMenu {

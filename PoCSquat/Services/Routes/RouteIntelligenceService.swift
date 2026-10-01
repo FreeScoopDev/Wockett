@@ -59,20 +59,23 @@ enum RouteDifficulty: String {
     var color: Color {
         switch self {
         case .easy:     return .earthGreen
-        case .moderate: return .yellow
+        // accentNotice, not .yellow: system yellow is 1.9:1 on a light card.
+        case .moderate: return .accentNotice
         case .hard:     return .earthOrange
         case .expert:   return .red
         }
     }
 
-    var sfSymbol: String {
+    var symbol: WktSymbol {
         switch self {
-        case .easy:     return "figure.walk"
-        case .moderate: return "figure.hiking"
-        case .hard:     return "mountain.2"
-        case .expert:   return "mountain.2.fill"
+        case .easy:           return .walk
+        case .moderate:       return .hiking
+        case .hard, .expert:  return .mountain
         }
     }
+
+    /// Expert is the filled mountain, hard the outline.
+    var symbolFilled: Bool { self == .expert }
 
     /// Distance-only estimate used when elevation data is unavailable.
     static func fromDistance(_ meters: Double) -> RouteDifficulty {
@@ -259,24 +262,30 @@ struct WeatherWidget: View {
                     withAnimation(.snappy(duration: 0.22)) { isExpanded.toggle() }
                 } label: {
                     HStack(spacing: 10) {
+                        // Variable-driven symbols from the weather model, as CLAUDE.md allows.
                         Image(systemName: weather.symbolName)
-                            .font(.title3)
+                            .font(.wktSection)
                             .symbolRenderingMode(.multicolor)
                             .frame(width: 26)
 
+                        // Never wraps: in the height-capped results panel the row is
+                        // narrow, and "65°F" broke one character per line. The
+                        // condition shortens instead.
                         Text(weather.temperatureText)
-                            .font(.subheadline.bold())
+                            .font(.wktRowTitle)
                             .foregroundColor(.earthCream)
+                            .lineLimit(1)
+                            .fixedSize()
 
                         Text(weather.conditionDescription)
-                            .font(.subheadline)
+                            .font(.wktBodyText)
                             .foregroundColor(.earthMuted)
                             .lineLimit(1)
 
                         Spacer(minLength: 6)
 
                         Label(weather.statusText, systemImage: weather.statusSymbol)
-                            .font(.caption)
+                            .font(.wktLabel)
                             .foregroundColor(weather.statusColor)
                             .lineLimit(1)
                             .layoutPriority(1)
@@ -303,20 +312,18 @@ struct WeatherWidget: View {
                     .layoutPriority(2)
                     .fixedSize()
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 11)
+            .padding(.horizontal, WktSpacing.cardPadding)
+            .padding(.vertical, 12)
 
             if isExpanded && hasForecast {
-                Divider()
-                    .background(Color.earthMuted.opacity(0.15))
-                    .padding(.horizontal, 14)
+                WktDivider()
+                    .padding(.horizontal, WktSpacing.cardPadding)
                 HourlyWeatherRow(points: weather.hourlyForecast)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 10)
             }
         }
-        .background(Color.earthCard)
-        .cornerRadius(12)
+        .wktCardBackground()
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("routes.weatherTile")
     }
@@ -328,20 +335,20 @@ struct DifficultyBadge: View {
     let difficulty: RouteDifficulty
     var compact: Bool = false
 
+    /// A status chip: the icon alone when `compact` (beside other details on a
+    /// card), the icon and the word otherwise.
     var body: some View {
-        HStack(spacing: 4) {
-            Image(systemName: difficulty.sfSymbol)
-                .font(compact ? .caption2 : .caption)
-            if !compact {
-                Text(difficulty.rawValue)
-                    .font(.caption.bold())
-            }
+        let icon = Image(wkt: difficulty.symbol)
+            .wktIcon(.inline, tint: difficulty.color, filled: difficulty.symbolFilled)
+        if compact {
+            icon
+                .frame(width: 30, height: 30)
+                .background(Color.earthRaised, in: Capsule())
+                .accessibilityLabel("\(difficulty.rawValue) difficulty")
+        } else {
+            WktStatusChip(text: difficulty.rawValue, textColor: difficulty.color) { icon }
+                .accessibilityLabel("\(difficulty.rawValue) difficulty")
         }
-        .foregroundColor(difficulty.color)
-        .padding(.horizontal, compact ? 6 : 8)
-        .padding(.vertical, compact ? 3 : 5)
-        .background(difficulty.color.opacity(0.15))
-        .cornerRadius(20)
     }
 }
 
@@ -388,15 +395,14 @@ struct ElevationProfileChart: View {
             .chartYAxisLabel("m", alignment: .top)
             .frame(height: 110)
         }
-        .padding(14)
-        .background(Color.earthCard)
-        .cornerRadius(12)
+        .wktCard()
     }
 
     private func elevStat(_ value: String, label: String, color: Color) -> some View {
         VStack(alignment: .leading, spacing: 1) {
-            Text(value).font(.subheadline.bold()).foregroundColor(color)
-            Text(label).font(.caption).foregroundColor(.earthMuted)
+            Text(value).font(.wktRowTitle).foregroundColor(color)
+            Text(label.prefix(1).uppercased() + label.dropFirst()).font(.wktLabel).foregroundColor(.earthMuted)
         }
+        .accessibilityElement(children: .combine)
     }
 }

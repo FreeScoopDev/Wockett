@@ -31,42 +31,48 @@ struct CustomRouteBuilderView: View {
             // Empty-state hint
             if builder.waypoints.isEmpty {
                 VStack(spacing: 10) {
-                    Image(wkt: .tap)
-                        .font(.system(size: 34)).foregroundColor(.earthGreen)
+                    WktIconBadge(symbol: .tap, size: 56)
                     Text("Tap the map to add waypoints")
-                        .font(.headline).foregroundColor(.earthCream)
+                        .font(.wktRowTitle).foregroundColor(.earthCream)
                     Text("MapKit finds \(builder.activityMode == .cycling ? "cycling" : "walking/running") routes between each point")
-                        .font(.subheadline).foregroundColor(.earthMuted)
+                        .font(.wktBodyText).foregroundColor(.earthMuted)
                         .multilineTextAlignment(.center)
                 }
                 .padding(20)
-                .background(.ultraThinMaterial)
-                .cornerRadius(16)
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
                 .padding(.bottom, 160)
             }
 
             // Bottom control panel
             VStack(spacing: 12) {
                 // Activity mode toggle chips
-                HStack(spacing: 8) {
-                    modeChip(.walking)
-                    modeChip(.running)
-                    modeChip(.cycling)
-                }
-                .padding(.horizontal)
+                WktSegmentedPicker(selection: Binding(
+                    get: { builder.activityMode },
+                    set: { mode in
+                        guard mode != builder.activityMode, !builder.isComputing else { return }
+                        builder.activityMode = mode
+                        if !builder.waypoints.isEmpty {
+                            Task { await builder.recomputeAllLegs() }
+                        }
+                    }
+                ), options: [ActivityMode.walking, .running, .cycling].map {
+                    .init(value: $0, title: $0.sessionLabel, symbol: $0.wktSymbol)
+                })
+                .disabled(builder.isComputing)
+                .padding(.horizontal, WktSpacing.screen)
 
                 if !builder.waypoints.isEmpty {
                     HStack(spacing: 0) {
                         statChip(value: "\(builder.waypoints.count)", label: "points")
                         Divider()
                             .frame(height: 30)
-                            .background(Color.earthMuted.opacity(0.3))
+                            .background(Color.earthTrack)
                             .padding(.horizontal, 12)
                         statChip(value: distanceText(builder.totalDistance), label: "distance")
                         if builder.isComputing {
                             Divider()
                                 .frame(height: 30)
-                                .background(Color.earthMuted.opacity(0.3))
+                                .background(Color.earthTrack)
                                 .padding(.horizontal, 12)
                             ProgressView().tint(.earthGreen).scaleEffect(0.85)
                         }
@@ -74,43 +80,23 @@ struct CustomRouteBuilderView: View {
                         if builder.waypoints.count >= 2 && !builder.isComputing {
                             Toggle(isOn: Binding(get: { builder.isLoopClosed },
                                                  set: { _ in builder.toggleLoop() })) {
-                                Text("Loop").font(.subheadline.bold()).foregroundColor(.earthCream)
+                                Text("Loop").font(.wktRowTitle).foregroundColor(.earthCream)
                             }
                             .tint(.earthGreenFill).fixedSize()
                         }
                     }
-                    .padding(.horizontal)
+                    .padding(.horizontal, WktSpacing.screen)
                 }
 
                 HStack(spacing: 10) {
                     if !builder.waypoints.isEmpty {
-                        Button { builder.undoLast() } label: {
-                            Label {
-                                Text("Undo")
-                            } icon: {
-                                Image(wkt: .undo).wktIcon(.inline, tint: .earthCream)
-                            }
-                            .font(.subheadline)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 18)
-                            .background(Color.earthCard)
-                            .foregroundColor(.earthCream)
-                            .cornerRadius(12)
-                        }
+                        WktSecondaryButton(title: "Undo", symbol: .undo) { builder.undoLast() }
                     }
                     if builder.canSave {
-                        Button { showSaveSheet = true } label: {
-                            Text("Save Route")
-                                .font(.subheadline.bold())
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 18)
-                                .background(Color.earthOrangeFill)
-                                .foregroundColor(.white)
-                                .cornerRadius(12)
-                        }
+                        WktPrimaryButton(title: "Save Route") { showSaveSheet = true }
                     }
                 }
-                .padding(.horizontal)
+                .padding(.horizontal, WktSpacing.screen)
                 .padding(.bottom, 8)
             }
             .padding(.vertical, 14)
@@ -133,37 +119,10 @@ struct CustomRouteBuilderView: View {
     }
 
     @ViewBuilder
-    private func modeChip(_ mode: ActivityMode) -> some View {
-        let selected = builder.activityMode == mode
-        Button {
-            guard !selected && !builder.isComputing else { return }
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                builder.activityMode = mode
-            }
-            if !builder.waypoints.isEmpty {
-                Task { await builder.recomputeAllLegs() }
-            }
-        } label: {
-            HStack(spacing: 6) {
-                Image(systemName: mode.icon)
-                    .font(.system(size: 13, weight: .semibold))
-                Text(mode.sessionLabel)
-                    .font(.subheadline.bold())
-            }
-            .padding(.horizontal, 16).padding(.vertical, 9)
-            .background(selected ? Color.earthGreenFill : Color.earthCard)
-            .foregroundColor(selected ? .white : .earthCream)
-            .cornerRadius(20)
-        }
-        .buttonStyle(BounceButtonStyle(scale: 0.95))
-        .disabled(builder.isComputing)
-    }
-
-    @ViewBuilder
     private func statChip(value: String, label: String) -> some View {
         VStack(spacing: 2) {
-            Text(value).font(.headline).foregroundColor(.earthCream)
-            Text(label).font(.caption).foregroundColor(.earthMuted)
+            Text(value).font(.wktRowTitle).foregroundColor(.earthCream)
+            Text(label.prefix(1).uppercased() + label.dropFirst()).font(.wktLabel).foregroundColor(.earthMuted)
         }
     }
 
@@ -184,24 +143,21 @@ struct SaveRouteSheet: View {
             ZStack {
                 Color.earthBg.ignoresSafeArea()
                 VStack(spacing: 24) {
-                    Image(wkt: .mapFill)
-                        .font(.system(size: 52)).foregroundColor(.earthGreen)
+                    WktIconBadge(symbol: .mapFill, size: 64)
                     Text("Name your route")
-                        .font(.subheadline).foregroundColor(.earthMuted)
+                        .font(.wktBodyText).foregroundColor(.earthMuted)
                     TextField("e.g. Morning Loop", text: $routeName)
-                        .font(.title2.bold())
+                        .font(.wktCardTitle)
                         .multilineTextAlignment(.center)
                         .foregroundColor(.earthCream)
                         .padding()
-                        .background(Color.earthCard)
-                        .cornerRadius(12)
+                        .wktCardBackground()
                     Spacer()
                 }
                 .padding(32)
             }
             .navigationTitle("Save Route")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarColorScheme(.light, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") { onSave() }.foregroundColor(.earthGreen)
