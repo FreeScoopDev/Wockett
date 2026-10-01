@@ -61,7 +61,7 @@ struct CommunityRoutesView: View {
                 VStack(spacing: 12) {
                     ProgressView().tint(.earthGreen)
                     Text("Loading routes…")
-                        .font(.wktBody(15)).foregroundColor(.earthMuted)
+                        .font(.wktBodyText).foregroundColor(.earthMuted)
                 }
             } else if let err = model.loadError, model.routes.isEmpty {
                 errorState(err)
@@ -83,14 +83,13 @@ struct CommunityRoutesView: View {
 
     private var routeList: some View {
         ScrollView {
-            LazyVStack(spacing: 14) {
+            LazyVStack(spacing: WktSpacing.betweenCards) {
                 if let err = wocketError {
                     HStack(spacing: 6) {
                         Image(wkt: .errorCircle).wktIcon(.inline, tint: .earthOrange, filled: true)
-                        Text(err).font(.wktBody(12))
+                        Text(err).font(.wktLabel)
                     }
                     .foregroundColor(.earthOrange)
-                    .padding(.horizontal)
                     .transition(.opacity)
                 }
                 ForEach(Array(model.routes.enumerated()), id: \.element.id) { i, route in
@@ -106,49 +105,25 @@ struct CommunityRoutesView: View {
                         onStart: { handleStart(at: i) },
                         onHide: { if i < model.routes.count { model.routes.remove(at: i) } }
                     )
-                    .padding(.horizontal)
                 }
             }
+            .padding(.horizontal, WktSpacing.screen)
             .padding(.top, 12)
-            .padding(.bottom, 32)
+            .padding(.bottom, WktSpacing.betweenSections)
             .animation(.easeInOut(duration: 0.2), value: wocketError != nil)
         }
         .refreshable { await model.load(force: true) }
     }
 
     private var emptyState: some View {
-        VStack(spacing: 16) {
-            Image(wkt: .communityRoutes).wktIcon(.hero, tint: .earthGreen)
-                .accessibilityHidden(true)
-            Text("No routes shared yet")
-                .font(.wktHeading(17)).foregroundColor(.earthCream)
-            Text("Share a route from Route Finder to be the first!")
-                .font(.wktBody(15)).foregroundColor(.earthMuted)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 40)
-        }
+        WktEmptyState(symbol: .communityRoutes, tint: .earthGreen,
+                      title: "No routes shared yet",
+                      message: "Share a route from Route Finder to be the first!")
     }
 
     private func errorState(_ message: String) -> some View {
-        VStack(spacing: 14) {
-            Image(wkt: .cloudError).wktIcon(.hero, tint: .earthMuted)
-                .accessibilityHidden(true)
-            Text(message)
-                .font(.wktBody(15)).foregroundColor(.earthMuted)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 40)
-            Button { Task { await model.load(force: true) } } label: {
-                Label {
-                    Text("Retry")
-                } icon: {
-                    Image(wkt: .refresh).wktIcon(.inline, tint: .earthGreen)
-                }
-                .font(.wktBody(15))
-                .padding(.horizontal, 20).padding(.vertical, 10)
-                .background(Color.earthCard)
-                .foregroundColor(.earthGreen)
-                .cornerRadius(10)
-            }
+        WktEmptyState(symbol: .cloudError, message: message, actionTitle: "Retry") {
+            Task { await model.load(force: true) }
         }
     }
 

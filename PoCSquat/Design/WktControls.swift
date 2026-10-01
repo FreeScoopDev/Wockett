@@ -59,22 +59,93 @@ struct WktPrimaryButton: View {
     let action: () -> Void
 
     var body: some View {
-        Button(action: action) {
-            HStack(spacing: 8) {
-                if let symbol {
-                    Image(wkt: symbol)
-                        .wktIcon(.row, tint: .white, onFill: true)
-                }
-                Text(title)
-                    .font(.wktHeading(17))
-                    .foregroundColor(.white)
+        Button(action: action) { WktPrimaryLabel(title: title, symbol: symbol) }
+            .buttonStyle(BounceButtonStyle(scale: 0.98))
+    }
+}
+
+/// The quieter partner to `WktPrimaryButton` when two actions sit together:
+/// same size and shape, `earthRaised` fill, `earthCream` text.
+struct WktSecondaryButton: View {
+    let title: String
+    var symbol: WktSymbol?
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) { WktSecondaryLabel(title: title, symbol: symbol) }
+            .buttonStyle(BounceButtonStyle(scale: 0.98))
+    }
+}
+
+/// `WktPrimaryButton`'s look, for a control that is not a plain `Button`
+/// (a `ShareLink`, a `NavigationLink`).
+struct WktPrimaryLabel: View {
+    let title: String
+    var symbol: WktSymbol?
+
+    var body: some View {
+        WktButtonLabel(title: title, symbol: symbol, fill: .earthGreenFill, text: .white, onFill: true)
+    }
+}
+
+/// `WktSecondaryButton`'s look, for a control that is not a plain `Button`.
+struct WktSecondaryLabel: View {
+    let title: String
+    var symbol: WktSymbol?
+
+    var body: some View {
+        WktButtonLabel(title: title, symbol: symbol, fill: .earthRaised, text: .earthCream, onFill: false)
+    }
+}
+
+private struct WktButtonLabel: View {
+    let title: String
+    let symbol: WktSymbol?
+    let fill: Color
+    let text: Color
+    let onFill: Bool
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: 18, style: .continuous)
+        HStack(spacing: 8) {
+            if let symbol {
+                Image(wkt: symbol)
+                    .wktIcon(.row, tint: text, onFill: onFill)
             }
-            .frame(maxWidth: .infinity)
-            .frame(minHeight: 56)
-            .background(Color.earthGreenFill, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-            .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            Text(title)
+                .font(.wktHeading(17))
+                .foregroundColor(text)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
         }
-        .buttonStyle(BounceButtonStyle(scale: 0.98))
+        .padding(.horizontal, 12)
+        .frame(maxWidth: .infinity)
+        .frame(minHeight: 56)
+        .background(fill, in: shape)
+        .contentShape(shape)
+    }
+}
+
+/// A small action inside a row ("Join", "Start"): a 30 pt `earthRaised`
+/// capsule with green text. The tap target reaches 44 pt; the capsule does not.
+struct WktPillButton: View {
+    let title: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Text(title)
+                .font(.wktLabel)
+                .foregroundColor(.earthGreen)
+                .lineLimit(1)
+                .padding(.horizontal, 14)
+                .frame(minHeight: 30)
+                .background(Color.earthRaised, in: Capsule())
+                .padding(.vertical, 7)
+                .contentShape(Rectangle())
+                .padding(.vertical, -7)
+        }
+        .buttonStyle(BounceButtonStyle(scale: 0.95))
     }
 }
 
@@ -89,5 +160,38 @@ struct WktIconBadge: View {
             .frame(width: 36, height: 36)
             .background(tint.opacity(0.16), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
             .accessibilityHidden(true)
+    }
+}
+
+/// A screen with nothing to show yet, or a load that failed: the 44 pt hero
+/// glyph, an optional title, the message, and an optional action under it.
+struct WktEmptyState: View {
+    let symbol: WktSymbol
+    var tint: Color = .earthMuted
+    var title: String?
+    let message: String
+    var actionTitle: String?
+    var action: (() -> Void)?
+
+    var body: some View {
+        VStack(spacing: 14) {
+            Image(wkt: symbol).wktIcon(.hero, tint: tint)
+                .accessibilityHidden(true)
+            if let title {
+                Text(title)
+                    .font(.wktRowTitle)
+                    .foregroundColor(.earthCream)
+                    .multilineTextAlignment(.center)
+            }
+            Text(message)
+                .font(.wktBodyText)
+                .foregroundColor(.earthMuted)
+                .multilineTextAlignment(.center)
+            if let actionTitle, let action {
+                WktPillButton(title: actionTitle, action: action)
+                    .padding(.top, 4)
+            }
+        }
+        .padding(.horizontal, 40)
     }
 }

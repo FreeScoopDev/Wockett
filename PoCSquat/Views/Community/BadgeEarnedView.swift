@@ -35,15 +35,15 @@ struct BadgeEarnedView: View {
                     .padding(.bottom, 32)
 
                 VStack(spacing: 10) {
-                    Text("Badge Unlocked!")
-                        .wktTechnical(12)
+                    Text("Badge unlocked")
+                        .font(.wktLabel)
                         .foregroundColor(.earthGreen)
-                        .textCase(.uppercase)
                     Text(badge.name)
-                        .font(.wktDisplay(34))
+                        .font(.wktMetric)
                         .foregroundColor(.earthCream)
+                        .multilineTextAlignment(.center)
                     Text(badge.description)
-                        .font(.wktBody(14))
+                        .font(.wktBodyText)
                         .foregroundColor(.earthMuted)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 32)
@@ -53,42 +53,23 @@ struct BadgeEarnedView: View {
 
                 VStack(spacing: 12) {
                     // Share to community feed
-                    Button { showShareSheet = true } label: {
-                        Label {
-                            Text("Share to Community")
-                        } icon: {
-                            Image(wkt: .communityWave).wktIcon(.row, tint: .white, onFill: true)
-                        }
-                        .font(.wktHeading(17))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 16)
-                        .background(Color.earthGreenFill)
-                        .foregroundColor(.white)
-                        .cornerRadius(14)
+                    WktPrimaryButton(title: "Share to Community", symbol: .communityWave) {
+                        showShareSheet = true
                     }
 
                     // Standard iOS share sheet (Messages, social apps, etc.)
                     let shareText = "I just earned the \"\(badge.name)\" badge on Wockett \(badge.emoji) Keep walking!"
                     ShareLink(item: shareText) {
-                        Label {
-                            Text("Share via Messages / Social")
-                        } icon: {
-                            Image(wkt: .share).wktIcon(.row, tint: .earthCream)
-                        }
-                        .font(.wktHeading(14))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
-                        .background(Color.earthCard)
-                        .foregroundColor(.earthCream)
-                        .cornerRadius(14)
+                        WktSecondaryLabel(title: "Share via Messages / Social", symbol: .share)
                     }
+                    .buttonStyle(BounceButtonStyle(scale: 0.98))
 
                     Button("Close") { dismiss() }
-                        .font(.wktBody(14))
+                        .font(.wktBodyText)
                         .foregroundColor(.earthMuted)
                         .padding(.bottom, 8)
                 }
-                .padding(.horizontal, 32)
+                .padding(.horizontal, WktSpacing.screen)
                 .padding(.bottom, 32)
             }
             .opacity(opacity)

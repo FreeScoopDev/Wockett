@@ -28,7 +28,7 @@ struct ChallengesContentView: View {
                 VStack(spacing: 12) {
                     ProgressView().tint(.earthGreen)
                     Text("Loading challenges…")
-                        .font(.wktBody(15)).foregroundColor(.earthMuted)
+                        .font(.wktBodyText).foregroundColor(.earthMuted)
                 }
             } else if let err = loadError, challenges.isEmpty {
                 errorView(err)
@@ -69,12 +69,14 @@ struct ChallengesContentView: View {
 
     private var challengeList: some View {
         ScrollView {
-            VStack(spacing: 0) {
-                headerBanner.padding(.bottom, 16)
+            VStack(alignment: .leading, spacing: WktSpacing.betweenSections) {
+                headerBanner
                 if challenges.isEmpty && !isLoading {
                     emptyState
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 16)
                 } else {
-                    LazyVStack(spacing: 12) {
+                    LazyVStack(spacing: WktSpacing.betweenCards) {
                         ForEach(challenges) { challenge in
                             ChallengeCard(
                                 challenge: challenge,
@@ -84,76 +86,42 @@ struct ChallengesContentView: View {
                             .onTapGesture { selectedChallenge = challenge; showDetail = true }
                         }
                     }
-                    .padding(.horizontal, 20)
                 }
                 if let err = loadError {
                     Text(err)
-                        .font(.wktBody(12)).foregroundColor(.earthOrange)
+                        .font(.wktLabel).foregroundColor(.earthOrange)
                         .multilineTextAlignment(.center)
-                        .padding(.horizontal, 24).padding(.top, 8)
+                        .frame(maxWidth: .infinity)
                 }
             }
-            .padding(.bottom, 40)
+            .padding(.horizontal, WktSpacing.screen)
+            .padding(.top, 8)
+            .padding(.bottom, WktSpacing.betweenSections)
         }
     }
 
     private var headerBanner: some View {
-        VStack(spacing: 8) {
-            HStack(spacing: 12) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 14)
-                        .fill(Color.earthGreen.opacity(0.12))
-                        .frame(width: 52, height: 52)
-                    Image(wkt: .records).wktIcon(.row, tint: .earthGreen)
-                        .accessibilityHidden(true)
-                }
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Community Challenges")
-                        .font(.wktHeading(17)).foregroundColor(.earthCream)
-                    Text("Walk together, compete together")
-                        .font(.wktBody(12)).foregroundColor(.earthMuted)
-                }
-                Spacer()
+        HStack(spacing: 12) {
+            WktIconBadge(symbol: .records)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Community Challenges")
+                    .font(.wktCardTitle).foregroundColor(.earthCream)
+                Text("Walk together, compete together")
+                    .font(.wktBodyText).foregroundColor(.earthMuted)
             }
-            .padding(.horizontal, 20)
-            .padding(.top, 16)
+            Spacer()
         }
     }
 
     private var emptyState: some View {
-        VStack(spacing: 16) {
-            Image(wkt: .finish).wktIcon(.hero, tint: .earthGreen, filled: true)
-                .accessibilityHidden(true)
-            Text("No active challenges yet")
-                .font(.wktHeading(17)).foregroundColor(.earthCream)
-            Text("Tap + to create the first community challenge and invite others to join.")
-                .font(.wktBody(15)).foregroundColor(.earthMuted)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 32)
-        }
-        .padding(.top, 40)
+        WktEmptyState(symbol: .finish, tint: .earthGreen,
+                      title: "No active challenges yet",
+                      message: "Tap + to create the first community challenge and invite others to join.")
     }
 
     private func errorView(_ message: String) -> some View {
-        VStack(spacing: 16) {
-            Image(wkt: .cloudError).wktIcon(.hero, tint: .earthMuted)
-                .accessibilityHidden(true)
-            Text(message)
-                .font(.wktBody(15)).foregroundColor(.earthMuted)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 32)
-            Button { Task { await load() } } label: {
-                Label {
-                    Text("Retry")
-                } icon: {
-                    Image(wkt: .refresh).wktIcon(.inline, tint: .earthGreen)
-                }
-                .font(.wktBody(15))
-                .foregroundColor(.earthGreen)
-                .padding(.horizontal, 20).padding(.vertical, 10)
-                .background(Color.earthCard)
-                .cornerRadius(10)
-            }
+        WktEmptyState(symbol: .cloudError, message: message, actionTitle: "Retry") {
+            Task { await load() }
         }
     }
 
@@ -219,50 +187,48 @@ private struct ChallengeCard: View {
 
     var body: some View {
         HStack(spacing: 14) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(Color.earthGreen.opacity(0.1))
-                    .frame(width: 50, height: 50)
-                Text(challenge.emoji).font(.system(size: 26)) // the creator's pick (data)
-            }
+            Text(challenge.emoji)
+                .font(.system(size: 26)) // the creator's pick (data)
+                .frame(width: 48, height: 48)
+                .background(Color.earthGreen.opacity(0.16), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
                     Text(challenge.title)
-                        .font(.wktHeading(15))
+                        .font(.wktRowTitle)
                         .foregroundColor(.earthCream)
                         .lineLimit(1)
                     if isJoined {
-                        Text("Joined")
-                            .wktTechnical(9)
-                            .foregroundColor(.earthGreen)
-                            .padding(.horizontal, 6).padding(.vertical, 2)
-                            .background(Color.earthGreen.opacity(0.15))
-                            .cornerRadius(5)
+                        WktStatusChip(text: "Joined", dot: .earthGreen)
                     }
                 }
-                HStack(spacing: 8) {
+                HStack(spacing: 6) {
                     Text(challenge.goalText)
-                        .font(.wktBody(12)).foregroundColor(.earthMuted)
-                    Text("·").font(.wktBody(12)).foregroundColor(.earthMuted.opacity(0.4))
+                        .foregroundColor(.earthMuted)
+                    Text("·").foregroundColor(.earthMuted)
                     Text(challenge.timeRemainingText)
-                        .font(.wktBody(12))
                         .foregroundColor(challenge.daysRemaining(from: Date()) <= 1 ? .earthOrange : .earthMuted)
                 }
+                .font(.wktLabel)
                 Text("by \(challenge.authorName)")
-                    .font(.wktBody(10)).foregroundColor(.earthMuted.opacity(0.55))
+                    .font(.wktLabel).foregroundColor(.earthMuted)
             }
 
             Spacer()
 
             Image(wkt: .chevronRight)
-                .wktIcon(.inline, tint: .earthMuted.opacity(0.4))
+                .wktIcon(.inline, tint: .earthMuted)
         }
-        .wktCard(padding: 14)
-        .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(isJoined ? Color.earthGreen.opacity(0.3) : Color.clear, lineWidth: 1)
-        )
+        .wktCard()
+        .overlay {
+            if isJoined {
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .strokeBorder(Color.earthGreen.opacity(0.35), lineWidth: 1)
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isButton)
         .contextMenu {
             if let onHide {
                 Button(role: .destructive) {
@@ -314,12 +280,14 @@ struct ChallengeDetailView: View {
         ZStack {
             Color.earthBg.ignoresSafeArea()
             ScrollView {
-                VStack(spacing: 20) {
+                VStack(alignment: .leading, spacing: WktSpacing.betweenSections) {
                     heroSection
                     syncSection
                     leaderboardSection
                 }
-                .padding(.bottom, 40)
+                .padding(.horizontal, WktSpacing.screen)
+                .padding(.top, 8)
+                .padding(.bottom, WktSpacing.betweenSections)
             }
         }
         .navigationTitle(challenge.title)
@@ -333,62 +301,55 @@ struct ChallengeDetailView: View {
     // MARK: - Hero
 
     private var heroSection: some View {
-        VStack(spacing: 16) {
+        VStack(alignment: .leading, spacing: WktSpacing.cardPadding) {
             HStack(spacing: 16) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 16)
-                        .fill(Color.earthGreen.opacity(0.1))
-                        .frame(width: 64, height: 64)
-                    Text(challenge.emoji).font(.system(size: 36)) // the creator's pick (data)
-                }
-                VStack(alignment: .leading, spacing: 5) {
+                Text(challenge.emoji)
+                    .font(.system(size: 36)) // the creator's pick (data)
+                    .frame(width: 64, height: 64)
+                    .background(Color.earthGreen.opacity(0.16), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 4) {
                     Text(challenge.goalText)
-                        .font(.wktHeading(20).monospacedDigit())
+                        .font(.wktCardTitle.monospacedDigit())
                         .foregroundColor(.earthCream)
                     Text(challenge.timeRemainingText)
-                        .font(.wktBody(15))
+                        .font(.wktBodyText)
                         .foregroundColor(challenge.daysRemaining(from: Date()) <= 1 ? .earthOrange : .earthMuted)
                     Text(detailSubtitle)
-                        .font(.wktBody(12)).foregroundColor(.earthMuted.opacity(0.65))
+                        .font(.wktLabel).foregroundColor(.earthMuted)
                 }
                 Spacer()
             }
-            .padding(.horizontal, 20)
-            .padding(.top, 8)
 
             if isJoined || myProgressValue > 0 {
-                VStack(spacing: 8) {
-                    HStack {
-                        Text("Your Progress")
-                            .wktTechnical(10)
-                            .textCase(.uppercase)
+                WktDivider()
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(alignment: .firstTextBaseline) {
+                        Text("Your progress")
+                            .font(.wktLabel)
                             .foregroundColor(.earthMuted)
                             .accessibilityAddTraits(.isHeader)
                         Spacer()
                         if let rank = myRank {
-                            Text("Rank #\(rank)")
-                                .font(.wktBody(12)).foregroundColor(.earthGreen)
+                            WktStatusChip(text: "Rank #\(rank)", dot: .earthGreen)
                         }
                         Text(challenge.progressDisplay(for: myProgressValue))
-                            .font(.wktBody(11).monospacedDigit())
+                            .font(.wktLabel.monospacedDigit())
                             .foregroundColor(.earthCream)
                     }
-                    .padding(.horizontal, 20)
 
                     let prog = challenge.progress(for: myProgressValue)
                     WktProgressBar(value: prog, tint: prog >= 1 ? .accentNotice : .earthGreen)
                         .animation(.spring(response: 0.5, dampingFraction: 0.8), value: prog)
-                        .padding(.horizontal, 20)
 
                     if challenge.goalType == .pace {
                         Text("Qualifying sessions beat \(challengeFormattedPace(challenge.goalPaceSecsPerKm)) · \(challenge.activityFilterLabel)")
-                            .font(.wktBody(10)).foregroundColor(.earthMuted.opacity(0.7))
-                            .padding(.horizontal, 20)
+                            .font(.wktLabel).foregroundColor(.earthMuted)
                     }
                 }
             }
         }
-        .padding(.vertical, 4)
+        .wktCard()
     }
 
     private var detailSubtitle: String {
@@ -402,34 +363,25 @@ struct ChallengeDetailView: View {
     private var syncSection: some View {
         VStack(spacing: 10) {
             Button { Task { await syncProgress() } } label: {
-                Group {
-                    if isSyncing {
-                        HStack(spacing: 8) {
-                            ProgressView().tint(.white).scaleEffect(0.85)
-                            Text("Syncing…")
-                        }
-                    } else {
-                        Label {
-                            Text(syncButtonLabel)
-                        } icon: {
-                            Image(wkt: isJoined ? .loop : .joinPerson)
-                                .wktIcon(.inline, tint: .white, onFill: true)
-                        }
+                if isSyncing {
+                    HStack(spacing: 8) {
+                        ProgressView().tint(.white).scaleEffect(0.85)
+                        Text("Syncing…")
+                            .font(.wktHeading(17))
+                            .foregroundColor(.white)
                     }
+                    .frame(maxWidth: .infinity, minHeight: 56)
+                    .background(Color.earthGreenFill, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                } else {
+                    WktPrimaryLabel(title: syncButtonLabel, symbol: isJoined ? .loop : .joinPerson)
                 }
-                .font(.wktBody(15))
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 14)
-                .background(Color.earthGreenFill)
-                .foregroundColor(.white)
-                .cornerRadius(14)
             }
+            .buttonStyle(BounceButtonStyle(scale: 0.98))
             .disabled(isSyncing)
-            .padding(.horizontal, 20)
 
             if let msg = syncMessage {
                 Text(msg)
-                    .font(.wktBody(12)).foregroundColor(.earthGreen)
+                    .font(.wktLabel).foregroundColor(.earthGreen)
                     .transition(.opacity)
             }
         }
@@ -446,43 +398,39 @@ struct ChallengeDetailView: View {
 
     // MARK: - Leaderboard
 
-    @ViewBuilder
     private var leaderboardSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: WktSpacing.betweenCards) {
             // WktSectionHeader's look, plus the trailing count or spinner it has no slot for.
             HStack(alignment: .firstTextBaseline) {
                 Text("Leaderboard")
-                    .wktTechnical(10)
-                    .textCase(.uppercase)
-                    .foregroundColor(.earthMuted)
+                    .font(.wktSection)
+                    .foregroundColor(.earthCream)
                     .accessibilityAddTraits(.isHeader)
                 Spacer()
                 if isLoading {
                     ProgressView().scaleEffect(0.7).tint(.earthGreen)
                 } else {
                     Text("\(participants.count) participant\(participants.count == 1 ? "" : "s")")
-                        .font(.wktBody(12)).foregroundColor(.earthMuted)
+                        .font(.wktLabel).foregroundColor(.earthMuted)
                 }
             }
 
-            if let err = loadError {
-                Text(err)
-                    .font(.wktBody(12)).foregroundColor(.earthOrange)
-            } else if participants.isEmpty && !isLoading {
-                Text("Be the first to join this challenge!")
-                    .font(.wktBody(12)).foregroundColor(.earthMuted)
-            } else {
-                ForEach(participants.indices, id: \.self) { i in
-                    LeaderboardRow(rank: i + 1, participant: participants[i], challenge: challenge)
-                    if i < participants.count - 1 {
-                        Divider()
-                            .background(Color.earthMuted.opacity(0.1))
+            VStack(alignment: .leading, spacing: 0) {
+                if let err = loadError {
+                    Text(err)
+                        .font(.wktBodyText).foregroundColor(.earthOrange)
+                } else if participants.isEmpty && !isLoading {
+                    Text("Be the first to join this challenge!")
+                        .font(.wktBodyText).foregroundColor(.earthMuted)
+                } else {
+                    ForEach(participants.indices, id: \.self) { i in
+                        if i > 0 { WktDivider() }
+                        LeaderboardRow(rank: i + 1, participant: participants[i], challenge: challenge)
                     }
                 }
             }
+            .wktCard()
         }
-        .wktCard()
-        .padding(.horizontal, 20)
     }
 
     // MARK: - Actions
@@ -548,7 +496,7 @@ private struct LeaderboardRow: View {
     var body: some View {
         HStack(spacing: 12) {
             Text(podiumTint == nil ? "#\(rank)" : "\(rank)")
-                .font(.wktHeading(12).monospacedDigit())
+                .font(.wktLabel.monospacedDigit())
                 .foregroundColor(podiumTint ?? .earthMuted)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
@@ -560,7 +508,7 @@ private struct LeaderboardRow: View {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 4) {
                     Text(participant.isCurrentDevice ? "You (\(participant.displayName))" : participant.displayName)
-                        .font(.wktBody(15))
+                        .font(.wktRowTitle)
                         .foregroundColor(participant.isCurrentDevice ? .earthGreen : .earthCream)
                         .lineLimit(1)
                     if participant.isCurrentDevice {
@@ -573,16 +521,17 @@ private struct LeaderboardRow: View {
                     tint: progress >= 1
                         ? .accentNotice
                         : (participant.isCurrentDevice ? .earthGreen : .earthGreen.opacity(0.55)),
-                    height: 4
+                    height: 6
                 )
             }
 
             Text(challenge.leaderboardDisplay(for: participant.steps))
-                .font(.wktBody(13).monospacedDigit())
+                .font(.wktLabel.monospacedDigit())
                 .foregroundColor(.earthCream)
                 .frame(minWidth: 60, alignment: .trailing)
         }
-        .padding(.vertical, 8)
+        .padding(.vertical, 10)
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -636,7 +585,7 @@ struct CreateChallengeView: View {
         (nil,       "Any",   .anyActivity),
         ("walking", "Walk",  .walk),
         ("running", "Run",   .run),
-        ("cycling", "Bike",  .ride),
+        ("cycling", "Ride",  .ride),
     ]
 
     var body: some View {
@@ -644,7 +593,7 @@ struct CreateChallengeView: View {
             ZStack {
                 Color.earthBg.ignoresSafeArea()
                 ScrollView {
-                    VStack(spacing: 24) {
+                    VStack(alignment: .leading, spacing: WktSpacing.betweenSections) {
                         titleSection
                         emojiSection
                         goalTypeSection
@@ -653,15 +602,15 @@ struct CreateChallengeView: View {
                         durationSection
                         if let err = saveError {
                             Text(err)
-                                .font(.wktBody(12)).foregroundColor(.earthOrange)
+                                .font(.wktLabel).foregroundColor(.earthOrange)
                                 .multilineTextAlignment(.center)
-                                .padding(.horizontal, 16)
+                                .frame(maxWidth: .infinity)
                         }
                         createButton
                     }
-                    .padding(.horizontal, 20)
+                    .padding(.horizontal, WktSpacing.screen)
                     .padding(.top, 16)
-                    .padding(.bottom, 40)
+                    .padding(.bottom, WktSpacing.betweenSections)
                 }
             }
             .navigationTitle("New Challenge")
@@ -679,12 +628,13 @@ struct CreateChallengeView: View {
     // MARK: - Sections
 
     private var titleSection: some View {
-        formSection(title: "Challenge Name") {
+        formSection(title: "Challenge name") {
             TextField("e.g. Weekend Runfest", text: $title)
+                .font(.wktBodyText)
                 .foregroundColor(.earthCream)
-                .padding(.horizontal, 14).padding(.vertical, 12)
-                .background(Color.earthCard)
-                .cornerRadius(12)
+                .padding(.horizontal, WktSpacing.cardPadding)
+                .frame(minHeight: 52)
+                .wktCardBackground()
         }
     }
 
@@ -697,20 +647,17 @@ struct CreateChallengeView: View {
                             .font(.system(size: 28)) // emoji choices (data)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 10)
-                            .background(emoji == e ? Color.earthGreen.opacity(0.2) : Color.earthCard)
-                            .cornerRadius(10)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 10)
-                                    .stroke(emoji == e ? Color.earthGreen.opacity(0.5) : Color.clear, lineWidth: 1.5)
-                            )
+                            .wktChoiceBackground(selected: emoji == e)
                     }
+                    .buttonStyle(BounceButtonStyle(scale: 0.95))
+                    .accessibilityAddTraits(emoji == e ? .isSelected : [])
                 }
             }
         }
     }
 
     private var goalTypeSection: some View {
-        formSection(title: "Goal Type") {
+        formSection(title: "Goal type") {
             HStack(spacing: 8) {
                 ForEach(ChallengeGoalType.allCases, id: \.self) { type in
                     let selected = goalType == type
@@ -719,18 +666,14 @@ struct CreateChallengeView: View {
                             Image(wkt: goalTypeSymbol(type))
                                 .wktIcon(.row, tint: selected ? .white : .earthMuted, onFill: selected)
                             Text(goalTypeLabel(type))
-                                .font(.wktBody(11))
+                                .font(.wktLabel)
                                 .foregroundColor(selected ? .white : .earthCream)
                         }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .background(selected ? Color.earthGreenFill : Color.earthCard)
-                        .cornerRadius(12)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12)
-                                .stroke(selected ? Color.earthGreen.opacity(0.5) : Color.clear, lineWidth: 1.5)
-                        )
+                        .frame(maxWidth: .infinity, minHeight: 68)
+                        .wktChoiceBackground(selected: selected)
                     }
+                    .buttonStyle(BounceButtonStyle(scale: 0.96))
+                    .accessibilityAddTraits(selected ? .isSelected : [])
                 }
             }
         }
@@ -746,19 +689,14 @@ struct CreateChallengeView: View {
                             Image(wkt: opt.icon)
                                 .wktIcon(.row, tint: selected ? .white : .earthMuted, onFill: selected)
                             Text(opt.label)
-                                .font(.wktBody(11))
+                                .font(.wktLabel)
                                 .foregroundColor(selected ? .white : .earthCream)
                         }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .background(selected ? Color.earthGreenFill : Color.earthCard)
-                        .foregroundColor(selected ? .white : .earthMuted)
-                        .cornerRadius(12)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12)
-                                .stroke(selected ? Color.earthGreen.opacity(0.5) : Color.clear, lineWidth: 1.5)
-                        )
+                        .frame(maxWidth: .infinity, minHeight: 68)
+                        .wktChoiceBackground(selected: selected)
                     }
+                    .buttonStyle(BounceButtonStyle(scale: 0.96))
+                    .accessibilityAddTraits(selected ? .isSelected : [])
                 }
             }
         }
@@ -768,81 +706,87 @@ struct CreateChallengeView: View {
     private var goalValueSection: some View {
         switch goalType {
         case .steps:
-            formSection(title: "Step Goal") {
+            formSection(title: "Step goal") {
                 VStack(spacing: 8) {
                     ForEach(stepOptions, id: \.self) { g in
                         Button { goalSteps = g } label: {
                             HStack {
                                 Text(formatK(g))
-                                    .font(.wktBody(15))
+                                    .font(.wktRowTitle)
                                     .foregroundColor(goalSteps == g ? .white : .earthCream)
                                 Spacer()
                                 Text(approxStepTime(steps: g))
-                                    .font(.wktBody(12))
-                                    .foregroundColor(goalSteps == g ? .white.opacity(0.8) : .earthMuted)
+                                    .font(.wktLabel)
+                                    .foregroundColor(goalSteps == g ? .white : .earthMuted)
                             }
-                            .padding(.horizontal, 14).padding(.vertical, 11)
-                            .background(goalSteps == g ? Color.earthGreenFill : Color.earthCard)
-                            .cornerRadius(10)
+                            .padding(.horizontal, WktSpacing.cardPadding)
+                            .frame(minHeight: 52)
+                            .wktChoiceBackground(selected: goalSteps == g)
                         }
+                        .buttonStyle(BounceButtonStyle(scale: 0.98))
+                        .accessibilityAddTraits(goalSteps == g ? .isSelected : [])
                     }
                 }
             }
         case .distance:
-            formSection(title: "Distance Goal") {
+            formSection(title: "Distance goal") {
                 VStack(spacing: 8) {
                     ForEach(distanceOptions, id: \.meters) { opt in
                         Button { goalDistanceMeters = opt.meters } label: {
                             HStack {
                                 Text(opt.label)
-                                    .font(.wktBody(15))
+                                    .font(.wktRowTitle)
                                     .foregroundColor(goalDistanceMeters == opt.meters ? .white : .earthCream)
                                 Spacer()
                                 Text(distanceHint(meters: opt.meters))
-                                    .font(.wktBody(12))
-                                    .foregroundColor(goalDistanceMeters == opt.meters ? .white.opacity(0.8) : .earthMuted)
+                                    .font(.wktLabel)
+                                    .foregroundColor(goalDistanceMeters == opt.meters ? .white : .earthMuted)
                             }
-                            .padding(.horizontal, 14).padding(.vertical, 11)
-                            .background(goalDistanceMeters == opt.meters ? Color.earthGreenFill : Color.earthCard)
-                            .cornerRadius(10)
+                            .padding(.horizontal, WktSpacing.cardPadding)
+                            .frame(minHeight: 52)
+                            .wktChoiceBackground(selected: goalDistanceMeters == opt.meters)
                         }
+                        .buttonStyle(BounceButtonStyle(scale: 0.98))
+                        .accessibilityAddTraits(goalDistanceMeters == opt.meters ? .isSelected : [])
                     }
                 }
             }
         case .pace:
-            VStack(spacing: 24) {
-                formSection(title: "Target Pace") {
+            VStack(alignment: .leading, spacing: WktSpacing.betweenSections) {
+                formSection(title: "Target pace") {
                     VStack(spacing: 8) {
                         ForEach(paceOptions, id: \.secsPerKm) { opt in
                             Button { goalPaceSecsPerKm = opt.secsPerKm } label: {
                                 HStack {
                                     Text(challengeFormattedPace(opt.secsPerKm))
-                                        .font(.wktBody(15))
+                                        .font(.wktRowTitle)
                                         .foregroundColor(goalPaceSecsPerKm == opt.secsPerKm ? .white : .earthCream)
                                     Spacer()
                                     Text(opt.hint)
-                                        .font(.wktBody(12))
-                                        .foregroundColor(goalPaceSecsPerKm == opt.secsPerKm ? .white.opacity(0.8) : .earthMuted)
+                                        .font(.wktLabel)
+                                        .foregroundColor(goalPaceSecsPerKm == opt.secsPerKm ? .white : .earthMuted)
                                 }
-                                .padding(.horizontal, 14).padding(.vertical, 11)
-                                .background(goalPaceSecsPerKm == opt.secsPerKm ? Color.earthGreenFill : Color.earthCard)
-                                .cornerRadius(10)
+                                .padding(.horizontal, WktSpacing.cardPadding)
+                                .frame(minHeight: 52)
+                                .wktChoiceBackground(selected: goalPaceSecsPerKm == opt.secsPerKm)
                             }
+                            .buttonStyle(BounceButtonStyle(scale: 0.98))
+                            .accessibilityAddTraits(goalPaceSecsPerKm == opt.secsPerKm ? .isSelected : [])
                         }
                     }
                 }
-                formSection(title: "Sessions Needed") {
+                formSection(title: "Sessions needed") {
                     HStack(spacing: 8) {
                         ForEach(sessionCountOptions, id: \.self) { n in
                             Button { goalSessionCount = n } label: {
                                 Text("\(n)")
-                                    .font(.wktBody(15))
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 12)
-                                    .background(goalSessionCount == n ? Color.earthGreenFill : Color.earthCard)
+                                    .font(.wktRowTitle)
                                     .foregroundColor(goalSessionCount == n ? .white : .earthCream)
-                                    .cornerRadius(10)
+                                    .frame(maxWidth: .infinity, minHeight: 52)
+                                    .wktChoiceBackground(selected: goalSessionCount == n)
                             }
+                            .buttonStyle(BounceButtonStyle(scale: 0.95))
+                            .accessibilityAddTraits(goalSessionCount == n ? .isSelected : [])
                         }
                     }
                 }
@@ -855,54 +799,44 @@ struct CreateChallengeView: View {
             HStack(spacing: 8) {
                 ForEach(durationOptions, id: \.self) { d in
                     Button { duration = d } label: {
-                        Text("\(d)d")
-                            .font(.wktBody(12))
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 11)
-                            .background(duration == d ? Color.earthGreenFill : Color.earthCard)
+                        Text("\(d) days")
+                            .font(.wktLabel)
                             .foregroundColor(duration == d ? .white : .earthCream)
-                            .cornerRadius(10)
+                            .frame(maxWidth: .infinity, minHeight: 52)
+                            .wktChoiceBackground(selected: duration == d)
                     }
+                    .buttonStyle(BounceButtonStyle(scale: 0.95))
+                    .accessibilityAddTraits(duration == d ? .isSelected : [])
                 }
             }
         }
     }
 
     private var createButton: some View {
-        Button { Task { await save() } } label: {
-            Group {
-                if isSaving {
-                    HStack(spacing: 8) {
-                        ProgressView().tint(.white).scaleEffect(0.85)
-                        Text("Creating…")
-                    }
-                } else {
-                    Label {
-                        Text("Create Challenge")
-                    } icon: {
-                        Image(wkt: .records).wktIcon(.row, tint: .white, filled: true, onFill: true)
-                    }
+        let blank = title.trimmingCharacters(in: .whitespaces).isEmpty
+        return Button { Task { await save() } } label: {
+            if isSaving {
+                HStack(spacing: 8) {
+                    ProgressView().tint(.white).scaleEffect(0.85)
+                    Text("Creating…")
+                        .font(.wktHeading(17))
+                        .foregroundColor(.white)
                 }
+                .frame(maxWidth: .infinity, minHeight: 56)
+                .background(Color.earthGreenFill, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            } else {
+                WktPrimaryLabel(title: "Create Challenge", symbol: .records)
+                    .opacity(blank ? 0.45 : 1)
             }
-            .font(.wktBody(17))
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 18)
-            .background(title.trimmingCharacters(in: .whitespaces).isEmpty
-                ? Color.earthGreenFill.opacity(0.45)
-                : Color.earthGreenFill)
-            .foregroundColor(.white)
-            .cornerRadius(14)
         }
-        .disabled(title.trimmingCharacters(in: .whitespaces).isEmpty || isSaving)
+        .buttonStyle(BounceButtonStyle(scale: 0.98))
+        .disabled(blank || isSaving)
     }
 
     // MARK: - Helpers
 
-    private func formSection<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            WktSectionHeader(title: title)
-            content()
-        }
+    private func formSection<Content: View>(title: String, @ViewBuilder content: @escaping () -> Content) -> some View {
+        WktSection(title: title, content: content)
     }
 
     private func save() async {

@@ -55,13 +55,13 @@ struct BadgesContentView: View {
         ZStack {
             Color.earthBg.ignoresSafeArea()
             ScrollView {
-                VStack(spacing: 24) {
+                VStack(alignment: .leading, spacing: WktSpacing.betweenSections) {
                     pinHint
                     streakSection
                     personalRecordsSection
                     badgeSection(title: "Distance",    badges: distanceBadges)
                     badgeSection(title: "Streaks",     badges: streakBadges)
-                    badgeSection(title: "Time-Based",  badges: timeBadges)
+                    badgeSection(title: "Time-based",  badges: timeBadges)
                     badgeSection(title: "Rides",       badges: rideBadges)
                     badgeSection(title: "Pets",        badges: petBadges)
                     badgeSection(title: "Explorer",    badges: explorerBadges)
@@ -71,9 +71,9 @@ struct BadgesContentView: View {
                     badgeSection(title: "Meta",        badges: metaBadges)
                     if currentStreak > 0 { shareButton }
                 }
-                .padding(.horizontal)
+                .padding(.horizontal, WktSpacing.screen)
                 .padding(.top, 8)
-                .padding(.bottom, 32)
+                .padding(.bottom, WktSpacing.betweenSections)
             }
         }
         .navigationTitle("Streaks & Badges")
@@ -94,11 +94,11 @@ struct BadgesContentView: View {
             Image(wkt: .pin)
                 .wktIcon(.inline, tint: .earthOrange, filled: true)
             Text("Pin up to 2 badges to your home screen")
-                .font(.wktBody(12))
+                .font(.wktLabel)
                 .foregroundColor(.earthMuted)
             Spacer()
             Text("\(pinnedIds.count)/2")
-                .wktTechnical(11)
+                .font(.wktLabel)
                 .foregroundColor(pinnedIds.count == 2 ? .earthOrange : .earthMuted)
         }
         .wktCard(padding: 12)
@@ -107,18 +107,18 @@ struct BadgesContentView: View {
     // MARK: - Streak tiles
 
     private var streakSection: some View {
-        VStack(spacing: 12) {
-            HStack(spacing: 12) {
-                streakTile(value: currentStreak,   label: "Goal Streak",  symbol: .calories, tint: .earthOrange)
+        VStack(spacing: WktSpacing.betweenCards) {
+            HStack(spacing: WktSpacing.betweenCards) {
+                streakTile(value: currentStreak,   label: "Goal streak",  symbol: .calories, tint: .earthOrange)
                 // Apple a Day is a 10,000-step streak, so it wears the steps glyph.
                 streakTile(value: appleADayStreak, label: "Apple a Day",  symbol: .steps,    tint: .earthGreen)
-                streakTile(value: longestStreak,   label: "Best Streak",  symbol: .records,  tint: .accentNotice)
+                streakTile(value: longestStreak,   label: "Best streak",  symbol: .records,  tint: .accentNotice)
             }
             HStack(spacing: 8) {
                 Image(wkt: .walk).wktIcon(.inline, tint: .earthGreen)
                     .accessibilityHidden(true)
                 Text(String(format: "%.1f km walked all time", totalKm))
-                    .font(.wktBody(14)).foregroundColor(.earthCream)
+                    .font(.wktBodyText).foregroundColor(.earthCream)
             }
             .frame(maxWidth: .infinity)
             .wktCard(padding: 12)
@@ -130,59 +130,56 @@ struct BadgesContentView: View {
             Image(wkt: symbol).wktIcon(.row, tint: tint, filled: true)
                 .accessibilityHidden(true)
             Text("\(value)")
-                .font(.wktDisplay(26))
+                .font(.wktCardTitle)
                 .foregroundColor(.earthCream)
-            Text("day\(value == 1 ? "" : "s")")
-                .wktTechnical(9).foregroundColor(.earthMuted)
             Text(label)
-                .wktTechnical(9)
+                .font(.wktLabel)
                 .foregroundColor(.earthMuted)
-                .textCase(.uppercase)
                 .multilineTextAlignment(.center)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
         }
         .frame(maxWidth: .infinity)
-        // Third-width tiles: 10 pt sides keep "APPLE A DAY" on one line.
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(label), \(value) day\(value == 1 ? "" : "s")")
+        // Third-width tiles: 10 pt sides keep "Apple a Day" on one line.
         .padding(.vertical, 6)
         .wktCard(padding: 10)
     }
 
     // MARK: - Personal Records
 
-    @ViewBuilder
     private var personalRecordsSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            WktSectionHeader(title: "Personal Records")
+        WktSection(title: "Personal records") {
             if sessions.isEmpty {
                 Text("Complete walks to unlock personal records.")
-                    .font(.wktBody(12)).foregroundColor(.earthMuted)
-                    .wktCard(padding: 14)
+                    .font(.wktBodyText).foregroundColor(.earthMuted)
+                    .wktCard()
             } else {
-                VStack(spacing: 8) {
-                    ForEach(computedPersonalRecords, id: \.label) { rec in
+                VStack(spacing: 12) {
+                    ForEach(Array(computedPersonalRecords.enumerated()), id: \.element.label) { index, rec in
+                        if index > 0 { WktDivider() }
                         HStack(spacing: 12) {
-                            Image(wkt: rec.symbol)
-                                .wktIcon(.row, tint: .earthGreen)
-                                .frame(width: 32, alignment: .center)
-                                .accessibilityHidden(true)
+                            WktIconBadge(symbol: rec.symbol)
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(rec.label)
-                                    .wktTechnical(10)
+                                    .font(.wktLabel)
                                     .foregroundColor(.earthMuted)
-                                    .textCase(.uppercase)
                                 Text(rec.value)
-                                    .font(.wktHeading(15))
+                                    .font(.wktRowTitle)
                                     .foregroundColor(.earthCream)
                             }
                             Spacer()
                             if let detail = rec.detail {
                                 Text(detail)
-                                    .wktTechnical(10)
-                                    .foregroundColor(.earthMuted.opacity(0.7))
+                                    .font(.wktLabel)
+                                    .foregroundColor(.earthMuted)
                             }
                         }
-                        .wktCard(padding: 12)
+                        .accessibilityElement(children: .combine)
                     }
                 }
+                .wktCard()
             }
         }
     }
@@ -202,14 +199,14 @@ struct BadgesContentView: View {
         }
         if let best = stepsByDay.max(by: { $0.value < $1.value }) {
             records.append(PersonalRecord(
-                symbol: .records, label: "Best Day",
+                symbol: .records, label: "Best day",
                 value: best.value.formatted() + " steps", detail: shortDate(best.key)
             ))
         }
 
         if let longest = cleanSessions.max(by: { $0.totalDistance < $1.totalDistance }) {
             records.append(PersonalRecord(
-                symbol: .distance, label: "Longest Walk",
+                symbol: .distance, label: "Longest walk",
                 value: longest.distanceText, detail: shortDate(longest.date)
             ))
         }
@@ -229,7 +226,7 @@ struct BadgesContentView: View {
             let mins      = Int(mpu)
             let secs      = Int((mpu - Double(mins)) * 60)
             records.append(PersonalRecord(
-                symbol: .pace, label: "Best Pace",
+                symbol: .pace, label: "Best pace",
                 value: String(format: "%d:%02d%@", mins, secs, unit), detail: shortDate(fastest.date)
             ))
         }
@@ -240,9 +237,9 @@ struct BadgesContentView: View {
     // MARK: - Badge section
 
     private func badgeSection(title: String, badges: [WalkBadge]) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            WktSectionHeader(title: title)
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+        WktSection(title: title) {
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: WktSpacing.betweenCards), count: 3),
+                      spacing: WktSpacing.betweenCards) {
                 ForEach(badges) { badge in
                     badgeTile(badge)
                 }
@@ -257,7 +254,7 @@ struct BadgesContentView: View {
         return VStack(spacing: 6) {
             ZStack {
                 Circle()
-                    .stroke(Color.earthMuted.opacity(0.15), lineWidth: 3)
+                    .stroke(Color.earthTrack, lineWidth: 3)
                 Circle()
                     .trim(from: 0, to: progress)
                     .stroke(earned ? Color.earthGreen : Color.accentNotice,
@@ -270,21 +267,25 @@ struct BadgesContentView: View {
             }
             .frame(width: 44, height: 44)
             Text(badge.name)
-                .font(.wktHeading(12))
+                .font(.wktLabel)
                 .foregroundColor(earned ? .earthCream : .earthMuted)
+                .multilineTextAlignment(.center)
+            // Below the 13 pt label size on purpose: three tiles to a row
+            // leave about 100 pt for a sentence.
             Text(badge.description)
-                .font(.wktBody(9))
+                .font(.wktBody(11))
                 .foregroundColor(.earthMuted)
                 .multilineTextAlignment(.center)
         }
         .padding(.vertical, 14).padding(.horizontal, 6)
-        .frame(maxWidth: .infinity)
-        .background(Color.earthCard.opacity(earned ? 1 : 0.5))
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(isPinned ? Color.earthOrange.opacity(0.6) : (earned ? Color.earthGreen.opacity(0.45) : Color.clear), lineWidth: 1.5)
-        )
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .wktCardBackground(fill: earned ? .earthCard : .earthCard.opacity(0.5))
+        .overlay {
+            if isPinned || earned {
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .strokeBorder(isPinned ? Color.earthOrange.opacity(0.6) : Color.earthGreen.opacity(0.45), lineWidth: 1.5)
+            }
+        }
         .overlay(alignment: .topTrailing) {
             Button {
                 togglePin(badge.id)
@@ -318,27 +319,14 @@ struct BadgesContentView: View {
     private var shareButton: some View {
         let challenge = Int(Double(dailyGoal) * 1.1)
         let text = "I've walked \(currentStreak) day\(currentStreak == 1 ? "" : "s") in a row on Wockett 🔥 Think you can hit \(challenge.formatted()) steps today?"
-        return Button {
+        return WktPrimaryButton(title: "Challenge a Friend", symbol: .share) {
             UserDefaults.standard.set(true, forKey: "wkt_challengeShared")
             let av = UIActivityViewController(activityItems: [text], applicationActivities: nil)
             UIApplication.shared.connectedScenes
                 .compactMap { $0 as? UIWindowScene }
                 .first?.windows.first?.rootViewController?
                 .present(av, animated: true)
-        } label: {
-            Label {
-                Text("Challenge a Friend")
-            } icon: {
-                Image(wkt: .share).wktIcon(.row, tint: .white, onFill: true)
-            }
-            .font(.wktHeading(17))
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 16)
-            .background(Color.earthGreenFill)
-            .foregroundColor(.white)
-            .cornerRadius(14)
         }
-        .buttonStyle(.plain)
     }
 }
 

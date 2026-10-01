@@ -34,9 +34,9 @@ struct HomeHeroCard<Chips: View>: View {
         VStack(alignment: .leading, spacing: WktSpacing.cardPadding) {
             header
             stepsRow
-            divider
+            WktDivider()
             crewSection
-            divider
+            WktDivider()
             streakFooter
         }
         .wktCard()
@@ -227,9 +227,4 @@ struct HomeHeroCard<Chips: View>: View {
         .accessibilityHint("Shows your badges")
     }
 
-    private var divider: some View {
-        Rectangle()
-            .fill(Color.earthTrack)
-            .frame(height: 1)
-    }
 }
