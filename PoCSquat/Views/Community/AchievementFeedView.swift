@@ -21,14 +21,14 @@ struct AchievementFeedContentView: View {
                 emptyState
             } else {
                 ScrollView {
-                    LazyVStack(spacing: 12) {
+                    LazyVStack(spacing: WktSpacing.betweenCards) {
                         ForEach($posts) { $post in
                             AchievementPostCard(post: $post, onHide: { posts.removeAll { $0.id == post.id } })
-                                .padding(.horizontal)
                         }
                     }
+                    .padding(.horizontal, WktSpacing.screen)
                     .padding(.top, 12)
-                    .padding(.bottom, 32)
+                    .padding(.bottom, WktSpacing.betweenSections)
                 }
                 .refreshable { await load() }
             }
@@ -51,38 +51,15 @@ struct AchievementFeedContentView: View {
     }
 
     private var emptyState: some View {
-        VStack(spacing: 14) {
-            Image(wkt: .badges).wktIcon(.hero, tint: .earthOrange)
-                .accessibilityHidden(true)
-            Text("No achievements shared yet")
-                .font(.wktHeading(17)).foregroundColor(.earthCream)
-            Text("Earn a badge and share it to be the first!")
-                .font(.wktBody(15)).foregroundColor(.earthMuted)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 40)
-        }
+        WktEmptyState(symbol: .badges, tint: .earthOrange,
+                      title: "No achievements shared yet",
+                      message: "Earn a badge and share it to be the first!")
     }
 
     private func errorState(_ message: String) -> some View {
-        VStack(spacing: 14) {
-            Image(wkt: .cloudError).wktIcon(.hero, tint: .earthMuted)
-                .accessibilityHidden(true)
-            Text(message)
-                .font(.wktBody(15)).foregroundColor(.earthMuted)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 40)
-            Button { loadError = nil; Task { await load() } } label: {
-                Label {
-                    Text("Retry")
-                } icon: {
-                    Image(wkt: .refresh).wktIcon(.inline, tint: .earthGreen)
-                }
-                .font(.wktBody(15))
-                .padding(.horizontal, 20).padding(.vertical, 10)
-                .background(Color.earthCard)
-                .foregroundColor(.earthGreen)
-                .cornerRadius(10)
-            }
+        WktEmptyState(symbol: .cloudError, message: message, actionTitle: "Retry") {
+            loadError = nil
+            Task { await load() }
         }
     }
 
@@ -144,23 +121,19 @@ private struct AchievementPostCard: View {
                 Text(post.badgeEmoji)
                     .font(.system(size: 26)) // the badge's own emoji (data), not UI chrome
             }
+            .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 6) {
-                    Text(post.authorName)
-                        .font(.wktHeading(15))
-                        .foregroundColor(.earthCream)
-                    Text("earned")
-                        .font(.wktBody(15))
-                        .foregroundColor(.earthMuted)
-                    Text(post.badgeName)
-                        .font(.wktHeading(15))
-                        .foregroundColor(.earthGreen)
-                }
+                // One Text, so a long name wraps instead of squeezing three
+                // separate labels into one line.
+                (Text(post.authorName).foregroundColor(.earthCream)
+                 + Text(" earned ").font(.wktBodyText).foregroundColor(.earthMuted)
+                 + Text(post.badgeName).foregroundColor(.earthGreen))
+                    .font(.wktRowTitle)
 
                 if !post.message.isEmpty {
                     Text("\"\(post.message)\"")
-                        .font(.wktBody(13))
+                        .font(.wktBodyText)
                         .foregroundColor(.earthMuted)
                         .italic()
                         .lineLimit(3)
@@ -168,8 +141,8 @@ private struct AchievementPostCard: View {
 
                 HStack(spacing: 16) {
                     Text(timeAgo(post.createdAt))
-                        .font(.wktBody(12))
-                        .foregroundColor(.earthMuted.opacity(0.7))
+                        .font(.wktLabel)
+                        .foregroundColor(.earthMuted)
 
                     Spacer()
 
@@ -180,23 +153,28 @@ private struct AchievementPostCard: View {
                         AchievementFeedService.shared.markLiked(id: post.id)
                         Task { try? await AchievementFeedService.shared.like(id: post.id) }
                     } label: {
+                        // The same like pill as the Community hub's feed card.
                         HStack(spacing: 4) {
-                            // accentRun matches the like on the Community hub's feed card.
                             Image(wkt: .like)
-                                .wktIcon(.inline, tint: hasLiked ? .accentRun : .earthMuted, filled: hasLiked)
-                            if post.likes > 0 {
-                                Text("\(post.likes)")
-                                    .font(.wktBody(12))
-                                    .foregroundColor(hasLiked ? .accentRun : .earthMuted)
-                            }
+                                .wktIcon(.inline, tint: .accentRun, filled: hasLiked)
+                            Text("\(post.likes)")
+                                .font(.wktLabel)
+                                .foregroundColor(.earthCream)
                         }
+                        .padding(.horizontal, 12)
+                        .frame(minHeight: 30)
+                        .background(Color.earthRaised, in: Capsule())
+                        .padding(.vertical, 7)
+                        .contentShape(Rectangle())
                     }
-                    .buttonStyle(BounceButtonStyle(scale: 0.88))
+                    .buttonStyle(BounceButtonStyle(scale: 0.93))
+                    .disabled(hasLiked)
+                    .accessibilityLabel(hasLiked ? "Liked, \(post.likes) likes" : "Like, \(post.likes) likes")
                 }
                 .padding(.top, 2)
             }
         }
-        .wktCard(padding: 14)
+        .wktCard()
         .onAppear { hasLiked = AchievementFeedService.shared.hasLiked(id: post.id) }
         .contextMenu {
             if let onHide {
@@ -254,69 +232,60 @@ struct ShareAchievementSheet: View {
                         Text(badge.emoji)
                             .font(.system(size: 64)) // the badge's own emoji (data)
                         Text(badge.name)
-                            .font(.wktHeading(20))
+                            .font(.wktCardTitle)
                             .foregroundColor(.earthCream)
                         Text(badge.description)
-                            .font(.wktBody(15))
+                            .font(.wktBodyText)
                             .foregroundColor(.earthMuted)
                             .multilineTextAlignment(.center)
                             .padding(.horizontal, 24)
                     }
                     .padding(.top, 8)
 
-                    VStack(alignment: .leading, spacing: 6) {
-                        WktSectionHeader(title: "Add a message (optional)")
-                            .padding(.horizontal, 4)
+                    WktSection(title: "Add a message (optional)") {
                         ZStack(alignment: .topLeading) {
                             if message.isEmpty {
                                 Text("Share how you earned it…")
-                                    .foregroundColor(.earthMuted.opacity(0.6))
-                                    .font(.wktBody(15))
+                                    .foregroundColor(.earthMuted)
+                                    .font(.wktBodyText)
                                     .padding(.horizontal, 8)
                                     .padding(.top, 10)
                             }
                             TextEditor(text: $message)
-                                .font(.wktBody(15))
+                                .font(.wktBodyText)
                                 .foregroundColor(.earthCream)
                                 .scrollContentBackground(.hidden)
                                 .frame(height: 80)
                                 .padding(4)
                         }
-                        .background(Color.earthCard)
-                        .cornerRadius(12)
+                        .padding(8)
+                        .wktCardBackground()
                     }
-                    .padding(.horizontal)
+                    .padding(.horizontal, WktSpacing.screen)
 
                     if let error = postError {
                         Text(error)
-                            .font(.wktBody(12))
+                            .font(.wktLabel)
                             .foregroundColor(.earthOrange)
                             .multilineTextAlignment(.center)
-                            .padding(.horizontal)
+                            .padding(.horizontal, WktSpacing.screen)
                     }
 
                     Button { post() } label: {
-                        Group {
-                            if isPosting {
-                                ProgressView().tint(.white)
-                            } else {
-                                Label {
-                                    Text(didPost ? "Posted!" : "Post to Community")
-                                } icon: {
-                                    Image(wkt: didPost ? .success : .send)
-                                        .wktIcon(.row, tint: .white, filled: true, onFill: true)
-                                }
-                                .font(.wktBody(17))
-                            }
+                        if isPosting {
+                            ProgressView()
+                                .tint(.white)
+                                .frame(maxWidth: .infinity, minHeight: 56)
+                                .background(Color.earthGreenFill, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                        } else {
+                            WktPrimaryLabel(title: didPost ? "Posted!" : "Post to Community",
+                                            symbol: didPost ? .success : .send)
+                                .opacity(didPost ? 0.6 : 1)
                         }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 16)
-                        .background(didPost ? Color.earthGreenFill.opacity(0.6) : Color.earthGreenFill)
-                        .foregroundColor(.white)
-                        .cornerRadius(14)
                     }
+                    .buttonStyle(BounceButtonStyle(scale: 0.98))
                     .disabled(isPosting || didPost)
-                    .padding(.horizontal)
+                    .padding(.horizontal, WktSpacing.screen)
 
                     Spacer()
                 }

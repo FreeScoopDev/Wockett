@@ -6,8 +6,8 @@ import MapKit
 // A dashboard since 2026-09-26 (the "A+" mockup): your week, your challenge,
 // the next badge, your crew's week, the latest posts, top community routes
 // and official trails nearby. Every section is Home's card with Home's
-// section label (`wktCard`, `WktSectionHeader`), so the tab reads as the same
-// app. Before, it was four menu rows and three of them said the same thing
+// section heading above it (`wktCard`, `WktSection`), so the tab reads as
+// the same app. Before, it was four menu rows and three of them said the same thing
 // whatever was happening. The decisions are in `CommunityHubSummary`, the
 // CloudKit and HealthKit reads in `CommunityHubModel`.
 
@@ -40,7 +40,7 @@ struct CommunityHubView: View {
         ZStack {
             Color.earthBg.ignoresSafeArea()
             ScrollView {
-                VStack(spacing: 16) {
+                VStack(alignment: .leading, spacing: WktSpacing.betweenSections) {
                     youCard
                     challengeCard
                     badgeCard
@@ -49,9 +49,9 @@ struct CommunityHubView: View {
                     routesSection
                     trailsCard
                 }
-                .padding(.horizontal)
+                .padding(.horizontal, WktSpacing.screen)
                 .padding(.top, 8)
-                .padding(.bottom, 32)
+                .padding(.bottom, WktSpacing.betweenSections)
             }
             .refreshable {
                 await model.load(sessions: sessions, force: true)
@@ -105,22 +105,22 @@ struct CommunityHubView: View {
                 avatar(name, size: 48, tint: .earthGreenFill, filled: true)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(name)
-                        .font(.wktHeading(17))
+                        .font(.wktCardTitle)
                         .foregroundColor(.earthCream)
                     Text("Your week in Wockett")
-                        .font(.wktBody(13))
+                        .font(.wktBodyText)
                         .foregroundColor(.earthMuted)
                 }
             }
             HStack(spacing: 0) {
-                youStat(value: "\(currentStreak)", label: "DAY STREAK") { pushBadges = true }
-                youStat(value: "\(earned)", label: "BADGES") { pushBadges = true }
-                youStat(value: model.standing.map { "#\($0.rank)" } ?? "–", label: "CHALLENGE") { pushChallenges = true }
-                youStat(value: model.receivedWocketts.map { "\($0)" } ?? "–", label: "WOCKETTS") { pushRoutes = true }
+                youStat(value: "\(currentStreak)", label: "Day streak") { pushBadges = true }
+                youStat(value: "\(earned)", label: "Badges") { pushBadges = true }
+                youStat(value: model.standing.map { "#\($0.rank)" } ?? "–", label: "Challenge") { pushChallenges = true }
+                youStat(value: model.receivedWocketts.map { "\($0)" } ?? "–", label: "Wocketts") { pushRoutes = true }
             }
             HStack(spacing: 8) {
-                quickAction("Start a challenge", primary: true) { pushNewChallenge = true }
-                quickAction("Share a route", primary: false) { pushMyRoutes = true }
+                WktPrimaryButton(title: "Start a challenge") { pushNewChallenge = true }
+                WktSecondaryButton(title: "Share a route") { pushMyRoutes = true }
             }
         }
         .wktCard()
@@ -130,12 +130,12 @@ struct CommunityHubView: View {
         Button(action: action) {
             VStack(spacing: 4) {
                 Text(value)
-                    .font(.wktDisplay(22))
+                    .font(.wktCardTitle)
                     .foregroundColor(.earthCream)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
                 Text(label)
-                    .wktTechnical(9)
+                    .font(.wktLabel)
                     .foregroundColor(.earthMuted)
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
@@ -147,18 +147,6 @@ struct CommunityHubView: View {
         .accessibilityElement(children: .combine)
     }
 
-    private func quickAction(_ title: String, primary: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(title)
-                .font(.wktBody(13))
-                .foregroundColor(primary ? .white : .earthCream)
-                .frame(maxWidth: .infinity, minHeight: 44)
-                .background(primary ? Color.earthGreenFill : Color.earthBg)
-                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-        }
-        .buttonStyle(BounceButtonStyle(scale: 0.97))
-    }
-
     // MARK: - Challenge
 
     @ViewBuilder
@@ -166,21 +154,21 @@ struct CommunityHubView: View {
         if let challenge = model.yourChallenge {
             yourChallengeCard(challenge)
         } else {
-            VStack(alignment: .leading, spacing: 12) {
-                WktSectionHeader(title: "Challenges", actionTitle: "All", action: { pushChallenges = true })
+            WktSection(title: "Challenges", actionTitle: "All", action: { pushChallenges = true }, content: {
+              VStack(alignment: .leading, spacing: 12) {
                 if !model.challenges.isEmpty {
                     ForEach(model.challenges.prefix(2)) { challenge in
                         HStack(spacing: 12) {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(challenge.title)
-                                    .font(.wktHeading(15))
+                                    .font(.wktRowTitle)
                                     .foregroundColor(.earthCream)
                                 Text("\(challenge.goalText) · \(challenge.timeRemainingText)")
-                                    .font(.wktBody(12))
+                                    .font(.wktLabel)
                                     .foregroundColor(.earthMuted)
                             }
                             Spacer()
-                            compactButton("Join") { pushChallenges = true }
+                            WktPillButton(title: "Join") { pushChallenges = true }
                         }
                     }
                 } else if model.didLoad {
@@ -188,24 +176,25 @@ struct CommunityHubView: View {
                     Text(model.challengesFailed
                          ? "Challenges couldn't load. Pull down to try again."
                          : "No challenges running right now. Start one and invite other walkers.")
-                        .font(.wktBody(13))
+                        .font(.wktBodyText)
                         .foregroundColor(.earthMuted)
                 } else {
                     loadingRow
                 }
-            }
-            .wktCard()
+              }
+              .wktCard()
+            })
         }
     }
 
     private func yourChallengeCard(_ challenge: WalkChallenge) -> some View {
         let progress = challenge.progress(for: model.yourValue)
-        return VStack(alignment: .leading, spacing: 14) {
-            WktSectionHeader(title: "Your challenge", actionTitle: "All", action: { pushChallenges = true })
+        return WktSection(title: "Your challenge", actionTitle: "All", action: { pushChallenges = true }, content: {
+          VStack(alignment: .leading, spacing: 14) {
             Button { pushChallenges = true } label: {
                 HStack(spacing: 16) {
                     ZStack {
-                        Circle().stroke(Color.earthLine, lineWidth: 9)
+                        Circle().stroke(Color.earthTrack, lineWidth: 9)
                         Circle()
                             .trim(from: 0, to: progress)
                             .stroke(Color.earthGreen, style: StrokeStyle(lineWidth: 9, lineCap: .round))
@@ -217,10 +206,10 @@ struct CommunityHubView: View {
                     .frame(width: 76, height: 76)
                     VStack(alignment: .leading, spacing: 4) {
                         Text(challenge.title)
-                            .font(.wktHeading(17))
+                            .font(.wktRowTitle)
                             .foregroundColor(.earthCream)
                         Text(challenge.progressDisplay(for: model.yourValue))
-                            .font(.wktBody(12))
+                            .font(.wktLabel)
                             .foregroundColor(.earthMuted)
                         HStack(spacing: 6) {
                             if let standing = model.standing {
@@ -240,48 +229,44 @@ struct CommunityHubView: View {
                                                      aheadName: standing.aheadName, rank: standing.rank,
                                                      activity: challenge.activityFilter) {
                 Text(nudge)
-                    .font(.wktBody(13))
+                    .font(.wktBodyText)
                     .foregroundColor(.earthGreen)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 10)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color.earthGreen.opacity(0.10))
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .background(Color.earthGreen.opacity(0.10), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             } else if model.standing?.rank == 1 {
                 Text("You're in the lead. Keep it up.")
-                    .font(.wktBody(13))
+                    .font(.wktBodyText)
                     .foregroundColor(.earthGreen)
             }
-        }
-        .wktCard()
+          }
+          .wktCard()
+        })
     }
 
     // MARK: - Badges
 
     private var badgeCard: some View {
         let next = CommunityHubSummary.nextBadges(walkBadges, sessions: sessions, currentStreak: currentStreak)
-        return VStack(alignment: .leading, spacing: 12) {
-            WktSectionHeader(title: "Next badge", actionTitle: "All badges", action: { pushBadges = true })
+        return WktSection(title: "Next badge", actionTitle: "All badges", action: { pushBadges = true }, content: {
+          VStack(alignment: .leading, spacing: 12) {
             if let first = next.first {
                 Button { pushBadges = true } label: {
                     VStack(alignment: .leading, spacing: 10) {
                         HStack(spacing: 12) {
-                            Image(wkt: .badges)
-                                .wktIcon(.row, tint: .earthOrange, filled: true)
-                                .frame(width: 48, height: 48)
-                                .background(Color.earthOrange.opacity(0.14))
-                                .clipShape(Circle())
+                            WktIconBadge(symbol: .badges, tint: .earthOrange)
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(first.badge.name)
-                                    .font(.wktHeading(16))
+                                    .font(.wktRowTitle)
                                     .foregroundColor(.earthCream)
                                 Text(first.badge.description)
-                                    .font(.wktBody(12))
+                                    .font(.wktLabel)
                                     .foregroundColor(.earthMuted)
                             }
                             Spacer()
                             Text("\(Int((first.progress * 100).rounded()))%")
-                                .font(.wktHeading(16))
+                                .font(.wktRowTitle)
                                 .foregroundColor(.earthOrange)
                         }
                         WktProgressBar(value: first.progress, tint: .earthOrange)
@@ -298,28 +283,25 @@ struct CommunityHubView: View {
                 }
             } else {
                 Text("Every badge earned. All \(walkBadges.count) of them.")
-                    .font(.wktBody(13))
+                    .font(.wktBodyText)
                     .foregroundColor(.earthMuted)
             }
-        }
-        .wktCard()
+          }
+          .wktCard()
+        })
     }
 
     // MARK: - Crew
 
     private var crewCard: some View {
         let pets = petStore.pets
-        return VStack(alignment: .leading, spacing: 14) {
-            WktSectionHeader(title: "Walks with the crew", actionTitle: "Manage", action: { pushPets = true })
+        return WktSection(title: "Walks with the crew", actionTitle: "Manage", action: { pushPets = true }, content: {
+          VStack(alignment: .leading, spacing: 14) {
             if pets.isEmpty {
                 HStack(spacing: 12) {
-                    Image(wkt: .pets)
-                        .wktIcon(.row, tint: .earthOrange, filled: true)
-                        .frame(width: 44, height: 44)
-                        .background(Color.earthOrange.opacity(0.14))
-                        .clipShape(Circle())
+                    WktIconBadge(symbol: .pets)
                     Text("Add your pets to see the walks you take together.")
-                        .font(.wktBody(13))
+                        .font(.wktBodyText)
                         .foregroundColor(.earthMuted)
                 }
             } else {
@@ -329,14 +311,15 @@ struct CommunityHubView: View {
                 }
                 if pets.count >= 2 {
                     let together = CommunityHubSummary.walksTogether(petIDs: pets.map(\.id), sessions: sessions)
-                    Divider().overlay(Color.earthLine)
+                    WktDivider()
                     Text(together == 1 ? "1 walk together this week" : "\(together) walks together this week")
-                        .font(.wktBody(13))
+                        .font(.wktBodyText)
                         .foregroundColor(.earthCream)
                 }
             }
-        }
-        .wktCard()
+          }
+          .wktCard()
+        })
     }
 
     private func crewRow(_ pet: CommunityHubSummary.CrewWeek, tint: Color) -> some View {
@@ -347,17 +330,17 @@ struct CommunityHubView: View {
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
                     Text(pet.name)
-                        .font(.wktHeading(15))
+                        .font(.wktRowTitle)
                         .foregroundColor(.earthCream)
                     Spacer()
                     Text("\(pet.walks) walk\(pet.walks == 1 ? "" : "s") · \(distance)")
-                        .font(.wktBody(12))
+                        .font(.wktLabel)
                         .foregroundColor(.earthMuted)
                 }
                 HStack(alignment: .bottom, spacing: 4) {
                     ForEach(Array(pet.daily.enumerated()), id: \.offset) { _, meters in
                         Capsule()
-                            .fill(meters > 0 ? tint : Color.earthLine)
+                            .fill(meters > 0 ? tint : Color.earthTrack)
                             .frame(height: meters > 0 ? max(6, 24 * meters / peak) : 4)
                             .frame(maxWidth: .infinity)
                     }
@@ -374,20 +357,20 @@ struct CommunityHubView: View {
     @ViewBuilder
     private var feedCard: some View {
         if !model.posts.isEmpty || (model.didLoad && !model.feedFailed) {
-            VStack(alignment: .leading, spacing: 4) {
-                WktSectionHeader(title: "From the community", actionTitle: "See all", action: { pushFeed = true })
-                if model.posts.isEmpty {
-                    Text("No milestones shared yet. Earn a badge and share it.")
-                        .font(.wktBody(13))
-                        .foregroundColor(.earthMuted)
-                        .padding(.top, 8)
+            WktSection(title: "From the community", actionTitle: "See all", action: { pushFeed = true }, content: {
+                VStack(alignment: .leading, spacing: 4) {
+                    if model.posts.isEmpty {
+                        Text("No milestones shared yet. Earn a badge and share it.")
+                            .font(.wktBodyText)
+                            .foregroundColor(.earthMuted)
+                    }
+                    ForEach(Array(model.posts.enumerated()), id: \.element.id) { index, post in
+                        if index > 0 { WktDivider() }
+                        feedRow(post)
+                    }
                 }
-                ForEach(Array(model.posts.enumerated()), id: \.element.id) { index, post in
-                    if index > 0 { Divider().overlay(Color.earthLine) }
-                    feedRow(post)
-                }
-            }
-            .wktCard()
+                .wktCard()
+            })
         }
     }
 
@@ -398,10 +381,10 @@ struct CommunityHubView: View {
             avatar(post.authorName, size: 40, tint: Self.nameTint(post.authorName), filled: false)
             VStack(alignment: .leading, spacing: 2) {
                 Text("\(post.authorName) earned \(post.badgeName)")
-                    .font(.wktHeading(14))
+                    .font(.wktRowTitle)
                     .foregroundColor(.earthCream)
                 Text(post.message.isEmpty ? when : "\u{201C}\(post.message)\u{201D} · \(when)")
-                    .font(.wktBody(12))
+                    .font(.wktLabel)
                     .foregroundColor(.earthMuted)
                     .lineLimit(2)
             }
@@ -410,13 +393,14 @@ struct CommunityHubView: View {
                 HStack(spacing: 4) {
                     Image(wkt: .like).wktIcon(.inline, tint: .accentRun, filled: liked)
                     Text("\(post.likes)")
-                        .font(.wktBody(13))
+                        .font(.wktLabel)
                         .foregroundColor(.earthCream)
                 }
-                .padding(.horizontal, 10)
-                .frame(minHeight: 44)
-                .background(Color.earthBg)
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .padding(.horizontal, 12)
+                .frame(minHeight: 30)
+                .background(Color.earthRaised, in: Capsule())
+                .padding(.vertical, 7)
+                .contentShape(Rectangle())
             }
             .buttonStyle(BounceButtonStyle(scale: 0.93))
             .disabled(liked)
@@ -431,19 +415,17 @@ struct CommunityHubView: View {
     private var routesSection: some View {
         let top = CommunityHubSummary.topRoutes(communityRoutesModel.routes, near: routeManager.lastLocation)
         if !top.isEmpty {
-            VStack(alignment: .leading, spacing: 10) {
-                WktSectionHeader(title: "Top community routes", actionTitle: "See all", action: { pushRoutes = true })
-                    .padding(.horizontal, 4)
+            WktSection(title: "Top community routes", actionTitle: "See all", action: { pushRoutes = true }, content: {
                 ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 12) {
+                    HStack(spacing: WktSpacing.betweenCards) {
                         ForEach(Array(top.enumerated()), id: \.element.id) { rank, route in
                             routeTile(route, rank: rank + 1)
                         }
                     }
-                    .padding(.horizontal, 16)
+                    .padding(.horizontal, WktSpacing.screen)
                 }
-                .padding(.horizontal, -16)
-            }
+                .padding(.horizontal, -WktSpacing.screen)
+            })
         }
     }
 
@@ -464,7 +446,7 @@ struct CommunityHubView: View {
                     HStack(spacing: 4) {
                         Image(wkt: .wockett).wktIcon(.inline, tint: .white, filled: true, onFill: true)
                         Text("#\(rank) · \(route.wocketts)")
-                            .font(.wktBody(12))
+                            .font(.wktLabel)
                             .foregroundColor(.white)
                     }
                     .padding(.horizontal, 8)
@@ -475,23 +457,23 @@ struct CommunityHubView: View {
                 }
                 VStack(alignment: .leading, spacing: 3) {
                     Text(route.name)
-                        .font(.wktHeading(15))
+                        .font(.wktRowTitle)
                         .foregroundColor(.earthCream)
                         .lineLimit(1)
                     Text(detail)
-                        .font(.wktBody(12))
+                        .font(.wktLabel)
                         .foregroundColor(.earthMuted)
                         .lineLimit(1)
                     Text("by \(route.authorName)")
-                        .font(.wktBody(12))
+                        .font(.wktLabel)
                         .foregroundColor(.earthMuted)
                         .lineLimit(1)
                 }
-                .padding(12)
+                .padding(WktSpacing.cardPadding)
             }
             .frame(width: 220, alignment: .leading)
-            .background(Color.earthCard)
-            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+            .wktCardBackground()
         }
         .buttonStyle(BounceButtonStyle(scale: 0.97))
         .accessibilityElement(children: .combine)
@@ -506,24 +488,20 @@ struct CommunityHubView: View {
         // by what it is ("Paved Footpath") is not an official trail.
         let nearby = Array(trailFinder.items.filter(\.isOfficial).prefix(3))
         if !nearby.isEmpty {
-            VStack(alignment: .leading, spacing: 4) {
-                WktSectionHeader(title: "Trails near you", actionTitle: "Open Trails", action: { openTrails(nil) })
+            WktSection(title: "Trails near you", actionTitle: "Open Trails", action: { openTrails(nil) }, content: {
+              VStack(alignment: .leading, spacing: 4) {
                 ForEach(Array(nearby.enumerated()), id: \.element.id) { index, trail in
-                    if index > 0 { Divider().overlay(Color.earthLine) }
+                    if index > 0 { WktDivider() }
                     Button { openTrails(trail.id) } label: {
                         HStack(spacing: 12) {
-                            Image(wkt: trail.isLoop ? .loop : .routeTrail)
-                                .wktIcon(.row, tint: .earthGreen)
-                                .frame(width: 44, height: 44)
-                                .background(Color.earthGreen.opacity(0.12))
-                                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            WktIconBadge(symbol: trail.isLoop ? .loop : .routeTrail)
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(trail.name)
-                                    .font(.wktHeading(15))
+                                    .font(.wktRowTitle)
                                     .foregroundColor(.earthCream)
                                     .lineLimit(1)
                                 Text(trailDetail(trail))
-                                    .font(.wktBody(12))
+                                    .font(.wktLabel)
                                     .foregroundColor(.earthMuted)
                                     .lineLimit(1)
                             }
@@ -538,8 +516,9 @@ struct CommunityHubView: View {
                 }
                 TrailCreditLine()
                     .padding(.top, 6)
-            }
-            .wktCard()
+              }
+              .wktCard()
+            })
         }
     }
 
@@ -573,36 +552,17 @@ struct CommunityHubView: View {
             .accessibilityHidden(true)
     }
 
+    /// A tag on a row ("#3 of 12", "2 days left", "Official"): the shared
+    /// status chip, led by a dot in the tag's colour.
     private func chip(_ text: String, tint: Color) -> some View {
-        let neutral = tint == .earthMuted
-        return Text(text)
-            .font(.wktBody(11))
-            .foregroundColor(neutral ? .earthCream : tint)
-            .lineLimit(1)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(neutral ? Color.earthBg : tint.opacity(0.12))
-            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-    }
-
-    private func compactButton(_ title: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(title)
-                .font(.wktBody(13))
-                .foregroundColor(.white)
-                .padding(.horizontal, 16)
-                .frame(minHeight: 44)
-                .background(Color.earthGreenFill)
-                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-        }
-        .buttonStyle(BounceButtonStyle(scale: 0.95))
+        WktStatusChip(text: text, dot: tint)
     }
 
     private var loadingRow: some View {
         HStack(spacing: 8) {
             ProgressView().tint(.earthGreen)
             Text("Loading…")
-                .font(.wktBody(13))
+                .font(.wktBodyText)
                 .foregroundColor(.earthMuted)
         }
         .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)

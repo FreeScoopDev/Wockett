@@ -30,6 +30,13 @@ extension View {
             .overlay(shape.strokeBorder(Color.earthStroke, lineWidth: 1))
             .contentShape(shape)
     }
+
+    /// One option in a set the user picks from (an activity, a goal, a
+    /// duration): the action green when chosen, a card when not. The caller
+    /// sets its own text colour, white when `selected`.
+    func wktChoiceBackground(selected: Bool) -> some View {
+        wktCardBackground(fill: selected ? .earthGreenFill : .earthCard)
+    }
 }
 
 /// "Routes ········ See all": a section's heading and optional link.
@@ -62,6 +69,32 @@ struct WktSectionHeader: View {
             }
         }
         .frame(minHeight: 24)
+    }
+}
+
+/// The 1 pt rule between rows inside a card.
+struct WktDivider: View {
+    var body: some View {
+        Rectangle()
+            .fill(Color.earthTrack)
+            .frame(height: 1)
+            .accessibilityHidden(true)
+    }
+}
+
+/// A section: its `WktSectionHeader` above, its card or cards below, 12 pt
+/// apart. Headings sit above cards, not inside them, on every screen.
+struct WktSection<Content: View>: View {
+    let title: String
+    var actionTitle: String?
+    var action: (() -> Void)?
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: WktSpacing.betweenCards) {
+            WktSectionHeader(title: title, actionTitle: actionTitle, action: action)
+            content()
+        }
     }
 }
 

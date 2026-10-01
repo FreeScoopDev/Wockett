@@ -261,23 +261,23 @@ struct StepCounterView: View {
             onStreakTap: {
                 tabRouter.pendingCommunityDestination = .badges
                 tabRouter.selected = .community
+            },
+            chips: {
+                WktStatusChip(
+                    text: gpsIsReady ? "GPS" : "Location off",
+                    dot: gpsIsReady ? .earthGreen : .earthMuted,
+                    textColor: gpsIsReady ? .earthCream : .earthMuted
+                )
+                .accessibilityLabel(gpsIsReady ? "GPS ready" : "Location off")
+                HomeWeatherStatusChip(locator: weatherLocator) { showWeatherDetail = true }
             }
-        ) {
-            WktStatusChip(
-                text: gpsIsReady ? "GPS" : "Location off",
-                dot: gpsIsReady ? .earthGreen : .earthMuted,
-                textColor: gpsIsReady ? .earthCream : .earthMuted
-            )
-            .accessibilityLabel(gpsIsReady ? "GPS ready" : "Location off")
-            HomeWeatherStatusChip(locator: weatherLocator) { showWeatherDetail = true }
-        }
+        )
     }
 
     // MARK: Start an activity
 
     private var activitySection: some View {
-        VStack(alignment: .leading, spacing: WktSpacing.betweenCards) {
-            WktSectionHeader(title: "Start an activity")
+        WktSection(title: "Start an activity") {
             HomeActivityPicker(selection: $freeWalkMode)
             WktPrimaryButton(title: "Start \(freeWalkMode.sessionLabel)", symbol: .play) {
                 if freeWalkMode == .stationary {
@@ -293,10 +293,7 @@ struct StepCounterView: View {
     // MARK: Routes
 
     private var routesSection: some View {
-        VStack(alignment: .leading, spacing: WktSpacing.betweenCards) {
-            WktSectionHeader(title: "Routes", actionTitle: "See all") {
-                tabRouter.selected = .routes
-            }
+        WktSection(title: "Routes", actionTitle: "See all", action: { tabRouter.selected = .routes }, content: {
             HStack(spacing: WktSpacing.betweenCards) {
                 routeCard(symbol: .routes, tint: .earthGreen,
                           title: "Find a Route", subtitle: "Recommended near you") {
@@ -310,7 +307,7 @@ struct StepCounterView: View {
                 }
                 .accessibilityIdentifier("home.myRoutes")
             }
-        }
+        })
     }
 
     private func routeCard(symbol: WktSymbol, tint: Color, title: String, subtitle: String,
@@ -340,12 +337,9 @@ struct StepCounterView: View {
     // MARK: This week
 
     private var weekSection: some View {
-        VStack(alignment: .leading, spacing: WktSpacing.betweenCards) {
-            WktSectionHeader(title: "This week", actionTitle: "Details") {
-                tabRouter.selected = .health
-            }
+        WktSection(title: "This week", actionTitle: "Details", action: { tabRouter.selected = .health }, content: {
             HomeWeekCard(days: stepManager.weeklyCalendar)
-        }
+        })
     }
 
     private var activitySuggestion: some View {
@@ -408,12 +402,7 @@ private struct ActivitySuggestionBanner: View {
                     .foregroundColor(.earthMuted)
             }
             Spacer()
-            Button("Start") { onStart() }
-                .font(.wktLabel)
-                .foregroundColor(.earthGreen)
-                .padding(.horizontal, 12)
-                .frame(minHeight: 30)
-                .background(Color.earthRaised, in: Capsule())
+            WktPillButton(title: "Start", action: onStart)
             Button(action: onDismiss) {
                 Image(wkt: .dismiss)
                     .wktIcon(.inline, tint: .earthMuted)

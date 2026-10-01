@@ -143,6 +143,16 @@ way unless there's a strong reason; adding the first one is a real decision.
 - **Shared UI components look the same everywhere they appear.** Joe's explicit
   standard (2026-09-04). If a component gains a variant, roll it to every screen
   that uses it rather than keeping two.
+- **Screens are built from the shared design pieces** (2026-09-30 Home redesign):
+  `DesignSystem.swift` for colours, the type scale (`wktMetric` … `wktLabel`,
+  sentence case, no SF Mono) and `WktSpacing`; `PoCSquat/Design/` for
+  `wktCard`, `WktSection` (heading above its cards, never inside),
+  `WktDivider`, `WktProgressBar`, `WktStatusChip` (status is a chip, never a
+  card), `WktPrimaryButton` (one per screen) / `WktSecondaryButton`,
+  `WktPillButton`, `WktIconBadge`, `wktChoiceBackground` and `WktEmptyState`.
+  Home and Community are converted; Health, the walk session, Routes, Walk
+  history, Settings and the widget still have the old `wktTechnical` labels and
+  hand-drawn cards. Convert one area per PR.
 - **The changelog entry ships with the change**, in the same commit, explaining
   *why* — not just what. Since 2026-09-27 it goes in its own file in
   `changelog.d/`, not in `CHANGELOG.md`. `changelog.d/README.md` has the format.

@@ -37,7 +37,7 @@ struct HomeActivityPicker: View {
             }
             .frame(maxWidth: .infinity)
             .frame(minHeight: 68)
-            .wktCardBackground(fill: isSelected ? .earthGreenFill : .earthCard)
+            .wktChoiceBackground(selected: isSelected)
         }
         .buttonStyle(BounceButtonStyle(scale: 0.96))
         .accessibilityLabel(mode.sessionLabel)
