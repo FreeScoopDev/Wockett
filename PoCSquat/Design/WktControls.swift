@@ -130,13 +130,16 @@ private struct WktButtonLabel: View {
 /// capsule with green text. The tap target reaches 44 pt; the capsule does not.
 struct WktPillButton: View {
     let title: String
+    /// The text colour: green for the usual action, red to end something,
+    /// `earthCream` for "Not now".
+    var tint: Color = .earthGreen
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
             Text(title)
                 .font(.wktLabel)
-                .foregroundColor(.earthGreen)
+                .foregroundColor(tint)
                 .lineLimit(1)
                 .padding(.horizontal, 14)
                 .frame(minHeight: 30)
@@ -262,5 +265,55 @@ struct WktRoundIconButton: View {
         .buttonStyle(BounceButtonStyle(scale: 0.92))
         .disabled(disabled)
         .accessibilityLabel(label)
+    }
+}
+
+/// A strip across the top of a panel saying something has happened mid-session
+/// (paused, off the trail, too fast for a walk, hot out): a tinted band with an
+/// icon, a title, a line of detail, and its actions on their own row so they
+/// keep their size at large text sizes.
+struct WktBanner<Leading: View, Actions: View>: View {
+    let tint: Color
+    let title: String
+    var detail: String?
+    @ViewBuilder let leading: () -> Leading
+    @ViewBuilder let actions: () -> Actions
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 12) {
+                leading()
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.wktRowTitle)
+                        .foregroundColor(.earthCream)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if let detail {
+                        Text(detail)
+                            .font(.wktLabel)
+                            .foregroundColor(.earthMuted)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .accessibilityElement(children: .combine)
+                Spacer(minLength: 0)
+            }
+            if Actions.self != EmptyView.self {
+                HStack(spacing: 8) { actions() }
+                    .padding(.leading, 48)
+            }
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(tint.opacity(0.14))
+    }
+}
+
+extension WktBanner where Leading == WktIconBadge {
+    init(symbol: WktSymbol, tint: Color, title: String, detail: String? = nil,
+         @ViewBuilder actions: @escaping () -> Actions) {
+        self.init(tint: tint, title: title, detail: detail,
+                  leading: { WktIconBadge(symbol: symbol, tint: tint) }, actions: actions)
     }
 }

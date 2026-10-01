@@ -51,14 +51,14 @@ struct ActivitySummaryView: View {
                 Spacer()
                 // Header
                 VStack(spacing: 12) {
-                    Image(wkt: mode.wktSymbol)
-                        .wktIcon(.tab, tint: .earthGreen, filled: true)
+                    WktIconBadge(symbol: mode.wktSymbol, size: 64)
                         .padding(.bottom, 4)
-                    Text("\(mode.sessionLabel) Complete!")
-                        .font(.system(size: 32, weight: .bold, design: .rounded))
+                    Text("\(mode.sessionLabel) complete!")
+                        .font(.wktMetric)
                         .foregroundColor(.earthCream)
+                        .multilineTextAlignment(.center)
                     Text(completionMessage)
-                        .font(.subheadline)
+                        .font(.wktBodyText)
                         .foregroundColor(.earthMuted)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 32)
@@ -66,23 +66,21 @@ struct ActivitySummaryView: View {
                 Spacer()
 
                 ScrollView {
-                    VStack(spacing: 20) {
+                    VStack(alignment: .leading, spacing: WktSpacing.betweenSections) {
                         // Stats tiles
-                        HStack(spacing: 10) {
+                        HStack(spacing: WktSpacing.betweenCards) {
                             statTile(value: session.distanceText, label: "Distance",
                                      icon: .distance, color: .earthGreen)
                             statTile(value: session.timeText, label: "Time",
                                      icon: .time, color: .earthOrange)
                             statTile(value: session.estimatedSteps.formatted(), label: "Steps",
-                                     icon: mode.wktSymbol, color: .earthCream)
+                                     icon: mode.wktSymbol, color: mode.tileColor)
                         }
-                        .padding(.horizontal)
 
                         if !newPRs.isEmpty { prBanner }
                         if let line = stopEncouragement {
                             Text(line)
-                                .font(.subheadline.bold()).foregroundColor(.earthGreen)
-                                .padding(.horizontal)
+                                .font(.wktRowTitle).foregroundColor(.earthGreen)
                                 .transition(.opacity)
                         }
                         if !petCompletions.isEmpty { petRingsSection }
@@ -91,47 +89,21 @@ struct ActivitySummaryView: View {
 
                         if canSaveAsRoute { saveAsRouteSection }
 
-                        // Action buttons
-                        VStack(spacing: 12) {
-                            Button { showActivityShare = true } label: {
-                                Label {
-                                    Text("Share this \(mode.sessionLabel)")
-                                } icon: {
-                                    Image(wkt: .share).wktIcon(.row, tint: .earthCream)
-                                }
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 18).padding(.horizontal, 20)
-                                .background(Color.earthCard).foregroundColor(.earthCream)
-                                .fontWeight(.semibold).cornerRadius(14)
-                                .overlay(RoundedRectangle(cornerRadius: 14)
-                                    .stroke(Color.earthGreen.opacity(0.4), lineWidth: 1.5))
+                        // Action buttons: Done is the one primary action.
+                        VStack(spacing: WktSpacing.betweenCards) {
+                            WktSecondaryButton(title: "Share this \(mode.noun)", symbol: .share) {
+                                showActivityShare = true
                             }
-                            Button { showScheduleSheet = true } label: {
-                                Label {
-                                    Text("Schedule This \(mode.sessionLabel) Again")
-                                } icon: {
-                                    Image(wkt: .calendarAdd).wktIcon(.row, tint: .earthCream)
-                                }
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 18).padding(.horizontal, 20)
-                                .background(Color.earthCard).foregroundColor(.earthCream)
-                                .fontWeight(.semibold).cornerRadius(14)
-                                .overlay(RoundedRectangle(cornerRadius: 14)
-                                    .stroke(Color.earthGreen.opacity(0.4), lineWidth: 1.5))
+                            WktSecondaryButton(title: "Schedule this \(mode.noun) again", symbol: .calendarAdd) {
+                                showScheduleSheet = true
                             }
-                            Button { dismiss() } label: {
-                                Text("Done")
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 18).padding(.horizontal, 20)
-                                    .background(Color.earthCard).foregroundColor(.earthCream)
-                                    .cornerRadius(14)
-                            }
-                            .accessibilityIdentifier("summary.done")
+                            WktPrimaryButton(title: "Done") { dismiss() }
+                                .accessibilityIdentifier("summary.done")
                         }
-                        .padding(.horizontal)
-                        .padding(.bottom, 32)
                     }
+                    .padding(.horizontal, WktSpacing.screen)
                     .padding(.top, 8)
+                    .padding(.bottom, 32)
                 }
             }
         }
@@ -156,116 +128,117 @@ struct ActivitySummaryView: View {
 
     private func statTile(value: String, label: String, icon: WktSymbol, color: Color) -> some View {
         VStack(spacing: 8) {
-            Image(wkt: icon).wktIcon(.row, tint: color)
-            Text(value).font(.headline.bold()).foregroundColor(.earthCream)
-            Text(label).font(.caption).foregroundColor(.earthMuted)
+            WktIconBadge(symbol: icon, tint: color)
+            Text(value)
+                .font(.wktRowTitle)
+                .foregroundColor(.earthCream)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+            Text(label).font(.wktLabel).foregroundColor(.earthMuted)
         }
-        .frame(maxWidth: .infinity).padding(.vertical, 20)
-        .background(Color.earthCard).cornerRadius(14)
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 16)
+        .wktCardBackground()
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(value) \(label)")
     }
 
     private var prBanner: some View {
-        VStack(spacing: 10) {
-            Text("New Personal Record\(newPRs.count > 1 ? "s" : "")! 🏅")
-                .font(.caption.bold()).foregroundColor(.earthOrange)
-            HStack(spacing: 12) {
+        WktSection(title: "New personal record\(newPRs.count > 1 ? "s" : "")") {
+            HStack(spacing: WktSpacing.betweenCards) {
                 ForEach(newPRs) { pr in
                     VStack(spacing: 4) {
-                        Text(pr.emoji).font(.title2)
+                        Text(pr.emoji).font(.title2) // the record's own emoji (data)
                         Text(pr.title)
-                            .font(.system(size: 10, weight: .bold)).foregroundColor(.earthCream)
+                            .font(.wktLabel).foregroundColor(.earthCream)
+                            .multilineTextAlignment(.center)
                         Text(pr.valueText)
-                            .font(.system(size: 11, weight: .semibold, design: .rounded))
+                            .font(.wktRowTitle)
                             .foregroundColor(.earthOrange)
                     }
-                    .padding(.horizontal, 18).padding(.vertical, 12)
-                    .background(Color.earthOrange.opacity(0.1)).cornerRadius(12)
-                    .overlay(RoundedRectangle(cornerRadius: 12)
-                        .stroke(Color.earthOrange.opacity(0.3), lineWidth: 1))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .wktCardBackground(fill: .earthCard)
+                    .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous)
+                        .strokeBorder(Color.earthOrange.opacity(0.4), lineWidth: 1))
                     .accessibilityElement(children: .ignore)
                     .accessibilityLabel("\(pr.title): \(pr.valueText)")
                 }
             }
         }
-        .padding(.horizontal)
         .transition(.scale(scale: 0.85).combined(with: .opacity))
     }
 
     private var petRingsSection: some View {
-        VStack(spacing: 12) {
-            Text("Your crew's progress today")
-                .font(.caption.bold()).foregroundColor(.earthMuted)
+        WktSection(title: "Your crew's progress today") {
             HStack(spacing: 24) {
                 ForEach(petCompletions, id: \.pet.id) { c in
                     let progress = ringProgress[c.pet.id] ?? 0
                     VStack(spacing: 6) {
                         ZStack {
                             Circle()
-                                .stroke(c.pet.accentColor.opacity(0.2), lineWidth: 7)
+                                .stroke(Color.earthTrack, lineWidth: 7)
                                 .frame(width: 72, height: 72)
                             Circle()
                                 .trim(from: 0, to: progress)
                                 .stroke(c.pet.accentColor, style: StrokeStyle(lineWidth: 7, lineCap: .round))
                                 .frame(width: 72, height: 72)
                                 .rotationEffect(.degrees(-90))
-                            Text(c.pet.displayEmoji).font(.title2)
+                            Text(c.pet.displayEmoji).font(.title2) // the pet's own emoji (data)
                         }
-                        Text(c.pet.name).font(.caption2).foregroundColor(.earthMuted)
-                        Text("\(Int(progress * 100))%").font(.caption.bold()).foregroundColor(c.pet.accentColor)
+                        Text(c.pet.name).font(.wktLabel).foregroundColor(.earthCream)
+                        Text("\(Int(progress * 100))%").font(.wktLabel).foregroundColor(c.pet.accentColor)
                     }
                     .accessibilityElement(children: .ignore)
                     .accessibilityLabel(c.pet.name)
                     .accessibilityValue("\(Int(progress * 100))% of daily step goal")
                 }
             }
+            .frame(maxWidth: .infinity)
+            .wktCard()
         }
-        .padding(.vertical, 16)
     }
 
     private var splitsSection: some View {
-        VStack(spacing: 8) {
-            Text("Splits").font(.caption.bold()).foregroundColor(.earthMuted)
-            VStack(spacing: 4) {
+        WktSection(title: "Splits") {
+            VStack(spacing: 0) {
                 ForEach(splits.indices, id: \.self) { i in
+                    if i > 0 { WktDivider() }
                     HStack {
-                        Text(splits[i].label).font(.caption.bold()).foregroundColor(.earthCream)
+                        Text(splits[i].label).font(.wktRowTitle).foregroundColor(.earthCream)
                         Spacer()
-                        Text(splitText(splits[i].elapsed)).font(.caption).foregroundColor(.earthMuted)
+                        Text(splitText(splits[i].elapsed)).font(.wktBodyText).foregroundColor(.earthCream)
                         if i > 0 {
                             Text("(+\(splitText(splits[i].elapsed - splits[i-1].elapsed)))")
-                                .font(.caption2).foregroundColor(.earthMuted.opacity(0.6))
+                                .font(.wktLabel).foregroundColor(.earthMuted)
                         }
                     }
-                    .padding(.horizontal, 16).padding(.vertical, 6)
-                    .background(Color.earthCard).cornerRadius(8)
+                    .padding(.vertical, 10)
+                    .accessibilityElement(children: .combine)
                 }
             }
-            .padding(.horizontal)
+            .wktCard(padding: 14)
         }
-        .padding(.vertical, 8)
     }
 
     private var routeStatsPrompt: some View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(excludedFromStats ? "Excluded from route history" : "Counting toward \"\(session.routeName)\"")
-                    .font(.subheadline.bold())
+                    .font(.wktRowTitle)
                     .foregroundColor(excludedFromStats ? .earthMuted : .earthCream)
                 Text(excludedFromStats ? "This session won't appear in route runs" : "Tap exclude to skip route stats for this session")
-                    .font(.caption).foregroundColor(.earthMuted)
+                    .font(.wktLabel).foregroundColor(.earthMuted)
             }
             Spacer()
             if !excludedFromStats {
-                Button("Exclude") {
+                WktPillButton(title: "Exclude", tint: .earthCream) {
                     excludedFromStats = true
                     onExcludeFromRouteStats?()
                 }
-                .font(.caption.bold()).foregroundColor(.earthMuted)
             }
         }
-        .padding(14).background(Color.earthCard).cornerRadius(12).padding(.horizontal)
+        .wktCard()
         .animation(.spring(response: 0.3, dampingFraction: 0.8), value: excludedFromStats)
     }
 
@@ -274,29 +247,19 @@ struct ActivitySummaryView: View {
             if showRouteNameField {
                 HStack(spacing: 10) {
                     TextField("Route name…", text: $routeName)
-                        .foregroundColor(.earthCream).padding(12)
-                        .background(Color.earthCard).cornerRadius(10)
-                    Button("Save") { saveAsRoute() }
-                        .foregroundColor(.earthGreen).fontWeight(.semibold)
+                        .font(.wktBodyText)
+                        .foregroundColor(.earthCream)
+                        .padding(.horizontal, WktSpacing.cardPadding)
+                        .frame(minHeight: 52)
+                        .wktCardBackground()
+                    WktPillButton(title: "Save") { saveAsRoute() }
                 }
-                .padding(.horizontal)
             } else {
-                Button { if !savedAsRoute { showRouteNameField = true } } label: {
-                    Label {
-                        Text(savedAsRoute ? "Saved as Custom Route" : "Save as Custom Route")
-                    } icon: {
-                        Image(wkt: savedAsRoute ? .success : .saved)
-                            .wktIcon(.row, tint: savedAsRoute ? .earthGreen : .earthCream,
-                                     filled: true)
-                    }
-                    .frame(maxWidth: .infinity).padding(.vertical, 16)
-                    .background(Color.earthCard)
-                    .foregroundColor(savedAsRoute ? .earthGreen : .earthCream)
-                    .fontWeight(.semibold).cornerRadius(12)
-                    .overlay(RoundedRectangle(cornerRadius: 12)
-                        .stroke(Color.earthGreen.opacity(0.4), lineWidth: 1.5))
+                WktSecondaryButton(title: savedAsRoute ? "Saved as Custom Route" : "Save as Custom Route",
+                                   symbol: savedAsRoute ? .success : .saved) {
+                    if !savedAsRoute { showRouteNameField = true }
                 }
-                .disabled(savedAsRoute).padding(.horizontal)
+                .disabled(savedAsRoute)
             }
         }
     }

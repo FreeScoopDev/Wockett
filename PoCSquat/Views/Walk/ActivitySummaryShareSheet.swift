@@ -145,6 +145,12 @@ private struct SilhouetteRouteView: View {
 //
 // Pure value view — no @State, no environment objects — so ImageRenderer can
 // render it synchronously on any actor.
+//
+// The one place the shared type scale is not used: `wktLabel` and friends
+// grow with Dynamic Type, and this card is drawn into a fixed 360 × 460 image,
+// so its sizes are fixed points. They are SF Pro Rounded like everything else,
+// and the colours are the dark palette's, fixed, because the image looks the
+// same whatever the sharer's appearance setting.
 
 struct ActivitySummaryCard: View {
     static let cardWidth:   CGFloat = 360
@@ -167,7 +173,7 @@ struct ActivitySummaryCard: View {
 
     var body: some View {
         ZStack(alignment: .topLeading) {
-            Color(red: 0.10, green: 0.09, blue: 0.08)
+            Self.ground
 
             VStack(spacing: 0) {
                 visualSection
@@ -178,7 +184,16 @@ struct ActivitySummaryCard: View {
             }
         }
         .frame(width: Self.cardWidth, height: Self.cardHeight)
-        .clipShape(RoundedRectangle(cornerRadius: 20))
+        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+    }
+
+    // The dark palette from DesignSystem.swift, fixed: ground, card, progress orange.
+    private static let ground = Color(red: 0.094, green: 0.094, blue: 0.102)
+    private static let card   = Color(red: 0.141, green: 0.141, blue: 0.153)
+    private static let orange = Color(red: 0.898, green: 0.576, blue: 0.247)
+
+    private static func rounded(_ size: CGFloat, _ weight: Font.Weight = .semibold) -> Font {
+        .system(size: size, weight: weight, design: .rounded)
     }
 
     @ViewBuilder
@@ -191,7 +206,7 @@ struct ActivitySummaryCard: View {
                 .clipped()
         } else {
             ZStack {
-                Color(red: 0.13, green: 0.12, blue: 0.11)
+                Self.card
                 if waypoints.count >= 2 {
                     SilhouetteRouteView(waypoints: waypoints, color: mode.tileColor)
                         .padding(8)
@@ -213,10 +228,10 @@ struct ActivitySummaryCard: View {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 7) {
                     Image(systemName: mode.icon)
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(Self.rounded(14))
                         .foregroundColor(mode.tileColor)
                     Text(session.routeName)
-                        .font(.system(size: 15, weight: .bold))
+                        .font(Self.rounded(16, .heavy))
                         .foregroundColor(.white)
                         .lineLimit(1)
                 }
@@ -232,25 +247,25 @@ struct ActivitySummaryCard: View {
                 if let comparison = routeComparison {
                     HStack(spacing: 5) {
                         Image(wkt: .lightning)
-                            .font(.system(size: 10))
-                            .foregroundColor(.yellow)
+                            .font(Self.rounded(11))
+                            .foregroundColor(Self.orange)
                         Text(comparison)
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundColor(.yellow)
+                            .font(Self.rounded(13, .bold))
+                            .foregroundColor(Self.orange)
                     }
                 }
 
                 HStack {
                     Text(dateText)
-                        .font(.system(size: 10))
-                        .foregroundColor(.white.opacity(0.35))
+                        .font(Self.rounded(11))
+                        .foregroundColor(.white.opacity(0.5))
                     Spacer()
                     HStack(spacing: 3) {
                         Text("Wockett")
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundColor(mode.tileColor.opacity(0.85))
+                            .font(Self.rounded(11, .heavy))
+                            .foregroundColor(mode.tileColor)
                         Text("🐾")
-                            .font(.system(size: 10))
+                            .font(Self.rounded(11))
                     }
                 }
             }
@@ -271,13 +286,13 @@ struct ActivitySummaryCard: View {
     private func statCol(value: String, label: String) -> some View {
         VStack(spacing: 3) {
             Text(value)
-                .font(.system(size: 16, weight: .bold, design: .rounded))
+                .font(Self.rounded(18, .heavy))
                 .foregroundColor(.white)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
             Text(label)
-                .font(.system(size: 10))
-                .foregroundColor(.white.opacity(0.5))
+                .font(Self.rounded(11, .bold))
+                .foregroundColor(.white.opacity(0.6))
         }
         .frame(maxWidth: .infinity)
     }
@@ -313,12 +328,13 @@ struct ActivitySummaryShareSheet: View {
             ZStack {
                 Color.earthBg.ignoresSafeArea()
                 ScrollView {
-                    VStack(spacing: 20) {
+                    VStack(spacing: WktSpacing.betweenSections) {
                         cardPreview
                         stylePickerSection
                         appLinkToggleSection
                         shareButton
                     }
+                    .padding(.horizontal, WktSpacing.screen)
                     .padding(.top, 16)
                     .padding(.bottom, 32)
                 }
@@ -357,73 +373,71 @@ struct ActivitySummaryShareSheet: View {
         .animation(.easeInOut(duration: 0.25), value: mapImage != nil)
     }
 
+    // The shared "pick one" look, as on Home's activity picker.
     private var stylePickerSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Picker("Map style", selection: $shareStyle) {
+            HStack(spacing: 8) {
                 ForEach(ActivityShareStyle.allCases, id: \.self) { s in
-                    Label(s.rawValue, systemImage: s == .silhouette ? "scribble.variable" : "map")
-                        .tag(s)
+                    let selected = shareStyle == s
+                    Button {
+                        shareStyle = s
+                        if s == .map, mapImage == nil { Task { await loadMap() } }
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(wkt: s == .silhouette ? .routeTrail : .routes)
+                                .wktIcon(.inline, tint: selected ? .white : .earthCream, onFill: selected)
+                            Text(s.rawValue)
+                                .font(.wktLabel)
+                                .foregroundColor(selected ? .white : .earthCream)
+                        }
+                        .frame(maxWidth: .infinity, minHeight: 48)
+                        .wktChoiceBackground(selected: selected)
+                    }
+                    .buttonStyle(BounceButtonStyle(scale: 0.97))
+                    .accessibilityAddTraits(selected ? .isSelected : [])
                 }
-            }
-            .pickerStyle(.segmented)
-            .onChange(of: shareStyle) { _, newStyle in
-                if newStyle == .map, mapImage == nil { Task { await loadMap() } }
             }
 
             if isLoadingMap {
                 HStack(spacing: 8) {
                     ProgressView().tint(.earthGreen)
                     Text("Loading map…")
-                        .font(.caption).foregroundColor(.earthMuted)
+                        .font(.wktLabel).foregroundColor(.earthMuted)
                 }
                 .frame(maxWidth: .infinity, alignment: .center)
             }
         }
-        .padding(.horizontal)
     }
 
     private var appLinkToggleSection: some View {
         Toggle(isOn: $includeAppLink) {
             VStack(alignment: .leading, spacing: 2) {
-                Text("Include App Store Link")
-                    .font(.subheadline).foregroundColor(.earthCream)
+                Text("Include App Store link")
+                    .font(.wktRowTitle).foregroundColor(.earthCream)
                 Text("Adds the Wockett download link to the share caption")
-                    .font(.caption).foregroundColor(.earthMuted)
+                    .font(.wktLabel).foregroundColor(.earthMuted)
             }
         }
         .tint(.earthGreenFill)
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .background(Color.earthCard)
-        .cornerRadius(12)
-        .padding(.horizontal)
+        .wktCard()
     }
 
     private var shareButton: some View {
         Button {
             Task { await renderAndShare() }
         } label: {
-            Group {
-                if isRendering {
-                    ProgressView().tint(.white)
-                        .accessibilityLabel("Preparing share image")
-                } else {
-                    Label {
-                        Text("Share")
-                    } icon: {
-                        Image(wkt: .share).wktIcon(.row, tint: .white, onFill: true)
-                    }
-                    .fontWeight(.semibold)
-                }
+            if isRendering {
+                ProgressView().tint(.white)
+                    .frame(maxWidth: .infinity, minHeight: 56)
+                    .background(Color.earthGreenFill, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .accessibilityLabel("Preparing share image")
+            } else {
+                WktPrimaryLabel(title: "Share", symbol: .share)
+                    .opacity(isShareDisabled ? 0.45 : 1)
             }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 16)
-            .background(isShareDisabled ? Color.earthMuted.opacity(0.4) : Color.earthGreenFill)
-            .foregroundColor(.white)
-            .cornerRadius(14)
         }
+        .buttonStyle(BounceButtonStyle(scale: 0.98))
         .disabled(isShareDisabled)
-        .padding(.horizontal)
     }
 
     private var isShareDisabled: Bool {

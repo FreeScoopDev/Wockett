@@ -69,12 +69,12 @@ struct ActiveMiniTile: View {
                 Image(wkt: route.activityMode.wktSymbol)
                     .wktIcon(.inline, tint: .earthGreen)
                 Text(distText(session.totalDistanceCovered))
-                    .font(.wktBody(13))
+                    .font(.wktLabel)
                     .foregroundColor(.earthCream)
                 Text("·")
                     .foregroundColor(.earthMuted)
                 Text(timeText(session.elapsedTime))
-                    .font(.wktBody(13))
+                    .font(.wktLabel)
                     .foregroundColor(.earthGreen)
             }
         }
@@ -89,17 +89,11 @@ struct ActiveMiniTile: View {
         HStack(spacing: 0) {
             Button(action: onReopen) {
                 HStack(spacing: 10) {
-                    ZStack {
-                        Circle()
-                            .fill(Color.earthGreen.opacity(0.15))
-                            .frame(width: 38, height: 38)
-                        Image(wkt: route.activityMode.wktSymbol)
-                            .wktIcon(.row, tint: .earthGreen)
-                    }
+                    WktIconBadge(symbol: route.activityMode.wktSymbol)
 
                     VStack(alignment: .leading, spacing: 2) {
                         Text(route.name)
-                            .font(.wktHeading(14))
+                            .font(.wktRowTitle)
                             .foregroundColor(.earthCream)
                             .lineLimit(1)
                         HStack(spacing: 4) {
@@ -107,7 +101,7 @@ struct ActiveMiniTile: View {
                             Text("·").foregroundColor(.earthMuted)
                             Text(distText(session.totalDistanceCovered))
                         }
-                        .font(.wktBody(12))
+                        .font(.wktLabel)
                         .foregroundColor(.earthGreen)
                     }
 

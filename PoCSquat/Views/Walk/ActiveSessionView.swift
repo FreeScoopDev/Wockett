@@ -401,7 +401,7 @@ struct ActiveSessionView: View {
                 Image(wkt: .place)
                     .wktIcon(.inline, tint: .earthCream)
                 Text(poiFilterButtonLabel)
-                    .font(.wktBody(12))
+                    .font(.wktLabel)
                 Image(wkt: .chevronDown)
                     .wktIcon(.inline, tint: .earthCream)
             }
@@ -445,7 +445,7 @@ struct ActiveSessionView: View {
                 .transition(.move(edge: .top).combined(with: .opacity))
                 Rectangle()
                     .frame(height: 0.5)
-                    .foregroundColor(Color.earthMuted.opacity(0.25))
+                    .foregroundColor(Color.earthTrack)
                     .transition(.opacity)
             }
             if let progress = session.trailProgress, progress.isOffTrail {
@@ -455,7 +455,7 @@ struct ActiveSessionView: View {
                     .transition(.move(edge: .top).combined(with: .opacity))
                 Rectangle()
                     .frame(height: 0.5)
-                    .foregroundColor(Color.earthMuted.opacity(0.25))
+                    .foregroundColor(Color.earthTrack)
             }
             if let approach = route.approach, session.arrivedAtTrail, !trailArrivalDismissed {
                 TrailArrivalBanner(trailName: approach.trailName,
@@ -465,7 +465,7 @@ struct ActiveSessionView: View {
                     .transition(.move(edge: .top).combined(with: .opacity))
                 Rectangle()
                     .frame(height: 0.5)
-                    .foregroundColor(Color.earthMuted.opacity(0.25))
+                    .foregroundColor(Color.earthTrack)
             }
             if showHeatBanner {
                 HeatAdvisoryBanner(
@@ -476,7 +476,7 @@ struct ActiveSessionView: View {
                 .transition(.move(edge: .top).combined(with: .opacity))
                 Rectangle()
                     .frame(height: 0.5)
-                    .foregroundColor(Color.earthMuted.opacity(0.25))
+                    .foregroundColor(Color.earthTrack)
                     .transition(.opacity)
             }
 
@@ -504,16 +504,16 @@ struct ActiveSessionView: View {
                 if let poi = poiManager.selectedPOI {
                     Rectangle()
                         .frame(height: 0.5)
-                        .foregroundColor(Color.earthMuted.opacity(0.25))
+                        .foregroundColor(Color.earthTrack)
                     HStack(spacing: 12) {
-                        Text(poi.category.emoji).font(.title2)
+                        Text(poi.category.emoji).font(.title2) // the place's category emoji (data)
                         VStack(alignment: .leading, spacing: 2) {
                             Text(poi.name)
-                                .font(.wktHeading(14))
+                                .font(.wktRowTitle)
                                 .foregroundColor(.earthCream)
                                 .lineLimit(1)
                             if let dist = distanceToUser(poi.coordinate) {
-                                Text(dist).wktTechnical(10).foregroundColor(.earthMuted)
+                                Text(dist).font(.wktLabel).foregroundColor(.earthMuted)
                             }
                         }
                         Spacer()
@@ -535,8 +535,7 @@ struct ActiveSessionView: View {
                             Image(wkt: .dismiss)
                                 .wktIcon(.inline, tint: .earthMuted)
                                 .padding(9)
-                                .background(Color.earthCard)
-                                .clipShape(Circle())
+                                .background(Color.earthRaised, in: Circle())
                         }
                         .accessibilityLabel("Close \(poi.name) details")
                     }
@@ -570,10 +569,10 @@ struct ActiveSessionView: View {
                     .wktIcon(.inline, tint: .earthGreen)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(isGuided ? route.name : route.activityMode.sessionLabel)
-                        .font(.wktHeading(15)).foregroundColor(.earthCream).lineLimit(1)
+                        .font(.wktRowTitle).foregroundColor(.earthCream).lineLimit(1)
                     if isGuided {
                         Text(session.progressText)
-                            .font(.wktBody(12)).foregroundColor(.earthGreen)
+                            .font(.wktLabel).foregroundColor(.earthGreen)
                     }
                 }
                 Spacer()
@@ -585,7 +584,7 @@ struct ActiveSessionView: View {
                         Image(wkt: panelExpanded ? .chevronDown : .chevronUp)
                             .wktIcon(.inline, tint: .earthGreen)
                     }
-                    .font(.subheadline.bold())
+                    .font(.wktBodyText)
                     .foregroundColor(.earthGreen)
                     .frame(minHeight: 44)
                 }
@@ -625,20 +624,9 @@ struct ActiveSessionView: View {
         VStack(alignment: .leading, spacing: 14) {
             if isGuided { routeProgress }
             if let approach = route.approach, session.arrivedAtTrail {
-                Button(action: startTrailFromApproach) {
-                    Label {
-                        Text("Start the \(approach.trailName) \(route.activityMode.noun)")
-                    } icon: {
-                        Image(wkt: .routeTrail).wktIcon(.row, tint: .white, onFill: true)
-                    }
-                    .font(.wktBody(15))
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
-                    .background(Color.earthGreenFill)
-                    .foregroundColor(.white)
-                    .cornerRadius(14)
-                }
-                .accessibilityIdentifier("session.startTrail")
+                WktPrimaryButton(title: "Start the \(approach.trailName) \(route.activityMode.noun)",
+                                 symbol: .routeTrail, action: startTrailFromApproach)
+                    .accessibilityIdentifier("session.startTrail")
             }
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3), spacing: 8) {
                 SessionStatTile(value: session.distanceText(session.totalDistanceCovered), label: "distance")
@@ -705,7 +693,7 @@ struct ActiveSessionView: View {
                         } icon: {
                             Image(wkt: .chat).wktIcon(.row, tint: .earthGreen)
                         }
-                        .font(.subheadline.bold())
+                        .font(.wktBodyText)
                         .foregroundColor(.earthGreen)
                         .frame(minHeight: 44)
                     }
@@ -742,7 +730,7 @@ struct ActiveSessionView: View {
     private var crewSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Crew on this \(route.activityMode.noun)")
-                .font(.subheadline.bold())
+                .font(.wktRowTitle)
                 .foregroundColor(.earthCream)
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
@@ -750,14 +738,13 @@ struct ActiveSessionView: View {
                         Button { togglePet(pet) } label: {
                             HStack(spacing: 6) {
                                 Text(pet.displayEmoji)
-                                Text(pet.name).font(.subheadline.bold())
+                                Text(pet.name).font(.wktLabel)
                             }
-                            .foregroundColor(pet.isActiveOnWalk ? .earthCream : .earthMuted)
-                            .padding(.horizontal, 12)
+                            .foregroundColor(pet.isActiveOnWalk ? .white : .earthCream)
+                            .padding(.horizontal, 14)
                             .frame(height: 40)
-                            .background(pet.isActiveOnWalk ? Color.earthGreen.opacity(0.15) : Color.earthCard)
-                            .overlay(Capsule().stroke(pet.isActiveOnWalk ? Color.earthGreen : Color.clear, lineWidth: 1.5))
-                            .clipShape(Capsule())
+                            // The shared "chosen" look, as a capsule.
+                            .background(pet.isActiveOnWalk ? Color.earthGreenFill : Color.earthRaised, in: Capsule())
                         }
                         .accessibilityLabel(pet.isActiveOnWalk
                             ? "Remove \(pet.name) from \(route.activityMode.noun)"
@@ -775,19 +762,10 @@ struct ActiveSessionView: View {
             Button {
                 if session.isPaused { session.resume() } else { session.pause() }
             } label: {
-                Label {
-                    Text(session.isPaused ? "Resume" : "Pause")
-                } icon: {
-                    Image(wkt: session.isPaused ? .play : .pause)
-                        .wktIcon(.row, tint: .white, filled: true, onFill: true)
-                }
-                .font(.headline)
-                .frame(maxWidth: .infinity)
-                .frame(height: 56)
-                .background(Color.earthGreenFill)
-                .foregroundColor(.white)
-                .cornerRadius(14)
+                WktPrimaryLabel(title: session.isPaused ? "Resume" : "Pause",
+                                symbol: session.isPaused ? .play : .pause)
             }
+            .buttonStyle(BounceButtonStyle(scale: 0.98))
             .accessibilityLabel(session.isPaused
                 ? "Resume \(route.activityMode.noun)"
                 : "Pause \(route.activityMode.noun)")
@@ -1118,35 +1096,12 @@ private struct HeatAdvisoryBanner: View {
     let onDismiss: () -> Void
 
     var body: some View {
-        HStack(spacing: 12) {
-            Image(wkt: .heat)
-                .wktIcon(.row, tint: .orange)
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Heat Advisory")
-                    .font(.caption.bold()).foregroundColor(.earthCream)
-                Text("Hot pavement can burn paws. Keep pets hydrated.")
-                    .font(.caption2).foregroundColor(.earthMuted)
-            }
-            Spacer()
-            Button { onEnableWaterBreaks() } label: {
-                Label {
-                    Text("Every \(intervalMinutes) min")
-                } icon: {
-                    Image(wkt: .hydration)
-                        .wktIcon(.inline, tint: .white, filled: true, onFill: true)
-                }
-                .font(.caption.bold())
-                .padding(.horizontal, 10).padding(.vertical, 6)
-                .background(Color.accentInfoFill.opacity(0.85))
-                .foregroundColor(.white).cornerRadius(8)
-            }
-            Button { onDismiss() } label: {
-                Image(wkt: .dismiss)
-                    .wktIcon(.inline, tint: .earthMuted)
-            }
-            .accessibilityLabel("Dismiss heat advisory")
+        WktBanner(symbol: .heat, tint: .earthOrange,
+                  title: "Heat advisory",
+                  detail: "Hot pavement can burn paws. Keep pets hydrated.") {
+            WktPillButton(title: "Water break every \(intervalMinutes) min", tint: .accentInfo, action: onEnableWaterBreaks)
+            WktPillButton(title: "Dismiss", tint: .earthCream, action: onDismiss)
+                .accessibilityLabel("Dismiss heat advisory")
         }
-        .padding(.horizontal, 16).padding(.vertical, 10)
-        .background(Color.orange.opacity(0.12))
     }
 }
