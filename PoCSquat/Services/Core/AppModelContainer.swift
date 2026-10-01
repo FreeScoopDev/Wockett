@@ -70,8 +70,10 @@ enum AppModelContainer {
         // Final fallback: in-memory (data is ephemeral this session).
         // If even this fails, the schema itself is unusable — a programmer error with
         // no runtime recovery. Trap explicitly with the reason, rather than via `try!`,
-        // so the crash log says what went wrong and not just where.
-        let memConfig = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        // so the crash log says what went wrong and not just where. `.none` for the
+        // same reason as Attempt 2: an in-memory store is not local by default either.
+        let memConfig = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true,
+                                           cloudKitDatabase: .none)
         do {
             return try ModelContainer(for: schema, configurations: memConfig)
         } catch {

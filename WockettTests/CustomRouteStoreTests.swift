@@ -8,9 +8,13 @@ import Foundation
 @MainActor
 struct CustomRouteStoreTests {
 
+    /// `.none` must be explicit: the default `.automatic` attaches CloudKit to this
+    /// in-memory store in a signed build, and its failed setup tears the store down
+    /// mid-test ("No eligible connection available"). See AppModelContainer.
     private func context() throws -> ModelContext {
         let container = try ModelContainer(for: CustomRouteRecord.self,
-                                           configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+                                           configurations: ModelConfiguration(isStoredInMemoryOnly: true,
+                                                                              cloudKitDatabase: .none))
         return ModelContext(container)
     }
 

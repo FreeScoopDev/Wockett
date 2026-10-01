@@ -423,8 +423,10 @@ struct SnapshotRestoreTests {
     // tile) was lost if the app died, and advanceWaypoint() then rewrote a
     // checkpoint for the finished walk, which the next launch offered to resume.
 
+    /// `cloudKitDatabase: .none` for the reason given in CustomRouteStoreTests.
     private func inMemoryHistory() throws -> WalkHistoryStore {
-        let config = ModelConfiguration(schema: AppModelContainer.schema, isStoredInMemoryOnly: true)
+        let config = ModelConfiguration(schema: AppModelContainer.schema, isStoredInMemoryOnly: true,
+                                        cloudKitDatabase: .none)
         let container = try ModelContainer(for: AppModelContainer.schema, configurations: config)
         return WalkHistoryStore(context: ModelContext(container))
     }
