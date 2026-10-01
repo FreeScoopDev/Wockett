@@ -83,7 +83,7 @@ struct WeatherAttributionLink: View {
     // `!` here while 0.65.1 exempts literal URLs, so the two disagreed. A literal
     // https URL cannot fail to parse; the else branch exists so the attribution
     // — required by WeatherKit's terms — is present structurally, not only when
-    // the parse succeeds. Same shape as WeatherDeniedChip below.
+    // the parse succeeds.
     private let url = URL(string: "https://weatherkit.apple.com/legal-attribution.html")
 
     var body: some View {
@@ -105,60 +105,51 @@ struct WeatherAttributionLink: View {
     }
 }
 
-// MARK: - Weather Status Chips
+// MARK: - Home Weather Status Chip
 
-struct WeatherDeniedChip: View {
+/// The weather as a status chip in Home's hero card (2026-09-30 redesign):
+/// "☀ 72°", "Weather off" or "Weather unavailable". Status is a chip, never a
+/// card. The forecast and Apple's attribution are one tap away, in
+/// `HomeWeatherDetailSheet`, because WeatherKit's terms need the attribution
+/// wherever the data is shown in detail and a 30 pt chip has no room for it.
+struct HomeWeatherStatusChip: View {
+    let locator: HomeWeatherLocator
+    let onShowDetail: () -> Void
     @Environment(\.openURL) private var openURL
 
     var body: some View {
-        Button {
-            if let url = URL(string: "app-settings:") {
-                openURL(url)
+        switch locator.fetchState {
+        case .loaded:
+            if let weather = locator.weather {
+                WktStatusChip(text: weather.temperatureText, action: onShowDetail) {
+                    // Variable-driven symbol from the weather model, as CLAUDE.md allows.
+                    Image(systemName: weather.symbolName)
+                        .font(.wktLabel)
+                        .symbolRenderingMode(.multicolor)
+                }
+                .accessibilityLabel("\(weather.temperatureText), \(weather.conditionDescription)")
+                .accessibilityHint("Shows the forecast")
+                .accessibilityIdentifier("home.weatherChip")
             }
-        } label: {
-            HStack(spacing: 8) {
-                Image(wkt: .locationOff)
-                    .wktIcon(.inline, tint: .earthMuted)
-                Text("Enable location for weather")
-                    .font(.caption)
-                    .foregroundColor(.earthMuted)
-                Spacer()
-                Image(wkt: .chevronRight)
-                    .wktIcon(.inline, tint: .earthMuted.opacity(0.5))
+        case .denied:
+            WktStatusChip(text: "Weather off", textColor: .earthMuted, action: {
+                if let url = URL(string: "app-settings:") { openURL(url) }
+            }) {
+                Image(wkt: .locationOff).wktIcon(.inline, tint: .earthMuted)
             }
-            .padding(.horizontal, 14).padding(.vertical, 10)
-            .background(Color.earthCard)
-            .cornerRadius(12)
+            .accessibilityHint("Opens Settings to allow location for weather")
+        case .failed:
+            WktStatusChip(text: "Weather unavailable", textColor: .earthMuted, action: { locator.retry() }) {
+                Image(wkt: .refresh).wktIcon(.inline, tint: .earthGreen)
+            }
+            .accessibilityHint("Tries again")
+        case .idle, .loading:
+            EmptyView()
         }
-        .buttonStyle(.plain)
     }
 }
 
-struct WeatherFailedChip: View {
-    let onRetry: () -> Void
-
-    var body: some View {
-        Button(action: onRetry) {
-            HStack(spacing: 8) {
-                Image(wkt: .cloudOff)
-                    .wktIcon(.inline, tint: .earthMuted)
-                Text("Weather unavailable")
-                    .font(.caption)
-                    .foregroundColor(.earthMuted)
-                Spacer()
-                Text("Retry")
-                    .font(.caption.bold())
-                    .foregroundColor(.earthGreen)
-            }
-            .padding(.horizontal, 14).padding(.vertical, 10)
-            .background(Color.earthCard)
-            .cornerRadius(12)
-        }
-        .buttonStyle(.plain)
-    }
-}
-
-// MARK: - Hourly Weather Row (shared between home chip and route widget)
+// MARK: - Hourly Weather Row (shared between the Home weather sheet and route widget)
 
 struct HourlyWeatherRow: View {
     let points: [HourlyWeatherPoint]
@@ -190,61 +181,65 @@ struct HourlyWeatherRow: View {
     }
 }
 
-// MARK: - Home Weather Chip
+// MARK: - Home Weather Detail Sheet
 
-struct HomeWeatherChip: View {
+/// What the weather chip opens: conditions, the hourly strip, a link to
+/// Apple Weather, and the WeatherKit attribution.
+struct HomeWeatherDetailSheet: View {
     let weather: RouteWeather
     @Environment(\.openURL) private var openURL
+    @Environment(\.dismiss) private var dismiss
 
     private var isHot: Bool   { weather.temperatureCelsius > 28 }
     private var isRainy: Bool { weather.precipitationChance >= 0.4 }
 
     var body: some View {
-        VStack(spacing: 0) {
-            // Current conditions row
-            HStack(spacing: 10) {
-                Image(systemName: weather.symbolName)
-                    .font(.system(size: 15))
-                    .foregroundColor(iconColor)
-                Text(weather.temperatureText)
-                    .font(.subheadline.bold())
-                    .foregroundColor(.earthCream)
-                Rectangle()
-                    .frame(width: 1, height: 14)
-                    .foregroundColor(.earthMuted.opacity(0.3))
-                Image(systemName: weather.statusSymbol)
-                    .font(.system(size: 11))
-                    .foregroundColor(weather.statusColor)
-                Text(advisoryText)
-                    .font(.caption)
-                    .foregroundColor(isHot ? .earthOrange : weather.statusColor)
-                    .lineLimit(1)
-                Spacer()
-                WeatherAttributionLink()
-            }
-            .padding(.horizontal, 14).padding(.top, 10).padding(.bottom, weather.hourlyForecast.isEmpty ? 10 : 8)
+        NavigationStack {
+            VStack(alignment: .leading, spacing: WktSpacing.betweenCards) {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(spacing: 12) {
+                        Image(systemName: weather.symbolName)
+                            .font(.wktHeading(28))
+                            .symbolRenderingMode(.multicolor)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(weather.temperatureText)
+                                .font(.wktMetric)
+                                .foregroundColor(.earthCream)
+                            Text(advisoryText)
+                                .font(.wktBodyText)
+                                .foregroundColor(isHot ? .earthOrange : .earthMuted)
+                        }
+                    }
+                    if !weather.hourlyForecast.isEmpty {
+                        Rectangle().fill(Color.earthTrack).frame(height: 1)
+                        HourlyWeatherRow(points: weather.hourlyForecast)
+                    }
+                }
+                .wktCard()
 
-            // Hourly strip
-            if !weather.hourlyForecast.isEmpty {
-                Divider()
-                    .background(Color.earthMuted.opacity(0.15))
-                    .padding(.horizontal, 14)
-                HourlyWeatherRow(points: weather.hourlyForecast)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 8)
+                HStack {
+                    Button("Open Apple Weather") {
+                        if let url = URL(string: "weather://") { openURL(url) }
+                    }
+                    .font(.wktBodyText)
+                    .foregroundColor(.earthGreen)
+                    Spacer()
+                    WeatherAttributionLink()
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, WktSpacing.screen)
+            .padding(.top, 8)
+            .background(Color.earthBg.ignoresSafeArea())
+            .navigationTitle("Weather")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                }
             }
         }
-        .background(Color.earthCard)
-        .cornerRadius(12)
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(isHot ? Color.earthOrange.opacity(0.3) : (isRainy ? Color.blue.opacity(0.3) : Color.clear), lineWidth: 1)
-        )
-        // Tapping anywhere on the chip (outside the attribution link) opens Apple Weather
-        .contentShape(Rectangle())
-        .onTapGesture {
-            if let url = URL(string: "weather://") { openURL(url) }
-        }
+        .presentationDetents([.medium])
     }
 
     private var advisoryText: String {
@@ -253,11 +248,5 @@ struct HomeWeatherChip: View {
         if weather.precipitationChance >= 0.7 { return "High rain chance" }
         if weather.precipitationChance >= 0.4 { return "Rain possible" }
         return weather.conditionDescription
-    }
-
-    private var iconColor: Color {
-        if isHot   { return .earthOrange }
-        if isRainy { return Color.accentInfo }
-        return .earthGreen
     }
 }
