@@ -22,6 +22,7 @@ struct SettingsView: View {
     @State private var notifQuiet = false
     @State private var notifDenied = false
     @State private var showScheduleSheet = false
+    @State private var showGoalSheet = false
     // Set when a legacy calendar-reminder delete could not do what the user asked.
     @State private var legacyRemovalProblem: LegacyReminderRemoval?
 
@@ -46,6 +47,25 @@ struct SettingsView: View {
 
                 // ── Tracking ──────────────────────────────────────
                 Section("Tracking") {
+                    // The only way into the goal editor. Its Home tile went in the
+                    // 2026-09-01 de-clutter, which left 1.10–1.12 with no way to
+                    // change the goal, the weekly schedule or the tags.
+                    Button {
+                        showGoalSheet = true
+                    } label: {
+                        Label {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Daily Step Goal").foregroundColor(.earthCream)
+                                Text(stepManager.useCustomSchedule
+                                     ? "Weekly schedule · \(stepManager.currentGoal.formatted()) today"
+                                     : "\(stepManager.currentGoal.formatted()) steps")
+                                    .font(.caption).foregroundColor(.earthMuted)
+                            }
+                        } icon: { Image(wkt: .target).wktIcon(.row, tint: .earthGreen) }
+                    }
+                    .accessibilityIdentifier("settings.stepGoal")
+                    .listRowBackground(Color.earthCard)
+
                     VStack(alignment: .leading, spacing: 10) {
                         Text("Data Source")
                             .font(.subheadline).foregroundColor(.earthCream)
@@ -441,6 +461,7 @@ struct SettingsView: View {
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $showScheduleSheet) { WalkReminderSheet() }
+        .sheet(isPresented: $showGoalSheet) { GoalEditorSheet(stepManager: stepManager) }
         .alert(
             legacyRemovalProblem == .accessDenied ? "Calendar access needed" : "Could not delete reminder",
             isPresented: Binding(
