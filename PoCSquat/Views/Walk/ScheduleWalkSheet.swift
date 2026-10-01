@@ -12,10 +12,9 @@ struct ScheduleWalkSheet: View {
             ZStack {
                 Color.earthBg.ignoresSafeArea()
                 VStack(spacing: 24) {
-                    Image(wkt: .calendarAdd)
-                        .font(.system(size: 52)).foregroundColor(.earthGreen)
+                    WktIconBadge(symbol: .calendarAdd, size: 64)
                     Text("Schedule \"\(routeName)\"")
-                        .font(.headline).foregroundColor(.earthCream).multilineTextAlignment(.center)
+                        .font(.wktCardTitle).foregroundColor(.earthCream).multilineTextAlignment(.center)
                     DatePicker(
                         "Walk time",
                         selection: $scheduledDate,
@@ -23,23 +22,23 @@ struct ScheduleWalkSheet: View {
                         displayedComponents: [.date, .hourAndMinute]
                     )
                     .datePickerStyle(.graphical).tint(.earthGreenFill)
-                    .padding(.horizontal)
+                    .wktCard(padding: 8)
                     if notifDenied {
                         Label {
                             Text("Enable notifications in iOS Settings to receive reminders")
                         } icon: {
-                            Image(wkt: .notificationsOff).wktIcon(.inline, tint: .orange)
+                            Image(wkt: .notificationsOff).wktIcon(.inline, tint: .earthOrange)
                         }
-                        .font(.caption).foregroundColor(.orange)
-                            .multilineTextAlignment(.center).padding(.horizontal)
+                        .font(.wktLabel).foregroundColor(.earthOrange)
+                            .multilineTextAlignment(.center)
                     }
                     Spacer()
                 }
+                .padding(.horizontal, WktSpacing.screen)
                 .padding(.top, 24)
             }
             .navigationTitle("Schedule Walk")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarColorScheme(.light, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Set Reminder") { Task { await schedule() } }.foregroundColor(.earthGreen)

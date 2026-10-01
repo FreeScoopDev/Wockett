@@ -318,12 +318,13 @@ struct PetManagementView: View {
             ForEach(petStore.pets) { pet in
                 PetManagementRow(pet: pet, historyStore: historyStore) { editingPet = pet }
                     .listRowBackground(Color.earthCard)
-                    .listRowSeparatorTint(Color.earthMuted.opacity(0.2))
+                    .listRowSeparatorTint(Color.earthTrack)
             }
             Button { showAddPet = true } label: {
                 Label { Text("Add a Pet") } icon: { Image(wkt: .addCircle).wktIcon(.row, tint: .earthGreen, filled: true) }
+                    .font(.wktRowTitle)
                     .foregroundColor(.earthGreen)
-                    .padding(.vertical, 4)
+                    .frame(minHeight: 44)
             }
             .listRowBackground(Color.earthCard)
         }
@@ -332,19 +333,9 @@ struct PetManagementView: View {
     }
 
     private var emptyState: some View {
-        VStack(spacing: 20) {
-            Text("🐾").font(.system(size: 64))
-            Text("No Pets Yet").font(.headline).foregroundColor(.earthCream)
-            Text("Add a pet to track their walks alongside yours.")
-                .font(.subheadline).foregroundColor(.earthMuted)
-                .multilineTextAlignment(.center).padding(.horizontal, 40)
-            Button { showAddPet = true } label: {
-                Label { Text("Add a Pet") } icon: { Image(wkt: .addCircle).wktIcon(.row, tint: .earthGreen, filled: true) }
-                    .padding(.horizontal, 24).padding(.vertical, 14)
-                    .background(Color.earthGreenFill).foregroundColor(.white)
-                    .fontWeight(.semibold).cornerRadius(12)
-            }
-        }
+        WktEmptyState(symbol: .pets, tint: .earthGreen, title: "No pets yet",
+                      message: "Add a pet to track their walks alongside yours.",
+                      actionTitle: "Add a Pet") { showAddPet = true }
     }
 }
 
@@ -364,25 +355,26 @@ private struct PetManagementRow: View {
 
     var body: some View {
         HStack(spacing: 14) {
-            ZStack {
-                Circle().fill(pet.accentColor.opacity(0.2)).frame(width: 48, height: 48)
-                Text(pet.emoji).font(.system(size: 24))
-            }
+            // displayEmoji, not emoji: a custom emoji showed everywhere but here.
+            Text(pet.displayEmoji) // the pet's own emoji (data)
+                .font(.system(size: 24))
+                .frame(width: 44, height: 44)
+                .background(pet.accentColor.opacity(0.16), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 4) {
-                    Text(pet.name).font(.headline).foregroundColor(.earthCream)
+                    Text(pet.name).font(.wktRowTitle).foregroundColor(.earthCream)
                     if let breed = pet.breed {
-                        Text("· \(breed)").font(.caption).foregroundColor(.earthMuted)
+                        Text("· \(breed)").font(.wktLabel).foregroundColor(.earthMuted)
                     }
                 }
                 HStack(spacing: 10) {
                     Label { Text("\(totalWalks) walks") } icon: { Image(wkt: .walk).wktIcon(.inline, tint: .earthMuted) }
                     Label { Text(totalDistText) } icon: { Image(wkt: .distance).wktIcon(.inline, tint: .earthMuted) }
                 }
-                .font(.footnote).foregroundColor(.earthMuted)
+                .font(.wktLabel).foregroundColor(.earthMuted)
                 Text("Goal: \(pet.goalSteps.formatted()) steps")
-                    .font(.caption).foregroundColor(pet.accentColor)
+                    .font(.wktLabel).foregroundColor(pet.accentColor)
             }
 
             Spacer()
@@ -452,26 +444,22 @@ struct PetEditorSheet: View {
             ZStack {
                 Color.earthBg.ignoresSafeArea()
                 ScrollView {
-                    VStack(spacing: 24) {
-                        Text(previewEmoji).font(.system(size: 64)).padding(.top, 8)
+                    VStack(alignment: .leading, spacing: WktSpacing.betweenSections) {
+                        Text(emojiText.isEmpty ? previewEmoji : emojiText)
+                            .font(.system(size: 64)) // the pet's emoji (data)
+                            .frame(maxWidth: .infinity)
+                            .padding(.top, 8)
+                            .accessibilityHidden(true)
 
                         field(label: "Name") {
                             TextField("Buddy, Luna, Max…", text: $name).foregroundColor(.earthCream)
                         }
 
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Type").font(.caption.bold()).foregroundColor(.earthMuted).padding(.horizontal, 4)
+                        WktSection(title: "Type") {
                             ScrollView(.horizontal, showsIndicators: false) {
                                 HStack(spacing: 8) {
                                     ForEach(speciesOptions, id: \.self) { s in
-                                        Button { species = s } label: {
-                                            Text(s)
-                                                .font(.caption.bold())
-                                                .padding(.horizontal, 14).padding(.vertical, 8)
-                                                .background(species == s ? Color.earthGreenFill : Color.earthCard)
-                                                .foregroundColor(species == s ? .white : .earthCream)
-                                                .cornerRadius(20)
-                                        }
+                                        WktChoiceChip(title: s, selected: species == s) { species = s }
                                     }
                                 }
                             }
@@ -483,27 +471,22 @@ struct PetEditorSheet: View {
 
                         if breed.trimmingCharacters(in: .whitespaces).isEmpty {
                             Text("Enter a breed to get a step goal suggestion. For mixed breeds, use the dominant breed (e.g. 'Labrador').")
-                                .font(.caption)
+                                .font(.wktLabel)
                                 .foregroundColor(.earthMuted)
-                                .padding(.horizontal, 4)
                         } else if suggestedGoal == nil {
                             Text("No suggestion for this breed — try a common name like 'Labrador', 'Poodle', or 'Golden Retriever'.")
-                                .font(.caption)
+                                .font(.wktLabel)
                                 .foregroundColor(.earthMuted)
-                                .padding(.horizontal, 4)
                         }
 
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Custom Emoji (optional)")
-                                .font(.caption.bold()).foregroundColor(.earthMuted).padding(.horizontal, 4)
+                        WktSection(title: "Custom emoji (optional)") {
                             HStack(spacing: 10) {
-                                Text(emojiText.isEmpty ? previewEmoji : emojiText)
-                                    .font(.system(size: 36))
                                 TextField("Tap to change…", text: $emojiText)
+                                    .font(.wktBodyText)
                                     .foregroundColor(.earthCream)
-                                    .padding(12)
-                                    .background(Color.earthCard)
-                                    .cornerRadius(10)
+                                    .padding(.horizontal, WktSpacing.cardPadding)
+                                    .frame(minHeight: 52)
+                                    .wktCardBackground()
                                 if !emojiText.isEmpty {
                                     Button { emojiText = "" } label: {
                                         Image(wkt: .close).wktIcon(.inline, tint: .earthMuted, filled: true)
@@ -513,7 +496,7 @@ struct PetEditorSheet: View {
                             }
                         }
 
-                        field(label: "Daily Step Goal") {
+                        field(label: "Daily step goal") {
                             TextField("10000", text: $goalText).keyboardType(.numberPad).foregroundColor(.earthCream)
                         }
 
@@ -524,14 +507,13 @@ struct PetEditorSheet: View {
                                 } icon: {
                                     Image(wkt: .tip).wktIcon(.inline, tint: .earthOrange, filled: true)
                                 }
-                                    .font(.caption.bold())
+                                    .font(.wktLabel)
                                     .foregroundColor(.earthOrange)
+                                    .frame(minHeight: 44)
                             }
-                            .padding(.horizontal, 4)
                         }
 
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Color").font(.caption.bold()).foregroundColor(.earthMuted).padding(.horizontal, 4)
+                        WktSection(title: "Color") {
                             HStack(spacing: 12) {
                                 ForEach(0..<PetProfile.accentColors.count, id: \.self) { i in
                                     Button { colorIndex = i } label: {
@@ -556,23 +538,23 @@ struct PetEditorSheet: View {
                                 } icon: {
                                     Image(wkt: .person).wktIcon(.inline, tint: .earthCream, filled: true)
                                 }
-                                .font(.subheadline)
+                                .font(.wktRowTitle)
                                 .foregroundColor(.earthCream)
                             }
                             .tint(.earthGreenFill)
-                            .padding(.horizontal, 4)
+                            .wktCard(padding: 14)
 
                             if hasOwnerContact {
-                                field(label: "Owner Name") {
+                                field(label: "Owner name") {
                                     TextField("Jane Smith", text: $ownerNameText).foregroundColor(.earthCream)
                                 }
-                                field(label: "Owner Phone") {
+                                field(label: "Owner phone") {
                                     TextField("+1 555 000 0000", text: $ownerPhoneText)
                                         .keyboardType(.phonePad)
                                         .foregroundColor(.earthCream)
                                 }
                                 Text("Used to quickly message the owner after walks. Stored only on this device.")
-                                    .font(.caption)
+                                    .font(.wktLabel)
                                     .foregroundColor(.earthMuted)
                                     .padding(.horizontal, 4)
                             }
@@ -581,12 +563,13 @@ struct PetEditorSheet: View {
                         if onDelete != nil {
                             Button(role: .destructive) { onDelete?(); dismiss() } label: {
                                 Text("Remove \(name.isEmpty ? "Pet" : name)")
-                                    .font(.subheadline).foregroundColor(.red.opacity(0.8))
+                                    .font(.wktBodyText).foregroundColor(.red)
+                                    .frame(maxWidth: .infinity, minHeight: 44)
                             }
-                            .padding(.top, 8)
                         }
                     }
-                    .padding(24)
+                    .padding(.horizontal, WktSpacing.screen)
+                    .padding(.vertical, WktSpacing.betweenSections)
                 }
             }
             .navigationTitle(pet != nil ? "Edit Pet" : "Add a Pet")
@@ -629,10 +612,14 @@ struct PetEditorSheet: View {
         }
     }
 
-    private func field<C: View>(label: String, @ViewBuilder content: () -> C) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(label).font(.caption.bold()).foregroundColor(.earthMuted).padding(.horizontal, 4)
-            content().padding(14).background(Color.earthCard).cornerRadius(12)
+    /// A text field with its heading above it, as New Challenge's form.
+    private func field<C: View>(label: String, @ViewBuilder content: @escaping () -> C) -> some View {
+        WktSection(title: label) {
+            content()
+                .font(.wktBodyText)
+                .padding(.horizontal, WktSpacing.cardPadding)
+                .frame(minHeight: 52)
+                .wktCardBackground()
         }
     }
 
