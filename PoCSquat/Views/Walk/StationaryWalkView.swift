@@ -97,8 +97,9 @@ struct StationaryWalkView: View {
     @State private var showSummary = false
     @State private var petActiveSinceSteps: [UUID: Int] = [:]
 
+    /// Indoor's activity colour, for icons only: the step ring is the user's
+    /// goal (orange, `WktGoalRing`) and Finish is the screen's one primary action.
     private let purple = Color.accentIndoor
-    private let purpleFill = Color.accentIndoorFill
 
     var body: some View {
         ZStack {
@@ -107,67 +108,57 @@ struct StationaryWalkView: View {
             VStack(spacing: 0) {
                 // Header
                 HStack {
-                    Button { manager.stop(); dismiss() } label: {
-                        Image(wkt: .close).wktIcon(.tab, tint: .earthMuted, filled: true)
-                    }
-                    .accessibilityLabel("Close")
+                    WktRoundIconButton(symbol: .dismiss, label: "Close") { manager.stop(); dismiss() }
                     Spacer()
-                    Label {
+                    HStack(spacing: 8) {
+                        Image(wkt: .walkMotion).wktIcon(.row, tint: purple)
                         Text("Indoor Walk")
-                    } icon: {
-                        Image(wkt: .walkMotion).wktIcon(.row, tint: .earthCream)
+                            .font(.wktRowTitle)
+                            .foregroundColor(.earthCream)
                     }
-                        .font(.headline)
-                        .foregroundColor(.earthCream)
+                    .accessibilityElement(children: .combine)
+                    .accessibilityAddTraits(.isHeader)
                     Spacer()
-                    Color.clear.frame(width: 26, height: 26)
+                    Color.clear.frame(width: 44, height: 44)
                 }
-                .padding(.horizontal, 24)
+                .padding(.horizontal, WktSpacing.screen)
                 .padding(.top, 56)
 
                 Spacer()
 
                 // Step counter ring
-                ZStack {
-                    Circle()
-                        .stroke(purple.opacity(0.15), lineWidth: 18)
-                    Circle()
-                        .trim(from: 0, to: min(1.0, Double(manager.steps) / Double(max(1, dailyGoal))))
-                        .stroke(purple, style: StrokeStyle(lineWidth: 18, lineCap: .round))
-                        .rotationEffect(.degrees(-90))
-                        .animation(.easeInOut(duration: 0.4), value: manager.steps)
-
+                WktGoalRing(progress: Double(manager.steps) / Double(max(1, dailyGoal)), lineWidth: 18) {
                     VStack(spacing: 4) {
                         Text(manager.steps.formatted())
-                            .font(.system(size: 52, weight: .black, design: .rounded))
+                            .font(.wktHeading(52))
                             .foregroundColor(.earthCream)
+                            .minimumScaleFactor(0.6)
                         Text("steps")
-                            .font(.subheadline)
+                            .font(.wktBodyText)
                             .foregroundColor(.earthMuted)
                     }
                 }
-                .frame(width: 220, height: 220)
+                .frame(width: 236, height: 236)
                 .padding(.vertical, 32)
+                .accessibilityElement(children: .combine)
 
                 // Stats row
                 HStack(spacing: 0) {
-                    statCell(value: manager.elapsedText,    label: "Time",     icon: "clock")
-                    Divider().frame(height: 44)
-                    statCell(value: manager.distanceText,   label: "Distance", icon: "ruler")
-                    Divider().frame(height: 44)
-                    statCell(value: manager.paceText,       label: "Pace",     icon: "speedometer")
-                    Divider().frame(height: 44)
-                    statCell(value: manager.cadenceText,    label: "Cadence",  icon: "waveform.path")
+                    statCell(value: manager.elapsedText,    label: "Time",     icon: .time)
+                    columnDivider
+                    statCell(value: manager.distanceText,   label: "Distance", icon: .distance)
+                    columnDivider
+                    statCell(value: manager.paceText,       label: "Pace",     icon: .pace)
+                    columnDivider
+                    statCell(value: manager.cadenceText,    label: "Cadence",  icon: .cadence)
                 }
-                .padding(.vertical, 16)
-                .background(Color.earthCard)
-                .cornerRadius(18)
-                .padding(.horizontal, 24)
+                .wktCard(padding: 14)
+                .padding(.horizontal, WktSpacing.screen)
 
                 Spacer()
 
                 if !petStore.pets.isEmpty {
-                    HStack(spacing: 16) {
+                    HStack(spacing: 8) {
                         ForEach(petStore.pets) { pet in
                             Button {
                                 let willActivate = !pet.isActiveOnWalk
@@ -191,41 +182,31 @@ struct StationaryWalkView: View {
                                     petActiveSinceSteps.removeValue(forKey: pet.id)
                                 }
                             } label: {
-                                VStack(spacing: 2) {
-                                    Text(pet.displayEmoji)
-                                        .font(.title2)
-                                        .opacity(pet.isActiveOnWalk ? 1.0 : 0.35)
-                                        .scaleEffect(pet.isActiveOnWalk ? 1.0 : 0.85)
-                                    Text(pet.name)
-                                        .font(.caption2)
-                                        .foregroundColor(pet.isActiveOnWalk ? .earthCream : .earthMuted)
+                                // The session screen's crew chip: green when on this walk.
+                                HStack(spacing: 6) {
+                                    Text(pet.displayEmoji) // the pet's own emoji (data)
+                                    Text(pet.name).font(.wktLabel)
                                 }
+                                .foregroundColor(pet.isActiveOnWalk ? .white : .earthCream)
+                                .padding(.horizontal, 14)
+                                .frame(height: 40)
+                                .background(pet.isActiveOnWalk ? Color.earthGreenFill : Color.earthRaised, in: Capsule())
                                 .animation(.spring(duration: 0.2), value: pet.isActiveOnWalk)
                             }
+                            .accessibilityLabel(pet.isActiveOnWalk ? "Remove \(pet.name) from walk" : "Add \(pet.name) to walk")
+                            .accessibilityAddTraits(pet.isActiveOnWalk ? .isSelected : [])
                         }
                     }
                     .padding(.vertical, 12)
                 }
 
                 // Finish button
-                Button {
+                WktPrimaryButton(title: "Finish Workout", symbol: .success) {
                     flushAllActivePets()
                     manager.stop()
                     showSummary = true
-                } label: {
-                    Label {
-                        Text("Finish Workout")
-                    } icon: {
-                        Image(wkt: .success).wktIcon(.row, tint: .white, filled: true, onFill: true)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 18)
-                    .background(purpleFill)
-                    .foregroundColor(.white)
-                    .font(.headline)
-                    .cornerRadius(14)
-                    .padding(.horizontal, 24)
                 }
+                .padding(.horizontal, WktSpacing.screen)
                 .padding(.bottom, 48)
             }
         }
@@ -260,19 +241,24 @@ struct StationaryWalkView: View {
         petActiveSinceSteps.removeAll()
     }
 
-    private func statCell(value: String, label: String, icon: String) -> some View {
+    private var columnDivider: some View {
+        Rectangle().fill(Color.earthTrack).frame(width: 1, height: 44)
+    }
+
+    private func statCell(value: String, label: String, icon: WktSymbol) -> some View {
         VStack(spacing: 4) {
-            Image(systemName: icon)
-                .font(.system(size: 11))
-                .foregroundColor(purple)
+            Image(wkt: icon).wktIcon(.inline, tint: purple)
             Text(value)
-                .font(.system(size: 14, weight: .bold, design: .rounded))
+                .font(.wktRowTitle.monospacedDigit())
                 .foregroundColor(.earthCream)
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
             Text(label)
-                .font(.system(size: 10))
+                .font(.wktLabel)
                 .foregroundColor(.earthMuted)
         }
         .frame(maxWidth: .infinity)
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -288,46 +274,40 @@ private struct StationarySummarySheet: View {
     @State private var saved = false
 
     private let purple = Color.accentIndoor
-    private let purpleFill = Color.accentIndoorFill
 
     var body: some View {
         NavigationStack {
             ZStack {
                 Color.earthBg.ignoresSafeArea()
                 ScrollView {
-                    VStack(spacing: 24) {
-                        VStack(spacing: 8) {
-                            Text("🏋️").font(.system(size: 52))
-                            Text("Workout Complete!")
-                                .font(.title2.bold()).foregroundColor(.earthCream)
+                    VStack(spacing: WktSpacing.betweenSections) {
+                        VStack(spacing: 12) {
+                            WktIconBadge(symbol: .indoor, tint: purple, size: 64)
+                            Text("Workout complete!")
+                                .font(.wktCardTitle).foregroundColor(.earthCream)
                         }
                         .padding(.top, 8)
 
-                        HStack(spacing: 12) {
-                            tile(manager.steps.formatted(),  "Steps",    "figure.walk")
-                            tile(manager.distanceText,       "Distance", "ruler")
-                            tile(manager.elapsedText,        "Time",     "clock")
+                        HStack(spacing: WktSpacing.betweenCards) {
+                            tile(manager.steps.formatted(),  "Steps",    .steps)
+                            tile(manager.distanceText,       "Distance", .distance)
+                            tile(manager.elapsedText,        "Time",     .time)
                         }
-                        .padding(.horizontal)
 
                         Button { saveSession() } label: {
-                            Label(
-                                saved ? "Saved to History" : "Save to Walk History",
-                                systemImage: saved ? "checkmark.circle.fill" : "clock.arrow.circlepath"
-                            )
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 16)
-                            .background(saved ? Color.earthCard : purpleFill)
-                            .foregroundColor(saved ? purple : .white)
-                            .fontWeight(.semibold)
-                            .cornerRadius(12)
+                            if saved {
+                                WktSecondaryLabel(title: "Saved to History", symbol: .success)
+                            } else {
+                                WktPrimaryLabel(title: "Save to Walk History", symbol: .history)
+                            }
                         }
+                        .buttonStyle(BounceButtonStyle(scale: 0.98))
                         .disabled(saved)
-                        .padding(.horizontal)
 
                         Spacer(minLength: 40)
                     }
-                    .padding(.vertical, 24)
+                    .padding(.horizontal, WktSpacing.screen)
+                    .padding(.vertical, WktSpacing.betweenSections)
                 }
             }
             .navigationTitle("Indoor Walk")
@@ -363,13 +343,20 @@ private struct StationarySummarySheet: View {
         Task { await manager.finishWorkout() }
     }
 
-    private func tile(_ value: String, _ label: String, _ icon: String) -> some View {
-        VStack(spacing: 6) {
-            Image(systemName: icon).foregroundColor(purple).font(.title3)
-            Text(value).font(.headline.bold()).foregroundColor(.earthCream)
-            Text(label).font(.caption).foregroundColor(.earthMuted)
+    /// The same tile as the outdoor summary's (`ActivitySummaryView`).
+    private func tile(_ value: String, _ label: String, _ icon: WktSymbol) -> some View {
+        VStack(spacing: 8) {
+            WktIconBadge(symbol: icon, tint: purple)
+            Text(value)
+                .font(.wktRowTitle)
+                .foregroundColor(.earthCream)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+            Text(label).font(.wktLabel).foregroundColor(.earthMuted)
         }
-        .frame(maxWidth: .infinity).padding(.vertical, 18)
-        .background(Color.earthCard).cornerRadius(14)
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 16)
+        .wktCardBackground()
+        .accessibilityElement(children: .combine)
     }
 }

@@ -132,7 +132,7 @@ struct MapOrientationControls: View {
                     Image(wkt: headingUp ? .headingUp : .northUp)
                         .wktIcon(.inline, tint: headingUp ? .white : .earthCream)
                     Text(headingUp ? "Heading up" : "North up")
-                        .font(.caption.bold())
+                        .font(.wktLabel)
                         .foregroundColor(headingUp ? .white : .earthCream)
                 }
                 .padding(.horizontal, 12)
@@ -168,26 +168,34 @@ struct HoldToFinishButton: View {
     @State private var showHint = false
 
     var body: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 14).fill(Color.earthCard)
+        // The primary button's size and shape, in red outline: finishing is
+        // the destructive end of the row, so it never looks like Pause.
+        let shape = RoundedRectangle(cornerRadius: 18, style: .continuous)
+        return ZStack {
+            shape.fill(Color.earthRaised)
             GeometryReader { geo in
-                RoundedRectangle(cornerRadius: 14)
+                shape
                     .fill(Color.red.opacity(0.18))
                     .frame(width: geo.size.width * progress)
             }
-            RoundedRectangle(cornerRadius: 14).stroke(Color.red.opacity(0.85), lineWidth: 1.5)
+            shape.strokeBorder(Color.red.opacity(0.85), lineWidth: 1.5)
             VStack(spacing: 1) {
                 Text(isPressing ? "Keep holding" : "Hold to finish")
-                    .font(.subheadline.bold())
+                    .font(.wktRowTitle)
                     .foregroundColor(.red)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
                 Text(showHint ? "Press and hold for 1 second" : "1 second")
-                    .font(.caption2)
+                    .font(.wktLabel)
                     .foregroundColor(.earthMuted)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.8)
+                    .multilineTextAlignment(.center)
             }
             .padding(.horizontal, 6)
         }
         .frame(height: 56)
-        .contentShape(RoundedRectangle(cornerRadius: 14))
+        .contentShape(shape)
         .onLongPressGesture(minimumDuration: Self.holdSeconds, maximumDistance: 40) {
             completed = true
             UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
@@ -233,23 +241,29 @@ struct SessionStatTile: View {
     var body: some View {
         VStack(spacing: 2) {
             Text(value)
-                .font(.wktDisplay(prominent ? 28 : 19))
+                .font(prominent ? .wktMetric : .wktSection)
                 .monospacedDigit()
                 .foregroundColor(.earthCream)
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
-            Text(label)
-                .wktTechnical(9)
-                .textCase(.uppercase)
+            Text(sentenceCase(label))
+                .font(.wktLabel)
                 .foregroundColor(.earthMuted)
                 .lineLimit(1)
+                .minimumScaleFactor(0.8)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, prominent ? 2 : 8)
-        .background(prominent ? Color.clear : Color.earthCard)
-        .cornerRadius(12)
+        .padding(.vertical, prominent ? 2 : 10)
+        .background(prominent ? Color.clear : Color.earthRaised,
+                    in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(label): \(value)")
+    }
+
+    /// Callers pass lowercase labels ("distance", "steps / min"); the
+    /// readout capitalises only the first letter, like every other label.
+    private func sentenceCase(_ text: String) -> String {
+        text.prefix(1).uppercased() + text.dropFirst()
     }
 }
 
@@ -264,19 +278,13 @@ struct SessionProgressBar: View {
 
     var body: some View {
         VStack(spacing: 4) {
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Capsule().fill(Color.earthMuted.opacity(0.2))
-                    Capsule().fill(Color.earthGreenFill).frame(width: geo.size.width * fraction)
-                }
-            }
-            .frame(height: 8)
+            WktProgressBar(value: fraction, tint: .earthGreen)
             HStack {
                 Text(coveredText)
                 Spacer()
                 Text(totalText)
             }
-            .font(.caption2)
+            .font(.wktLabel)
             .foregroundColor(.earthMuted)
         }
         .accessibilityElement(children: .ignore)
@@ -297,14 +305,10 @@ struct SessionToggleRow: View {
     var body: some View {
         Toggle(isOn: $isOn) {
             HStack(spacing: 12) {
-                Image(wkt: icon)
-                    .wktIcon(.row, tint: isOn ? tint : .earthMuted, filled: isOn)
-                    .frame(width: 36, height: 36)
-                    .background(Color.earthCard)
-                    .cornerRadius(10)
+                WktIconBadge(symbol: icon, tint: isOn ? tint : .earthMuted)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(title).font(.subheadline.bold()).foregroundColor(.earthCream)
-                    Text(detail).font(.caption).foregroundColor(.earthMuted)
+                    Text(title).font(.wktRowTitle).foregroundColor(.earthCream)
+                    Text(detail).font(.wktLabel).foregroundColor(.earthMuted)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -331,58 +335,50 @@ struct FinishConfirmationView: View {
         VStack(spacing: 12) {
             VStack(spacing: 4) {
                 Text("Finish your \(activityMode.noun)?")
-                    .font(.title2.bold())
+                    .font(.wktCardTitle)
                     .foregroundColor(.earthCream)
                 Text(summary)
-                    .font(.subheadline)
+                    .font(.wktBodyText)
                     .foregroundColor(.earthMuted)
                     .multilineTextAlignment(.center)
             }
             .padding(.bottom, 6)
 
-            Button(action: onKeepGoing) {
-                Text("Keep \(activityMode.gerund)")
-                    .font(.headline)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 16)
-                    .background(Color.earthGreenFill)
-                    .foregroundColor(.white)
-                    .cornerRadius(14)
-            }
-            .accessibilityIdentifier("session.keepGoing")
+            WktPrimaryButton(title: "Keep \(activityMode.gerund)", action: onKeepGoing)
+                .accessibilityIdentifier("session.keepGoing")
 
             Button(action: onFinish) {
                 Text("Finish and save")
-                    .font(.headline)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
+                    .font(.wktHeading(17))
                     .foregroundColor(.red)
-                    .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.red.opacity(0.85), lineWidth: 1.5))
+                    .frame(maxWidth: .infinity, minHeight: 56)
+                    .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .strokeBorder(Color.red.opacity(0.85), lineWidth: 1.5))
+                    .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
             }
+            .buttonStyle(BounceButtonStyle(scale: 0.98))
             .accessibilityIdentifier("session.confirmFinish")
 
             if let onFinishAndSaveRoute {
                 Button(action: onFinishAndSaveRoute) {
                     Text("Finish and save the route to My Routes")
-                        .font(.subheadline.bold())
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
+                        .font(.wktBodyText)
+                        .frame(maxWidth: .infinity, minHeight: 44)
                         .foregroundColor(.earthGreen)
                 }
             }
 
             Button(role: .destructive, action: onDiscard) {
                 Text("Discard this \(activityMode.noun)")
-                    .font(.subheadline)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 8)
+                    .font(.wktBodyText)
+                    .frame(maxWidth: .infinity, minHeight: 44)
             }
             .accessibilityIdentifier("session.discard")
         }
-        .padding(.horizontal, 22)
+        .padding(.horizontal, WktSpacing.screen)
         .padding(.top, 26)
         .padding(.bottom, 12)
-        .presentationDetents([.height(onFinishAndSaveRoute == nil ? 340 : 390)])
+        .presentationDetents([.height(onFinishAndSaveRoute == nil ? 360 : 410)])
         .presentationDragIndicator(.visible)
     }
 }
@@ -402,33 +398,22 @@ struct OffTrailBanner: View {
     @State private var shownAngle: Double = 0
 
     var body: some View {
-        HStack(spacing: 12) {
+        WktBanner(tint: .earthOrange, title: "You're off \(trailName)", detail: detail) {
             Image(wkt: .directionArrow)
                 .wktIcon(.row, tint: .earthOrange, filled: true)
                 .rotationEffect(.degrees(shownAngle))
                 .opacity(arrowAngle == nil ? 0.35 : 1)
                 .animation(.easeOut(duration: 0.25), value: shownAngle)
+                .frame(width: 36, height: 36)
+                .background(Color.earthOrange.opacity(0.16), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
                 .onAppear { shownAngle = ArrowTurn.angle(from: 0, to: arrowAngle ?? 0) }
                 .onChange(of: arrowAngle) { _, angle in
                     guard let angle else { return }
                     shownAngle = ArrowTurn.angle(from: shownAngle, to: angle)
                 }
-            VStack(alignment: .leading, spacing: 2) {
-                Text("You're off \(trailName)")
-                    .font(.subheadline.bold())
-                    .foregroundColor(.earthCream)
-                    .lineLimit(1)
-                if let detail {
-                    Text(detail)
-                        .font(.caption)
-                        .foregroundColor(.earthMuted)
-                }
-            }
-            Spacer(minLength: 0)
+        } actions: {
+            EmptyView()
         }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 10)
-        .background(Color.earthOrange.opacity(0.14))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("You're off \(trailName). \(detail ?? "")")
         .accessibilityIdentifier("session.offTrail")
@@ -446,46 +431,14 @@ struct TrailArrivalBanner: View {
     let onDismiss: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .top, spacing: 12) {
-                Image(wkt: .routeTrail)
-                    .wktIcon(.row, tint: .earthGreen)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("You're at \(trailName)")
-                        .font(.subheadline.bold())
-                        .foregroundColor(.earthCream)
-                    Text("Carry on along the trail from here. This \(activityMode.noun) keeps its time and distance.")
-                        .font(.caption)
-                        .foregroundColor(.earthMuted)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .accessibilityElement(children: .combine)
-                Spacer(minLength: 0)
-            }
-            HStack(spacing: 8) {
-                Button(action: onStart) {
-                    Text("Start trail \(activityMode.noun)")
-                        .font(.caption.bold())
-                        .padding(.horizontal, 12).padding(.vertical, 8)
-                        .background(Color.earthGreenFill)
-                        .foregroundColor(.white).cornerRadius(8)
-                }
+        WktBanner(symbol: .routeTrail, tint: .earthGreen,
+                  title: "You're at \(trailName)",
+                  detail: "Carry on along the trail from here. This \(activityMode.noun) keeps its time and distance.") {
+            WktPillButton(title: "Start trail \(activityMode.noun)", action: onStart)
                 .accessibilityIdentifier("session.trailArrivalStart")
-                Button(action: onDismiss) {
-                    Text("Not now")
-                        .font(.caption.bold())
-                        .padding(.horizontal, 12).padding(.vertical, 8)
-                        .background(Color.earthCard)
-                        .foregroundColor(.earthCream).cornerRadius(8)
-                }
+            WktPillButton(title: "Not now", tint: .earthCream, action: onDismiss)
                 .accessibilityHint("Hides this. The trail \(activityMode.noun) stays under More.")
-            }
-            .padding(.leading, 32)
         }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 10)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.earthGreen.opacity(0.14))
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("session.trailArrival")
     }
