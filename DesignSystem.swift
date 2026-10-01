@@ -18,14 +18,33 @@ import UIKit
 extension Color {
     static let earthBg = Color(UIColor { tc in
         tc.userInterfaceStyle == .dark
-            ? UIColor(red: 0.110, green: 0.110, blue: 0.118, alpha: 1)
+            ? UIColor(red: 0.094, green: 0.094, blue: 0.102, alpha: 1)
             : UIColor(red: 0.961, green: 0.957, blue: 0.949, alpha: 1)
     })
     static let earthCard = Color(UIColor { tc in
         tc.userInterfaceStyle == .dark
-            ? UIColor(red: 0.173, green: 0.173, blue: 0.180, alpha: 1)
+            ? UIColor(red: 0.141, green: 0.141, blue: 0.153, alpha: 1)
             : UIColor(red: 1.000, green: 1.000, blue: 1.000, alpha: 1)
     })
+    /// A surface one step above a card: a chip, an unselected control on a card.
+    static let earthRaised = Color(UIColor { tc in
+        tc.userInterfaceStyle == .dark
+            ? UIColor(red: 0.180, green: 0.180, blue: 0.196, alpha: 1)   // #2E2E32
+            : UIColor(red: 0.933, green: 0.929, blue: 0.918, alpha: 1)   // #EEEDEA
+    })
+    /// The empty part of a ring, bar or chart column.
+    static let earthTrack = Color(UIColor { tc in
+        tc.userInterfaceStyle == .dark
+            ? UIColor(red: 0.204, green: 0.204, blue: 0.227, alpha: 1)   // #34343A
+            : UIColor(red: 0.894, green: 0.886, blue: 0.863, alpha: 1)   // #E4E2DC
+    })
+    /// The 1 pt hairline around every card.
+    static let earthStroke = Color(UIColor { tc in
+        tc.userInterfaceStyle == .dark
+            ? UIColor(white: 1, alpha: 0.05)
+            : UIColor(white: 0, alpha: 0.06)
+    })
+
     // These 6 colors serve two different visual roles: TEXT/ICON color (labels,
     // SF Symbol tints, map polylines, progress-ring strokes -- the color IS
     // the visible content), and solid BUTTON-FILL background with white
@@ -43,18 +62,18 @@ extension Color {
     // use the plain token for everything else.
     static let earthGreen = Color(UIColor { tc in
         tc.userInterfaceStyle == .dark
-            ? UIColor(red: 0.373, green: 0.659, blue: 0.322, alpha: 1)
+            ? UIColor(red: 0.435, green: 0.749, blue: 0.388, alpha: 1)
             : UIColor(red: 0.180, green: 0.471, blue: 0.200, alpha: 1)
     })
     static let earthGreenFill = Color(UIColor { tc in
         tc.userInterfaceStyle == .dark
-            ? UIColor(red: 0.291, green: 0.514, blue: 0.251, alpha: 1)   // white-fill 4.55:1
+            ? UIColor(red: 0.247, green: 0.490, blue: 0.224, alpha: 1)   // white-fill 5.00:1
             : UIColor(red: 0.180, green: 0.471, blue: 0.200, alpha: 1)   // light already clears 4.5:1 as-is
     })
     static let earthOrange = Color(UIColor { tc in
         tc.userInterfaceStyle == .dark
-            ? UIColor(red: 0.878, green: 0.522, blue: 0.243, alpha: 1)
-            : UIColor(red: 0.769, green: 0.400, blue: 0.114, alpha: 1)
+            ? UIColor(red: 0.898, green: 0.576, blue: 0.247, alpha: 1)
+            : UIColor(red: 0.651, green: 0.329, blue: 0.094, alpha: 1)   // 4.90:1 on earthBg; was 3.63:1, too low for text
     })
     static let earthOrangeFill = Color(UIColor { tc in
         tc.userInterfaceStyle == .dark
@@ -63,12 +82,12 @@ extension Color {
     })
     static let earthCream = Color(UIColor { tc in
         tc.userInterfaceStyle == .dark
-            ? UIColor(red: 0.949, green: 0.922, blue: 0.847, alpha: 1)
+            ? UIColor(red: 0.949, green: 0.949, blue: 0.957, alpha: 1)
             : UIColor(red: 0.102, green: 0.118, blue: 0.094, alpha: 1)
     })
     static let earthMuted = Color(UIColor { tc in
         tc.userInterfaceStyle == .dark
-            ? UIColor(red: 0.620, green: 0.608, blue: 0.580, alpha: 1)
+            ? UIColor(red: 0.631, green: 0.631, blue: 0.659, alpha: 1)
             : UIColor(red: 0.431, green: 0.447, blue: 0.420, alpha: 1)
     })
 
@@ -80,7 +99,7 @@ extension Color {
     })
     static let accentRun = Color(UIColor { tc in
         tc.userInterfaceStyle == .dark
-            ? UIColor(red: 0.910, green: 0.545, blue: 0.322, alpha: 1)   // #E88B52
+            ? UIColor(red: 0.898, green: 0.576, blue: 0.247, alpha: 1)   // #E5933F
             : UIColor(red: 0.769, green: 0.333, blue: 0.102, alpha: 1)   // #C4551A
     })
     static let accentRunFill = Color(UIColor { tc in
@@ -90,7 +109,7 @@ extension Color {
     })
     static let accentRide = Color(UIColor { tc in
         tc.userInterfaceStyle == .dark
-            ? UIColor(red: 0.310, green: 0.702, blue: 0.741, alpha: 1)   // #4FB3BD
+            ? UIColor(red: 0.357, green: 0.722, blue: 0.784, alpha: 1)   // #5BB8C8
             : UIColor(red: 0.082, green: 0.478, blue: 0.522, alpha: 1)   // #157A85
     })
     static let accentRideFill = Color(UIColor { tc in
@@ -100,7 +119,7 @@ extension Color {
     })
     static let accentIndoor = Color(UIColor { tc in
         tc.userInterfaceStyle == .dark
-            ? UIColor(red: 0.608, green: 0.549, blue: 0.878, alpha: 1)   // #9B8CE0
+            ? UIColor(red: 0.643, green: 0.557, blue: 0.918, alpha: 1)   // #A48EEA
             : UIColor(red: 0.357, green: 0.294, blue: 0.690, alpha: 1)   // #5B4BB0
     })
     static let accentIndoorFill = Color(UIColor { tc in
@@ -171,6 +190,38 @@ extension Font {
         let s = UIFontMetrics(forTextStyle: .body).scaledValue(for: size)
         return .system(size: s, weight: .semibold, design: .rounded)
     }
+
+    // The type scale (2026-09-30 Home redesign). Six named roles instead of
+    // a size picked at each call site, all SF Pro Rounded, all sentence case:
+    // the all-caps SF Mono labels read as a dashboard readout, not as Wockett.
+
+    /// 34 heavy — the one number a card is about (today's steps).
+    static var wktMetric: Font { wktHeading(34) }
+    /// 22 heavy — a card's own title ("Today").
+    static var wktCardTitle: Font { wktHeading(22) }
+    /// 19 heavy — a section heading above cards ("Routes").
+    static var wktSection: Font { wktHeading(19) }
+    /// 16 heavy — the title of a row or a small card.
+    static var wktRowTitle: Font { wktHeading(16) }
+    /// 15 semibold — supporting text; pair with `earthMuted`.
+    static var wktBodyText: Font { wktBody(15) }
+    /// 13 bold — a small label, sentence case.
+    static var wktLabel: Font {
+        let s = UIFontMetrics(forTextStyle: .body).scaledValue(for: 13)
+        return .system(size: s, weight: .bold, design: .rounded)
+    }
+}
+
+/// Spacing (2026-09-30 Home redesign).
+enum WktSpacing {
+    /// Left and right margin of a screen's content.
+    static let screen: CGFloat = 20
+    /// Inside a card.
+    static let cardPadding: CGFloat = 16
+    /// Between two cards in one section.
+    static let betweenCards: CGFloat = 12
+    /// Between sections.
+    static let betweenSections: CGFloat = 24
 }
 
 /// Technical tier — SF Mono Semibold, tracked +14%. Apply via the `.wktTechnical()`
@@ -204,18 +255,18 @@ extension UIColor {
     // the same reason the SwiftUI buttons do.
     static let brandGreen = UIColor { tc in
         tc.userInterfaceStyle == .dark
-            ? UIColor(red: 0.373, green: 0.659, blue: 0.322, alpha: 1)
+            ? UIColor(red: 0.435, green: 0.749, blue: 0.388, alpha: 1)
             : UIColor(red: 0.180, green: 0.471, blue: 0.200, alpha: 1)
     }
     static let brandGreenFill = UIColor { tc in
         tc.userInterfaceStyle == .dark
-            ? UIColor(red: 0.291, green: 0.514, blue: 0.251, alpha: 1)
+            ? UIColor(red: 0.247, green: 0.490, blue: 0.224, alpha: 1)
             : UIColor(red: 0.180, green: 0.471, blue: 0.200, alpha: 1)
     }
     static let brandOrange = UIColor { tc in
         tc.userInterfaceStyle == .dark
-            ? UIColor(red: 0.878, green: 0.522, blue: 0.243, alpha: 1)
-            : UIColor(red: 0.769, green: 0.400, blue: 0.114, alpha: 1)
+            ? UIColor(red: 0.898, green: 0.576, blue: 0.247, alpha: 1)
+            : UIColor(red: 0.651, green: 0.329, blue: 0.094, alpha: 1)
     }
     static let brandOrangeFill = UIColor { tc in
         tc.userInterfaceStyle == .dark
@@ -230,7 +281,7 @@ extension UIColor {
     // else (Dashboard tiles, free-walk map polyline).
     static let accentRun = UIColor { tc in
         tc.userInterfaceStyle == .dark
-            ? UIColor(red: 0.910, green: 0.545, blue: 0.322, alpha: 1)
+            ? UIColor(red: 0.898, green: 0.576, blue: 0.247, alpha: 1)
             : UIColor(red: 0.769, green: 0.333, blue: 0.102, alpha: 1)
     }
     static let accentRunFill = UIColor { tc in
@@ -240,7 +291,7 @@ extension UIColor {
     }
     static let accentRide = UIColor { tc in
         tc.userInterfaceStyle == .dark
-            ? UIColor(red: 0.310, green: 0.702, blue: 0.741, alpha: 1)
+            ? UIColor(red: 0.357, green: 0.722, blue: 0.784, alpha: 1)
             : UIColor(red: 0.082, green: 0.478, blue: 0.522, alpha: 1)
     }
     static let accentRideFill = UIColor { tc in
@@ -250,7 +301,7 @@ extension UIColor {
     }
     static let accentIndoor = UIColor { tc in
         tc.userInterfaceStyle == .dark
-            ? UIColor(red: 0.608, green: 0.549, blue: 0.878, alpha: 1)
+            ? UIColor(red: 0.643, green: 0.557, blue: 0.918, alpha: 1)
             : UIColor(red: 0.357, green: 0.294, blue: 0.690, alpha: 1)
     }
     static let accentIndoorFill = UIColor { tc in

@@ -260,10 +260,10 @@ struct SettingsView: View {
                     }
                 }
 
-                // ── Motivational Banner ───────────────────────────
-                Section("Motivational Banner") {
+                // ── Motivational Quotes ───────────────────────────
+                Section("Motivational Quotes") {
                     if bannerStore.userAffirmations.isEmpty && !isAddingAffirmation {
-                        Text("Add personal affirmations that rotate in the banner alongside built-in quotes.")
+                        Text("Add personal affirmations to show on Home alongside the built-in quotes.")
                             .font(.caption).foregroundColor(.earthMuted)
                             .listRowBackground(Color.earthCard)
                     }

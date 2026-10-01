@@ -60,6 +60,22 @@ final class SmokeTests: XCTestCase {
         element.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
     }
 
+    /// Home's picker only selects an activity; its Start button starts it.
+    /// The check in between is what proves the picker no longer starts a
+    /// session on its own, as the tiles it replaced did.
+    private func startWalkFromHome() {
+        let walkTile = app.buttons["home.tile.walk"]
+        XCTAssertTrue(walkTile.waitForExistence(timeout: 15))
+        forceTap(walkTile)
+        XCTAssertTrue(walkTile.isSelected, "Tapping Walk must select it")
+        XCTAssertFalse(el("session.root").waitForExistence(timeout: 2),
+                       "Tapping an activity must not start a session by itself")
+        let start = app.buttons["home.start"]
+        XCTAssertTrue(start.waitForExistence(timeout: 5))
+        XCTAssertEqual(start.label, "Start Walk")
+        start.tap()
+    }
+
     // MARK: - 1. Launch
 
     func testLaunch() {
@@ -98,9 +114,7 @@ final class SmokeTests: XCTestCase {
     func testWalkLifecycle() {
         XCTAssertTrue(el("home.statCard").waitForExistence(timeout: 10))
 
-        let walkTile = app.buttons["home.tile.walk"]
-        XCTAssertTrue(walkTile.waitForExistence(timeout: 15))
-        forceTap(walkTile)
+        startWalkFromHome()
         XCTAssertTrue(el("session.root").waitForExistence(timeout: 30),
                       "Session screen must appear after starting a walk")
 
@@ -142,9 +156,7 @@ final class SmokeTests: XCTestCase {
         XCTAssertFalse(app.buttons["accessory.miniTile"].exists,
                        "Mini tile must not exist before a walk is started")
 
-        let walkTile = app.buttons["home.tile.walk"]
-        XCTAssertTrue(walkTile.waitForExistence(timeout: 15))
-        forceTap(walkTile)
+        startWalkFromHome()
         XCTAssertTrue(el("session.root").waitForExistence(timeout: 30))
 
         app.buttons["session.minimize"].tap()
