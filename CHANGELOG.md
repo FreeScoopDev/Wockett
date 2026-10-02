@@ -5,10 +5,26 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
-Since 2026-09-27, new entries go in `changelog.d/` (see its README) and are gathered here when a version is cut. The entries below were written before that.
+## [1.14] - 2026-10-02
 
 ### Added
 - Directions to a trail inside Wockett. Joe, 2026-09-26: "we should also offer walking directions within the app before defaulting to launching the Maps app. If it's close, maybe the user will want to bike or walk to the listed trail." Until now a trail's detail had one button, which left the app for Apple Maps even when the trail was a ten-minute walk away. Now, when you are farther than the 150 m Start Walk radius, the detail shows **Get to the trail** directly under the trail's name, above its stats, so Start is on screen without scrolling (Start Walk at the trail moved up to the same place): two tiles, on foot (Walk, or Run in Run mode) and Ride, each with MapKit's time and distance to the trail's nearest point, the same point Maps was given. The chosen one is drawn on the Trails map as a dotted line in the activity's colour over a light casing, so it never reads as part of the solid green trail, and the map frames it with the trail above the panel, using the panel's measured height; it frames again when the directions make the panel taller, because a frame taken before they arrived put the route behind it. **Start Walk to Trail** (or Run, or Ride) starts an ordinary guided session to the trail, routed on streets by the session's own MKDirections legs like every other guided route. Within 150 m of the trail that session offers the trail itself — a banner, "You're at Rocky Branch Trail", with Start trail walk and Not now, a spoken line with voice cues on, and a notification when the phone is in a pocket; the offer also stays under More. It does not finish at the access point, as a two-waypoint route otherwise would. Saying yes turns the same session into the trail walk rather than ending one and starting another: one workout in Health, one entry in history, named for the trail, with the time, distance and steps from home included. The session already swaps its route in place when a loop is walked backwards, so this reuses that path (`onRouteReversed` is now `onRouteChanged`), and the 20/40/60/80% markers, the 1 km pins on the map and the distance left count from the trail, not from home. The way there's percentage splits are dropped at the switch, so the summary lists the trail's once. The Live Activity is restarted with the trail's name and a total of the way there plus the trail, because the widget shows total − covered as the distance left and covered includes the way there: with the trail's length alone, a walk there longer than the trail read 0 left from the start. The same total is used when a session is restored after a crash. The arrival notification has one fixed identifier and is withdrawn when the trail walk starts or the session ends. The trail travels with the session's route and its crash snapshot, so a session restored on the way there still offers the trail on arrival; if that part of a snapshot ever fails to decode (a later change to the trail model), the walk still restores without the offer instead of being lost. **Which option leads** depends on distance: on foot under 3 km (about 2 mi), the bike from there to 13 km (about 8 mi), and from 13 km a primary **Drive in Maps** with the two tiles below it. In Ride mode the bike leads at any distance under that, since the person is already on a bike. **Open in Apple Maps** stays under the Start button, in the chosen mode. Without location permission the detail shows the Maps button and says location is what the in-app directions need; when MapKit fails it says so plainly (offline, Apple Maps busy, or no route) with Try again, and Maps stays. MapKit is asked once per trail and place: the routes are kept across closing and reopening the trail and asked for again only for another trail or after moving more than 100 m, because MapKit throttles an app that asks often and the Trails screen redraws on every location update; a request in flight is cancelled when the detail closes. Opening a trail also asks for a fresh location (at most 30 s old): in Trails mode the location was otherwise read once when Routes opened, so the 100 m rule could never fire and Start would have routed from wherever the person was then. Changing Walk/Run/Ride with the detail open re-picks the leading option. Each tile is one VoiceOver element ("Walk to trail, 18 minutes, 0.9 miles"), and the tiles stack at accessibility text sizes. `MKDirectionsTransportType.cycling` has been in the SDK since iOS 14 (checked in the iOS 26.5 SDK headers), well under the 26.1 target, so it needs no availability check, but Apple's cycling directions do not cover everywhere; a tile with no route says so and the other still works. A run's time is estimated at 2.7 m/s (a 10-minute mile), because MapKit only estimates walking. Checked on the simulator from downtown Raleigh: Rocky Branch Trail offered Walk 27 min · 1.2 mi and Ride 8 min · 1.3 mi, each drawn on the map, in light and dark; the walk to it was routed down S Wilmington St on the streets; a replayed walk raised the "You're at Rocky Branch Trail" banner beside the trail without finishing, and Start trail walk turned the session into Rocky Branch Trail with its line on the map, keeping the 1.0 mi and 8 minutes already walked. The first cut drew the chosen tile a few points taller than the other, because only it laid out the tick; both reserve the space now. 13 unit tests in `TrailDirectionsTests` cover the thresholds, the recompute rule, the words, arrival and the switch, and the snapshot; each of seven deliberate breaks (the 3 km threshold, the Ride-mode rule, the 100 m rule, the plural, dropping the trail from the snapshot, finishing at the access point, and the distance left counting from home) turned its test red.
+- Wockett asks for an App Store rating right after a personal record on the
+  walk summary or a newly earned badge, at most once per version. The listing
+  has a single rating, and ratings weigh on search placement more than any
+  other change available this month. Asking when a walk has just gone well,
+  and never mid-walk, is when a rating is most likely to reflect the app.
+  Apple still decides whether the sheet appears (at most three times a year
+  per device), and it never appears in TestFlight builds.
+- A walk, run or ride that Wockett paused because you had stopped for a while
+  now resumes by itself once you are moving again. Resuming needs 30 seconds
+  of steady motion (cycling for a ride), and Wockett says so aloud and in a
+  notification. Before, the session stayed paused until you opened the walk
+  screen, so a coffee stop or a stretch of weak GPS under trees could leave
+  the rest of the walk unrecorded. To hear the motion, Wockett keeps
+  low-power location on for up to 30 minutes after an auto-pause (iOS
+  suspends an app with no location running). After that the walk pauses
+  fully, as before. A pause you tap yourself never resumes on its own.
 
 ### Changed
 - The downloadable North Carolina trail pack joins unnamed paths into continuous corridors and names a sidepath after the road it runs beside (`tools/build_trail_pack.py` 1.2.0). On a walk on 2026-09-26 Joe found the paved path along NC 12 from Kitty Hawk into Duck listed as 58 separate "Unnamed Trail" rows of 30-300 m: OSM splits an unnamed path at every driveway and side street, and 1.1.0 could only chain ways that share a name. It is now three rows, all open to bikes: Ocean Boulevard Path (4.1 km), Duck Road Path (4.2 km), and Duck Road Path again (6.9 km) after the stretch through Duck village that OSM maps as sidewalk.
@@ -19,15 +35,317 @@ Since 2026-09-27, new entries go in `changelog.d/` (see its README) and are gath
   - **Sidewalks.** `highway=footway` + `footway=sidewalk` ways are dropped unless `--keep-sidewalks` is passed (then they are named "… Sidewalk"). The osmium recipe already removes all 144,858 of them, so this changes no rows today and guards inputs that skip that step.
   - **Result.** Statewide: 68,315 → 59,902 rows, unnamed 58,987 → 50,076, 634 derived names, 19.1 MB instead of 21.0 MB. The pack schema is still 1. `scripts/trail-pack/build_nc.sh` now builds the full pack too, keeps crossings, exports the named roads, reads its data from `~/Desktop/Apps/wockett-trails`, and filters `access=private,no`: the input of both shipped 1.1.0 packs reproduces byte for byte only with both values, though the script said `private` alone. 46 new builder tests (57 in all). Each rule was broken on purpose and its test went red, including row ids, a closed loop of unnamed ways (under a timer, so a broken loop fails instead of hanging), the longest member's tags, and the 15 m end-heading reading.
 - Routes → Trails groups trails that have no name, names them for what they are, and walks a grouped path end to end. With the North Carolina pack installed, the paved path beside Duck Road from Kitty Hawk into Duck was dozens of separate "Unnamed Trail" rows (Joe, on a walk, 2026-09-26): OpenStreetMap splits a side path at every driveway, none of the pieces has a name, and the list only grouped sections that shared one. Now unnamed pieces of the same kind of path (the same title below, and the same foot and bike access) join one card where they chain end to end: an end of one within 30 m of an end of the next, and only where exactly two pieces meet. 30 m because the pack drops pieces under 30 m, which is what the driveway crossings are; along Duck Road the gaps measured 0 to 27 m, and at 15 m the longest chain was three pieces. "Exactly two" is the rule the pack builder already uses for named trails, and it matters: the first cut joined any two ends within 30 m, and on the real pack that made UNC's campus one 255-section, 19.8 km "Paved Footpath" at the top of Chapel Hill's list, turned downtown Raleigh's nearest card into a plaza's worth of crossing paths, and joined the two sides of a road into one card that counted the path twice (a review caught it before merge). At a crossroads, a T or a grid nothing joins through the junction, and a join that turns back on itself by more than 135° is refused, so a card is always one line or one ring. On the pack, Duck Road is still 30 pieces in one card, and the largest unnamed group within ten miles of downtown Raleigh, Durham, Chapel Hill or Charlotte is four pieces. A card with no name is titled from the data instead of "Unnamed Trail": "Paved Bike Path", "Footpath", "Unpaved Track", "Boardwalk", "Paved Loop", "Footpath Loop", from the surface and the OSM `highway` and `bicycle` tags, which the app now reads from the pack only for rows it keeps. A track with no surface is "Unpaved Track", not "Track", which read like a running track and was 65% of unnamed titles, and a cycleway closed to bikes is not called a bike path. "Unnamed Trail" and "Unnamed Loop" remain only where the data says nothing. Start on a grouped path walks the whole line: its pieces are joined in order, each turned to run the same way, and the walk goes from where you stand to the far end. Before this, Start on the 4.1 mi Duck Road card offered a 250 ft walk on the piece underfoot, and on some short pieces no walk at all. A named group whose sections don't form one line still walks the section you're at, and falls back to the next section in reach when that one is too short. Community's "Trails near you" card, which marks its rows "Official", now lists named trails only. Named grouping is unchanged, "List sections separately" still lists every piece, and the quarter-mile cutoff is judged on the chain's total. The pack-builder fix to join and name these paths is separate; this keeps the list readable with the pack already on phones, and a name the builder derives is treated as any other name. 17 unit tests cover the joins (a chain, 29 and 31 m gaps, kinds and access, a crossroads, a T, a ladder, two sides of a road), the titles, and walking a chain. Each went red when its rule was broken on purpose: a 150 m join distance, foot access or the one-partner rule or the doubling-back guard removed, a group titled by its nearest piece, no stitching, stitching without turning pieces round or with the join point repeated, no fallback to the next section, and each labelling rule. The first version of the distance test derived its gaps from the constant it guards and stayed green at 150 m; it now uses literal distances. The Community tab's "Trails near you", which marks rows Official, lists only trails whose name comes from the map data: not unnamed paths, and not names the pack builder derives from a road alongside (`name_source: derived_road`).
+- The Siri "Start a Walk" shortcut no longer offers a Duration option. It
+  was collected and never used; a free walk has no time target to set.
+- Home is redesigned around one "Today" card: the date, GPS and weather
+  chips, your step ring, your crew's progress and your streak now sit
+  together. They used to be spread over a rotating tagline, a stat card, a crew
+  card, a progress track with a dog on it and a weather card, which said the
+  same things several times and pushed starting a walk below the fold.
+- Starting an activity is now two steps: pick Walk, Run, Ride or Indoor, then
+  press Start. The old tiles started a session on the first tap, so a stray
+  tap began a walk.
+- Routes are two equal cards (Find a Route, My Routes), and a new "This week"
+  card shows seven days of steps, with today in green.
+- Weather is a chip in the Today card instead of a card of its own. Tapping it
+  opens the forecast, a link to Apple Weather and the Apple Weather
+  attribution.
+- The motivational quotes that rotated in the navigation bar now appear one
+  at a time under your streak, and your own affirmations are still among them.
+  Settings → Motivational Banner is now called Motivational Quotes.
+- The app's colours, cards and section headings are updated everywhere, not
+  just on Home: neutral greys instead of warm ones, white text instead of
+  cream, brighter activity colours, cards with 22 pt corners and a hairline
+  edge, and sentence-case section headings instead of small capitals. Shared
+  pieces look the same on every screen.
+- The Community tab and every screen it opens (Badges, Challenges, New
+  Challenge, the Achievement Feed, Community Routes, the badge-earned
+  celebration and the share sheet) now use the design Home moved to in the
+  redesign. Section headings sit above their cards instead of inside them,
+  labels are sentence case instead of small capitals, and buttons, tags and
+  empty states look the same as they do on Home. Before, Community was the last
+  tab still in the old style, so moving between it and Home felt like two
+  apps.
+- In New Challenge, the activity choice says "Ride" instead of "Bike", as it
+  does everywhere else in the app.
+- Like buttons on the Achievement Feed match the ones on the Community tab,
+  and show their count even at zero.
+- The Health tab and everything it opens (the recovery card, the week and
+  month calendars, a day's detail, Sleep / Readiness / Active Calories,
+  walking health and its four metrics, and Your Progress) now use the design
+  Home and Community moved to. Section headings sit above their cards, labels
+  are sentence case, and status, trend and goal tags are the shared chips.
+  Health was the next tab still in the old style.
+- The week view is one card with its seven days side by side, instead of a
+  strip you could scroll sideways, with the week's name as the heading and
+  previous, calendar and next beside it. The month calendar matches it.
+- Your step ring is orange everywhere, as on Home. "Your Progress" and a day's
+  detail still drew the old green-to-orange gradient.
+- The walk session and the screens after it now use the design Home,
+  Community and Health moved to: the live session panel, the finish
+  confirmation, the summary, the share sheet, the mini tile shown while a
+  session is minimised, and the indoor walk with its summary.
+- The banners that appear mid-session (paused, off the trail, at the trail,
+  "this looks faster than a walk", heat advisory) share one look, with their
+  buttons on their own row so they keep their size at large text sizes.
+- Pause is the session's primary button. Hold to finish keeps its red
+  outline, now the same size and shape, so ending a session still never looks
+  like pausing it.
+- On the summary, Done is the one primary button; sharing and scheduling are
+  the quieter buttons above it.
+- The indoor walk's step ring is orange, as everywhere else your own goal is
+  shown, and its Finish button is the green primary button. Indoor's purple is
+  kept for its icons, like every activity colour.
+- The shared summary image uses the new palette and SF Pro Rounded. Its text
+  sizes stay fixed, because the image is drawn at a fixed size whatever text
+  size the sharer uses.
+- The Routes tab and everything it opens now use the design Home, Community,
+  Health and the walk session moved to: the route search and results panels,
+  route cards, weather and elevation, the Trails list, trail detail and the
+  way to a trail, Nearby places and place search, My Routes and a saved
+  route's detail, the route builder, sharing a route, and a route's history.
+- Routes | Trails, Walk | Run | Ride and the trail filters use the same
+  "pick one" controls as Home's activity picker.
+- Starting a saved route is the green primary button, whatever the activity.
+  It used to take the activity's colour, which is now kept for icons.
+- Trail tags (dog rules, surface, bikes, loop) are the shared status chips and
+  wrap onto a second line instead of running off the card.
+- A difficulty of Moderate shows in the app's amber instead of system yellow,
+  which was too faint to read on a light card.
+- Activity History and the screens around it now use the design the rest of
+  the app moved to: the history list and its stats, an activity's detail,
+  Log a Past Walk, Schedule Walk, a pet's detail, My Pets and the pet editor.
+- An activity's type is chosen with the same picker as everywhere else, and
+  says Ride, not Bike, like the rest of the app.
+- An empty Activity History says "No activities yet" rather than "No Walks
+  Yet": the list holds runs, rides and indoor walks too. The detail's note
+  hint and Share button name the activity's own type.
+- Settings and the screens it opens (Add Walk Reminder, Support Wockett and
+  Trail Regions) now use the design the rest of the app moved to: the shared
+  section headings, type sizes and status chip, and the same "pick one"
+  controls for the step data source and a reminder's repeat.
+- A weekly reminder's day is picked from chips that wrap onto two lines
+  instead of seven squeezed segments.
+- The step goal editor (Settings → Tracking → Daily step goal, restored in
+  #122) uses the same design: the shared picker for steps or distance, preset
+  chips that wrap, and the weekly schedule and tags on the shared cards.
+- The home screen widget and the Live Activity (lock screen and Dynamic
+  Island) now match the app: SF Pro Rounded throughout, sentence-case labels
+  instead of small capitals, and the step ring in orange on the track, as on
+  Home's Today card. The small widget's header says "Today", as that card
+  does, instead of repeating "Wockett", which iOS already shows under it.
+- On the Live Activity, Pause is the green button and End is red, as on the
+  session screen, where Pause is the main action and finishing is red. Before,
+  Pause was orange and End was green, the opposite of the app.
 
 ### Fixed
 - A downloaded trail pack that cannot be opened no longer takes the bundled North Carolina trails with it. At launch, an installed pack is opened on top of the bundled one, and opening a region closes whatever was open first. So a corrupt download, or one whose schema an older build cannot read, left North Carolina with no trails at all. Found on 2026-09-27 while testing #90: with a corrupt `nc` pack installed on the simulator, Routes → Trails listed nothing near Raleigh. Launch now reopens the bundled pack when an installed one fails. Download and Remove already did this. The download stays recorded as installed, and Settings → Trail Regions shows why it did not open, with a Download button to fetch it again. It used to say "Installed" and offer only Remove. The reason for the failure was never shown anywhere, although a comment said Settings showed it. One new unit test plants a corrupt installed pack. It fails if either the launch fallback or the regions-screen state is removed.
+- Voice cues now count miles on a US phone. The milestone counter ticked
+  every kilometre and only then named the unit by locale, so "1 mile
+  completed" was spoken after 0.62 miles and the pace was always read per
+  kilometre. Each whole mile (or kilometre elsewhere) is announced once, with
+  the pace in the same unit.
+- Music no longer stays quiet for a whole walk when voice cues are on. The
+  audio session was activated at the first cue and never released, so other
+  apps' audio was ducked until the walk ended. It is now activated for each
+  cue and released once the cue has been spoken, so music comes back up
+  between announcements.
+- "Log a Past Walk" now asks for miles on a US phone and kilometres
+  elsewhere, the rule every other screen uses. It asked everyone for
+  kilometres and multiplied by 1000, so a US user typing their 3-mile walk
+  logged 3 km (1.9 miles) and the history under-counted every walk entered
+  by hand.
+- "Hey Siri, start a walk with Wockett" and the Control Center "Start Walk"
+  button now start a walk. Both set a flag that nothing in the app read, so
+  they only opened Wockett. The app now acts on the request at launch and
+  whenever it comes to the front: Home opens the walk screen in the mode
+  asked for, or brings back a walk already in progress. A request older than
+  five minutes is ignored, so a tap that never opened the app does not start
+  a walk days later, and neither does the flag 1.13 left behind.
+- "How many steps today in Wockett" asks Health for today's count (over the
+  same 3 AM-to-now day as the Home ring) instead of reading a value nothing
+  wrote there, which made Siri answer 0 every time. Siri now says the number
+  as well as showing it. Without Health access it falls back to the count the
+  widget shows, if that was refreshed today.
+- The home-screen widget now updates without opening Wockett. The
+  background refresh wrote today's steps under a name the widget never
+  read, so the widget only changed when the app itself was opened; it now
+  writes exactly what the widget shows and asks it to redraw. The app also
+  registers for Health's background delivery of new step samples and
+  acknowledges each one (the acknowledgement was missing, which makes
+  Health stop delivering), so steps recorded by the Watch or the phone
+  reach the widget within the hour.
+- A guided walk that reaches its end is no longer lost if the walk screen
+  was closed. Completion deleted the crash checkpoint before anything had
+  saved the walk, and only the walk screen saved it, so a walk finished
+  while minimised to the mini tile vanished if the app was then killed. The
+  finished walk is now saved at once when the screen is not up, kept on
+  disk until it is saved when it is, and a finished walk found at launch is
+  saved rather than offered for resume.
+- A finished guided walk no longer leaves a checkpoint behind. The write at
+  the end of each waypoint ran after the checkpoint had been deleted and put
+  it back, so the next launch asked to resume a walk that was already over,
+  or, after four hours, saved it a second time.
+- Free walks, runs and rides finished from the walk screen now reach Apple
+  Health as workouts. Every session starts a Health workout, but the walk
+  screen's Finish for a free walk never completed it, so only guided walks
+  and walks ended from the mini tile or Live Activity were written to Health.
+- Pets get credit for the whole walk however it ends. Their distances lived
+  in the walk screen, so minimising it reset them, and ending from the mini
+  tile or the Live Activity saved none. The "update the owner" message also
+  counts the stretch in progress, not only finished ones.
+- Water-break reminders stop the moment a walk ends. The walk screen
+  cancelled them only when its summary was closed, so a phone pocketed on
+  the summary kept reminding.
+- Ending a guided walk from the "driving?" banner no longer announces a
+  personal record or schedules the hydration nudge as if the route had been
+  completed on foot, and ends the Live Activity once instead of twice.
+- The Live Activity shows an auto-pause when it happens, not the next time
+  the walk screen is opened.
+- Wockett no longer asks the location service a blocking question on the main
+  thread, where it could leave the app on a blank screen at launch. Three places
+  read the location-permission status directly: the route manager as the app
+  started, Home's "GPS READY" label on every redraw, and Home's weather tile.
+  Each read waits for iOS's location service to answer, and nothing can be drawn
+  while it waits. On 2026-09-28 a stack sample caught a Wockett launch on the
+  simulator stuck in the route manager's read for more than 15 s, the same
+  blank, never-idle launch that made `testAccessoryBar` fail with "Timed out
+  while evaluating UI query". All three now use the status CoreLocation
+  delivers to the delegate, which does not block. The test failure is rare
+  and did not reproduce in 10 runs either side of the change, so this removes
+  a known cause without proving it was the only one.
+- Starting a walk no longer freezes the walk screen while Wockett checks
+  whether it may save the workout to Health. That check waits for iOS's Health
+  service to answer, and it ran on the main thread, so nothing on screen could
+  move until the answer came. On 2026-09-28 a stack sample of a UI test caught
+  the main thread waiting there for about 100 s right after Walk was tapped,
+  which is why `testAccessoryBar` sometimes stalled or timed out after
+  starting a session. The check now runs off the main thread, and a unit test
+  fails if it moves back.
+- The on-device fallback store really is on-device now. When the iCloud-synced
+  store cannot open, Wockett falls back to a local one, but that fallback never
+  said "no CloudKit", and SwiftData's default turns CloudKit sync on whenever
+  the app has the iCloud entitlement. So the fallback still tried to sync, and
+  so did every locally signed test run, which is meant to skip CloudKit
+  entirely: on 2026-09-29, stack samples found CloudKit sync running in 4 of 5
+  UI-test launches, where it could send the tests' demo walks to the
+  simulator's iCloud account. The fallback now sets CloudKit off explicitly,
+  and a unit test checks it.
+- Bookmarked places now sync through iCloud on App Store and TestFlight
+  builds, and long walks and large custom routes keep syncing as they grow.
+  iCloud's live schema had never been given the bookmark record type, or the
+  overflow fields a walk's or route's GPS track moves into once it is too big
+  for the record itself, so those records could not upload. The fields were
+  added and deployed in CloudKit Console on 2026-09-29; no app update was
+  needed.
+- Orange text in light mode, such as "3.3 mi to go", was too faint to read
+  comfortably (3.6:1). It is now 4.9:1, above the 4.5:1 that small text needs.
+- The in-memory SwiftData stores no longer try to sync with iCloud. A
+  `ModelConfiguration` defaults to `cloudKitDatabase: .automatic`, so in any
+  signed build the test stores in `SnapshotRestoreTests` and
+  `CustomRouteStoreTests` got a CloudKit mirroring delegate. With no iCloud
+  account on the simulator its setup failed, CoreData tore the store down
+  mid-test, and the next save threw "No eligible connection available",
+  crashing the test host and every test running beside it. That is why a local
+  `scripts/test.sh` lost 2–7 tests a run while GitHub Actions, which builds
+  unsigned, stayed green. The app's last-resort in-memory store in
+  `AppModelContainer` had the same omission and now says `.none` as well,
+  like the local store fixed on 2026-09-29.
+- A route's history said "No Runs Yet" for every route, walking or cycling.
+  It now names the route's own activity.
+- In dark mode, the Save Route sheet showed its title in dark text on a dark
+  background.
+- The place list's "& Back" button now reads "There & Back", so it makes sense
+  on its own, including to VoiceOver.
+- My Pets showed each pet's built-in emoji even when the pet had a custom one,
+  which every other screen used.
+- In dark mode, the Schedule Walk sheet showed its title in dark text on a dark
+  background.
+- The daily step goal can be changed again, from Settings → Tracking → Daily Step Goal. Since 1.10 it could not be changed at all, and neither could the weekly goal schedule or the activity tags shown on the calendar. The goal editor was still in the app, but its only way in was a Home tile that went in the 2026-09-01 Home de-clutter (1169934). Nothing else opened it, so everyone stayed on the goal they had (10,000 for anyone who installed after that). The gap turned up on 2026-10-01 during a cleanup that was going to delete the editor as unused code. Nothing in the app set the goal, so deleting the editor would have removed the feature for good; this adds a way back in instead. The row shows today's goal, and says "Weekly schedule" when a per-day schedule is on. The editor is unchanged and still uses the old styling. Moving it onto the shared design pieces is left for the Settings conversion. (The 1.13 notes say this sheet was "opened from Home". It was not; nothing opened it then.) A new UI smoke test opens the editor from Settings and closes it with Cancel.
+- "Break prompt after N min" sat outside every section, so it floated between
+  Tracking and Notifications with no heading. It is now under Tracking.
+- In light mode, Add Walk Reminder's time picker was forced dark, a dark pill
+  on a light sheet.
+- Two of the goal editor's preset chips had the wrong label: 5,000 steps read
+  "5.5K" and 12,500 read "12K". They read "5K" and "12.5K".
 
 ### Internal
 - `scripts/test.sh`, `scripts/lint.sh` and `scripts/ci_pick_simulator.sh` are now thin wrappers around a shared toolkit in `~/.claude/toolkit`, configured by the new `.claude/app.json`. The same hardened runner now serves Joe's other app too, and neither repo depends on the other. Usage is unchanged. `lint.sh` compares `app.json`'s exclusions with `.swiftlint.yml`'s and aborts when they differ, where it used to compare against a list hardcoded in the script. `test.sh` gained one check: a run of 0 tests is a failure, because a test filter that matches nothing still makes xcodebuild print TEST SUCCEEDED. `.gitignore` now keeps the rest of `.claude/` (local settings, stray worktrees) out of git. `app.json` also carries the review checklist the `critic` agent (formerly `wockett-critic`) applies to Wockett.
 - `SmokeTests.testAccessoryBar` now says what was on screen when its last step fails, instead of only "Exceeded timeout of 10 seconds". That step, the mini tile going away after Done, failed once on Xcode Cloud (PR #87, 2026-09-27, a change with no app or test code) and passed on re-run. The cause is not known yet. Locally it passed 33 of 33: 20 repeats, 3 with 10× slower animations (which changed nothing, since the app turns animations off under `-WKTUITest`), and 10 on a freshly erased simulator, as Xcode Cloud uses. It also passed 5 of 5 with the app modified to end the session while the reopened session sheet was still up, which disproved the most likely theory, which was that the reopened sheet saw no session and quietly started a new Free Walk. Locally the tile is gone at the first check, about 1 s after Done, so a 10 s miss is a stuck state and a longer timeout would not fix it. On failure the test now attaches a screenshot and the accessibility tree, and the failure text lists which of summary, session, Home and Community are up, any alerts, the session timer, and the tile's label. That text reaches the GitHub check-run summary, so the next failure can be read with `gh api`. Checked by stopping the app from ending the session: the test failed with "summary.root=false session.root=false home.statCard=true … tile label 'Return to Free Walk'".
 - Trail pack tests no longer depend on what is installed on the simulator. `TrailPackLibraryTests` read the app's real Application Support, so an "nc" pack left there by manual testing on 2026-09-27 made `loadBundled` open an extra region, and the tests failed twice on the shared simulator. Each test now gets its own empty packs directory, deleted when the test ends. Under `-WKTUITest` the app's shared library also uses a fresh, empty directory, so the smoke tests see only the bundled packs. `isWKTUITestMode` is compiled out of Release builds, so shipping behaviour is unchanged. Break-checked by planting an installed `nc` pack in the simulator's app container. With a copy of the bundled pack, the old tests failed 1 of 7 and the new ones passed 7 of 7. With a corrupt pack, the old code failed 4 of 7, including `testTrailsList` ("No trails listed near downtown Raleigh"), and the new code passed all 7.
 - `docs/ci.md` no longer carries the App Store Connect team ID or the `main` ruleset's ID, and the website no longer serves it. The repo is public, and GitHub Pages was publishing the file at `wockett.app/ci.html` (HTTP 200 on 2026-09-26), so internal CI notes sat on the app's customer-facing site. Neither ID grants access on its own, but neither needs to be public: the ruleset ID is one `gh api` call away, and the team is the one App Store Connect opens to. A new `docs/_config.yml` excludes `ci.md` from the site; the privacy policy and home page are unaffected.
+- Routine PRs merge themselves. Claude queues GitHub auto-merge when it opens a PR (`gh pr merge --auto --squash`), and GitHub squash-merges once the three required checks pass. Nothing about `main`'s protection changed. Joe asked for this on 2026-09-27. By the time he clicked Merge, the checks had already passed and he was not reviewing the code, so the click only added waiting. `main` is not what users get: a change reaches them only through a Release Flow build, TestFlight QA and Submit, which are still Joe's. The release PR is never auto-merged, because merging it is the decision to ship. "Hold #N" turns auto-merge off for one PR. If Claude Code's safety check refuses to queue it, Joe merges that PR by hand (added 2026-09-28, after it refused two PRs that day; a brief switch back to Joe merging everything was reverted once it turned out auto-merge had worked on 12 PRs). The repo's "Allow auto-merge" setting was turned on the same day.
+- Changelog entries now go in their own file in `changelog.d/`, one per change, and the release PR gathers them into `CHANGELOG.md`. On 2026-09-27 three PRs in a row (#90, #91, #92) conflicted at the same line of `[Unreleased]`, because each open PR added its entry there. A conflicted PR cannot auto-merge, so auto-merge would have stalled on exactly that. `changelog.d/README.md` has the format.
+- `CLAUDE.md`'s Process section now imports the shared `PROCESS.md` from the toolkit (`FreeScoopDev/app-toolkit`, at `~/.claude/toolkit`) and keeps only what is Wockett's: the required check names, the Ship Path link, the App Store lookup ID, the Slack channel, and the emergency-archive history. The process had just been edited separately here and in PlowR (#93, PlowR #20), and every future app would have needed a third copy. `CLAUDE.md` also tells a session to read the file directly if the import did not load. `.claude/app.json` gained `github` and `requiredChecks`, which `repo-check.sh` compares with GitHub's "Protect main" ruleset.
+- Pull-request tests run on GitHub Actions (`.github/workflows/tests.yml`, job "Tests (iOS)") instead of Xcode Cloud. On 2026-09-28 the Xcode Cloud usage page showed 18 h 19 m of the 25 included hours used this period: 150 `CI Tests` builds at 7 minutes each, and 6 Release Flow builds totalling 14 minutes. When the hours run out the required check never reports and every PR sits at "Expected" until the month resets, with the manual archive from Joe's folder as the only release path left. The repository is public, so GitHub-hosted runners are free, macOS included, and the `macos-26` image ships the same Xcode 26.6 (17F113) that Xcode Cloud pins; that removes the 2026-09-04 reason for leaving GitHub Actions, which was 10x billing on a private repo. The job runs the full `PoCSquat` scheme through the shared toolkit's `bin/test.sh`, pinned to one toolkit commit, so CI and a local `scripts/test.sh` judge a run by the same three signals. Docs-only changes skip the macOS job: a job skipped by `if:` reports Success and still satisfies a required check, where a path filter on the trigger would leave the check "Expected" and block the merge. The classifier (`.github/scripts/classify_changes.sh`) runs the iOS job for anything it does not recognise, including an empty diff. Changes under `tools/` run the trail-pack builder's 57 Python tests on Linux, which nothing in CI ran before. Signing is left at its defaults: a simulator build is ad-hoc signed with its entitlements and needs no certificate, which is all a runner has. `CODE_SIGNING_ALLOWED=NO`, which the 2026-09-04 workflow used, was tried first and crashed the app at launch in the local run: `CKContainer(identifier:)` traps when the iCloud entitlement is missing, and since 1.12 `TrailPackLibrary.shared` creates one inside `SquatCounterApp.init()`. An unsigned build has no entitlements at all, so every unit test's host app and every UI test died before the first screen. The check is advisory in this change; it becomes required, and Xcode Cloud's `CI Tests` workflow is switched off, once a deliberately broken test has been seen to turn it red.
+- `Unit tests (iOS)`, the GitHub Actions job that runs `WockettTests`, is the required test check on `main` in place of Xcode Cloud's `Wockett | CI Tests | Test - iOS`; `UI smoke tests (iOS)` runs `WockettUITests` beside it as a second, advisory job. The check was proven first: a throwaway PR with a deliberately broken unit test (#96) turned it red, and the failed run uploaded its log and xcresult bundle, because the toolkit's `bin/test.sh` now writes them under `TEST_OUTPUT_DIR` (Apple's `mktemp -t` ignores `TMPDIR`, which is why the first failure uploaded nothing). The UI job is advisory because three full-scheme runs on the free `macos-26` runner took 32 to 42 minutes against Xcode Cloud's 7 and the UI target misbehaved each time (a 324 s smoke test, a test runner that never started, a UI query timeout), while the unit target passed every time; `docs/ci.md` records the numbers and the rule for promoting it. `ProEntitlementStoreTests` polls for up to 30 s instead of 5, because the loaded runner missed the shorter window once. Xcode Cloud's `CI Tests` workflow now runs the full scheme once a day on `main` instead of on every pull request, so the 25 included compute hours a month go to that daily run and to Release Flow archives. `CLAUDE.md` and `docs/ci.md` describe the new shape.
+- Tests that could not fail no longer count as coverage. On 2026-09-28 three test-auditor runs broke the production code one line at a time in a throwaway copy and watched which tests went red; 70 of 77 did, and the rest are fixed or gone here. `WalkPersistenceStore` and its eight tests are deleted: nothing in the app called the store (the auditor compiled the whole class out, and the app still built), so its tests guarded code no user path ran. `restoredPausedDuration_elapsedHonestyInvariant` recomputed its own answer and stayed green when the session stopped subtracting pauses from elapsed time; it now restores through `NavigationSessionManager.applySnapshot` and checks the elapsed time and the breadcrumbs that come back. `goalMet_nilForFutureDay` passed nil steps, so the future-day rule it names was never reached; it now gives the future day a step count. `progress_zeroForFutureDay` was a copy of another test and is gone. The colour-index test compared a value with itself; it compares with the palette. `deniedAddFailsAndStoresNothing` stayed green when either of its two guards was removed; it now checks that a denial returns before the center is touched, and a new test covers the other guard, a request the center refuses. The off-trail test's "pending request removed" line was satisfied by the two schedules above it, not by `withdraw`; it counts the cancels. Two ledger gaps are closed: `pointsToPro` cannot go negative past the threshold, and entries handed back out of order are sorted on load. Two force-unwraps in the snapshot tests are `try #require`, so a nil reads as a failed expectation instead of the test host crashing. Each rewrite was checked the same way the audit was: the auditor's mutation was applied again and the new test went red, then the code was restored.
+- Every app-group key lives in one file compiled into both the app and the
+  widget (`AppGroup.swift`, beside `DesignSystem.swift` and
+  `ProEntitlement.swift`), so the two processes cannot disagree about a
+  name again. `WidgetSnapshot` is the one writer of the widget's numbers.
+- The Control Center request keys, the Siri steps fallback and the
+  background refresh's day boundary now go through `AppGroup.swift` and
+  `StepManager.trackingDayStart()` instead of their own copies of the
+  strings and the 3 AM rule, finishing the widget-refresh change.
+- A walk ends one way: `ActiveWalkStore.end(.save / .discard)`. The walk
+  screen's Finish and Discard, the break prompt, the driving banner, route
+  completion, the mini tile and the Live Activity each re-implemented the
+  sequence, and each left something out.
+- Measured, and left alone: the Live Activity calls at walk start (about 20 ms
+  of main-thread waiting per walk under heavy load) and creating a
+  `CKContainer` (4 ms across five launches). Both are synchronous system calls
+  on the main thread, like the permission reads fixed in #111 and #112, but
+  far too short to freeze the app.
+- `CLAUDE.md` records why that gap happened (Production only gets what a
+  Debug build synced to Development before a deploy) and how to catch it:
+  run the toolkit's `cloudkit-schema-check.sh` against a fresh Production
+  export whenever a release adds or changes a SwiftData model.
+- New shared design pieces in `DesignSystem.swift` and `PoCSquat/Design/`: a
+  named type scale (`wktMetric` … `wktLabel`), `WktSpacing`, the `earthRaised`,
+  `earthTrack` and `earthStroke` colours, `WktStatusChip`, `WktPrimaryButton`
+  and `WktIconBadge`. `wktCard`, `WktSectionHeader` and `WktProgressBar` were
+  upgraded in place, so the roughly 15 screens that use them changed too.
+- Removed code that only the old Home used: `JourneyTrackView` and its hourly
+  step service, `BannerTitleView` and the timer that rotated it, and the three
+  weather cards.
+- The walk UI tests now select Walk, check that no session has started, then
+  press `home.start`. Seeing them fail when the picker starts a session by
+  itself was part of verifying this change.
+- New shared pieces: `WktSection` (a heading over its cards), `WktDivider`,
+  `wktChoiceBackground(selected:)` (one option in a set the user picks from),
+  `WktSecondaryButton`, `WktPillButton` (a small action inside a row),
+  `WktEmptyState`, and `WktPrimaryLabel` / `WktSecondaryLabel` for a
+  `ShareLink` or other control that is not a plain `Button`. Home now uses
+  `WktSection`, `WktDivider`, `WktPillButton` and `wktChoiceBackground` too, so
+  the two tabs cannot drift apart.
+- New shared pieces: `WktGoalRing` (now also on Home), `WktRoundIconButton`,
+  and the metric-screen set in `Design/WktDetailPieces.swift` (`WktMetricHero`,
+  `WktStatGrid`, `WktBulletList`, `WktNumberedList`, `WktInfoSection`).
+  Recovery's detail sheet and the gait detail screen each drew their own copy
+  of these. `WktIconBadge` takes a size and a model-supplied symbol name.
+- `TodayHeroView.swift` is now `Health/RecoveryViews.swift`: since #115 it only
+  held the Health tab's recovery card and its sheet. Its 17 hard-coded SF
+  Symbol names, and 4 in `DayDetailSheet`, go through `WktSymbol` (new case:
+  `.night`).
+- New shared pieces: `WktBanner`, and a `tint` on `WktPillButton` (red to end
+  something, cream for "Not now"). `WktSymbol` gains `.cadence`; the indoor
+  walk's 9 hard-coded SF Symbol names go through `WktSymbol`.
+- New shared pieces: `WktSegmentedPicker`, `WktChoiceChip`, `WktFlowRow` (wraps
+  chips) and `WktIconStatTile`, which the walk summary, the indoor summary and
+  Share Route now all use. `WktSymbol` gains `.hiking` and `.mountain`; route
+  difficulty no longer names SF Symbols itself.
+- A pet's detail ring is the shared `WktGoalRing`, which now takes a tint (a
+  pet's own colour; the user's goal stays orange). The last hard-coded SF
+  Symbol names in the app, in `PetDetailSheet`, go through `WktSymbol`, so
+  there are none left.
+- New shared piece: `WktListHeader`, a `WktSectionHeader` in a system List's
+  section header slot.
+- The v1.10 `wktDisplay` (Rounded Black) and `wktTechnical` (SF Mono, all caps)
+  fonts are deleted from `DesignSystem.swift`. With the widget converted,
+  nothing used them, and keeping them invited the old style back in.
+- This completes the rollout of the 2026-09-30 design system to every screen
+  (#115–#123).
 
 ## [1.13] - 2026-09-26
 
