@@ -157,9 +157,13 @@ way unless there's a strong reason; adding the first one is a real decision.
   `WktGoalRing`; a mid-session notice is a `WktBanner`; pick-one controls
   are `WktSegmentedPicker` / `WktChoiceChip`; tags that may not fit one line
   go in a `WktFlowRow`; a system List's section heading is `WktListHeader`.
-  Every app screen is converted; only the widget and Live Activity still use
-  `wktTechnical` labels. The share card (`ActivitySummaryCard`) keeps fixed point sizes on
-  purpose: it is drawn into a fixed-size image. Convert one area per PR.
+  Every screen, the widget and the Live Activity are converted (2026-10-01),
+  and the old all-caps `wktTechnical` / Rounded Black `wktDisplay` fonts are
+  deleted. The widget target shares only `DesignSystem.swift`: it uses the
+  type scale and colours but not `PoCSquat/Design/` or `WktSymbol`, so it
+  keeps its own short `WS` symbol list. The share card
+  (`ActivitySummaryCard`) keeps fixed point sizes on purpose: it is drawn into
+  a fixed-size image. New screens build from these pieces from the start.
 - **The changelog entry ships with the change**, in the same commit, explaining
   *why* — not just what. Since 2026-09-27 it goes in its own file in
   `changelog.d/`, not in `CHANGELOG.md`. `changelog.d/README.md` has the format.

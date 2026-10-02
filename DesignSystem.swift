@@ -160,25 +160,16 @@ extension Color {
 
 }
 
-// MARK: - Typography system (v1.10 unified design system)
+// MARK: - Typography (2026-09-30 redesign)
 //
-// Three tiers, two font families, zero new dependencies:
-//   Display    — SF Pro Rounded Black.    Hero numbers, wordmark, big stats.
-//   UI         — SF Pro Rounded Heavy/Semibold. Headings, labels, buttons.
-//   Technical  — SF Mono Semibold, tracked +14%. All-caps eyebrow labels,
-//                stat captions, and other "readout" text (GPS READY, PACE,
-//                ELAPSED, badge percentages, etc).
-//
-// The splash screen already commits to Rounded Black; this makes the rest
-// of the app follow through on that instead of using ad hoc system fonts.
+// SF Pro Rounded throughout, sentence case, no new dependencies. Use the six
+// named roles below (`wktMetric` … `wktLabel`); `wktHeading(_:)` and
+// `wktBody(_:)` remain for the few places that need another size (a ring's
+// centre, a chart's axis). The v1.10 Display (Rounded Black) and Technical
+// (SF Mono, all-caps, tracked) tiers were removed on 2026-10-01 once nothing
+// used them: the redesign retired the all-caps "readout" labels everywhere.
 
 extension Font {
-    /// Display tier — SF Pro Rounded Black. Use for hero numbers and the wordmark.
-    static func wktDisplay(_ size: CGFloat) -> Font {
-        let s = UIFontMetrics(forTextStyle: .body).scaledValue(for: size)
-        return .system(size: s, weight: .black, design: .rounded)
-    }
-
     /// UI tier, heading weight — SF Pro Rounded Heavy. Section titles, card headers.
     static func wktHeading(_ size: CGFloat) -> Font {
         let s = UIFontMetrics(forTextStyle: .body).scaledValue(for: size)
@@ -223,29 +214,6 @@ enum WktSpacing {
     /// Between sections.
     static let betweenSections: CGFloat = 24
 }
-
-/// Technical tier — SF Mono Semibold, tracked +14%. Apply via the `.wktTechnical()`
-/// view modifier below rather than `.font()` directly, since tracking is a
-/// separate Text/View modifier in SwiftUI, not part of `Font` itself.
-private struct WktTechnicalText: ViewModifier {
-    var size: CGFloat
-    func body(content: Content) -> some View {
-        let s = UIFontMetrics(forTextStyle: .body).scaledValue(for: size)
-        return content
-            .font(.system(size: s, weight: .semibold, design: .monospaced))
-            .tracking(s * 0.14)
-    }
-}
-
-extension View {
-    /// Technical tier — SF Mono Semibold, tracked +14%. Default size 11pt
-    /// matches the small all-caps eyebrow labels and stat captions in the
-    /// design mockups (GPS READY, PACE, ELAPSED, badge percentages, etc).
-    func wktTechnical(_ size: CGFloat = 11) -> some View {
-        modifier(WktTechnicalText(size: size))
-    }
-}
-
 
 extension UIColor {
     // Same TEXT/ICON-vs-FILL split as the Color tokens above: MapKit renderers
