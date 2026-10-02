@@ -42,75 +42,63 @@ struct GoalEditorSheet: View {
             : String(format: "%.1f", value)
     }
 
+    /// "7.5K", "10K", "12.5K". The label used to print 12,500 as "12K".
+    nonisolated static func presetLabel(_ steps: Int) -> String {
+        steps % 1_000 == 0 ? "\(steps / 1_000)K" : String(format: "%.1fK", Double(steps) / 1_000)
+    }
+
     var body: some View {
         NavigationStack {
             ZStack {
                 Color.earthBg.ignoresSafeArea()
                 ScrollView {
-                    VStack(spacing: 28) {
-                        Picker("", selection: $mode) {
-                            Text("Steps").tag(0)
-                            Text("Distance").tag(1)
-                        }
-                        .pickerStyle(.segmented)
-                        .padding(.horizontal, 28)
+                    VStack(spacing: WktSpacing.betweenSections) {
+                        WktSegmentedPicker(selection: $mode, options: [
+                            .init(value: 0, title: "Steps", symbol: .steps),
+                            .init(value: 1, title: "Distance", symbol: .distance)
+                        ])
 
                         if mode == 0 {
                             Text("Set your daily step goal")
-                                .font(.subheadline).foregroundColor(.earthMuted)
+                                .font(.wktBodyText).foregroundColor(.earthMuted)
 
                             TextField("Steps", text: $goalText)
                                 .keyboardType(.numberPad)
-                                .font(.system(size: 48, weight: .bold, design: .rounded))
+                                .font(.wktHeading(48))
                                 .multilineTextAlignment(.center)
                                 .foregroundColor(.earthCream)
 
-                            let columns = [GridItem(.adaptive(minimum: 70))]
-                            LazyVGrid(columns: columns, spacing: 10) {
+                            WktFlowRow(spacing: 8) {
                                 ForEach(stepPresets, id: \.self) { p in
-                                    Button {
+                                    WktChoiceChip(title: Self.presetLabel(p), selected: stepManager.dailyGoal == p) {
                                         goalText = "\(p)"
                                         stepManager.dailyGoal = p
-                                    } label: {
-                                        Text(p >= 10_000 ? "\(p / 1000)K" : "\(p / 1000).5K")
-                                            .font(.caption.bold())
-                                            .padding(.horizontal, 14).padding(.vertical, 8)
-                                            .background(stepManager.dailyGoal == p ? Color.earthGreenFill : Color.earthCard)
-                                            .foregroundColor(stepManager.dailyGoal == p ? .white : .earthCream)
-                                            .cornerRadius(20)
                                     }
                                 }
                             }
                         } else {
                             Text("Set your daily distance goal")
-                                .font(.subheadline).foregroundColor(.earthMuted)
+                                .font(.wktBodyText).foregroundColor(.earthMuted)
 
                             HStack(alignment: .firstTextBaseline, spacing: 6) {
                                 TextField(Self.unitLabel, text: $distText)
                                     .keyboardType(.decimalPad)
-                                    .font(.system(size: 48, weight: .bold, design: .rounded))
+                                    .font(.wktHeading(48))
                                     .multilineTextAlignment(.center)
                                     .foregroundColor(.earthCream)
                                     .frame(maxWidth: 180)
                                 Text(Self.unitLabel)
-                                    .font(.title2.bold())
+                                    .font(.wktCardTitle)
                                     .foregroundColor(.earthMuted)
                             }
 
-                            let columns = [GridItem(.adaptive(minimum: 60))]
-                            LazyVGrid(columns: columns, spacing: 10) {
+                            WktFlowRow(spacing: 8) {
                                 ForEach(Self.unitPresets, id: \.self) { dist in
                                     let steps = Int(dist * Self.stepsPerUnit)
-                                    Button {
+                                    WktChoiceChip(title: "\(Self.distString(dist)) \(Self.unitLabel)",
+                                                  selected: stepManager.dailyGoal == steps) {
                                         distText = Self.distString(dist)
                                         stepManager.dailyGoal = steps
-                                    } label: {
-                                        Text("\(Self.distString(dist)) \(Self.unitLabel)")
-                                            .font(.caption.bold())
-                                            .padding(.horizontal, 14).padding(.vertical, 8)
-                                            .background(stepManager.dailyGoal == steps ? Color.earthGreenFill : Color.earthCard)
-                                            .foregroundColor(stepManager.dailyGoal == steps ? .white : .earthCream)
-                                            .cornerRadius(20)
                                     }
                                 }
                             }
@@ -120,12 +108,12 @@ struct GoalEditorSheet: View {
                         VStack(alignment: .leading, spacing: 0) {
                             HStack(spacing: 12) {
                                 VStack(alignment: .leading, spacing: 3) {
-                                    Text("Custom Weekly Schedule")
-                                        .font(.subheadline).foregroundColor(.earthCream)
+                                    Text("Custom weekly schedule")
+                                        .font(.wktRowTitle).foregroundColor(.earthCream)
                                     Text(stepManager.useCustomSchedule
                                          ? "Goals below override your default"
                                          : "Set different goals per day of week")
-                                        .font(.caption).foregroundColor(.earthMuted)
+                                        .font(.wktLabel).foregroundColor(.earthMuted)
                                 }
                                 Spacer()
                                 Toggle("", isOn: $stepManager.useCustomSchedule)
@@ -134,13 +122,13 @@ struct GoalEditorSheet: View {
                             .padding(14)
 
                             if stepManager.useCustomSchedule {
-                                Divider().background(Color.earthMuted.opacity(0.2))
+                                WktDivider()
 
                                 // Lock All / Unlock All header
                                 let allLocked = orderedDays.allSatisfy { stepManager.lockedWeekdays.contains($0.0) }
                                 HStack {
                                     Text("Tap 🔒 to preserve a day's goal when the default changes")
-                                        .font(.caption2).foregroundColor(.earthMuted)
+                                        .font(.wktLabel).foregroundColor(.earthMuted)
                                     Spacer()
                                     Button {
                                         if allLocked {
@@ -157,7 +145,7 @@ struct GoalEditorSheet: View {
                                             Image(wkt: allLocked ? .lock : .lockOpen)
                                                 .accessibilityHidden(true)
                                             Text(allLocked ? "Unlock All" : "Lock All")
-                                                .font(.caption.bold())
+                                                .font(.wktLabel)
                                         }
                                         .foregroundColor(allLocked ? .earthGreen : .earthMuted)
                                     }
@@ -170,9 +158,9 @@ struct GoalEditorSheet: View {
                                             VStack(alignment: .leading, spacing: 1) {
                                                 Text(name)
                                                     .foregroundColor(wd == todayWeekday ? .earthGreen : .earthCream)
-                                                    .font(.subheadline)
+                                                    .font(.wktRowTitle)
                                                 if wd == todayWeekday {
-                                                    Text("Today").font(.caption2).foregroundColor(.earthGreen)
+                                                    Text("Today").font(.wktLabel).foregroundColor(.earthGreen)
                                                 }
                                             }
                                             Spacer()
@@ -182,6 +170,7 @@ struct GoalEditorSheet: View {
                                             ), format: .number)
                                             .keyboardType(.numberPad)
                                             .multilineTextAlignment(.trailing)
+                                            .font(.wktRowTitle.monospacedDigit())
                                             .foregroundColor(.earthGreen)
                                             .frame(width: 90)
 
@@ -215,12 +204,12 @@ struct GoalEditorSheet: View {
                                                     } label: {
                                                         HStack(spacing: 3) {
                                                             Text(config.emoji).font(.system(size: 10))
-                                                            Text(config.name).font(.caption2.bold())
+                                                            Text(config.name).font(.wktLabel)
                                                         }
-                                                        .padding(.horizontal, 10).padding(.vertical, 4)
-                                                        .background(selected ? config.color : Color.earthBg)
+                                                        .padding(.horizontal, 10)
+                                                        .frame(minHeight: 30)
+                                                        .background(selected ? config.color : Color.earthRaised, in: Capsule())
                                                         .foregroundColor(selected ? .white : config.color)
-                                                        .cornerRadius(20)
                                                     }
                                                 }
                                             }
@@ -232,23 +221,22 @@ struct GoalEditorSheet: View {
                                     }
 
                                     if wd != orderedDays.last?.0 {
-                                        Divider().background(Color.earthMuted.opacity(0.15)).padding(.horizontal, 14)
+                                        WktDivider().padding(.horizontal, 14)
                                     }
                                 }
                             }
                         }
-                        .background(Color.earthCard)
-                        .cornerRadius(12)
+                        .wktCardBackground()
                         .animation(.easeInOut(duration: 0.22), value: stepManager.useCustomSchedule)
 
                         // ── Customize Tags ───────────────────────────────
                         VStack(alignment: .leading, spacing: 0) {
                             HStack {
                                 VStack(alignment: .leading, spacing: 3) {
-                                    Text("Customize Tags")
-                                        .font(.subheadline).foregroundColor(.earthCream)
+                                    Text("Customize tags")
+                                        .font(.wktRowTitle).foregroundColor(.earthCream)
                                     Text("Change emoji and color for each activity")
-                                        .font(.caption).foregroundColor(.earthMuted)
+                                        .font(.wktLabel).foregroundColor(.earthMuted)
                                 }
                                 Spacer()
                                 Button { showTagCustomizer.toggle() } label: {
@@ -260,7 +248,7 @@ struct GoalEditorSheet: View {
                             .padding(14)
 
                             if showTagCustomizer {
-                                Divider().background(Color.earthMuted.opacity(0.2))
+                                WktDivider()
                                 ForEach($stepManager.tagConfigs) { $config in
                                     VStack(spacing: 0) {
                                         HStack(spacing: 10) {
@@ -275,7 +263,7 @@ struct GoalEditorSheet: View {
                                                 get: { config.name },
                                                 set: { config.name = String($0.prefix(12)) }
                                             ))
-                                            .font(.subheadline.bold())
+                                            .font(.wktRowTitle)
                                             .foregroundColor(.earthCream)
                                             .frame(maxWidth: 80)
 
@@ -307,17 +295,17 @@ struct GoalEditorSheet: View {
                                         }
                                         .padding(.horizontal, 14).padding(.vertical, 10)
                                         if config.id != stepManager.tagConfigs.last?.id {
-                                            Divider().background(Color.earthMuted.opacity(0.12)).padding(.horizontal, 14)
+                                            WktDivider().padding(.horizontal, 14)
                                         }
                                     }
                                 }
                             }
                         }
-                        .background(Color.earthCard)
-                        .cornerRadius(12)
+                        .wktCardBackground()
                         .animation(.easeInOut(duration: 0.22), value: showTagCustomizer)
                     }
-                    .padding(28)
+                    .padding(.horizontal, WktSpacing.screen)
+                    .padding(.vertical, WktSpacing.betweenSections)
                 }
                 .scrollDismissesKeyboard(.interactively)
             }

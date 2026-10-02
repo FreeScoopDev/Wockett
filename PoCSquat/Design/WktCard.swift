@@ -72,6 +72,18 @@ struct WktSectionHeader: View {
     }
 }
 
+/// `WktSectionHeader` in a system List's section header slot (Settings and
+/// its screens), which would otherwise uppercase and shrink it.
+struct WktListHeader: View {
+    let title: String
+
+    var body: some View {
+        WktSectionHeader(title: title)
+            .textCase(nil)
+            .padding(.bottom, 4)
+    }
+}
+
 /// The 1 pt rule between rows inside a card.
 struct WktDivider: View {
     var body: some View {

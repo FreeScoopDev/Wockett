@@ -50,6 +50,7 @@ struct TipJarView: View {
                 smallPrintSection
             }
             .scrollContentBackground(.hidden)
+            .font(.wktRowTitle)
         }
         .navigationTitle("Support Wockett")
         .navigationBarTitleDisplayMode(.inline)
@@ -77,10 +78,10 @@ struct TipJarView: View {
         Section {
             VStack(alignment: .leading, spacing: 10) {
                 Text("Wockett is made by one person.")
-                    .font(.headline)
+                    .font(.wktRowTitle)
                     .foregroundColor(.earthCream)
                 Text("Tipping is entirely optional and unlocks nothing that's currently free — every feature you use today stays exactly as it is. It just helps cover what the app costs to run.")
-                    .font(.subheadline)
+                    .font(.wktBodyText)
                     .foregroundColor(.earthMuted)
             }
             .padding(.vertical, 4)
@@ -103,7 +104,7 @@ struct TipJarView: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text(message).foregroundColor(.earthCream)
                 Text("Nothing's wrong with the app — you can carry on as normal. Try again later.")
-                    .font(.caption)
+                    .font(.wktLabel)
                     .foregroundColor(.earthMuted)
                 Button("Try again") { Task { await store.loadProducts() } }
                     .foregroundColor(.earthGreen)
@@ -127,7 +128,7 @@ struct TipJarView: View {
                             Text(tip.title)
                                 .foregroundColor(.earthCream)
                             Text(tip.blurb)
-                                .font(.caption)
+                                .font(.wktLabel)
                                 .foregroundColor(.earthMuted)
                         }
 
@@ -145,7 +146,7 @@ struct TipJarView: View {
                             // point — down to an ellipsis. The blurb wraps to
                             // another line instead.
                             Text(store.displayPrice(for: tip) ?? "—")
-                                .font(.body.monospacedDigit())
+                                .font(.wktRowTitle.monospacedDigit())
                                 .foregroundColor(.earthGreen)
                                 .fixedSize()
                                 .layoutPriority(1)
@@ -157,16 +158,16 @@ struct TipJarView: View {
                 .listRowBackground(Color.earthCard)
             }
         } header: {
-            Text("Tip jar")
+            WktListHeader(title: "Tip jar")
         } footer: {
             Text("Tips are remembered. If Wockett ever adds paid features, supporters who've tipped roughly the Big Supporter amount in total will get them at no charge.")
-                .font(.caption)
+                .font(.wktLabel)
                 .foregroundColor(.earthMuted)
         }
     }
 
     private var supporterStatusSection: some View {
-        Section("Your support") {
+        Section {
             VStack(alignment: .leading, spacing: 8) {
                 Text(ledger.tipCount == 1 ? "You've tipped once." : "You've tipped \(ledger.tipCount) times.")
                     .foregroundColor(.earthCream)
@@ -176,7 +177,7 @@ struct TipJarView: View {
                 if ledger.hasEarnedPro {
                     Label {
                         Text("You're a supporter. Any future paid features are yours at no charge.")
-                            .font(.subheadline)
+                            .font(.wktBodyText)
                     } icon: {
                         Image(wkt: .supportHeart).wktIcon(.row, tint: .earthGreen)
                     }
@@ -184,12 +185,12 @@ struct TipJarView: View {
                 }
 
                 Text("Thank you. Genuinely.")
-                    .font(.caption)
+                    .font(.wktLabel)
                     .foregroundColor(.earthMuted)
             }
             .padding(.vertical, 4)
             .listRowBackground(Color.earthCard)
-        }
+        } header: { WktListHeader(title: "Your support") }
     }
 
     private var smallPrintSection: some View {
@@ -211,7 +212,7 @@ struct TipJarView: View {
             .listRowBackground(Color.earthCard)
 
             Text("Tips are one-off payments handled by Apple. They aren't refundable through Wockett — contact Apple Support for that.")
-                .font(.caption)
+                .font(.wktLabel)
                 .foregroundColor(.earthMuted)
                 .listRowBackground(Color.earthCard)
         }

@@ -46,7 +46,7 @@ struct SettingsView: View {
             List {
 
                 // ── Tracking ──────────────────────────────────────
-                Section("Tracking") {
+                Section {
                     // The only way into the goal editor. Its Home tile went in the
                     // 2026-09-01 de-clutter, which left 1.10–1.12 with no way to
                     // change the goal, the weekly schedule or the tags.
@@ -55,11 +55,11 @@ struct SettingsView: View {
                     } label: {
                         Label {
                             VStack(alignment: .leading, spacing: 2) {
-                                Text("Daily Step Goal").foregroundColor(.earthCream)
+                                Text("Daily step goal").foregroundColor(.earthCream)
                                 Text(stepManager.useCustomSchedule
                                      ? "Weekly schedule · \(stepManager.currentGoal.formatted()) today"
                                      : "\(stepManager.currentGoal.formatted()) steps")
-                                    .font(.caption).foregroundColor(.earthMuted)
+                                    .font(.wktLabel).foregroundColor(.earthMuted)
                             }
                         } icon: { Image(wkt: .target).wktIcon(.row, tint: .earthGreen) }
                     }
@@ -67,17 +67,15 @@ struct SettingsView: View {
                     .listRowBackground(Color.earthCard)
 
                     VStack(alignment: .leading, spacing: 10) {
-                        Text("Data Source")
-                            .font(.subheadline).foregroundColor(.earthCream)
-                        Picker("", selection: $stepManager.trackingMode) {
-                            ForEach(StepManager.TrackingMode.allCases) { Text($0.rawValue).tag($0) }
-                        }
-                        .pickerStyle(.segmented)
+                        Text("Data source")
+                            .foregroundColor(.earthCream)
+                        WktSegmentedPicker(selection: $stepManager.trackingMode,
+                                           options: StepManager.TrackingMode.allCases.map { .init(value: $0, title: $0.rawValue) })
                         .onChange(of: stepManager.trackingMode) { _, m in stepManager.switchTrackingMode(to: m) }
                         Text(stepManager.trackingMode == .healthKit
                              ? "Steps are pulled from Apple Health. HealthKit permission required."
                              : "Steps are counted by this app using the device's motion sensor.")
-                            .font(.caption).foregroundColor(.earthMuted)
+                            .font(.wktLabel).foregroundColor(.earthMuted)
                     }
                     .padding(.vertical, 4)
                     .listRowBackground(Color.earthCard)
@@ -91,8 +89,9 @@ struct SettingsView: View {
                         }
                         .listRowBackground(Color.earthCard)
                     }
-                }
 
+                    // Was outside any Section, so it floated between Tracking
+                    // and Notifications with no heading.
                     VStack(alignment: .leading, spacing: 6) {
                         Stepper(
                             "Break prompt after \(breakPromptMinutes) min",
@@ -101,20 +100,20 @@ struct SettingsView: View {
                         )
                         .foregroundColor(.earthCream)
                         Text("Shows a \"still moving?\" check-in when no movement is detected for this long during an active session.")
-                            .font(.caption).foregroundColor(.earthMuted)
+                            .font(.wktLabel).foregroundColor(.earthMuted)
                     }
                     .padding(.vertical, 4)
                     .listRowBackground(Color.earthCard)
+                } header: { WktListHeader(title: "Tracking") }
 
                 // ── Notifications ─────────────────────────────────
-                Section("Notifications") {
+                Section {
                     HStack {
                         Label { Text("Status") } icon: { Image(wkt: .notifications).wktIcon(.row, tint: .earthCream) }
                             .foregroundColor(.earthCream)
                         Spacer()
-                        Text(notifAuthorized ? "Enabled" : notifQuiet ? "Quiet — no alerts" : "Disabled")
-                            .font(.caption)
-                            .foregroundColor(notifAuthorized ? .earthGreen : notifQuiet ? .earthMuted : .orange)
+                        WktStatusChip(text: notifAuthorized ? "Enabled" : notifQuiet ? "Quiet — no alerts" : "Disabled",
+                                      dot: notifAuthorized ? .earthGreen : notifQuiet ? .earthMuted : .earthOrange)
                     }
                     .listRowBackground(Color.earthCard)
 
@@ -144,10 +143,10 @@ struct SettingsView: View {
 
                     Toggle(isOn: $weeklySummaryEnabled) {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("Weekly Activity Summary")
+                            Text("Weekly activity summary")
                                 .foregroundColor(.earthCream)
                             Text("Sunday evening recap of steps, distance, and streak")
-                                .font(.caption).foregroundColor(.earthMuted)
+                                .font(.wktLabel).foregroundColor(.earthMuted)
                         }
                     }
                     .tint(.earthGreenFill)
@@ -156,10 +155,10 @@ struct SettingsView: View {
 
                     Toggle(isOn: $hydrationEnabled) {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("Post-walk Hydration Reminder")
+                            Text("Post-walk hydration reminder")
                                 .foregroundColor(.earthCream)
                             Text("Reminds you to drink water 5 minutes after finishing a walk")
-                                .font(.caption).foregroundColor(.earthMuted)
+                                .font(.wktLabel).foregroundColor(.earthMuted)
                         }
                     }
                     .tint(.earthGreenFill)
@@ -168,10 +167,10 @@ struct SettingsView: View {
 
                     Toggle(isOn: $streakProtectionEnabled) {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("Streak Protection Nudge")
+                            Text("Streak protection nudge")
                                 .foregroundColor(.earthCream)
                             Text("4:30 PM reminder when you're still short of today's step goal")
-                                .font(.caption).foregroundColor(.earthMuted)
+                                .font(.wktLabel).foregroundColor(.earthMuted)
                         }
                     }
                     .tint(.earthGreenFill)
@@ -180,10 +179,10 @@ struct SettingsView: View {
 
                     Toggle(isOn: $petNudgeEnabled) {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("Pet Walk Nudge")
+                            Text("Pet walk nudge")
                                 .foregroundColor(.earthCream)
                             Text("9 AM reminder when a pet hasn't been on a walk in a couple of days")
-                                .font(.caption).foregroundColor(.earthMuted)
+                                .font(.wktLabel).foregroundColor(.earthMuted)
                         }
                     }
                     .tint(.earthGreenFill)
@@ -192,23 +191,23 @@ struct SettingsView: View {
 
                     Toggle(isOn: $untrackedWalkEnabled) {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("Untracked Walk Nudge")
+                            Text("Untracked walk nudge")
                                 .foregroundColor(.earthCream)
                             Text("When you've walked without tracking it. Wockett checks a few times a day, so this arrives after the walk, not during it.")
-                                .font(.caption).foregroundColor(.earthMuted)
+                                .font(.wktLabel).foregroundColor(.earthMuted)
                         }
                     }
                     .tint(.earthGreenFill)
                     .disabled(!(notifAuthorized || notifQuiet))
                     .listRowBackground(Color.earthCard)
-                }
+                } header: { WktListHeader(title: "Notifications") }
 
                 // ── Walk Reminders ────────────────────────────────
-                Section("Walk Reminders") {
+                Section {
                     let notifications = NotificationService.shared
                     if notifications.walkReminders.isEmpty {
                         Text("Get a notification when it's time to walk — once, daily, or on a chosen day each week.")
-                            .font(.caption).foregroundColor(.earthMuted)
+                            .font(.wktLabel).foregroundColor(.earthMuted)
                             .listRowBackground(Color.earthCard)
                     } else {
                         ForEach(notifications.walkReminders) { reminder in
@@ -217,7 +216,7 @@ struct SettingsView: View {
                                     VStack(alignment: .leading, spacing: 2) {
                                         Text(reminder.title).foregroundColor(.earthCream)
                                         Text(reminder.scheduleSummary())
-                                            .font(.caption).foregroundColor(.earthMuted)
+                                            .font(.wktLabel).foregroundColor(.earthMuted)
                                     }
                                 } icon: { Image(wkt: .calendarClock).wktIcon(.row, tint: .earthCream) }
                                 Spacer()
@@ -240,7 +239,7 @@ struct SettingsView: View {
                             .foregroundColor(.earthGreen)
                     }
                     .listRowBackground(Color.earthCard)
-                }
+                } header: { WktListHeader(title: "Walk reminders") }
 
                 // Reminders an earlier version put in the user's Calendar. Shown only
                 // while any remain, so they can still be deleted from here.
@@ -273,23 +272,23 @@ struct SettingsView: View {
                             .listRowBackground(Color.earthCard)
                         }
                     } header: {
-                        Text("Calendar Reminders")
+                        WktListHeader(title: "Calendar reminders")
                     } footer: {
                         Text("Added to your Calendar by an earlier version of Wockett. New reminders are notifications; these stay until you delete them. Deleting one needs access to your calendar, so the first tap will ask.")
-                            .font(.caption).foregroundColor(.earthMuted)
+                            .font(.wktLabel).foregroundColor(.earthMuted)
                     }
                 }
 
                 // ── Motivational Quotes ───────────────────────────
-                Section("Motivational Quotes") {
+                Section {
                     if bannerStore.userAffirmations.isEmpty && !isAddingAffirmation {
                         Text("Add personal affirmations to show on Home alongside the built-in quotes.")
-                            .font(.caption).foregroundColor(.earthMuted)
+                            .font(.wktLabel).foregroundColor(.earthMuted)
                             .listRowBackground(Color.earthCard)
                     }
                     ForEach(bannerStore.userAffirmations, id: \.self) { affirmation in
                         Text(affirmation)
-                            .font(.subheadline).foregroundColor(.earthCream)
+                            .font(.wktBodyText).foregroundColor(.earthCream)
                             .listRowBackground(Color.earthCard)
                     }
                     .onDelete { bannerStore.delete(at: $0) }
@@ -322,10 +321,10 @@ struct SettingsView: View {
                         }
                         .listRowBackground(Color.earthCard)
                     }
-                }
+                } header: { WktListHeader(title: "Motivational quotes") }
 
                 // ── Support ───────────────────────────────────────
-                Section("Support") {
+                Section {
                     NavigationLink {
                         TipJarView()
                     } label: {
@@ -333,7 +332,7 @@ struct SettingsView: View {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text("Support Wockett")
                                 Text("Optional tip jar. Unlocks nothing that's free today.")
-                                    .font(.caption).foregroundColor(.earthMuted)
+                                    .font(.wktLabel).foregroundColor(.earthMuted)
                             }
                         } icon: {
                             Image(wkt: .supportHeart).wktIcon(.row, tint: .earthGreen)
@@ -341,25 +340,25 @@ struct SettingsView: View {
                         .foregroundColor(.earthGreen)
                     }
                     .listRowBackground(Color.earthCard)
-                }
+                } header: { WktListHeader(title: "Support") }
 
                 // ── About ─────────────────────────────────────────
-                Section("About") {
+                Section {
                     HStack {
                         Text("Version").foregroundColor(.earthCream)
                         Spacer()
-                        Text("\(appVersion) (\(buildNumber))").foregroundColor(.earthMuted)
+                        Text("\(appVersion) (\(buildNumber))").font(.wktBodyText).foregroundColor(.earthMuted)
                     }
                     .listRowBackground(Color.earthCard)
 
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Troubleshooting").font(.subheadline).foregroundColor(.earthCream)
+                        Text("Troubleshooting").foregroundColor(.earthCream)
                         Group {
                             Text("• Steps not updating? Try switching Data Source to App Only and back to Apple Health.")
                             Text("• If Health permission was denied, go to Settings → Privacy → Health → Wockett to re-enable.")
                             Text("• Walk history syncs between your own devices through your private iCloud. Wockett never sees it.")
                         }
-                        .font(.caption).foregroundColor(.earthMuted)
+                        .font(.wktLabel).foregroundColor(.earthMuted)
                     }
                     .padding(.vertical, 4)
                     .listRowBackground(Color.earthCard)
@@ -397,13 +396,13 @@ struct SettingsView: View {
                             .foregroundColor(.earthGreen)
                     }
                     .listRowBackground(Color.earthCard)
-                }
+                } header: { WktListHeader(title: "About") }
 
 
 
                 #if DEBUG
                 // ── Developer ─────────────────────────────────────
-                Section("Developer") {
+                Section {
                     Button {
                         DevSeedStore.seedScreenshotDemo(
                             history: historyStore, pets: petStore, routes: routeStore)
@@ -445,16 +444,18 @@ struct SettingsView: View {
 
                     if let msg = devSeedMessage {
                         Text(msg)
-                            .font(.caption)
+                            .font(.wktLabel)
                             .foregroundColor(.earthMuted)
                             .listRowBackground(Color.earthCard)
                     }
-                }
+                } header: { WktListHeader(title: "Developer") }
                 #endif
 
             }
             .listStyle(.insetGrouped)
             .scrollContentBackground(.hidden)
+            // Rows without their own font take the row-title size.
+            .font(.wktRowTitle)
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("settings.root")
@@ -539,34 +540,35 @@ private struct WalkReminderSheet: View {
             ZStack {
                 Color.earthBg.ignoresSafeArea()
                 Form {
-                    Section("Reminder") {
+                    Section {
                         TextField("Title", text: $title)
                             .foregroundColor(.earthCream)
                             .listRowBackground(Color.earthCard)
+                        // No forced .colorScheme(.dark): it drew a dark pill on the
+                        // light sheet in light mode.
                         DatePicker("Time", selection: $startTime, displayedComponents: .hourAndMinute)
-                            .colorScheme(.dark)
+                            .tint(.earthGreen)
                             .listRowBackground(Color.earthCard)
-                    }
+                    } header: { WktListHeader(title: "Reminder") }
 
-                    Section("Repeat") {
-                        Picker("Frequency", selection: $repeatOption) {
-                            ForEach(RepeatOption.allCases) { Text($0.rawValue).tag($0) }
-                        }
-                        .pickerStyle(.segmented)
-                        .listRowBackground(Color.earthCard)
+                    Section {
+                        WktSegmentedPicker(selection: $repeatOption,
+                                           options: RepeatOption.allCases.map { .init(value: $0, title: $0.rawValue) })
+                            .listRowBackground(Color.earthCard)
 
                         if repeatOption == .weekly {
-                            Picker("Day", selection: $selectedWeekday) {
+                            // Seven days don't fit one segmented row: chips that wrap.
+                            WktFlowRow {
                                 ForEach(weekdays, id: \.1) { label, day in
-                                    Text(label).tag(day)
+                                    WktChoiceChip(title: label, selected: selectedWeekday == day) { selectedWeekday = day }
                                 }
                             }
-                            .pickerStyle(.segmented)
                             .listRowBackground(Color.earthCard)
                         }
-                    }
+                    } header: { WktListHeader(title: "Repeat") }
                 }
                 .scrollContentBackground(.hidden)
+                .font(.wktRowTitle)
             }
             .navigationTitle("Add Walk Reminder")
             .navigationBarTitleDisplayMode(.inline)

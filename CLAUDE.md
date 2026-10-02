@@ -156,9 +156,9 @@ way unless there's a strong reason; adding the first one is a real decision.
   A metric screen uses `Design/WktDetailPieces.swift`; a step ring is
   `WktGoalRing`; a mid-session notice is a `WktBanner`; pick-one controls
   are `WktSegmentedPicker` / `WktChoiceChip`; tags that may not fit one line
-  go in a `WktFlowRow`. Home, Community, Health, the walk session, Routes,
-  Walk history and the pet screens are converted; Settings and the widget
-  still have the old `wktTechnical` labels and hand-drawn cards. The share card (`ActivitySummaryCard`) keeps fixed point sizes on
+  go in a `WktFlowRow`; a system List's section heading is `WktListHeader`.
+  Every app screen is converted; only the widget and Live Activity still use
+  `wktTechnical` labels. The share card (`ActivitySummaryCard`) keeps fixed point sizes on
   purpose: it is drawn into a fixed-size image. Convert one area per PR.
 - **The changelog entry ships with the change**, in the same commit, explaining
   *why* — not just what. Since 2026-09-27 it goes in its own file in
