@@ -11,6 +11,9 @@ private enum WS {
     static let flag        = "flag.fill"
     static let speedometer = "speedometer"
     static let location    = "location.fill"
+    static let clock       = "clock.fill"
+    static let play        = "play.fill"
+    static let pause       = "pause.fill"
 }
 
 // MARK: - Formatting helpers (widget-local, no access to main app)
@@ -85,34 +88,35 @@ private struct WalkLockScreenView: View {
             // Header
             HStack {
                 Image(systemName: activityIcon(attrs.activityMode))
-                    .font(.subheadline.weight(.semibold))
+                    .font(.wktRowTitle)
                     .foregroundColor(.earthGreen)
                 Text(attrs.routeName)
-                    .font(Font.wktHeading(15))
+                    .font(.wktRowTitle)
                     .foregroundColor(.earthCream)
                     .lineLimit(1)
                 Spacer()
                 if state.isPaused {
                     Label("Paused", systemImage: WS.pauseCircle)
-                        .font(Font.wktHeading(12))
+                        .font(.wktLabel)
                         .foregroundColor(.earthOrange)
                 } else {
                     Image(systemName: WS.ecg)
-                        .font(.caption)
+                        .font(.wktLabel)
                         .foregroundColor(.earthGreen)
                 }
             }
 
             // Progress bar
             GeometryReader { geo in
+                // WktProgressBar's look (app-only): a capsule on the track.
                 ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 3)
-                        .fill(Color.earthLine)
+                    Capsule()
+                        .fill(Color.earthTrack)
                         .frame(height: 6)
                     let pct = attrs.totalDistanceMeters > 0
                         ? min(1, state.distanceCoveredMeters / attrs.totalDistanceMeters)
                         : 0
-                    RoundedRectangle(cornerRadius: 3)
+                    Capsule()
                         .fill(Color.earthGreen)
                         .frame(width: geo.size.width * pct, height: 6)
                 }
@@ -123,41 +127,43 @@ private struct WalkLockScreenView: View {
             HStack(spacing: 0) {
                 statCell(
                     value: fmtDistance(state.distanceCoveredMeters),
-                    label: "covered",
-                    icon: "location.fill"
+                    label: "Covered",
+                    icon: WS.location
                 )
-                Divider().frame(height: 30).overlay(Color.earthLine)
-                timerStatCell(label: "elapsed", icon: "clock.fill")
+                Divider().frame(height: 30).overlay(Color.earthTrack)
+                timerStatCell(label: "Elapsed", icon: WS.clock)
                 if attrs.totalDistanceMeters > 0 {
-                    Divider().frame(height: 30).overlay(Color.earthLine)
+                    Divider().frame(height: 30).overlay(Color.earthTrack)
                     statCell(
                         value: fmtDistance(max(0, attrs.totalDistanceMeters - state.distanceCoveredMeters)),
-                        label: "remaining",
-                        icon: "flag.fill"
+                        label: "Remaining",
+                        icon: WS.flag
                     )
                 }
-                Divider().frame(height: 30).overlay(Color.earthLine)
+                Divider().frame(height: 30).overlay(Color.earthTrack)
                 statCell(
                     value: fmtPace(state.paceSecsPerKm, mode: attrs.activityMode),
-                    label: attrs.activityMode == "cycling" ? "speed" : "pace",
-                    icon: "speedometer"
+                    label: attrs.activityMode == "cycling" ? "Speed" : "Pace",
+                    icon: WS.speedometer
                 )
             }
 
             // Interactive buttons
             HStack(spacing: 10) {
+                // Pause is the green action, as on the session screen; ending
+                // is red, the colour of its hold-to-finish button.
                 Button(intent: ToggleWalkPauseLiveActivityIntent()) {
                     Label(state.isPaused ? "Resume" : "Pause",
-                          systemImage: state.isPaused ? "play.fill" : "pause.fill")
-                        .font(Font.wktHeading(12))
+                          systemImage: state.isPaused ? WS.play : WS.pause)
+                        .font(.wktLabel)
                 }
-                .tint(.earthOrangeFill)
+                .tint(.earthGreenFill)
 
                 Button(intent: EndWalkLiveActivityIntent()) {
                     Label("End \(activityNoun(attrs.activityMode))", systemImage: WS.stop)
-                        .font(Font.wktHeading(12))
+                        .font(.wktLabel)
                 }
-                .tint(.earthGreenFill)
+                .tint(.red)
             }
             .buttonStyle(.borderedProminent)
             .buttonBorderShape(.capsule)
@@ -171,18 +177,17 @@ private struct WalkLockScreenView: View {
     private func timerStatCell(label: String, icon: String) -> some View {
         VStack(spacing: 3) {
             Image(systemName: icon)
-                .font(.system(size: 10))
+                .font(.wktBody(11))
                 .foregroundColor(.earthGreen)
             Text(timerInterval: adjustedStart(attrs, state)...adjustedStart(attrs, state).addingTimeInterval(86400), pauseTime: state.pauseTime, countsDown: false)
                 .frame(maxWidth: .infinity, alignment: .center)
                 .multilineTextAlignment(.center)
-                .font(Font.wktDisplay(13).monospacedDigit())
+                .font(Font.wktRowTitle.monospacedDigit())
                 .foregroundColor(.earthCream)
                 .minimumScaleFactor(0.6)
                 .lineLimit(1)
             Text(label)
-                .wktTechnical(9)
-                .textCase(.uppercase)
+                .font(.wktLabel)
                 .foregroundColor(.earthMuted)
         }
         .frame(maxWidth: .infinity)
@@ -191,16 +196,15 @@ private struct WalkLockScreenView: View {
     private func statCell(value: String, label: String, icon: String) -> some View {
         VStack(spacing: 3) {
             Image(systemName: icon)
-                .font(.system(size: 10))
+                .font(.wktBody(11))
                 .foregroundColor(.earthGreen)
             Text(value)
-                .font(Font.wktDisplay(13).monospacedDigit())
+                .font(Font.wktRowTitle.monospacedDigit())
                 .foregroundColor(.earthCream)
                 .minimumScaleFactor(0.6)
                 .lineLimit(1)
             Text(label)
-                .wktTechnical(9)
-                .textCase(.uppercase)
+                .font(.wktLabel)
                 .foregroundColor(.earthMuted)
         }
         .frame(maxWidth: .infinity)
@@ -222,16 +226,15 @@ struct WocketWalkLiveActivity: Widget {
                 DynamicIslandExpandedRegion(.leading) {
                     VStack(alignment: .leading, spacing: 2) {
                         Image(systemName: activityIcon(context.attributes.activityMode))
-                            .font(.caption.weight(.semibold))
+                            .font(.wktLabel)
                             .foregroundColor(.earthGreen)
                         Text(timerInterval: adjustedStart(context.attributes, context.state)...adjustedStart(context.attributes, context.state).addingTimeInterval(86400), pauseTime: context.state.pauseTime, countsDown: false)
                             .frame(maxWidth: .infinity, alignment: .center)
                             .multilineTextAlignment(.center)
-                            .font(Font.wktDisplay(16).monospacedDigit())
+                            .font(Font.wktSection.monospacedDigit())
                             .foregroundColor(.earthCream)
-                        Text("elapsed")
-                            .wktTechnical(9)
-                            .textCase(.uppercase)
+                        Text("Elapsed")
+                            .font(.wktLabel)
                             .foregroundColor(.earthMuted)
                     }
                     .padding(.leading, 4)
@@ -241,26 +244,24 @@ struct WocketWalkLiveActivity: Widget {
                     VStack(alignment: .trailing, spacing: 2) {
                         if context.attributes.totalDistanceMeters > 0 {
                             Image(systemName: WS.flag)
-                                .font(.caption.weight(.semibold))
+                                .font(.wktLabel)
                                 .foregroundColor(.earthGreen)
                             let remaining = max(0, context.attributes.totalDistanceMeters - context.state.distanceCoveredMeters)
                             Text(fmtDistance(remaining))
-                                .font(Font.wktDisplay(16).monospacedDigit())
+                                .font(Font.wktSection.monospacedDigit())
                                 .foregroundColor(.earthCream)
-                            Text("remaining")
-                                .wktTechnical(9)
-                                .textCase(.uppercase)
+                            Text("Remaining")
+                                .font(.wktLabel)
                                 .foregroundColor(.earthMuted)
                         } else {
                             Image(systemName: WS.speedometer)
-                                .font(.caption.weight(.semibold))
+                                .font(.wktLabel)
                                 .foregroundColor(.earthGreen)
                             Text(fmtPace(context.state.paceSecsPerKm, mode: context.attributes.activityMode))
-                                .font(Font.wktDisplay(16).monospacedDigit())
+                                .font(Font.wktSection.monospacedDigit())
                                 .foregroundColor(.earthCream)
-                            Text(context.attributes.activityMode == "cycling" ? "speed" : "pace")
-                                .wktTechnical(9)
-                                .textCase(.uppercase)
+                            Text(context.attributes.activityMode == "cycling" ? "Speed" : "Pace")
+                                .font(.wktLabel)
                                 .foregroundColor(.earthMuted)
                         }
                     }
@@ -269,7 +270,7 @@ struct WocketWalkLiveActivity: Widget {
 
                 DynamicIslandExpandedRegion(.center) {
                     Text(context.attributes.routeName)
-                        .font(Font.wktBody(12))
+                        .font(.wktLabel)
                         .foregroundColor(.earthMuted)
                         .lineLimit(1)
                 }
@@ -278,14 +279,14 @@ struct WocketWalkLiveActivity: Widget {
                     VStack(spacing: 8) {
                         HStack(spacing: 20) {
                             Label(fmtDistance(context.state.distanceCoveredMeters), systemImage: WS.location)
-                                .wktTechnical(13)
+                                .font(Font.wktRowTitle.monospacedDigit())
                                 .foregroundColor(.earthCream)
                             Label(fmtPace(context.state.paceSecsPerKm, mode: context.attributes.activityMode), systemImage: WS.speedometer)
-                                .wktTechnical(13)
+                                .font(Font.wktRowTitle.monospacedDigit())
                                 .foregroundColor(context.state.isPaused ? .earthOrange : .earthCream)
                             if context.state.isPaused {
                                 Label("Paused", systemImage: WS.pauseCircle)
-                                    .font(Font.wktHeading(12))
+                                    .font(.wktLabel)
                                     .foregroundColor(.earthOrange)
                             }
                         }
@@ -293,16 +294,16 @@ struct WocketWalkLiveActivity: Widget {
                         HStack(spacing: 10) {
                             Button(intent: ToggleWalkPauseLiveActivityIntent()) {
                                 Label(context.state.isPaused ? "Resume" : "Pause",
-                                      systemImage: context.state.isPaused ? "play.fill" : "pause.fill")
-                                    .font(Font.wktHeading(12))
+                                      systemImage: context.state.isPaused ? WS.play : WS.pause)
+                                    .font(.wktLabel)
                             }
-                            .tint(.earthOrangeFill)
+                            .tint(.earthGreenFill)
 
                             Button(intent: EndWalkLiveActivityIntent()) {
                                 Label("End \(activityNoun(context.attributes.activityMode))", systemImage: WS.stop)
-                                    .font(Font.wktHeading(12))
+                                    .font(.wktLabel)
                             }
-                            .tint(.earthGreenFill)
+                            .tint(.red)
                         }
                         .buttonStyle(.borderedProminent)
                         .buttonBorderShape(.capsule)
@@ -314,20 +315,20 @@ struct WocketWalkLiveActivity: Widget {
             } compactLeading: {
                 // Compact pill — left side: icon
                 Image(systemName: activityIcon(context.attributes.activityMode))
-                    .font(.caption.weight(.bold))
+                    .font(.wktLabel)
                     .foregroundColor(.earthGreen)
 
             } compactTrailing: {
                 // Compact pill — right side: distance covered
                 Text(fmtDistance(context.state.distanceCoveredMeters))
-                    .font(Font.wktBody(12).monospacedDigit())
+                    .font(Font.wktLabel.monospacedDigit())
                     .foregroundColor(.earthCream)
                     .minimumScaleFactor(0.7)
 
             } minimal: {
                 // Minimal (when two activities compete): just the icon
                 Image(systemName: activityIcon(context.attributes.activityMode))
-                    .font(.caption.weight(.bold))
+                    .font(.wktLabel)
                     .foregroundColor(.earthGreen)
             }
             .keylineTint(Color.earthGreen)

@@ -3,7 +3,11 @@ import SwiftUI
 
 // Widget-local symbol names (WktSymbol is in the app target, unavailable here)
 private enum WS {
-    static let walk = "figure.walk"
+    static let walk    = "figure.walk"
+    static let flame   = "flame.fill"
+    static let target  = "target"
+    static let ruler   = "ruler"
+    static let percent = "percent"
 }
 
 // App group keys come from AppGroup.swift, compiled into both targets, so
@@ -78,30 +82,27 @@ private struct StepRingView: View {
     let fontSize: CGFloat
 
     var body: some View {
+        // The same ring as Home's Today card (WktGoalRing, app-only): the
+        // user's own goal is orange on the track, not green.
         ZStack {
             Circle()
-                .stroke(Color.earthGreen.opacity(0.18), lineWidth: 10)
+                .stroke(Color.earthTrack, lineWidth: 10)
             Circle()
                 .trim(from: 0, to: progress)
-                .stroke(
-                    AngularGradient(
-                        colors: [Color.earthGreen.opacity(0.7), Color.earthGreen],
-                        center: .center,
-                        startAngle: .degrees(-90),
-                        endAngle: .degrees(270 * progress - 90)
-                    ),
-                    style: StrokeStyle(lineWidth: 10, lineCap: .round)
-                )
+                .stroke(Color.earthOrange, style: StrokeStyle(lineWidth: 10, lineCap: .round))
                 .rotationEffect(.degrees(-90))
                 .animation(.easeOut(duration: 0.4), value: progress)
             VStack(spacing: 1) {
                 Text(steps.formatted())
-                    .font(Font.wktDisplay(fontSize).monospacedDigit())
+                    .font(Font.wktHeading(fontSize).monospacedDigit())
                     .foregroundColor(.earthCream)
+                    .minimumScaleFactor(0.6)
+                    .lineLimit(1)
                 Text("steps")
-                    .wktTechnical(fontSize * 0.38)
+                    .font(.wktLabel)
                     .foregroundColor(.earthMuted)
             }
+            .padding(12)
         }
     }
 }
@@ -117,20 +118,21 @@ private struct SmallStepView: View {
             VStack(spacing: 6) {
                 HStack(spacing: 4) {
                     Image(systemName: WS.walk)
-                        .font(.caption2.weight(.semibold))
+                        .font(.wktLabel)
                         .foregroundColor(.earthGreen)
-                    Text("Wockett")
-                        .font(Font.wktDisplay(11))
-                        .foregroundColor(.earthMuted)
+                    Text("Today")
+                        .font(.wktLabel)
+                        .foregroundColor(.earthCream)
                     Spacer()
                     if entry.streak > 0 {
                         HStack(spacing: 2) {
+                            Image(systemName: WS.flame)
                             Text("\(entry.streak)")
-                                .wktTechnical(11)
-                            Text("🔥")
-                                .font(.system(size: 9))
                         }
+                        .font(.wktLabel)
                         .foregroundColor(.earthOrange)
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel("\(entry.streak)-day streak")
                     }
                 }
                 .padding(.horizontal, 14)
@@ -140,7 +142,7 @@ private struct SmallStepView: View {
                     .padding(.horizontal, 18)
 
                 Text("of \(entry.goal.formatted())")
-                    .wktTechnical(10)
+                    .font(.wktLabel)
                     .foregroundColor(.earthMuted)
                     .padding(.bottom, 12)
             }
@@ -164,15 +166,15 @@ private struct MediumStepView: View {
 
                 // Stats on the right
                 VStack(alignment: .leading, spacing: 10) {
-                    statRow(icon: "target", label: "Goal", value: entry.goal.formatted())
-                    statRow(icon: "ruler", label: "Distance", value: entry.distanceText)
+                    statRow(icon: WS.target, label: "Goal", value: entry.goal.formatted())
+                    statRow(icon: WS.ruler, label: "Distance", value: entry.distanceText)
                     if entry.streak > 0 {
-                        statRow(icon: "flame.fill", label: "Streak",
+                        statRow(icon: WS.flame, label: "Streak",
                                 value: "\(entry.streak) day\(entry.streak == 1 ? "" : "s")",
                                 valueColor: .earthOrange)
                     }
                     let pct = Int(entry.progress * 100)
-                    statRow(icon: "percent", label: "Progress", value: "\(pct)%",
+                    statRow(icon: WS.percent, label: "Progress", value: "\(pct)%",
                             valueColor: entry.progress >= 1 ? .earthGreen : .earthCream)
                 }
                 .padding(.leading, 16)
@@ -188,17 +190,18 @@ private struct MediumStepView: View {
                          valueColor: Color = .earthCream) -> some View {
         HStack(spacing: 6) {
             Image(systemName: icon)
-                .font(.system(size: 11, weight: .medium))
+                .font(.wktLabel)
                 .foregroundColor(.earthGreen)
-                .frame(width: 14)
+                .frame(width: 16)
             Text(label)
-                .wktTechnical(10)
-                .textCase(.uppercase)
+                .font(.wktLabel)
                 .foregroundColor(.earthMuted)
             Spacer()
             Text(value)
-                .font(Font.wktDisplay(12).monospacedDigit())
+                .font(Font.wktHeading(14).monospacedDigit())
                 .foregroundColor(valueColor)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
         }
     }
 }
@@ -213,7 +216,7 @@ private struct CircularStepView: View {
             Image(systemName: WS.walk)
         } currentValueLabel: {
             Text(shortSteps(entry.steps))
-                .font(.system(size: 11, weight: .bold, design: .rounded))
+                .font(.wktBody(11))
         }
         .gaugeStyle(.accessoryCircularCapacity)
         .tint(.earthGreen)
