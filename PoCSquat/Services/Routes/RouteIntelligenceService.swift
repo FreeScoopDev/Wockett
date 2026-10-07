@@ -255,6 +255,20 @@ struct WeatherWidget: View {
 
     private var hasForecast: Bool { !weather.hourlyForecast.isEmpty }
 
+    private var conditionText: some View {
+        Text(weather.conditionDescription)
+            .font(.wktBodyText)
+            .foregroundColor(.earthMuted)
+            .lineLimit(1)
+    }
+
+    private var statusLabel: some View {
+        Label(weather.statusText, systemImage: weather.statusSymbol)
+            .font(.wktLabel)
+            .foregroundColor(weather.statusColor)
+            .lineLimit(1)
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 10) {
@@ -277,18 +291,24 @@ struct WeatherWidget: View {
                             .lineLimit(1)
                             .fixedSize()
 
-                        Text(weather.conditionDescription)
-                            .font(.wktBodyText)
-                            .foregroundColor(.earthMuted)
-                            .lineLimit(1)
-
-                        Spacer(minLength: 6)
-
-                        Label(weather.statusText, systemImage: weather.statusSymbol)
-                            .font(.wktLabel)
-                            .foregroundColor(weather.statusColor)
-                            .lineLimit(1)
-                            .layoutPriority(1)
+                        // The condition is the first thing to go when the row is
+                        // narrow: the symbol already shows it, and the accessibility
+                        // label still says it. Truncated, it read "P…".
+                        ViewThatFits(in: .horizontal) {
+                            HStack(spacing: 10) {
+                                conditionText.fixedSize()
+                                Spacer(minLength: 6)
+                                statusLabel.fixedSize()
+                            }
+                            HStack(spacing: 0) {
+                                Spacer(minLength: 6)
+                                statusLabel.fixedSize()
+                            }
+                            HStack(spacing: 0) {
+                                Spacer(minLength: 6)
+                                statusLabel
+                            }
+                        }
 
                         if hasForecast {
                             Image(wkt: .chevronDown)
