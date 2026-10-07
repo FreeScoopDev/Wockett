@@ -97,11 +97,10 @@ struct WeatherAttributionLink: View {
     private var label: some View {
         HStack(spacing: 3) {
             Image(wkt: .appleLogo)
-                .font(.system(size: 9, weight: .semibold))
             Text("Weather")
-                .font(.system(size: 10))
         }
-        .foregroundStyle(.secondary)
+        .font(.wktLabel)
+        .foregroundColor(.earthMuted)
     }
 }
 
@@ -153,28 +152,34 @@ struct HomeWeatherStatusChip: View {
 
 struct HourlyWeatherRow: View {
     let points: [HourlyWeatherPoint]
+    /// One height for every symbol, so a short cloud and a tall rain cloud
+    /// leave the temperatures on one line. Scales with the text.
+    @ScaledMetric(relativeTo: .body) private var symbolHeight: CGFloat = 20
 
     var body: some View {
         HStack(spacing: 0) {
             ForEach(Array(points.enumerated()), id: \.offset) { _, point in
-                VStack(spacing: 3) {
+                VStack(spacing: 4) {
                     Text(point.hourLabel)
-                        .font(.system(size: 10, weight: .medium))
+                        .font(.wktBody(11))
                         .foregroundColor(.earthMuted)
                     Image(systemName: point.symbolName)
-                        .font(.system(size: 13))
+                        .font(.wktBody(15))
                         .foregroundColor(point.precipitationChance >= 0.4 ? Color.accentInfo : .earthCream)
+                        .frame(height: symbolHeight)
                     Text(point.temperatureText)
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.wktHeading(13))
                         .foregroundColor(.earthCream)
-                    if point.precipitationChance >= 0.3 {
-                        Text("\(Int(point.precipitationChance * 100))%")
-                            .font(.system(size: 9))
-                            .foregroundColor(Color.accentInfo)
-                    } else {
-                        Spacer().frame(height: 11)
-                    }
+                    // Always laid out, hidden below 30%, so every column is the
+                    // same height at any text size (a fixed spacer was not).
+                    Text("\(Int(point.precipitationChance * 100))%")
+                        .font(.wktBody(11))
+                        .foregroundColor(Color.accentInfo)
+                        .opacity(point.precipitationChance >= 0.3 ? 1 : 0)
+                        .accessibilityHidden(point.precipitationChance < 0.3)
                 }
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
                 .frame(maxWidth: .infinity)
             }
         }
@@ -211,7 +216,7 @@ struct HomeWeatherDetailSheet: View {
                         }
                     }
                     if !weather.hourlyForecast.isEmpty {
-                        Rectangle().fill(Color.earthTrack).frame(height: 1)
+                        WktDivider()
                         HourlyWeatherRow(points: weather.hourlyForecast)
                     }
                 }
