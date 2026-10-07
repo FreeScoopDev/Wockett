@@ -14,6 +14,15 @@ struct HomeCrewMember: Identifiable {
     let progress: Double
 }
 
+/// A badge pinned on the Badges screen, shown in the streak row (up to two).
+struct HomePinnedBadge: Identifiable {
+    let id: String
+    let name: String
+    let emoji: String
+    let progress: Double
+    let earned: Bool
+}
+
 struct HomeHeroCard<Chips: View>: View {
     let steps: Int
     let goal: Int
@@ -24,6 +33,9 @@ struct HomeHeroCard<Chips: View>: View {
     /// A line from `BannerStore`, shown beside the streak.
     let quote: String
     let crew: [HomeCrewMember]
+    /// Pinned on the Badges screen, whose hint promises them on Home. They went
+    /// in the 2026-09-01 Home de-clutter while the pin kept saving.
+    var pinnedBadges: [HomePinnedBadge] = []
     var onStepsTap: () -> Void
     var onPetTap: (UUID) -> Void
     var onManageCrew: () -> Void
@@ -191,32 +203,56 @@ struct HomeHeroCard<Chips: View>: View {
 
     private var streakFooter: some View {
         Button(action: onStreakTap) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Image(wkt: .calories)
-                    .wktIcon(.inline, tint: .earthOrange, filled: streak > 0)
-                VStack(alignment: .leading, spacing: 2) {
-                    if streak > 0 {
-                        Text("\(streak)-day streak")
-                            .font(.wktRowTitle)
-                            .foregroundColor(.earthCream)
-                        Text(quote)
-                            .font(.wktBodyText)
-                            .foregroundColor(.earthMuted)
-                    } else {
-                        Text("\(quote) Walk today to start a streak.")
-                            .font(.wktBodyText)
-                            .foregroundColor(.earthMuted)
+            HStack(spacing: 12) {
+                streakText
+                Spacer(minLength: 0)
+                if !pinnedBadges.isEmpty {
+                    HStack(spacing: 8) {
+                        ForEach(pinnedBadges) { badge in
+                            WktBadgeRing(emoji: badge.emoji, progress: badge.progress,
+                                         earned: badge.earned, size: 36)
+                        }
                     }
                 }
-                .multilineTextAlignment(.leading)
-                .fixedSize(horizontal: false, vertical: true)
-                Spacer(minLength: 0)
             }
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityElement(children: .combine)
+        .accessibilityValue(pinnedSummary)
         .accessibilityHint("Shows your badges")
+    }
+
+    private var pinnedSummary: String {
+        guard !pinnedBadges.isEmpty else { return "" }
+        let parts = pinnedBadges.map { badge in
+            badge.earned ? "\(badge.name), earned"
+                         : "\(badge.name), \(Int((badge.progress * 100).rounded())) percent"
+        }
+        return "Pinned badges: " + parts.joined(separator: "; ")
+    }
+
+    private var streakText: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Image(wkt: .calories)
+                .wktIcon(.inline, tint: .earthOrange, filled: streak > 0)
+            VStack(alignment: .leading, spacing: 2) {
+                if streak > 0 {
+                    Text("\(streak)-day streak")
+                        .font(.wktRowTitle)
+                        .foregroundColor(.earthCream)
+                    Text(quote)
+                        .font(.wktBodyText)
+                        .foregroundColor(.earthMuted)
+                } else {
+                    Text("\(quote) Walk today to start a streak.")
+                        .font(.wktBodyText)
+                        .foregroundColor(.earthMuted)
+                }
+            }
+            .multilineTextAlignment(.leading)
+            .fixedSize(horizontal: false, vertical: true)
+        }
     }
 
 }

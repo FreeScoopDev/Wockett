@@ -163,3 +163,34 @@ struct WktIconStatTile: View {
         .accessibilityLabel("\(value) \(label)")
     }
 }
+
+// MARK: - Badge ring
+
+/// A badge's emoji inside its progress ring: green once earned, the notice
+/// colour while in progress, the emoji greyed out until it is earned. Drawn
+/// the same in the Badges grid and on Home, where pinned badges sit in the
+/// streak row.
+struct WktBadgeRing: View {
+    let emoji: String
+    let progress: Double
+    let earned: Bool
+    var size: CGFloat = 44
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .stroke(Color.earthTrack, lineWidth: 3)
+            Circle()
+                .trim(from: 0, to: min(1, max(0, progress)))
+                .stroke(earned ? Color.earthGreen : Color.accentNotice,
+                        style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+            Text(emoji) // the badge's own emoji (data)
+                .font(.system(size: size * 0.59))
+                .opacity(earned ? 1.0 : 0.25)
+                .grayscale(earned ? 0 : 1)
+        }
+        .frame(width: size, height: size)
+        .accessibilityHidden(true)
+    }
+}
