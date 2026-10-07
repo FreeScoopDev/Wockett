@@ -1,19 +1,16 @@
 import SwiftUI
 
-// MARK: - Splash Color Palette (matches app icon)
-
-private let splashBg    = Color(red: 0.169, green: 0.278, blue: 0.220)   // deep forest green
-private let splashPath  = Color(red: 0.929, green: 0.914, blue: 0.875)   // cream
-private let splashDot   = Color(red: 0.831, green: 0.294, blue: 0.180)   // orange-red waypoints
-private let splashCard  = Color(red: 0.133, green: 0.220, blue: 0.173)   // darker card bg
-private let splashTopo  = Color(red: 0.200, green: 0.318, blue: 0.251)   // contour lines
+// The launch splash (2026-10-06 redesign). It sits on the app's own
+// background, `earthBg`, so the hand-off is one surface from end to end: the
+// launch screen iOS shows first (`LaunchBackground`, the same colour) → this →
+// Home. The forest-green splash it replaces was a hard cut on both sides.
 
 // MARK: - Topographic Contour Lines Background
 
 private struct TopoBackground: View {
     var body: some View {
         Canvas { ctx, size in
-            let cx = size.width / 2, cy = size.height * 0.44
+            let cx = size.width / 2, cy = size.height * 0.40
             // Concentric ellipses at increasing scales — mimics elevation contours
             let rings: [(CGFloat, CGFloat)] = [
                 (0.40, 0.20), (0.58, 0.30), (0.76, 0.41),
@@ -23,9 +20,10 @@ private struct TopoBackground: View {
                 let w = size.width * sx, h = size.height * sy
                 let rect = CGRect(x: cx - w/2, y: cy - h/2, width: w, height: h)
                 var path = Path(); path.addEllipse(in: rect)
-                ctx.stroke(path, with: .color(splashTopo), lineWidth: 0.75)
+                ctx.stroke(path, with: .color(.earthTrack), lineWidth: 1)
             }
         }
+        .accessibilityHidden(true)
     }
 }
 
@@ -87,85 +85,106 @@ private struct WArrowheadShape: Shape {
 
 // MARK: - Wocket Logo View
 
+/// The dashed W drawing itself. One eased `progress` drives everything: the
+/// line, a pen dot at its tip, the two waypoints as the line reaches them and
+/// the arrowhead at the end. The first version ran four separate timers, and
+/// the trim revealed the dashed line a whole dash at a time, so the front
+/// jumped; the pen dot moves continuously and hides that.
 private struct WocketLogoView: View {
-    @State private var trimEnd:     CGFloat   = 0
-    @State private var dotScales: [CGFloat]   = [0, 0]
-    @State private var arrowScale:  CGFloat   = 0
-
-    private let w: CGFloat           = 130
-    private let h: CGFloat           = 88
-    private let strokeWidth: CGFloat = 7
-    private let dotR: CGFloat        = 7.5
-    private let drawDuration: Double = 1.15
-
-    // Only the two valley vertices get orange dots (matches the icon)
-    private let dotFractions: [CGFloat] = [0.307, 0.693]
-    private var dotVertices: [CGPoint] {
-        [CGPoint(x: w*0.25, y: h), CGPoint(x: w*0.75, y: h)]
-    }
+    /// False under Reduce Motion: the logo appears already drawn.
+    let animates: Bool
+    @State private var progress: CGFloat = 0
 
     var body: some View {
-        ZStack {
-            // Ghost path — faint dashed outline
-            WLetterShape()
-                .stroke(splashPath.opacity(0.16),
-                        style: StrokeStyle(lineWidth: strokeWidth, lineCap: .round,
-                                           dash: [10, 8]))
-                .frame(width: w, height: h)
-
-            // Animated dashed stroke — draws left to right
-            WLetterShape()
-                .trim(from: 0, to: trimEnd)
-                .stroke(splashPath,
-                        style: StrokeStyle(lineWidth: strokeWidth, lineCap: .round,
-                                           dash: [10, 8]))
-                .frame(width: w, height: h)
-                .animation(.easeInOut(duration: drawDuration), value: trimEnd)
-
-            // Arrowhead at top-right (springs in when draw completes)
-            WArrowheadShape()
-                .stroke(splashPath,
-                        style: StrokeStyle(lineWidth: strokeWidth, lineCap: .round,
-                                           lineJoin: .round))
-                .frame(width: w, height: h)
-                .scaleEffect(arrowScale, anchor: UnitPoint(x: 1.0, y: 0.0))
-
-            // Orange waypoint dots at the two valley points
-            ForEach(0..<2, id: \.self) { i in
-                Circle()
-                    .fill(splashDot)
-                    .frame(width: dotR*2, height: dotR*2)
-                    .shadow(color: splashDot.opacity(0.7), radius: 7)
-                    .scaleEffect(dotScales[i])
-                    .offset(x: dotVertices[i].x - w/2,
-                            y: dotVertices[i].y - h/2)
+        WocketLogoDrawing(progress: progress)
+            .frame(width: WocketLogoDrawing.size.width, height: WocketLogoDrawing.size.height)
+            .onAppear {
+                guard animates else { progress = 1; return }
+                // Gentle start, long soft landing.
+                withAnimation(.timingCurve(0.45, 0, 0.15, 1, duration: 1.5)) { progress = 1 }
             }
-        }
-        .frame(width: w, height: h)
-        .onAppear { startAnimation() }
+            .accessibilityHidden(true)
+    }
+}
+
+private struct WocketLogoDrawing: View, Animatable {
+    var progress: CGFloat
+    var animatableData: CGFloat {
+        get { progress }
+        set { progress = newValue }
     }
 
-    private func startAnimation() {
-        trimEnd = 1
+    static let size = CGSize(width: 130, height: 88)
+    private static let rect = CGRect(origin: .zero, size: size)
+    private static let strokeWidth: CGFloat = 7
+    private static let dash = StrokeStyle(lineWidth: strokeWidth, lineCap: .round, lineJoin: .round, dash: [10, 8])
 
-        // Orange dots spring in as the path reaches each valley vertex
-        for (i, fraction) in dotFractions.enumerated() {
-            let delay = Double(fraction) * drawDuration
-            Task { @MainActor in
-                try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
-                withAnimation(.spring(response: 0.28, dampingFraction: 0.48)) {
-                    dotScales[i] = 1
-                }
+    /// The two valley vertices, where the icon has its orange waypoints.
+    private static let valleys = [CGPoint(x: size.width * 0.25, y: size.height),
+                                  CGPoint(x: size.width * 0.75, y: size.height)]
+
+    /// How far along the line each valley is, measured on the real path so a
+    /// waypoint lands exactly as the pen passes it.
+    private static let valleyProgress: [CGFloat] = {
+        let path = WLetterShape().path(in: rect)
+        let steps = 400
+        return valleys.map { valley in
+            var best: (t: CGFloat, d: CGFloat) = (0, .infinity)
+            for i in 0...steps {
+                let t = CGFloat(i) / CGFloat(steps)
+                let p = path.trimmedPath(from: 0, to: max(t, 0.0001)).currentPoint ?? .zero
+                let d = hypot(p.x - valley.x, p.y - valley.y)
+                if d < best.d { best = (t, d) }
+            }
+            return best.t
+        }
+    }()
+
+    var body: some View {
+        let path = WLetterShape().path(in: Self.rect)
+        let pen = path.trimmedPath(from: 0, to: max(progress, 0.0001)).currentPoint ?? .zero
+
+        ZStack(alignment: .topLeading) {
+            // The whole route, faintly, so the eye knows where the line is going.
+            path.stroke(Color.earthTrack, style: Self.dash)
+
+            path.trimmedPath(from: 0, to: progress)
+                .stroke(Color.earthGreen, style: Self.dash)
+
+            WArrowheadShape()
+                .stroke(Color.earthGreen, style: StrokeStyle(lineWidth: Self.strokeWidth, lineCap: .round, lineJoin: .round))
+                .scaleEffect(Self.settle(Self.phase(progress, from: 0.9, length: 0.1)),
+                             anchor: UnitPoint(x: 1, y: 0))
+
+            // The pen: fades in as it starts and out as the arrowhead takes over.
+            Circle()
+                .fill(Color.earthGreen)
+                .frame(width: 10, height: 10)
+                .position(pen)
+                .opacity(Self.phase(progress, from: 0, length: 0.04) * (1 - Self.phase(progress, from: 0.9, length: 0.08)))
+
+            ForEach(0..<2, id: \.self) { i in
+                Circle()
+                    .fill(Color.earthOrange)
+                    .frame(width: 15, height: 15)
+                    .scaleEffect(Self.settle(Self.phase(progress, from: Self.valleyProgress[i] - 0.02, length: 0.14)))
+                    .position(Self.valleys[i])
             }
         }
+        .frame(width: Self.size.width, height: Self.size.height, alignment: .topLeading)
+    }
 
-        // Arrowhead springs in at end of draw
-        Task { @MainActor in
-            try? await Task.sleep(nanoseconds: UInt64(drawDuration * 1_000_000_000))
-            withAnimation(.spring(response: 0.25, dampingFraction: 0.5)) {
-                arrowScale = 1
-            }
-        }
+    /// 0 before `from`, 1 after `from + length`, linear in between.
+    private static func phase(_ p: CGFloat, from: CGFloat, length: CGFloat) -> CGFloat {
+        min(1, max(0, (p - from) / length))
+    }
+
+    /// Ease out with a small overshoot (about 6%), so a dot settles into place
+    /// rather than popping. Driven by `progress`, so it stays in step with the line.
+    private static func settle(_ x: CGFloat) -> CGFloat {
+        let c1: CGFloat = 1.2, c3 = c1 + 1
+        let u = x - 1
+        return x <= 0 ? 0 : 1 + c3 * u * u * u + c1 * u * u
     }
 }
 
@@ -174,56 +193,54 @@ private struct WocketLogoView: View {
 struct SplashView: View {
     let onDismiss: () -> Void
 
-    @State private var logoOpacity:   Double = 0
-    @State private var titleOpacity:  Double = 0
-    @State private var titleOffset:   Double = 14
-    @State private var tipOpacity:    Double = 0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var titleShown = false
+    @State private var tipShown = false
     @State private var screenOpacity: Double = 1
-    @State private var tipIndex:      Int    = Self.dailyTipIndex()
+    @State private var tipIndex: Int = Self.dailyTipIndex()
 
     var body: some View {
         ZStack {
-            splashBg.ignoresSafeArea()
+            Color.earthBg.ignoresSafeArea()
             TopoBackground().ignoresSafeArea()
 
             VStack(spacing: 28) {
                 Spacer()
 
-                WocketLogoView()
-                    .opacity(logoOpacity)
+                WocketLogoView(animates: !reduceMotion)
 
-                VStack(spacing: 8) {
+                VStack(spacing: 6) {
                     Text("Wockett")
-                        .font(.system(size: 46, weight: .black, design: .rounded))
-                        .foregroundColor(splashPath)
+                        .font(.wktHeading(40))
+                        .foregroundColor(.earthCream)
                     Text("Walk more. Move better.")
-                        .font(.subheadline)
-                        .foregroundColor(splashPath.opacity(0.58))
+                        .font(.wktBodyText)
+                        .foregroundColor(.earthMuted)
                 }
-                .opacity(titleOpacity)
-                .offset(y: titleOffset)
+                .opacity(titleShown ? 1 : 0)
+                .offset(y: titleShown || reduceMotion ? 0 : 12)
+                .accessibilityElement(children: .combine)
 
                 Spacer()
 
-                VStack(spacing: 10) {
-                    Image(wkt: .tip)
-                        .font(.title3)
-                        .foregroundColor(splashDot)
-                    Text(tips[tipIndex])
-                        .font(.footnote)
-                        .foregroundColor(splashPath.opacity(0.78))
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 40)
-                        .fixedSize(horizontal: false, vertical: true)
+                HStack(alignment: .top, spacing: 12) {
+                    WktIconBadge(symbol: .tip)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Tip of the day")
+                            .font(.wktLabel)
+                            .foregroundColor(.earthMuted)
+                        Text(tips[tipIndex])
+                            .font(.wktBodyText)
+                            .foregroundColor(.earthCream)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
-                .padding(.vertical, 20)
-                .padding(.horizontal)
-                .background(splashCard)
-                .cornerRadius(16)
-                .padding(.horizontal, 24)
-                .opacity(tipOpacity)
-
-                Spacer()
+                .wktCard()
+                .accessibilityElement(children: .combine)
+                .padding(.horizontal, WktSpacing.screen)
+                .padding(.bottom, WktSpacing.betweenSections)
+                .opacity(tipShown ? 1 : 0)
+                .offset(y: tipShown || reduceMotion ? 0 : 10)
             }
         }
         .opacity(screenOpacity)
@@ -232,22 +249,14 @@ struct SplashView: View {
     }
 
     private func runSequence() {
-        withAnimation(.easeIn(duration: 0.2)) { logoOpacity = 1 }
+        // The title lands as the line reaches its last valley; the tip just after.
+        withAnimation(.spring(response: 0.5, dampingFraction: 0.85).delay(1.1)) { titleShown = true }
+        withAnimation(.easeOut(duration: 0.45).delay(1.35)) { tipShown = true }
 
         Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 1_150_000_000)
-            withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
-                titleOpacity = 1; titleOffset = 0
-            }
-        }
-        Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 1_400_000_000)
-            withAnimation(.easeIn(duration: 0.35)) { tipOpacity = 1 }
-        }
-        Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 3_100_000_000)
-            withAnimation(.easeOut(duration: 0.3)) { screenOpacity = 0 }
-            try? await Task.sleep(nanoseconds: 310_000_000)
+            try? await Task.sleep(for: .seconds(3.2))
+            withAnimation(.easeOut(duration: 0.35)) { screenOpacity = 0 }
+            try? await Task.sleep(for: .seconds(0.36))
             onDismiss()
         }
     }
@@ -260,30 +269,30 @@ struct SplashView: View {
 
 // MARK: - Daily Tips
 
+// Refreshed 2026-10-06. Every tip that names a screen or control was checked
+// against the app that day; when one is renamed or moved, fix the tip with it.
 private let tips: [String] = [
-    "You can create custom tags for your weekly schedule. Be weird!",
-    "Walking 10 minutes after a meal can lower blood sugar more than a 45-minute walk later.",
-    "Try a new direction each time you use Recommend — your neighbourhood has more to offer.",
-    "Bring a pet along. Dogs that walk regularly live longer, and so do their humans.",
-    "A 20-minute walk can boost your mood for up to 12 hours.",
-    "Use waypoints in custom routes to plan coffee stops, scenic detours, or hill climbs.",
-    "Shorter, more frequent walks beat one long walk for sustained energy levels.",
-    "Tap the calendar icon to see your step history over any month.",
-    "Free Walk mode is great for hiking or exploring somewhere new without a planned route.",
-    "Walking backwards up a hill burns significantly more calories — and yes, people will stare.",
-    "Post a route to the community board so others can discover your favourite loop.",
-    "Swipe left or right on the week bar to browse your step history.",
-    "Bookmark a recommended route to save it for later without walking it now.",
-    "Early morning walks are linked to better sleep quality that same night.",
+    "Say \"Hey Siri, start a walk with Wockett\" to start without opening the app.",
+    "Add Start Walk to Control Center to begin a walk from anywhere.",
+    "Stopped at a crossing? Wockett pauses, then picks up again by itself when you move.",
+    "Turn on voice cues under More during a walk to hear how far you've gone.",
+    "Turn on water breaks under More during a walk for a reminder to drink.",
+    "Bring your pet along. Add them mid-walk and they get credit for every step they join.",
+    "Trail too far to walk to? Open it in Routes → Trails for walking or cycling directions.",
+    "Swipe the week strip in Health to look back at earlier weeks.",
+    "Forgot your phone? Log a past walk from Health → Activity History.",
+    "Change your daily step goal in Settings → Tracking → Daily step goal.",
+    "Make your own activity tags for the weekly schedule. Be weird.",
+    "Share a saved route to Community so others can find your favorite loop.",
+    "Nearby places in Routes finds parks, cafés and landmarks to walk to.",
+    "Add the Wockett widget to your Home Screen to see today's steps at a glance.",
+    "Try a new direction each time. Your neighborhood has more to offer.",
+    "A 10-minute walk after a meal can help steady your blood sugar.",
+    "Short walks add up. Three 10-minute walks still count.",
+    "Time among trees is linked to lower stress, even in 20 minutes.",
+    "Dogs that walk every day tend to be healthier, and so do their people.",
+    "A morning walk gets you daylight early, which helps set your body clock.",
+    "Walking backwards uphill works different muscles. People will stare.",
     "The best walk is the one you actually take.",
-    "Route colour on the map matches the card in the list — select one to zoom in.",
-    "Split times on custom routes are recorded at each waypoint you set.",
-    "Add water break reminders in Settings to stay hydrated on longer routes.",
-    "Your pet earns credit for every walk they join — even mid-walk toggles count.",
-    "Challenge yourself: pick the hardest route in the list once a week.",
-    "Walking in nature reduces cortisol levels measurably within 20 minutes.",
-    "Use Explore to find interesting landmarks, parks, or cafés near you.",
-    "You can log a past walk manually from your Walk History if you forgot your phone.",
-    "The Elevation profile shows on a selected route — look for the ↑ ↓ numbers on route cards.",
-    "Every step you don't take is a step you can take tomorrow. No pressure.",
+    "Every step you don't take today is one you can take tomorrow. No pressure.",
 ]
