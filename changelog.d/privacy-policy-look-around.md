@@ -1,0 +1,2 @@
+### Fixed
+- The privacy policy no longer says Apple Maps powers "street-level Look Around previews". Wockett has no Look Around feature (no `MKLookAround` code anywhere); the line now lists what MapKit is actually used for: route generation, directions, place search and nearby places, and directions to trails. Found in the 2026-10-07 App Store listing audit, which also drops the same claim from the store description, so the policy, listing and app agree before 1.14 goes to review.
