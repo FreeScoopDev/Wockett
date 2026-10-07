@@ -252,20 +252,7 @@ struct BadgesContentView: View {
         let progress = badge.progress(sessions: cleanSessions, currentStreak: currentStreak)
         let isPinned = pinnedIds.contains(badge.id)
         return VStack(spacing: 6) {
-            ZStack {
-                Circle()
-                    .stroke(Color.earthTrack, lineWidth: 3)
-                Circle()
-                    .trim(from: 0, to: progress)
-                    .stroke(earned ? Color.earthGreen : Color.accentNotice,
-                            style: StrokeStyle(lineWidth: 3, lineCap: .round))
-                    .rotationEffect(.degrees(-90))
-                Text(badge.emoji)
-                    .font(.system(size: 26))
-                    .opacity(earned ? 1.0 : 0.25)
-                    .grayscale(earned ? 0 : 1)
-            }
-            .frame(width: 44, height: 44)
+            WktBadgeRing(emoji: badge.emoji, progress: progress, earned: earned)
             Text(badge.name)
                 .font(.wktLabel)
                 .foregroundColor(earned ? .earthCream : .earthMuted)

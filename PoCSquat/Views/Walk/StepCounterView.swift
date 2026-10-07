@@ -18,6 +18,7 @@ struct StepCounterView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(ActiveWalkStore.self) private var walkStore
     var streakStore: StreakStore = .shared
+    @AppStorage("pinnedBadgeIds_v1") private var pinnedBadgeIdsStr: String = ""
 
     @State private var showResumeWalk           = false
     @State private var showRestoreWalkPrompt    = false
@@ -240,6 +241,20 @@ struct StepCounterView: View {
 
     // MARK: Hero
 
+    /// The badges pinned on the Badges screen, in pin order, with the same
+    /// progress the Badges grid shows (vehicle-flagged walks excluded).
+    private var pinnedBadges: [HomePinnedBadge] {
+        let ids = pinnedBadgeIdsStr.split(separator: ",").map(String.init)
+        let sessions = historyStore.sessions.filter { !$0.flaggedPossibleVehicle }
+        let streak = streakStore.currentStreak
+        return ids.compactMap { id in
+            guard let badge = walkBadges.first(where: { $0.id == id }) else { return nil }
+            return HomePinnedBadge(id: badge.id, name: badge.name, emoji: badge.emoji,
+                                   progress: badge.progress(sessions: sessions, currentStreak: streak),
+                                   earned: badge.isEarned(sessions: sessions, currentStreak: streak))
+        }
+    }
+
     private var heroCard: some View {
         HomeHeroCard(
             steps: stepManager.todaySteps,
@@ -255,6 +270,7 @@ struct StepCounterView: View {
                 return HomeCrewMember(id: pet.id, name: pet.name,
                              progress: min(1, Double(steps) / Double(max(1, pet.goalSteps))))
             },
+            pinnedBadges: pinnedBadges,
             onStepsTap: { showUserDetail = true },
             onPetTap: { id in selectedPetForDetail = petStore.activePets.first { $0.id == id } },
             onManageCrew: { showPetManagement = true },
