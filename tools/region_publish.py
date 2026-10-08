@@ -55,8 +55,11 @@ def cktool(args: list[str]) -> str:
     return out.stdout
 
 
-def _base(env: str) -> list[str]:
-    return ["--team-id", TEAM_ID, "--container-id", CONTAINER,
+def _base(env: str, team: bool = True) -> list[str]:
+    # delete-record has no --team-id option and fails on it (it takes the team
+    # from the saved token). That failure left nc v2 beside v3 in Production on
+    # 2026-10-08 until it was deleted by hand.
+    return (["--team-id", TEAM_ID] if team else []) + ["--container-id", CONTAINER,
             "--environment", env, "--database-type", "public"]
 
 
@@ -143,7 +146,7 @@ def publish(region: str, work: str, production: bool, tested: bool, run=None, lo
         raise PublishError(f"the new {region} v{m['packVersion']} record is not visible in {env}; nothing was removed")
     for r in after:
         if int(r.get("packVersion") or 0) < int(m["packVersion"]):
-            run(["delete-record", *_base(env), "--record-name", r["recordName"], "--yes"])
+            run(["delete-record", *_base(env, team=False), "--record-name", r["recordName"], "--yes"])
             log(f"Removed the older {region} v{r.get('packVersion')} record ({r['recordName']}).")
 
     result = {"region": region, "packVersion": int(m["packVersion"]), "environment": env,
