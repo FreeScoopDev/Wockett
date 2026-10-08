@@ -26,7 +26,7 @@ struct TrailRegionsView: View {
             } header: {
                 WktListHeader(title: "Regions")
             } footer: {
-                Text("Wockett includes North Carolina's named trails. Download a region for every trail in it, or add more regions. Downloads are stored on this device only and are not backed up — they can always be fetched again.")
+                Text("North Carolina's named trails come with Wockett. Download a state for all of its trails, unnamed paths included. Downloads stay on this device and aren't backed up; you can always download them again.")
                     .font(.wktLabel).foregroundColor(.earthMuted)
             }
 

@@ -34,6 +34,10 @@ protocol TrailDataSource: AnyObject {
 
     /// One trail by its in-pack id, or nil.
     func trail(id: Int64) throws -> TrailFeature?
+
+    /// Every piece of the trail with this `TrailFeature.trailKey`, in any
+    /// order. Empty when the source has no trail keys.
+    func trails(key: String) throws -> [TrailFeature]
 }
 
 /// Errors a pack can raise. Each names what the user or developer can do

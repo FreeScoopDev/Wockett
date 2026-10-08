@@ -58,6 +58,27 @@ struct TrailPackTests {
         #expect(src.packInfo.builtAt != nil)
     }
 
+    @Test("A pack built before trail keys answers a key lookup with nothing, not an error")
+    func oldPackHasNoKeys() throws {
+        let src = try open()
+        #expect(src.hasTrailKeys == false)
+        #expect(try src.trails(key: "fixture:w1").isEmpty)
+    }
+
+    @Test("The bundled NC pack returns a whole trail by its key")
+    func bundledWholeTrail() throws {
+        let url = try #require(Bundle.main.url(forResource: "nc", withExtension: "wktpack"))
+        let src = try BundledTrailSource(url: url)
+        #expect(src.hasTrailKeys)
+        // Rocky Branch Trail runs through downtown Raleigh in several pieces.
+        let near = try src.trails(near: raleigh, radiusMeters: 5_000, matching: TrailQuery(), limit: 400)
+        let piece = try #require(near.first { $0.name == "Rocky Branch Trail" && $0.trailKey != nil })
+        let whole = try src.trails(key: try #require(piece.trailKey))
+        #expect(whole.count >= 2)
+        #expect(whole.allSatisfy { $0.name == "Rocky Branch Trail" && $0.trailKey == piece.trailKey })
+        #expect(whole.contains { $0.id == piece.id })
+    }
+
     @Test("Attribution travels with the pack")
     func attribution() throws {
         let src = try open()
