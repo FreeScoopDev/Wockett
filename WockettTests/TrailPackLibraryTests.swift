@@ -94,7 +94,7 @@ final class TrailPackLibraryTests {
         #expect(nc.packInfo.region == "nc")
         #expect(nc.packInfo.regionName == "North Carolina")
         #expect(BundledTrailSource.supportedSchemaVersions.contains(nc.packInfo.schemaVersion))
-        #expect(nc.packInfo.trailCount > 9_000, "named-only NC pack was 9,328 trails when bundled")
+        #expect(nc.packInfo.trailCount > 8_000, "named-only NC pack: 9,328 rows (builder 1.1.0); 8,407 after 1.3.0 joined pieces of one trail and dropped generic names (2026-10-08)")
         #expect(nc.packInfo.builtAt != nil)
         #expect(registry.required.map(\.sourceID) == ["osm"])
 

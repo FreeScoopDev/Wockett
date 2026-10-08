@@ -166,7 +166,7 @@ struct TrailGuideTests {
     @Test("Real trail: walking off Tulip Poplar Trail and stopping 99 m away alerts")
     func realTrailOffAndStop() throws {
         let url = try #require(Bundle.main.url(forResource: "nc", withExtension: "wktpack"))
-        let tulip = try #require(try BundledTrailSource(url: url).trail(id: 8502))
+        let tulip = try #require(try BundledTrailSource(url: url).trail(sourceRef: "w1381466637"))   // Tulip Poplar Trail
         let coords = tulip.coordinates
         let plan = try #require(TrailWalkPlanner.plan(for: tulip, name: tulip.displayName, from: coords[0]))
         var progress = try #require(TrailProgress(route: plan.navigableRoute(activityMode: .walking)))
@@ -472,12 +472,17 @@ struct TrailGuideTests {
     }
 
     @Test("Real loops, walked both ways from random points with GPS wobble, all finish",
-          arguments: [Int64(8502), 4107, 6997])
-    func realLoopsBothWays(id: Int64) throws {
+          // Tulip Poplar Trail, Jailbreak Loop, Rob Wallace Park Powder Magazine Loop,
+          // by source ref: row ids are renumbered whenever the pack is rebuilt.
+          arguments: ["w1381466637", "w743752472", "w810905959"])
+    func realLoopsBothWays(ref: String) throws {
         let url = try #require(Bundle.main.url(forResource: "nc", withExtension: "wktpack"))
-        let trail = try #require(try BundledTrailSource(url: url).trail(id: id))
+        let trail = try #require(try BundledTrailSource(url: url).trail(sourceRef: ref))
         let ring = TrailGuide(path: trail.coordinates)
-        var rng = SeededGenerator(seed: UInt64(id))
+        // The seeds the test used when it looked these up by row id, so the
+        // random walks are the same ones as before the switch to source refs.
+        let seed: [String: UInt64] = ["w1381466637": 8502, "w743752472": 4107, "w810905959": 6997]
+        var rng = SeededGenerator(seed: try #require(seed[ref]))
         for trial in 0..<12 {
             let backward = trial.isMultiple(of: 2)
             let startAlong = Double.random(in: 0..<ring.length, using: &rng)
