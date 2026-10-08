@@ -11,6 +11,7 @@ enum WktSymbol {
     case home               // custom asset: wkt.home.pin
     case health             // heart
     case supportHeart       // heart.circle.fill (tip jar / supporter)
+    case rateApp            // star.bubble (Settings → Rate Wockett)
     case community          // pawprint
     case settings           // slider.horizontal.3
     case routes             // map
@@ -162,6 +163,7 @@ enum WktSymbol {
         case .home:           return "wkt.home.pin"
         case .health:         return "heart"
         case .supportHeart:   return "heart.circle.fill"
+        case .rateApp:        return "star.bubble"
         case .community:      return "pawprint"
         case .settings:       return "slider.horizontal.3"
         case .routes:         return "map"

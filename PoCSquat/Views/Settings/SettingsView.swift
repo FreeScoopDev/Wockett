@@ -340,6 +340,28 @@ struct SettingsView: View {
                         .foregroundColor(.earthGreen)
                     }
                     .listRowBackground(Color.earthCard)
+
+                    // Always here, unlike the system rating prompt, which iOS
+                    // shows at most three times a year and never in TestFlight.
+                    // Opens the App Store's write-a-review page directly.
+                    Button {
+                        if let url = URL(string: "https://apps.apple.com/app/id6794364736?action=write-review") {
+                            openURL(url)
+                        }
+                    } label: {
+                        Label {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Rate Wockett")
+                                Text("A rating or a few words on the App Store helps other walkers find it.")
+                                    .font(.wktLabel).foregroundColor(.earthMuted)
+                            }
+                        } icon: {
+                            Image(wkt: .rateApp).wktIcon(.row, tint: .earthGreen)
+                        }
+                        .foregroundColor(.earthGreen)
+                    }
+                    .accessibilityIdentifier("settings.rateApp")
+                    .listRowBackground(Color.earthCard)
                 } header: { WktListHeader(title: "Support") }
 
                 // ── About ─────────────────────────────────────────
