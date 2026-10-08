@@ -139,11 +139,24 @@ final class TrailPackLibrary {
 
     // MARK: Catalogue
 
+    /// One record per region, the highest packVersion, sorted by name.
+    /// Publishing replaces a region's record by creating the new one and then
+    /// deleting the old (tools/region_publish.py; CloudKit's command-line tool
+    /// cannot edit a record in place), so for a few seconds a region can have
+    /// two. Listing both would show the region twice.
+    static func newestPerRegion(_ records: [TrailRegionRecord]) -> [TrailRegionRecord] {
+        var best: [String: TrailRegionRecord] = [:]
+        for record in records where (best[record.region]?.packVersion ?? Int.min) < record.packVersion {
+            best[record.region] = record
+        }
+        return best.values.sorted { $0.regionName < $1.regionName }
+    }
+
     func refreshCatalog() async {
         isRefreshingCatalog = true
         defer { isRefreshingCatalog = false }
         do {
-            catalog = try await remote.availableRegions().sorted { $0.regionName < $1.regionName }
+            catalog = Self.newestPerRegion(try await remote.availableRegions())
             catalogError = nil
         } catch {
             catalogError = error.localizedDescription

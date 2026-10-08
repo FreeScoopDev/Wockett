@@ -69,6 +69,14 @@ struct TrailPackDeliveryTests {
         #expect(library.state(of: record("va", version: 2)) == .updateAvailable(installed: 1, latest: 2))
     }
 
+    @Test("A region with two records (mid-publish) is listed once, at its newest version")
+    func newestRecordWins() {
+        let list = TrailPackLibrary.newestPerRegion([record("sc", version: 1), record("nc", version: 2),
+                                                     record("nc", version: 3), record("va", version: 1)])
+        #expect(list.map(\.region) == ["nc", "sc", "va"])
+        #expect(list.first { $0.region == "nc" }?.packVersion == 3)
+    }
+
     @Test("A catalogue error is recorded, not thrown")
     func catalogError() async {
         let remote = FakeRemote(regions: [], fileToServe: nil)

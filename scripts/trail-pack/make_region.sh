@@ -111,6 +111,20 @@ python3 tools/build_trail_pack.py \
   --built-at "$BUILT_AT" \
   --out "$WORK/packs/$REGION-full.wktpack"
 
+# The next version follows what users have, read from CloudKit Production
+# (2026-10-08: a local record said nothing was published while v2 was live).
+# LIVE_VERSION=N overrides it when CloudKit cannot be reached.
+if [[ -z "${LIVE_VERSION:-}" ]]; then
+  LIVE_VERSION="$(python3 tools/region_publish.py live-version "$REGION")" || {
+    echo "Could not read the live $NAME version from CloudKit. Save the tokens (see tools/region_publish.py)," >&2
+    echo "or run again with LIVE_VERSION=<the packVersion users have>." >&2
+    exit 1
+  }
+fi
+echo "Live in Production: $NAME v$LIVE_VERSION"
+
 python3 tools/region_release.py "$REGION" \
   --pack "$WORK/packs/$REGION-full.wktpack" --work "$WORK" \
-  --extract-md5 "$MD5" --extract-bbox "$BBOX"
+  --extract-md5 "$MD5" --extract-bbox "$BBOX" --live-version "$LIVE_VERSION"
+
+echo "Next: python3 tools/region_publish.py publish $REGION   (uploads to Development)"
