@@ -79,7 +79,7 @@ struct DayDetailSheet: View {
                                 columnDivider
                                 statCell(label: "Steps", value: steps.formatted())
                                 columnDivider
-                                statCell(label: "Progress", value: "\(Int(day.progress * 100))%")
+                                statCell(label: "Progress", value: WktPercent.text(day.progress))
                                 columnDivider
                                 statCell(label: "Distance", value: Self.formatDist(Double(steps) * 0.762))
                             }
