@@ -28,7 +28,7 @@ struct UserStepDetailSheet: View {
                     VStack(alignment: .leading, spacing: WktSpacing.betweenSections) {
                         WktGoalRing(progress: stepManager.progress, lineWidth: 16) {
                             VStack(spacing: 2) {
-                                Text("\(Int(stepManager.progress * 100))%")
+                                Text(WktPercent.text(stepManager.progress))
                                     .font(.wktMetric)
                                     .foregroundColor(.earthCream)
                                 Text("of goal")

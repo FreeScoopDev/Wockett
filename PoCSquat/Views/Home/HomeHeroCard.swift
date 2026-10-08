@@ -93,7 +93,7 @@ struct HomeHeroCard<Chips: View>: View {
         Button(action: onStepsTap) {
             HStack(spacing: WktSpacing.cardPadding) {
                 WktGoalRing(progress: progress) {
-                    Text("\(Int((progress * 100).rounded()))%")
+                    Text(WktPercent.text(progress))
                         .font(.wktHeading(20))
                         .foregroundColor(.earthCream)
                         .minimumScaleFactor(0.6)
@@ -184,7 +184,7 @@ struct HomeHeroCard<Chips: View>: View {
                             .foregroundColor(.earthCream)
                             .lineLimit(1)
                         Spacer()
-                        Text("\(Int((member.progress * 100).rounded()))%")
+                        Text(WktPercent.text(member.progress))
                             .font(.wktLabel)
                             .foregroundColor(.earthMuted)
                     }
@@ -195,7 +195,7 @@ struct HomeHeroCard<Chips: View>: View {
         }
         .buttonStyle(.plain)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(member.name), \(Int((member.progress * 100).rounded())) percent of goal")
+        .accessibilityLabel("\(member.name), \(WktPercent.value(member.progress)) percent of goal")
         .accessibilityAddTraits(.isButton)
     }
 
@@ -227,7 +227,7 @@ struct HomeHeroCard<Chips: View>: View {
         guard !pinnedBadges.isEmpty else { return "" }
         let parts = pinnedBadges.map { badge in
             badge.earned ? "\(badge.name), earned"
-                         : "\(badge.name), \(Int((badge.progress * 100).rounded())) percent"
+                         : "\(badge.name), \(WktPercent.value(badge.progress)) percent"
         }
         return "Pinned badges: " + parts.joined(separator: "; ")
     }

@@ -199,7 +199,7 @@ struct CommunityHubView: View {
                             .trim(from: 0, to: progress)
                             .stroke(Color.earthGreen, style: StrokeStyle(lineWidth: 9, lineCap: .round))
                             .rotationEffect(.degrees(-90))
-                        Text("\(Int((progress * 100).rounded()))%")
+                        Text(WktPercent.text(progress))
                             .font(.wktHeading(17))
                             .foregroundColor(.earthCream)
                     }
@@ -265,7 +265,7 @@ struct CommunityHubView: View {
                                     .foregroundColor(.earthMuted)
                             }
                             Spacer()
-                            Text("\(Int((first.progress * 100).rounded()))%")
+                            Text(WktPercent.text(first.progress))
                                 .font(.wktRowTitle)
                                 .foregroundColor(.earthOrange)
                         }
@@ -277,7 +277,7 @@ struct CommunityHubView: View {
                 if next.count > 1 {
                     HStack(spacing: 8) {
                         ForEach(next.dropFirst(), id: \.badge.id) { item in
-                            chip("\(item.badge.name) · \(Int((item.progress * 100).rounded()))%", tint: .earthMuted)
+                            chip("\(item.badge.name) · \(WktPercent.text(item.progress))", tint: .earthMuted)
                         }
                     }
                 }

@@ -363,7 +363,7 @@ private struct MonthDayCell: View {
                                 .font(.system(size: 7, weight: .bold))
                                 .foregroundColor(.earthGreen)
                         } else if let s = steps, s > 0 {
-                            Text("\(Int(Double(s) / Double(max(1, goal)) * 100))%")
+                            Text(WktPercent.text(Double(s) / Double(max(1, goal))))
                                 .font(.wktBody(7))
                                 .foregroundColor(.earthOrange)
                                 .minimumScaleFactor(0.7)
