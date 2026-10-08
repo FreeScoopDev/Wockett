@@ -52,7 +52,7 @@ from typing import Any, Iterable, Iterator, Optional, Sequence
 # ---------------------------------------------------------------------------
 
 SCHEMA_VERSION = 1
-BUILDER_VERSION = "1.2.0"
+BUILDER_VERSION = "1.3.0"
 
 # ---------------------------------------------------------------------------
 # Source registry. Attribution lives here and is copied into every pack, so a
@@ -304,6 +304,7 @@ class Trail:
     # Length that counts toward the --min-length floor: a merged row's
     # crossings are links, not trail, and do not count (None = length_m).
     floor_length_m: Optional[float] = None
+    trail_key: Optional[str] = None
 
 
 @dataclass
@@ -320,6 +321,11 @@ class Stats:
     skipped_sidewalk: int = 0
     skipped_crossing: int = 0
     skipped_unnamed: int = 0
+    generic_names: int = 0
+    junction_merges: int = 0
+    bridged_gaps: int = 0
+    skipped_short_unnamed: int = 0
+    trail_keys: int = 0
     read: int = 0
     written: int = 0
     skipped_geometry: int = 0
@@ -351,6 +357,27 @@ def _yes_no(value: Optional[str], default: int) -> int:
     if v in _FALSE_ISH:
         return 0
     return default
+
+
+# Names that say what a path is, not which path it is. Listed as trails they
+# read as clutter ("Trail" x37, "Service Road" x27, "Connector" x23 in the NC
+# pack, 2026-10-08), and a same-name group of them across a park is not one
+# trail. Treated as unnamed, they join the unnamed corridors and can take a
+# derived name from the road alongside. Exact matches only, case and spacing
+# ignored: "Nature Trail" or "Red Trail" are real names inside their park.
+GENERIC_NAMES = frozenset({
+    "trail", "trails", "path", "paths", "footpath", "foot path", "foot trail",
+    "walkway", "walking path", "walking trail", "sidewalk", "service road",
+    "connector", "connector trail", "connector path", "multi-use trail",
+    "multi-use path", "multiuse trail", "multi use trail", "multi-use",
+    "ramp", "stairs", "steps", "driveway", "access", "access trail",
+    "beach access", "public beach access", "bike path", "bike trail",
+    "greenway", "unnamed", "unnamed trail", "no name",
+})
+
+
+def is_generic_name(name: Optional[str]) -> bool:
+    return bool(name) and " ".join(str(name).lower().split()) in GENERIC_NAMES
 
 
 def normalize_feature(
@@ -405,6 +432,9 @@ def normalize_feature(
     )
 
     name = props.get("name") or props.get("TRLNAME") or props.get("trail_name")
+    if is_generic_name(name):
+        stats.generic_names += 1
+        name = None
     dog_access, provenance = derive_dog_access(tags)
 
     lats = [c[1] for c in simplified]
@@ -562,13 +592,59 @@ def merge_named_ways(
     if any(len(v) > 2 for v in at.values()):
         stats.merge_groups_left += 1  # has at least one junction
 
-    def neighbour(node: tuple[float, float], current: int, used: set[int]) -> Optional[int]:
-        """The one other unused way at `node`, if exactly two ways meet there."""
+    pairs: dict[tuple[float, float], dict[int, int]] = {}
+
+    def junction_pairs(node: tuple[float, float]) -> dict[int, int]:
+        """Where three or more ways of one name meet, which continue into which.
+
+        Builder 1.3.0 (2026-10-08): a trail with a spur or a fork used to stay
+        in pieces, every way at the junction left unmerged ("Neuse River
+        Trail" in 29). The ways are paired straightest first: two ways join
+        through the junction when the turn between them is within
+        JUNCTION_MAX_DEFLECTION_DEG (the rule unnamed corridors use), each
+        way joins at most one other, and only when the pair is clearly the
+        straightest: for both ways, any other way there is at least
+        JUNCTION_CLEAR_MARGIN_DEG more of a turn. A symmetric Y has no
+        "straight on", so it is not guessed. Spurs and forks stay separate
+        rows; the trail key ties them back to the trail.
+        """
+        if node in pairs:
+            return pairs[node]
         ways = at.get(node, [])
-        if len(ways) != 2:
+        heads = {i: _end_heading(members[i][1], _endpoint_key(members[i][1][0]) == node) for i in ways}
+        candidates = sorted(
+            (deflection_deg(heads[a], heads[b]), a, b)
+            for k, a in enumerate(ways) for b in ways[k + 1:] if a != b
+        )
+        angle_of = {(a, b): ang for ang, a, b in candidates}
+        angle_of.update({(b, a): ang for (a, b), ang in list(angle_of.items())})
+
+        def clearly_best(x: int, partner: int, angle: float) -> bool:
+            others = [angle_of[(x, o)] for o in ways if o not in (x, partner) and (x, o) in angle_of]
+            return all(o - angle >= JUNCTION_CLEAR_MARGIN_DEG for o in others)
+
+        out: dict[int, int] = {}
+        for angle, a, b in candidates:
+            if angle > JUNCTION_MAX_DEFLECTION_DEG:
+                break
+            if a not in out and b not in out and clearly_best(a, b, angle) and clearly_best(b, a, angle):
+                out[a], out[b] = b, a
+        pairs[node] = out
+        return out
+
+    def neighbour(node: tuple[float, float], current: int, used: set[int]) -> Optional[int]:
+        """The unused way that continues `current` through `node`: the only
+        other way there, or at a junction the one it pairs with."""
+        ways = at.get(node, [])
+        if len(ways) == 2:
+            other = ways[0] if ways[1] == current else ways[1]
+        elif len(ways) > 2:
+            other = junction_pairs(node).get(current)
+            if other is not None and other not in used:
+                stats.junction_merges += 1
+        else:
             return None
-        other = ways[0] if ways[1] == current else ways[1]
-        return None if other in used or other == current else other
+        return None if other is None or other in used or other == current else other
 
     def oriented(i: int, from_node: tuple[float, float]) -> list[list[float]]:
         c = members[i][1]
@@ -607,6 +683,128 @@ def merge_named_ways(
 
 
 ACCESS_MIN_SHARE = 0.5
+
+# Builder 1.3.0: pieces of one named trail whose ends do not touch, but face
+# each other across a short gap, are one trail with a bridge, boardwalk or
+# road crossing in between that OSM tags as a different way. Measured on the
+# NC pack (2026-10-08): of Neuse River Trail's 27 pieces' ends, 22 sit within
+# 50 m of another piece's end and only 2 within 1 m, so end-to-end merging
+# could not see them. The gap is drawn straight. 50 m is the walk screen's
+# off-trail distance, so a bridged gap can never raise a false alert.
+BRIDGE_MAX_GAP_M = 50.0
+BRIDGE_MAX_TURN_DEG = 45.0
+
+
+def _bearing_vec(a: Sequence[float], b: Sequence[float]) -> tuple[float, float]:
+    lat0 = a[1]
+    ax, ay = _local_xy(a, lat0)
+    bx, by = _local_xy(b, lat0)
+    return _unit(bx - ax, by - ay)
+
+
+def bridge_named_gaps(
+    members: list[tuple[Trail, list[list[float]]]],
+    stats: Stats,
+) -> list[tuple[Trail, list[list[float]]]]:
+    """Join pieces of one name across short gaps where they clearly continue.
+
+    Two ends join when they are within BRIDGE_MAX_GAP_M, the pieces point at
+    each other (turn within BRIDGE_MAX_TURN_DEG), and the gap itself runs the
+    way the first piece is heading. Closest pairs first; each end joins at
+    most once, and a join never closes a ring of pieces. Loops are left alone.
+    """
+    if len(members) < 2:
+        return members
+    members = sorted(members, key=lambda m: m[0].source_ref)
+    ends = []  # (piece index, 0 = start / 1 = end, coord, heading out of the piece)
+    for i, (t, c) in enumerate(members):
+        if t.is_loop or len(c) < 2:
+            continue
+        for side in (0, 1):
+            into = _end_heading(c, at_start=(side == 0))
+            ends.append((i, side, c[0] if side == 0 else c[-1], (-into[0], -into[1])))
+
+    candidates = []
+    for x in range(len(ends)):
+        i, si, pi, oi = ends[x]
+        for y in range(x + 1, len(ends)):
+            j, sj, pj, oj = ends[y]
+            if i == j:
+                continue
+            gap = haversine_m(pi, pj)
+            if gap > BRIDGE_MAX_GAP_M or gap < 0.5:
+                continue
+            # Both "out of the piece" headings point at each other: as for a
+            # junction, deflection 0 is dead straight on.
+            turn = deflection_deg((-oi[0], -oi[1]), (-oj[0], -oj[1]))
+            g = _bearing_vec(pi, pj)
+            along = math.degrees(math.acos(max(-1.0, min(1.0, g[0] * oi[0] + g[1] * oi[1]))))
+            if turn <= BRIDGE_MAX_TURN_DEG and along <= BRIDGE_MAX_TURN_DEG:
+                candidates.append((gap, x, y))
+    if not candidates:
+        return members
+
+    parent = list(range(len(members)))
+
+    def find(a: int) -> int:
+        while parent[a] != a:
+            parent[a] = parent[parent[a]]
+            a = parent[a]
+        return a
+
+    link: dict[tuple[int, int], tuple[int, int]] = {}
+    for gap, x, y in sorted(candidates):
+        i, si = ends[x][0], ends[x][1]
+        j, sj = ends[y][0], ends[y][1]
+        if (i, si) in link or (j, sj) in link or find(i) == find(j):
+            continue
+        link[(i, si)] = (j, sj)
+        link[(j, sj)] = (i, si)
+        parent[find(i)] = find(j)
+        stats.bridged_gaps += 1
+    if not link:
+        return members
+
+    used: set[int] = set()
+    out = []
+    for seed in range(len(members)):
+        if seed in used:
+            continue
+        # Walk to one end of the chain this piece belongs to.
+        cur, came_side = seed, 0
+        seen = {seed}
+        while (cur, came_side) in link:
+            nxt, nside = link[(cur, came_side)]
+            if nxt in seen:
+                break
+            seen.add(nxt)
+            cur, came_side = nxt, 1 - nside
+        # cur's free end is `came_side`; walk the chain from there.
+        start_side = came_side
+        chain, coords = [], []
+        piece, side_in = cur, start_side
+        while True:
+            used.add(piece)
+            chain.append(members[piece])
+            c = members[piece][1]
+            oriented = list(c) if side_in == 0 else list(reversed(c))
+            coords.extend(oriented)            # the gap is the straight step between pieces
+            out_side = 1 - side_in
+            if (piece, out_side) not in link:
+                break
+            piece, side_in = link[(piece, out_side)]
+            if piece in used:
+                break
+        if len(chain) == 1:
+            out.append(chain[0])
+            continue
+        trail, merged = _merged_row(chain, coords, base=min(chain, key=lambda m: m[0].source_ref)[0])
+        tags = json.loads(trail.tags_json)
+        tags["merged_ways"] = sum(json.loads(t.tags_json).get("merged_ways", 1) for t, _ in chain)
+        tags["bridged_gaps"] = len(chain) - 1
+        trail.tags_json = json.dumps(tags, separators=(",", ":"), sort_keys=True)
+        out.append((trail, merged))
+    return out
 
 
 def _merged_row(parts, coords: list[list[float]], base: Optional[Trail] = None):
@@ -718,6 +916,9 @@ def _merged_row(parts, coords: list[list[float]], base: Optional[Trail] = None):
 
 JOIN_ENDPOINT_TOLERANCE_M = 3.0
 JUNCTION_MAX_DEFLECTION_DEG = 45.0
+# Through a junction of one name, the continuation must beat every other way
+# there by this much, or the junction is a fork and nothing is merged.
+JUNCTION_CLEAR_MARGIN_DEG = 15.0
 # The heading of a way at one end is taken over this much of it, so a kink in
 # the last metre (a curb ramp) does not decide which way a path "goes".
 _HEADING_SAMPLE_M = 15.0
@@ -1407,6 +1608,7 @@ CREATE TABLE trails (
     allows_horse           INTEGER NOT NULL,
     is_loop                INTEGER NOT NULL,
     tags_json              TEXT NOT NULL,
+    trail_key              TEXT,
     UNIQUE (source_id, source_ref)
 );
 
@@ -1417,7 +1619,76 @@ CREATE VIRTUAL TABLE trails_rtree USING rtree(
 CREATE INDEX idx_trails_dog    ON trails (dog_access);
 CREATE INDEX idx_trails_length ON trails (length_m);
 CREATE INDEX idx_trails_name   ON trails (name);
+CREATE INDEX idx_trails_key    ON trails (trail_key);
 """
+
+
+# --- Curation after the rows are final (builder 1.3.0) ----------------------
+
+# Pieces of one name closer than this are one trail, matching the app's
+# `TrailList.joinGapMeters`, so the key groups exactly what the list groups.
+TRAIL_KEY_JOIN_GAP_M = 400.0
+# An unnamed path shorter than this, that no name reached, is a stub between
+# driveways, not something to walk: 38% of NC's unnamed rows were under 100 m.
+MIN_UNNAMED_LENGTH_M = 150.0
+
+
+def _bbox_gap_m(a: "Trail", b: "Trail") -> float:
+    lat0 = math.radians((a.min_lat + a.max_lat + b.min_lat + b.max_lat) / 4)
+    dlat = max(0.0, max(a.min_lat, b.min_lat) - min(a.max_lat, b.max_lat)) * _M_PER_DEG_LAT
+    dlon = max(0.0, max(a.min_lon, b.min_lon) - min(a.max_lon, b.max_lon)) * _M_PER_DEG_LAT * math.cos(lat0)
+    return math.hypot(dlat, dlon)
+
+
+def assign_trail_keys(rows: list, region: str, stats: Stats) -> None:
+    """Give every piece of one named trail the same `trail_key`.
+
+    A trail is the pieces sharing a name that sit within
+    TRAIL_KEY_JOIN_GAP_M of one another, chained (A near B near C is one
+    trail even if A and C are far apart). The key is the region and the
+    smallest source ref in the trail, so it survives rebuilds while that way
+    exists. Unnamed rows have no key: the app titles them by kind.
+    """
+    by_name: dict[str, list[int]] = {}
+    for i, (t, _) in enumerate(rows):
+        if t.name:
+            by_name.setdefault(" ".join(t.name.lower().split()), []).append(i)
+    for idx in by_name.values():
+        parent = {i: i for i in idx}
+
+        def find(i: int) -> int:
+            while parent[i] != i:
+                parent[i] = parent[parent[i]]
+                i = parent[i]
+            return i
+
+        order = sorted(idx, key=lambda i: rows[i][0].min_lon)
+        pad = TRAIL_KEY_JOIN_GAP_M / _M_PER_DEG_LAT * 2
+        for k, i in enumerate(order):
+            for j in order[k + 1:]:
+                if rows[j][0].min_lon - rows[i][0].max_lon > pad:
+                    break
+                if _bbox_gap_m(rows[i][0], rows[j][0]) <= TRAIL_KEY_JOIN_GAP_M:
+                    parent[find(i)] = find(j)
+        groups: dict[int, list[int]] = {}
+        for i in idx:
+            groups.setdefault(find(i), []).append(i)
+        for members in groups.values():
+            key = f"{region}:{min(rows[i][0].source_ref for i in members)}"
+            for i in members:
+                rows[i][0].trail_key = key
+            stats.trail_keys += 1
+
+
+def drop_short_unnamed(rows: list, min_m: float, stats: Stats) -> list:
+    kept = []
+    for row in rows:
+        t = row[0]
+        if not t.name and not t.is_loop and t.length_m < min_m:
+            stats.skipped_short_unnamed += 1
+        else:
+            kept.append(row)
+    return kept
 
 
 def build_pack(
@@ -1433,6 +1704,7 @@ def build_pack(
     join_unnamed: bool = True,
     roads_path: Optional[str] = None,
     keep_sidewalks: bool = False,
+    min_unnamed_length_m: float = MIN_UNNAMED_LENGTH_M,
 ) -> Stats:
     # Joining unnamed ways is a kind of merging; --no-merge-ways turns off both.
     join_unnamed = join_unnamed and merge_ways and not named_only
@@ -1518,7 +1790,7 @@ def build_pack(
         # Deterministic: names in sorted order, members sorted inside.
         named_lines = [coords for name in sorted(pool) for _, coords in pool[name]]
         for name in sorted(pool):
-            for row in merge_named_ways(pool[name], stats):
+            for row in bridge_named_gaps(merge_named_ways(pool[name], stats), stats):
                 if row[0].is_crossing:  # a named crosswalk that joined nothing
                     stats.skipped_crossing += 1
                     continue
@@ -1528,6 +1800,9 @@ def build_pack(
 
     if roads_path:
         apply_derived_names(rows, roads_path, stats)
+    # After derived names, so a short path that took a road's name stays.
+    rows = drop_short_unnamed(rows, min_unnamed_length_m, stats)
+    assign_trail_keys(rows, region, stats)
 
     batch: list[tuple] = []
     rtree_batch: list[tuple] = []
@@ -1539,6 +1814,7 @@ def build_pack(
             trail.max_lat, trail.max_lon, trail.surface, trail.difficulty,
             trail.dog_access, trail.dog_access_provenance, trail.allows_foot,
             trail.allows_bike, trail.allows_horse, trail.is_loop, trail.tags_json,
+            trail.trail_key,
         ))
         rtree_batch.append(
             (trail.id, trail.min_lat, trail.max_lat, trail.min_lon, trail.max_lon)
@@ -1573,6 +1849,8 @@ def build_pack(
         "join_unnamed": "1" if join_unnamed else "0",
         "derived_names": "1" if roads_path else "0",
         "keep_sidewalks": "1" if keep_sidewalks else "0",
+        "min_unnamed_length_m": str(min_unnamed_length_m),
+        "trail_keys": "1",
         "sources": ",".join(sorted(used_sources)),
     }.items():
         conn.execute("INSERT INTO meta VALUES (?,?)", (key, value))
@@ -1587,7 +1865,7 @@ def _flush(conn: sqlite3.Connection, batch: list, rtree_batch: list) -> None:
     if not batch:
         return
     conn.executemany(
-        "INSERT INTO trails VALUES (" + ",".join("?" * 20) + ")", batch
+        "INSERT INTO trails VALUES (" + ",".join("?" * 21) + ")", batch
     )
     conn.executemany("INSERT INTO trails_rtree VALUES (?,?,?,?,?)", rtree_batch)
 
@@ -1706,6 +1984,9 @@ def main(argv: Optional[list[str]] = None) -> int:
                         help="Named roads from the same extract (osmium export). "
                              "Unnamed paths running alongside one get a derived "
                              "name, e.g. \"Duck Road Path\"")
+    parser.add_argument("--min-unnamed-length", type=float, default=MIN_UNNAMED_LENGTH_M,
+                        help="Drop unnamed, non-loop trails shorter than this many metres "
+                             f"after joining and derived names (default {MIN_UNNAMED_LENGTH_M:.0f})")
     parser.add_argument("--keep-sidewalks", action="store_true",
                         help="Keep highway=footway + footway=sidewalk ways "
                              "(default: drop — a sidewalk is not a trail)")
@@ -1738,7 +2019,8 @@ def main(argv: Optional[list[str]] = None) -> int:
                        built_at=args.built_at,
                        join_unnamed=not args.no_join_unnamed,
                        roads_path=args.roads,
-                       keep_sidewalks=args.keep_sidewalks)
+                       keep_sidewalks=args.keep_sidewalks,
+                       min_unnamed_length_m=args.min_unnamed_length)
     elapsed = time.time() - started
 
     size_mb = os.path.getsize(args.out) / 1e6
@@ -1754,6 +2036,11 @@ def main(argv: Optional[list[str]] = None) -> int:
     print(f"  skipped too short  {stats.skipped_short:,}")
     print(f"  skipped duplicate  {stats.skipped_duplicate:,}")
     print(f"  skipped unnamed    {stats.skipped_unnamed:,}")
+    print(f"  generic names      {stats.generic_names:,} (treated as unnamed)")
+    print(f"  short unnamed      {stats.skipped_short_unnamed:,} dropped (under {args.min_unnamed_length:.0f} m)")
+    print(f"  junction merges    {stats.junction_merges:,}")
+    print(f"  bridged gaps       {stats.bridged_gaps:,} (same name, facing, under {BRIDGE_MAX_GAP_M:.0f} m)")
+    print(f"  named trails       {stats.trail_keys:,} (trail keys)")
     print(f"  skipped sidewalk   {stats.skipped_sidewalk:,}")
     print(f"  skipped crossing   {stats.skipped_crossing:,} (not joining two pieces of a path)")
     print(f"  merged             {stats.merged_ways:,} ways -> {stats.merge_groups:,} trails; "

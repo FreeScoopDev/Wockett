@@ -95,9 +95,11 @@ class MergeTests(unittest.TestCase):
         self.assertEqual(stats.merge_groups_left, 1)
         self.assertEqual(stats.merged_ways, 0)
 
-    def test_spur_splits_the_chain_but_the_rest_still_merges(self):
-        # A -> B -> C -> D with a spur B -> E. B is a junction, so w1 stops
-        # there and the spur stands alone, but w2 + w3 still merge.
+    def test_trail_continues_straight_through_a_spur(self):
+        # A -> B -> C -> D with a spur B -> E. Since builder 1.3.0 the trail
+        # carries straight on through B (w1 + w2 + w3 merge, 0 deg turn) and
+        # the spur, a 90 deg turn, stays its own row. Before, B split the
+        # trail in two as well (2026-10-08: Neuse River Trail was 29 rows).
         spurred = [
             feature("w1", [[-78.64, 35.78], [-78.64, 35.79]], name="Ridge Trail"),
             feature("w2", [[-78.64, 35.79], [-78.64, 35.80]], name="Ridge Trail"),
@@ -105,12 +107,12 @@ class MergeTests(unittest.TestCase):
             feature("w4", [[-78.64, 35.79], [-78.63, 35.79]], name="Ridge Trail"),
         ]
         stats, rows, _ = self.build(spurred)
-        self.assertEqual(len(rows), 3)
+        self.assertEqual(len(rows), 2)
         merged = [r for r in rows if json.loads(r[7]).get("merged_ways")]
         self.assertEqual(len(merged), 1)
-        self.assertEqual(merged[0][0], "w2")
-        self.assertEqual(json.loads(merged[0][7])["merged_ways"], 2)
-        self.assertEqual(stats.merge_groups_left, 1, "one group had a junction")
+        self.assertEqual(merged[0][0], "w1")
+        self.assertEqual(json.loads(merged[0][7])["merged_ways"], 3)
+        self.assertGreaterEqual(stats.junction_merges, 1)
 
     def test_two_halves_become_one_loop(self):
         halves = [
@@ -168,6 +170,9 @@ class JoinUnnamedTests(unittest.TestCase):
         if roads is not None:
             kw["roads_path"] = os.path.join(d, "roads.geojsonseq")
             write_seq(kw["roads_path"], roads)
+        # These tests pin the joining rules on short ways; the 1.3.0 stub
+        # cut has its own tests (CurationTests).
+        kw.setdefault("min_unnamed_length_m", 0.0)
         stats = btp.build_pack([(src, "osm")], out, "t", "Test", 0.00002, 30.0,
                                built_at="2026-01-01T00:00:00Z", **kw)
         conn = sqlite3.connect(out)
@@ -662,6 +667,156 @@ class PolylineTests(unittest.TestCase):
     def test_google_reference_vector(self):
         self.assertEqual(btp.encode_polyline([(-120.2, 38.5), (-120.95, 40.7), (-126.453, 43.252)]),
                          "_p~iF~ps|U_ulLnnqC_mqNvxq`@")
+
+
+class CurationTests(unittest.TestCase):
+    """Builder 1.3.0 (2026-10-08): generic names, short unnamed stubs, trail keys."""
+
+    def build(self, features, **kw):
+        d = tempfile.mkdtemp()
+        src = os.path.join(d, "in.geojsonseq")
+        out = os.path.join(d, "out.wktpack")
+        write_seq(src, features)
+        stats = btp.build_pack([(src, "osm")], out, "t", "Test", 0.00002, 30.0,
+                               built_at="2026-01-01T00:00:00Z", **kw)
+        conn = sqlite3.connect(out)
+        rows = conn.execute(
+            "SELECT source_ref, name, length_m, is_loop, trail_key FROM trails ORDER BY id").fetchall()
+        conn.close()
+        return stats, rows
+
+    def test_generic_name_is_treated_as_unnamed(self):
+        stats, rows = self.build([
+            feature("w1", [[-78.64, 35.78], [-78.64, 35.79]], name="  service   ROAD ", highway="path"),
+            feature("w2", [[-78.62, 35.78], [-78.62, 35.79]], name="Red Trail", highway="path"),
+        ])
+        names = {r[0]: r[1] for r in rows}
+        self.assertIsNone(names["w1"])
+        self.assertEqual(names["w2"], "Red Trail")  # a colour blaze is a real name in its park
+        self.assertEqual(stats.generic_names, 1)
+
+    def test_short_unnamed_stub_is_dropped_but_loops_and_named_stay(self):
+        stub = feature("w1", [[-78.64, 35.78], [-78.64, 35.7808]], highway="path")             # ~89 m
+        named = feature("w2", [[-78.62, 35.78], [-78.62, 35.7808]], name="Pond Path", highway="path")
+        long_ = feature("w3", [[-78.60, 35.78], [-78.60, 35.79]], highway="path")             # ~1.1 km
+        loop = feature("w4", [[-78.58, 35.78], [-78.5790, 35.78], [-78.5790, 35.7810],
+                              [-78.58, 35.7810], [-78.58, 35.78]], highway="path")          # ~400 m loop
+        stats, rows = self.build([stub, named, long_, loop])
+        refs = {r[0] for r in rows}
+        self.assertNotIn("w1", refs)
+        self.assertTrue({"w2", "w3", "w4"} <= refs)
+        self.assertEqual(stats.skipped_short_unnamed, 1)
+
+    def test_stub_floor_is_a_parameter(self):
+        stub = feature("w1", [[-78.64, 35.78], [-78.64, 35.7808]], highway="path")
+        _, rows = self.build([stub], min_unnamed_length_m=0.0)
+        self.assertEqual(len(rows), 1)
+
+    def test_pieces_of_one_trail_share_a_key_and_far_pieces_do_not(self):
+        # Two pieces 300 m apart (a gap in the data): one trail. A third 40 km away: another.
+        stats, rows = self.build([
+            feature("w5", [[-78.64, 35.780], [-78.64, 35.790]], name="Creek Trail"),
+            feature("w7", [[-78.64, 35.7927], [-78.64, 35.800]], name="Creek Trail"),
+            feature("w9", [[-78.20, 35.780], [-78.20, 35.790]], name="Creek Trail"),
+            feature("w3", [[-78.60, 35.78], [-78.60, 35.79]], highway="path"),
+        ])
+        keys = {r[0]: r[4] for r in rows}
+        self.assertEqual(keys["w5"], keys["w7"])
+        self.assertEqual(keys["w5"], "t:w5")              # region + smallest source ref
+        self.assertNotEqual(keys["w9"], keys["w5"])
+        self.assertIsNone(keys["w3"])                     # unnamed rows have no key
+        self.assertEqual(stats.trail_keys, 2)
+
+    def test_key_ignores_case_and_spacing(self):
+        _, rows = self.build([
+            feature("w1", [[-78.64, 35.780], [-78.64, 35.790]], name="Creek Trail"),
+            feature("w2", [[-78.64, 35.7905], [-78.64, 35.800]], name="creek  trail"),
+        ])
+        self.assertEqual(rows[0][4], rows[1][4])
+
+    def test_symmetric_fork_is_not_guessed(self):
+        # A Y whose two branches leave at the same angle: no straight on.
+        y = [
+            feature("w1", [[-78.64, 35.78], [-78.64, 35.79]], name="Park Trail"),
+            feature("w2", [[-78.64, 35.79], [-78.635, 35.80]], name="Park Trail"),
+            feature("w3", [[-78.64, 35.79], [-78.645, 35.80]], name="Park Trail"),
+        ]
+        stats, rows = self.build(y)
+        self.assertEqual(len(rows), 3)
+        self.assertEqual(stats.junction_merges, 0)
+        self.assertEqual(len({r[4] for r in rows}), 1, "still one trail")
+
+    # --- Gap bridging (same name, facing each other, under 50 m) ----------
+    # ~0.00027 deg of latitude is 30 m.
+
+    def test_facing_pieces_across_a_short_gap_join(self):
+        stats, rows = self.build([
+            feature("w1", [[-78.64, 35.780], [-78.64, 35.790]], name="River Trail"),
+            feature("w2", [[-78.64, 35.79027], [-78.64, 35.800]], name="River Trail"),   # 30 m gap, straight on
+        ])
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(stats.bridged_gaps, 1)
+        self.assertGreater(rows[0][2], 2200)  # both pieces plus the 30 m step
+
+    def test_gap_over_50_m_stays_apart(self):
+        stats, rows = self.build([
+            feature("w1", [[-78.64, 35.780], [-78.64, 35.790]], name="River Trail"),
+            feature("w2", [[-78.64, 35.7906], [-78.64, 35.800]], name="River Trail"),    # ~67 m
+        ])
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(stats.bridged_gaps, 0)
+        self.assertEqual(rows[0][4], rows[1][4], "still one trail by key")
+
+    def test_side_by_side_pieces_do_not_join(self):
+        # Parallel, 30 m apart east-west: close, but neither points at the other.
+        stats, rows = self.build([
+            feature("w1", [[-78.6400, 35.780], [-78.6400, 35.790]], name="River Trail"),
+            feature("w2", [[-78.6397, 35.780], [-78.6397, 35.790]], name="River Trail"),
+        ])
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(stats.bridged_gaps, 0)
+
+    def test_gap_that_turns_sharply_does_not_join(self):
+        # w2 starts 30 m beyond w1's end but heads east: a 90 deg turn.
+        stats, rows = self.build([
+            feature("w1", [[-78.64, 35.780], [-78.64, 35.790]], name="River Trail"),
+            feature("w2", [[-78.64, 35.79027], [-78.63, 35.79027]], name="River Trail"),
+        ])
+        self.assertEqual(stats.bridged_gaps, 0)
+
+    def test_offset_continuation_does_not_join(self):
+        # w2 runs north like w1 but starts 30 m to the EAST of w1's end: the
+        # gap is sideways (a path on the other side of a road), not onward.
+        stats, rows = self.build([
+            feature("w1", [[-78.6400, 35.780], [-78.6400, 35.790]], name="River Trail"),
+            feature("w2", [[-78.6397, 35.790], [-78.6397, 35.800]], name="River Trail"),
+        ])
+        self.assertEqual(stats.bridged_gaps, 0)
+
+    def test_bridging_never_closes_a_ring_of_pieces(self):
+        # A ~300 m-radius circle cut into four arcs, with a ~30 m straight-on
+        # gap after each. Every gap qualifies, but bridging all four would
+        # make a ring with no ends: three bridge, the last stays open.
+        def arc(fid, start_deg):
+            pts = []
+            for k in range(0, 86, 5):   # 0..85 deg; the 5 deg gap is ~26 m
+                a = math.radians(start_deg + k)
+                pts.append([-78.64 + 0.0033 * math.cos(a), 35.78 + 0.0027 * math.sin(a)])
+            return feature(fid, pts, name="Pond Trail")
+        stats, rows = self.build([arc("w1", 0), arc("w2", 90), arc("w3", 180), arc("w4", 270)])
+        self.assertEqual(stats.bridged_gaps, 3)
+        self.assertEqual(len(rows), 1)
+
+    def test_pack_says_it_has_trail_keys(self):
+        d = tempfile.mkdtemp()
+        src = os.path.join(d, "in.geojsonseq")
+        out = os.path.join(d, "out.wktpack")
+        write_seq(src, [feature("w1", [[-78.64, 35.78], [-78.64, 35.79]], name="A Trail")])
+        btp.build_pack([(src, "osm")], out, "t", "Test", 0.00002, 30.0, built_at="2026-01-01T00:00:00Z")
+        meta = dict(sqlite3.connect(out).execute("SELECT key, value FROM meta"))
+        self.assertEqual(meta["trail_keys"], "1")
+        self.assertEqual(meta["builder_version"], "1.3.0")
+        self.assertTrue(btp.verify_pack(out))
 
 
 if __name__ == "__main__":

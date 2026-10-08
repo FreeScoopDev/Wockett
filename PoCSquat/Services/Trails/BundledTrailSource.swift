@@ -116,6 +116,13 @@ final class BundledTrailSource: TrailDataSource {
         try run("SELECT * FROM trails WHERE id = ?", binds: [.int(id)]).first
     }
 
+    /// The trail whose source reference (an OSM way id, "w1381466637") is
+    /// `sourceRef`. Unlike the row id, which a rebuild renumbers, the source
+    /// reference is the trail's identity across pack versions.
+    func trail(sourceRef: String) throws -> TrailFeature? {
+        try run("SELECT * FROM trails WHERE source_ref = ?", binds: [.text(sourceRef)]).first
+    }
+
     // MARK: Query building
 
     private enum Bind {

@@ -163,7 +163,7 @@ struct TrailWalkTests {
     func realBundledLoop() throws {
         let url = try #require(Bundle.main.url(forResource: "nc", withExtension: "wktpack"))
         let source = try BundledTrailSource(url: url)
-        let tulip = try #require(try source.trail(id: 8502))   // Tulip Poplar Trail, 1.1 mi, a loop
+        let tulip = try #require(try source.trail(sourceRef: "w1381466637"))   // Tulip Poplar Trail, 1.1 mi, a loop
         #expect(tulip.isLoop)
         let vertex = tulip.coordinates[tulip.coordinates.count / 2]
         let plan = try #require(TrailWalkPlanner.plan(for: tulip, name: tulip.displayName, from: vertex))
