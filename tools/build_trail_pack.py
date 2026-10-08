@@ -52,7 +52,7 @@ from typing import Any, Iterable, Iterator, Optional, Sequence
 # ---------------------------------------------------------------------------
 
 SCHEMA_VERSION = 1
-BUILDER_VERSION = "1.3.0"
+BUILDER_VERSION = "1.3.1"
 
 # ---------------------------------------------------------------------------
 # Source registry. Attribution lives here and is copied into every pack, so a
@@ -373,6 +373,13 @@ GENERIC_NAMES = frozenset({
     "ramp", "stairs", "steps", "driveway", "access", "access trail",
     "beach access", "public beach access", "bike path", "bike trail",
     "greenway", "unnamed", "unnamed trail", "no name",
+    # 1.3.1: descriptions found building SC, VA, TN and GA (2026-10-08).
+    # "abandoned track" was 46 rows in Georgia, "Logging Road" 37 across
+    # four states, "WMA Road" 22: what the way is, not a trail to choose.
+    "abandoned track", "abandoned road", "logging road", "wma road",
+    "jeep trail", "tank trail", "field road", "access road",
+    "forest service road", "fire road", "wildlife planting",
+    "shortcut", "short cut", "cut through", "cut-through",
 })
 
 

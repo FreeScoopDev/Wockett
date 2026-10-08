@@ -695,6 +695,20 @@ class CurationTests(unittest.TestCase):
         self.assertEqual(names["w2"], "Red Trail")  # a colour blaze is a real name in its park
         self.assertEqual(stats.generic_names, 1)
 
+    def test_descriptions_from_other_states_are_generic(self):
+        # 1.3.1: what Georgia, Virginia and the Carolinas' data put in name=.
+        stats, rows = self.build([
+            feature("w1", [[-84.39, 33.75], [-84.39, 33.76]], name="abandoned track", highway="track"),
+            feature("w2", [[-84.37, 33.75], [-84.37, 33.76]], name="Logging Road", highway="track"),
+            feature("w3", [[-84.35, 33.75], [-84.35, 33.76]], name="WMA Road", highway="track"),
+            feature("w4", [[-84.33, 33.75], [-84.33, 33.76]], name="Shortcut", highway="path"),
+            feature("w5", [[-84.31, 33.75], [-84.31, 33.76]], name="Logging Road Trail", highway="path"),
+        ])
+        names = {r[0]: r[1] for r in rows}
+        self.assertEqual([names[k] for k in ("w1", "w2", "w3", "w4")], [None] * 4)
+        self.assertEqual(names["w5"], "Logging Road Trail", "exact matches only")
+        self.assertEqual(stats.generic_names, 4)
+
     def test_short_unnamed_stub_is_dropped_but_loops_and_named_stay(self):
         stub = feature("w1", [[-78.64, 35.78], [-78.64, 35.7808]], highway="path")             # ~89 m
         named = feature("w2", [[-78.62, 35.78], [-78.62, 35.7808]], name="Pond Path", highway="path")
@@ -815,7 +829,7 @@ class CurationTests(unittest.TestCase):
         btp.build_pack([(src, "osm")], out, "t", "Test", 0.00002, 30.0, built_at="2026-01-01T00:00:00Z")
         meta = dict(sqlite3.connect(out).execute("SELECT key, value FROM meta"))
         self.assertEqual(meta["trail_keys"], "1")
-        self.assertEqual(meta["builder_version"], "1.3.0")
+        self.assertEqual(meta["builder_version"], "1.3.1")
         self.assertTrue(btp.verify_pack(out))
 
 
