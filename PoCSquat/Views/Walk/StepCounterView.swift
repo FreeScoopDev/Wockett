@@ -64,7 +64,10 @@ struct StepCounterView: View {
             }) { badge in
                 BadgeEarnedView(badge: badge)
             }
-            .sheet(isPresented: $showResumeWalk) {
+            // Full screen like a free walk. As a sheet, a guided walk opened as
+            // a small card on iPad (found 2026-10-07 taking App Store shots);
+            // the walk screen minimizes itself with its own button and swipe.
+            .fullScreenCover(isPresented: $showResumeWalk) {
                 if let route = walkStore.activeRoute {
                     ActiveSessionView(activityMode: route.activityMode, historyStore: historyStore, routeStore: routeStore)
                 }
