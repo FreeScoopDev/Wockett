@@ -1,0 +1,2 @@
+### Fixed
+- The empty Trails list no longer says Wockett has trail data "for North Carolina so far". With South Carolina, Virginia, Tennessee and Georgia packs on the way (built and checked on 2026-10-08), someone in Atlanta with nothing downloaded would have been told their state isn't covered. It now reads "No trails within 10 miles. Download your state in Settings → Trail Regions to see its trails. More states are on the way."
