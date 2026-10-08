@@ -10,6 +10,21 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import region_publish as rp  # noqa: E402
 
 
+# The options each cktool command accepts, copied from `xcrun cktool <command>
+# --help` on 2026-10-08. Hardcoded on purpose: the fake must refuse what the
+# real tool refuses, or a wrong option passes here and fails in Production
+# (delete-record with --team-id did exactly that).
+CKTOOL_OPTIONS = {
+    "create-record": {"--asset-files", "--container-id", "--database-type", "--environment", "--fields-file",
+                      "--fields-json", "--fields-stdin", "--record-type", "--team-id", "--token", "--zone-name"},
+    "delete-record": {"--container-id", "--database-type", "--environment", "--record-name", "--token",
+                      "--yes", "--zone-name"},
+    "query-records": {"--container-id", "--continuation-token", "--database-type", "--environment", "--filters",
+                      "--limit", "--record-type", "--requested-fields", "--sort-by", "--team-id", "--token",
+                      "--zone-name"},
+}
+
+
 class FakeCloudKit:
     """Holds records per environment and answers the cktool calls region_publish makes."""
 
@@ -23,6 +38,9 @@ class FakeCloudKit:
 
     def __call__(self, args):
         self.calls.append(args)
+        unknown = {a for a in args[1:] if a.startswith("--")} - CKTOOL_OPTIONS[args[0]]
+        if unknown:
+            raise rp.PublishError(f"Error: Unknown option '{sorted(unknown)[0]}'")
         env = args[args.index("--environment") + 1]
         if args[0] == "query-records":
             return json.dumps({"records": [
