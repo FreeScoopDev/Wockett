@@ -135,6 +135,9 @@ def main(argv=None) -> int:
     ap.add_argument("--extract-md5", default="")
     ap.add_argument("--extract-bbox", default="", help="minlon,minlat,maxlon,maxlat from osmium fileinfo")
     ap.add_argument("--regions", default=os.path.join(here, "regions.json"))
+    ap.add_argument("--live-version", type=int, default=None,
+                    help="the packVersion live in CloudKit Production (make_region.sh reads it with "
+                         "region_publish.py live-version); overrides published/<region>.json")
     args = ap.parse_args(argv)
 
     regions = load_regions(args.regions)
@@ -159,7 +162,10 @@ def main(argv=None) -> int:
     if os.path.exists(published_path):
         with open(published_path) as f:
             previous = json.load(f)
-    pack_version = (previous["packVersion"] + 1) if previous else 1
+    # CloudKit is the truth about what users have; the local record is the
+    # fallback when it cannot be read (and what the tests use).
+    base = args.live_version if args.live_version is not None else (previous["packVersion"] if previous else 0)
+    pack_version = base + 1
 
     stamp_meta(args.pack, {"pack_version": pack_version, "source_extract_md5": args.extract_md5})
     conn = sqlite3.connect(f"file:{args.pack}?mode=ro", uri=True)
