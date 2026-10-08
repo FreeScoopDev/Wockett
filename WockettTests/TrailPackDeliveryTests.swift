@@ -102,6 +102,17 @@ struct TrailPackDeliveryTests {
         #expect(relaunched.source(for: "va") != nil)
     }
 
+    @Test("A progress update that lands after the install does not put the row back to downloading")
+    func lateProgressIgnored() async throws {
+        let remote = FakeRemote(regions: [record("va")], fileToServe: try fixtureURL)
+        let library = TrailPackLibrary(registry: TrailAttributionRegistry(), remote: remote, packsDirectory: scratchDirectory())
+        await library.download(record("va", version: 3))
+        // Let the progress Task the fake scheduled just before returning run.
+        for _ in 0..<20 { await Task.yield() }
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(library.state(of: record("va", version: 3)) == .installed(packVersion: 3))
+    }
+
     @Test("A download that is not a readable pack is discarded and the previous pack stays")
     func badDownloadIsDiscarded() async throws {
         let dir = scratchDirectory()

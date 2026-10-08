@@ -181,7 +181,16 @@ final class TrailPackLibrary {
             // `[weak self]` there is a captured *var*, and reading it from the
             // concurrently-executing Task is a Swift 6 error.
             let temp = try await remote.downloadPack(record) { fraction in
-                Task { @MainActor [weak self] in self?.transient[record.region] = .downloading(progress: fraction) }
+                // A progress update can land after the download finished: the
+                // last one is scheduled just before downloadPack returns, and
+                // the install below can run first. Writing it then left the row
+                // on "Downloading 100%…" for good over an installed pack
+                // (2026-10-08, the first Development download of NC v3). Only
+                // a download still in progress takes a progress update.
+                Task { @MainActor [weak self] in
+                    guard let self, case .downloading = self.transient[record.region] else { return }
+                    self.transient[record.region] = .downloading(progress: fraction)
+                }
             }
             defer { try? fileManager.removeItem(at: temp) }
 

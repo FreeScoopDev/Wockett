@@ -1,0 +1,2 @@
+### Fixed
+- Downloading a trail region no longer leaves its row stuck on "Downloading 100%…" after the pack has installed. The last progress update is delivered on a separate main-actor task, and it could run after the download finished and overwrite "installed" with "downloading". Seen on the first Development download of North Carolina v3 (2026-10-08): the pack was on disk and open, but the row never changed until the screen was reopened. A progress update now only applies while the region is still downloading. 1 new test, red without the fix.
