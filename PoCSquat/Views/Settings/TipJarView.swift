@@ -9,16 +9,14 @@ import StoreKit
 // no guilt, no pre-selected tier, and a plain statement that tipping buys
 // nothing the free app withholds.
 //
-// The one promise this screen makes is that tips are remembered, and it is a
-// real commitment: see `SupporterLedger` for how it is kept across reinstalls
-// and devices. The wording is deliberately conditional ("if Wockett ever adds
-// paid features") and names no product, price or date. Consumable tips that buy
-// a durable entitlement read to App Review as a non-consumable sold through
-// consumable SKUs, and copy about an unreleased product is "coming soon"
-// content under guideline 2.3.1 — either is a rejection on a screen that is
-// otherwise exactly the kind of tip jar Apple allows. No currency appears here
-// for the same reason it does not appear in `TipProduct`: prices are
-// per-storefront.
+// The screen makes no promise about future paid features. Until 2026-10-08 it
+// said supporters who tipped the Big Supporter amount would get any future paid
+// features free; Joe dropped that on 2026-10-06 when premium features became a
+// real plan (no one had tipped, so no one is owed it). Tips buy nothing: copy
+// that ties a consumable to a durable benefit reads to App Review as a
+// non-consumable sold through consumable SKUs. `SupporterLedger` still records
+// tips. No currency appears here for the same reason it does not appear in
+// `TipProduct`: prices are per-storefront.
 
 struct TipJarView: View {
 
@@ -159,7 +157,7 @@ struct TipJarView: View {
         } header: {
             WktListHeader(title: "Tip jar")
         } footer: {
-            Text("Tips are remembered. If Wockett ever adds paid features, supporters who've tipped roughly the Big Supporter amount in total will get them at no charge.")
+            Text("Every tip goes toward what Wockett costs to run. Thank you.")
                 .font(.wktLabel)
                 .foregroundColor(.earthMuted)
         }
@@ -170,18 +168,6 @@ struct TipJarView: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text(ledger.tipCount == 1 ? "You've tipped once." : "You've tipped \(ledger.tipCount) times.")
                     .foregroundColor(.earthCream)
-
-                // No "one more tip and…" nudge in the not-yet case. The status
-                // card reports; it does not sell.
-                if ledger.hasEarnedPro {
-                    Label {
-                        Text("You're a supporter. Any future paid features are yours at no charge.")
-                            .font(.wktBodyText)
-                    } icon: {
-                        Image(wkt: .supportHeart).wktIcon(.row, tint: .earthGreen)
-                    }
-                    .foregroundColor(.earthGreen)
-                }
 
                 Text("Thank you. Genuinely.")
                     .font(.wktLabel)
@@ -222,9 +208,5 @@ struct TipJarView: View {
         }
     }
 
-    private var thanksMessage: String {
-        ledger.hasEarnedPro
-            ? "You're a supporter now. Any future paid features are yours at no charge, on any device signed in to the same Apple Account."
-            : "That genuinely helps keep Wockett running."
-    }
+    private var thanksMessage: String { "That genuinely helps keep Wockett running." }
 }
