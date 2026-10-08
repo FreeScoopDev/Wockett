@@ -35,6 +35,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import time
 from datetime import datetime, timezone
 
 TEAM_ID = "7U83DJ2F97"
@@ -113,7 +114,14 @@ def fields_json(m: dict) -> str:
     })
 
 
-def publish(region: str, work: str, production: bool, tested: bool, run=None, log=print) -> dict:
+# Seconds to wait between looks for the record just created. CloudKit's query
+# index lags a create: on 2026-10-08 sc v1 was not in query-records right after
+# create-record and was there a minute later. About a minute in all.
+VISIBILITY_WAITS = (2, 4, 8, 15, 30)
+
+
+def publish(region: str, work: str, production: bool, tested: bool, run=None, log=print,
+            sleep=time.sleep) -> dict:
     run = run or cktool
     env = "production" if production else "development"
     if production and not tested:
@@ -139,9 +147,18 @@ def publish(region: str, work: str, production: bool, tested: bool, run=None, lo
     run(["create-record", *_base(env), "--record-type", RECORD_TYPE,
          "--fields-json", fields_json(m), "--asset-files", f"PACK={m['pack']}"])
 
-    after = records(env, region, run)
-    mine = [r for r in after if int(r.get("packVersion") or 0) == int(m["packVersion"])
-            and int(r.get("sizeBytes") or 0) == int(m["sizeBytes"])]
+    def find_mine():
+        after = records(env, region, run)
+        return after, [r for r in after if int(r.get("packVersion") or 0) == int(m["packVersion"])
+                       and int(r.get("sizeBytes") or 0) == int(m["sizeBytes"])]
+
+    after, mine = find_mine()
+    for wait in VISIBILITY_WAITS:
+        if mine:
+            break
+        log(f"Waiting {wait} s for CloudKit to list the new record…")
+        sleep(wait)
+        after, mine = find_mine()
     if not mine:
         raise PublishError(f"the new {region} v{m['packVersion']} record is not visible in {env}; nothing was removed")
     for r in after:
