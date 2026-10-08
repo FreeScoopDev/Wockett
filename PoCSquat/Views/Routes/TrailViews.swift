@@ -268,7 +268,6 @@ struct TrailDetailView: View {
 
                 dogRule
 
-
                 TrailCreditLine()
                     .frame(maxWidth: .infinity)
             }
