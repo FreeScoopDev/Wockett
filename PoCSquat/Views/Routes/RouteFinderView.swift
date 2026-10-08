@@ -61,7 +61,9 @@ struct RouteFinderContentView: View {
     @AppStorage("wkt_trails_groupSections_v1") private var groupTrailSections = true
     @AppStorage("wkt_trails_showShortPaths_v1") private var showShortTrailPaths = false
     /// Measured, so the map frames a trail in the part the panel leaves visible.
-    @State private var trailPanelHeight: CGFloat = 0
+    /// The height of whichever panel covers the bottom of the map (results,
+    /// or Trails), so the map frames routes and trails above it.
+    @State private var panelHeight: CGFloat = 0
     /// Walking and cycling routes to the open trail, kept across closing and
     /// reopening it so MapKit is asked once per trail and place.
     @State private var trailDirections = TrailDirectionsModel()
@@ -95,13 +97,14 @@ struct RouteFinderContentView: View {
                 .safeAreaInset(edge: .bottom) {
                     if mode == .trails {
                         trailsPanel(containerHeight: geo.size.height)
-                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { trailPanelHeight = $0 }
+                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { panelHeight = $0 }
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                     } else if showingConfig {
                         configPanel()
                             .transition(.move(edge: .bottom).combined(with: .opacity))
                     } else {
                         resultsPanel(containerHeight: geo.size.height)
+                            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { panelHeight = $0 }
                             .transition(.move(edge: .bottom).combined(with: .opacity))
                     }
                 }
@@ -224,7 +227,7 @@ struct RouteFinderContentView: View {
             trails: mode == .trails ? trailFinder.items : [],
             selectedTrailID: mode == .trails ? selectedTrail?.id : nil,
             mutedBase: mode == .trails,
-            bottomInset: trailPanelHeight + bottomSafeArea,
+            bottomInset: panelHeight + bottomSafeArea,
             onTrailTap: mode == .trails ? { id in
                 guard let item = trailFinder.items.first(where: { $0.id == id }) else { return }
                 withAnimation(.spring(response: 0.3)) { selectedTrail = item }
@@ -943,9 +946,10 @@ struct RouteFinderMapView: UIViewRepresentable {
                         let p = MKMapPoint(c)
                         return r.union(MKMapRect(x: p.x, y: p.y, width: 0, height: 0))
                     }
+                    context.coordinator.lastRouteFramedInset = bottomInset
                     map.setVisibleMapRect(
                         rect,
-                        edgePadding: UIEdgeInsets(top: 80, left: 40, bottom: 420, right: 40),
+                        edgePadding: UIEdgeInsets(top: 80, left: 40, bottom: bottomInset + 28, right: 40),
                         animated: true
                     )
                 }
@@ -992,9 +996,10 @@ struct RouteFinderMapView: UIViewRepresentable {
                     rect = rect.union(MKMapRect(x: p.x, y: p.y, width: 0, height: 0))
                 }
                 if !rect.isNull {
+                    context.coordinator.lastRouteFramedInset = bottomInset
                     map.setVisibleMapRect(
                         rect,
-                        edgePadding: UIEdgeInsets(top: 60, left: 40, bottom: 440, right: 40),
+                        edgePadding: UIEdgeInsets(top: 60, left: 40, bottom: bottomInset + 28, right: 40),
                         animated: true
                     )
                 }
@@ -1009,17 +1014,48 @@ struct RouteFinderMapView: UIViewRepresentable {
                     return r.union(MKMapRect(x: p.x, y: p.y, width: 0, height: 0))
                 }
                 if !rect.isNull {
+                    context.coordinator.lastRouteFramedInset = bottomInset
                     map.setVisibleMapRect(
                         rect,
-                        edgePadding: UIEdgeInsets(top: 80, left: 40, bottom: 420, right: 40),
+                        edgePadding: UIEdgeInsets(top: 80, left: 40, bottom: bottomInset + 28, right: 40),
                         animated: true
                     )
                 }
             }
         }
 
+        // The results panel appears after the routes, so the first frame was
+        // taken against the old panel height and left the routes behind it.
+        // Frame again once the measured height settles.
+        if !routes.isEmpty, abs(context.coordinator.lastRouteFramedInset - bottomInset) > 8 {
+            frameRoutes(on: map, context: context)
+        }
+
         updateTrails(on: map, context: context)
         updateApproach(on: map, context: context)
+    }
+
+    /// The selected route, or every suggestion, in the part of the map the
+    /// panel leaves visible.
+    private func frameRoutes(on map: MKMapView, context: Context) {
+        var rect = MKMapRect.null
+        for route in selectedRoute.map({ [$0] }) ?? routes {
+            let pts = route.polyline.points()
+            for i in 0..<route.polyline.pointCount {
+                let p = MKMapPoint(pts[i].coordinate)
+                rect = rect.union(MKMapRect(x: p.x, y: p.y, width: 0, height: 0))
+            }
+        }
+        if selectedRoute == nil, let user = map.userLocation.location {
+            let p = MKMapPoint(user.coordinate)
+            rect = rect.union(MKMapRect(x: p.x, y: p.y, width: 0, height: 0))
+        }
+        guard !rect.isNull else { return }
+        context.coordinator.lastRouteFramedInset = bottomInset
+        map.setVisibleMapRect(rect,
+                              edgePadding: UIEdgeInsets(top: selectedRoute == nil ? 80 : 60, left: 40,
+                                                        bottom: bottomInset + 28, right: 40),
+                              animated: true)
     }
 
     // MARK: The way to a trail
@@ -1193,6 +1229,8 @@ struct RouteFinderMapView: UIViewRepresentable {
         var lastApproachSource: MKPolyline?
         var lastApproachColor: UIColor?
         var lastFramedInset: CGFloat = 0
+        /// The panel height the suggested routes were last framed against.
+        var lastRouteFramedInset: CGFloat = 0
         init(_ p: RouteFinderMapView) { parent = p }
 
         /// Selects the trail whose line passes within a fingertip of the tap.
