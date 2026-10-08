@@ -1,0 +1,8 @@
+{
+  "_comment": "One row per trail region. geofabrik: the extract's path under download.geofabrik.de (without -latest.osm.pbf). probe: a point the region's pack must have named trails near (the main city), checked on every build. bundled: the named-only pack ships inside the app (needs an app release to change).",
+  "nc": {"name": "North Carolina", "geofabrik": "north-america/us/north-carolina", "bundled": true,  "probe": {"lat": 35.7796, "lon": -78.6382, "place": "Raleigh"}},
+  "sc": {"name": "South Carolina", "geofabrik": "north-america/us/south-carolina", "bundled": false, "probe": {"lat": 34.0007, "lon": -81.0348, "place": "Columbia"}},
+  "va": {"name": "Virginia",       "geofabrik": "north-america/us/virginia",       "bundled": false, "probe": {"lat": 37.5407, "lon": -77.4360, "place": "Richmond"}},
+  "tn": {"name": "Tennessee",      "geofabrik": "north-america/us/tennessee",      "bundled": false, "probe": {"lat": 36.1627, "lon": -86.7816, "place": "Nashville"}},
+  "ga": {"name": "Georgia",        "geofabrik": "north-america/us/georgia",        "bundled": false, "probe": {"lat": 33.7490, "lon": -84.3880, "place": "Atlanta"}}
+}

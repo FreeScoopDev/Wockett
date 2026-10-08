@@ -28,9 +28,12 @@ enum TipProduct: String, CaseIterable, Identifiable, Sendable {
     //
     // Why points and not dollars.
     //
-    // The promise is "tip roughly the Big Supporter amount in total and any
-    // future paid features are yours". Summing actual money cannot express that
-    // correctly:
+    // The threshold came from a promise the tip jar made until 2026-10-08:
+    // "tip roughly the Big Supporter amount in total and any future paid
+    // features are yours". The promise is gone from the app (Joe, 2026-10-06);
+    // the ledger and `hasEarnedPro` remain until the premium launch decides
+    // whether big tippers keep that path. Summing actual money could not express
+    // it correctly:
     //
     //   * App Store prices are per-storefront. A US $19.99 tip is some other
     //     number in GBP, EUR or AUD, and there is no reliable client-side way to
