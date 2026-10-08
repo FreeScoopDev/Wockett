@@ -1,190 +1,28 @@
 import SwiftUI
 
-// The launch splash (2026-10-06 redesign). It sits on the app's own
-// background, `earthBg`, so the hand-off is one surface from end to end: the
-// launch screen iOS shows first (`LaunchBackground`, the same colour) → this →
-// Home. The forest-green splash it replaces was a hard cut on both sides.
+// The launch splash (2026-10-08). It is the app icon come to life: the icon's
+// forest green with contour lines, and its W drawing itself: the cream road and
+// its dashes along the line, the orange waypoints settling onto the road as the
+// drawing reaches them, the arrowhead last. The launch screen iOS shows first
+// (`LaunchBackground`) is the same green, so the hand-off is seamless; the
+// splash then fades into Home. The 2026-10-06 version sat on the app's own
+// background with a thin dashed W that did not match the icon.
 
-// MARK: - Topographic Contour Lines Background
+// MARK: - Mark animation
 
-private struct TopoBackground: View {
-    var body: some View {
-        Canvas { ctx, size in
-            let cx = size.width / 2, cy = size.height * 0.40
-            // Concentric ellipses at increasing scales — mimics elevation contours
-            let rings: [(CGFloat, CGFloat)] = [
-                (0.40, 0.20), (0.58, 0.30), (0.76, 0.41),
-                (0.95, 0.53), (1.16, 0.65), (1.40, 0.79), (1.68, 0.94),
-            ]
-            for (sx, sy) in rings {
-                let w = size.width * sx, h = size.height * sy
-                let rect = CGRect(x: cx - w/2, y: cy - h/2, width: w, height: h)
-                var path = Path(); path.addEllipse(in: rect)
-                ctx.stroke(path, with: .color(.earthTrack), lineWidth: 1)
-            }
-        }
-        .accessibilityHidden(true)
-    }
-}
-
-// MARK: - W Letter Shape
-
-private struct WLetterShape: Shape {
-    func path(in rect: CGRect) -> Path {
-        let w = rect.width, h = rect.height
-        // s controls how much of each segment is used for the rounded corner transition
-        let s: CGFloat = 0.40
-
-        let p0 = CGPoint(x: 0,      y: 0)        // top-left tip
-        let p1 = CGPoint(x: w*0.25, y: h)         // valley 1
-        let p2 = CGPoint(x: w*0.50, y: h*0.38)   // center peak
-        let p3 = CGPoint(x: w*0.75, y: h)         // valley 2
-        let p4 = CGPoint(x: w,      y: 0)         // top-right tip
-
-        func lerp(_ a: CGPoint, _ b: CGPoint, _ t: CGFloat) -> CGPoint {
-            CGPoint(x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t)
-        }
-
-        var path = Path()
-        path.move(to: p0)
-        path.addLine(to: lerp(p0, p1, 1 - s))
-        path.addQuadCurve(to: lerp(p1, p2, s), control: p1)
-        path.addLine(to: lerp(p1, p2, 1 - s))
-        path.addQuadCurve(to: lerp(p2, p3, s), control: p2)
-        path.addLine(to: lerp(p2, p3, 1 - s))
-        path.addQuadCurve(to: lerp(p3, p4, s), control: p3)
-        path.addLine(to: p4)
-        return path
-    }
-}
-
-// MARK: - Arrowhead at TR endpoint
-
-private struct WArrowheadShape: Shape {
-    // Open V-arrowhead at the W's top-right tip, pointing in the direction of the last stroke.
-    // Direction from BR=(0.75w, h) to TR=(w, 0) — normalized for canvas proportions.
-    func path(in rect: CGRect) -> Path {
-        let w = rect.width
-        // Precomputed for w=130, h=88; direction ≈ (0.347, -0.938), perp ≈ (0.938, 0.347)
-        let dX: CGFloat = 0.347, dY: CGFloat = -0.938
-        let pX: CGFloat = 0.938, pY: CGFloat =  0.347
-        let len = w * 0.115
-        let wid = w * 0.062
-
-        let tip = CGPoint(x: w, y: 0)
-        let w1  = CGPoint(x: tip.x - len*dX + wid*pX, y: tip.y - len*dY + wid*pY)
-        let w2  = CGPoint(x: tip.x - len*dX - wid*pX, y: tip.y - len*dY - wid*pY)
-
-        var p = Path()
-        p.move(to: w1)
-        p.addLine(to: tip)
-        p.addLine(to: w2)
-        return p
-    }
-}
-
-// MARK: - Wocket Logo View
-
-/// The dashed W drawing itself. One eased `progress` drives everything: the
-/// line, a pen dot at its tip, the two waypoints as the line reaches them and
-/// the arrowhead at the end. The first version ran four separate timers, and
-/// the trim revealed the dashed line a whole dash at a time, so the front
-/// jumped; the pen dot moves continuously and hides that.
-private struct WocketLogoView: View {
-    /// False under Reduce Motion: the logo appears already drawn.
+private struct SplashMark: View {
+    /// False under Reduce Motion: the mark appears already drawn.
     let animates: Bool
     @State private var progress: CGFloat = 0
 
     var body: some View {
-        WocketLogoDrawing(progress: progress)
-            .frame(width: WocketLogoDrawing.size.width, height: WocketLogoDrawing.size.height)
+        WockettMarkView(progress: progress)
+            .frame(width: 190, height: 190)
             .onAppear {
                 guard animates else { progress = 1; return }
                 // Gentle start, long soft landing.
                 withAnimation(.timingCurve(0.45, 0, 0.15, 1, duration: 1.5)) { progress = 1 }
             }
-            .accessibilityHidden(true)
-    }
-}
-
-private struct WocketLogoDrawing: View, Animatable {
-    var progress: CGFloat
-    var animatableData: CGFloat {
-        get { progress }
-        set { progress = newValue }
-    }
-
-    static let size = CGSize(width: 130, height: 88)
-    private static let rect = CGRect(origin: .zero, size: size)
-    private static let strokeWidth: CGFloat = 7
-    private static let dash = StrokeStyle(lineWidth: strokeWidth, lineCap: .round, lineJoin: .round, dash: [10, 8])
-
-    /// The two valley vertices, where the icon has its orange waypoints.
-    private static let valleys = [CGPoint(x: size.width * 0.25, y: size.height),
-                                  CGPoint(x: size.width * 0.75, y: size.height)]
-
-    /// How far along the line each valley is, measured on the real path so a
-    /// waypoint lands exactly as the pen passes it.
-    private static let valleyProgress: [CGFloat] = {
-        let path = WLetterShape().path(in: rect)
-        let steps = 400
-        return valleys.map { valley in
-            var best: (t: CGFloat, d: CGFloat) = (0, .infinity)
-            for i in 0...steps {
-                let t = CGFloat(i) / CGFloat(steps)
-                let p = path.trimmedPath(from: 0, to: max(t, 0.0001)).currentPoint ?? .zero
-                let d = hypot(p.x - valley.x, p.y - valley.y)
-                if d < best.d { best = (t, d) }
-            }
-            return best.t
-        }
-    }()
-
-    var body: some View {
-        let path = WLetterShape().path(in: Self.rect)
-        let pen = path.trimmedPath(from: 0, to: max(progress, 0.0001)).currentPoint ?? .zero
-
-        ZStack(alignment: .topLeading) {
-            // The whole route, faintly, so the eye knows where the line is going.
-            path.stroke(Color.earthTrack, style: Self.dash)
-
-            path.trimmedPath(from: 0, to: progress)
-                .stroke(Color.earthGreen, style: Self.dash)
-
-            WArrowheadShape()
-                .stroke(Color.earthGreen, style: StrokeStyle(lineWidth: Self.strokeWidth, lineCap: .round, lineJoin: .round))
-                .scaleEffect(Self.settle(Self.phase(progress, from: 0.9, length: 0.1)),
-                             anchor: UnitPoint(x: 1, y: 0))
-
-            // The pen: fades in as it starts and out as the arrowhead takes over.
-            Circle()
-                .fill(Color.earthGreen)
-                .frame(width: 10, height: 10)
-                .position(pen)
-                .opacity(Self.phase(progress, from: 0, length: 0.04) * (1 - Self.phase(progress, from: 0.9, length: 0.08)))
-
-            ForEach(0..<2, id: \.self) { i in
-                Circle()
-                    .fill(Color.earthOrange)
-                    .frame(width: 15, height: 15)
-                    .scaleEffect(Self.settle(Self.phase(progress, from: Self.valleyProgress[i] - 0.02, length: 0.14)))
-                    .position(Self.valleys[i])
-            }
-        }
-        .frame(width: Self.size.width, height: Self.size.height, alignment: .topLeading)
-    }
-
-    /// 0 before `from`, 1 after `from + length`, linear in between.
-    private static func phase(_ p: CGFloat, from: CGFloat, length: CGFloat) -> CGFloat {
-        min(1, max(0, (p - from) / length))
-    }
-
-    /// Ease out with a small overshoot (about 6%), so a dot settles into place
-    /// rather than popping. Driven by `progress`, so it stays in step with the line.
-    private static func settle(_ x: CGFloat) -> CGFloat {
-        let c1: CGFloat = 1.2, c3 = c1 + 1
-        let u = x - 1
-        return x <= 0 ? 0 : 1 + c3 * u * u * u + c1 * u * u
     }
 }
 
@@ -201,21 +39,21 @@ struct SplashView: View {
 
     var body: some View {
         ZStack {
-            Color.earthBg.ignoresSafeArea()
-            TopoBackground().ignoresSafeArea()
+            Color.brandForest.ignoresSafeArea()
+            ContourLinesView(color: .brandContour.opacity(0.75)).ignoresSafeArea()
 
             VStack(spacing: 28) {
                 Spacer()
 
-                WocketLogoView(animates: !reduceMotion)
+                SplashMark(animates: !reduceMotion)
 
                 VStack(spacing: 6) {
                     Text("Wockett")
                         .font(.wktHeading(40))
-                        .foregroundColor(.earthCream)
+                        .foregroundColor(.brandRoad)
                     Text("Walk more. Move better.")
                         .font(.wktBodyText)
-                        .foregroundColor(.earthMuted)
+                        .foregroundColor(.brandRoad.opacity(0.7))
                 }
                 .opacity(titleShown ? 1 : 0)
                 .offset(y: titleShown || reduceMotion ? 0 : 12)
@@ -224,18 +62,24 @@ struct SplashView: View {
                 Spacer()
 
                 HStack(alignment: .top, spacing: 12) {
-                    WktIconBadge(symbol: .tip)
+                    WktIconBadge(symbol: .tip, tint: .brandWaypoint)
                     VStack(alignment: .leading, spacing: 3) {
                         Text("Tip of the day")
                             .font(.wktLabel)
-                            .foregroundColor(.earthMuted)
+                            .foregroundColor(.brandRoad.opacity(0.65))
                         Text(tips[tipIndex])
                             .font(.wktBodyText)
-                            .foregroundColor(.earthCream)
+                            .foregroundColor(.brandRoad)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
-                .wktCard()
+                // The card's shape, in the splash's palette: a lighter green
+                // panel with a cream hairline, so it reads on the dark field.
+                .padding(WktSpacing.cardPadding)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .wktCardBackground(fill: Color.brandRoad.opacity(0.08))
+                .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .strokeBorder(Color.brandRoad.opacity(0.12), lineWidth: 1))
                 .accessibilityElement(children: .combine)
                 .padding(.horizontal, WktSpacing.screen)
                 .padding(.bottom, WktSpacing.betweenSections)

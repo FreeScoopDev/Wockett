@@ -13,6 +13,21 @@
 import SwiftUI
 import UIKit
 
+// MARK: - Brand (the app icon's palette, the same in light and dark)
+
+extension Color {
+    /// The icon's forest green, behind the splash and the launch screen.
+    static let brandForest = Color(red: 0x22 / 255, green: 0x37 / 255, blue: 0x2F / 255)
+    /// The cream road of the W.
+    static let brandRoad = Color(red: 0xF6 / 255, green: 0xEF / 255, blue: 0xDF / 255)
+    /// The road's edge and the contour lines.
+    static let brandContour = Color(red: 0x6C / 255, green: 0x73 / 255, blue: 0x57 / 255)
+    /// The dashes down the middle of the road.
+    static let brandDash = Color(red: 0x2D / 255, green: 0x3C / 255, blue: 0x24 / 255)
+    /// The two waypoints on the road.
+    static let brandWaypoint = Color(red: 0xE1 / 255, green: 0x51 / 255, blue: 0x1C / 255)
+}
+
 // MARK: - App Theme (light/dark adaptive)
 
 extension Color {
