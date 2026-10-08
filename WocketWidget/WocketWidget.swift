@@ -173,7 +173,7 @@ private struct MediumStepView: View {
                                 value: "\(entry.streak) day\(entry.streak == 1 ? "" : "s")",
                                 valueColor: .earthOrange)
                     }
-                    let pct = Int(entry.progress * 100)
+                    let pct = WktPercent.value(entry.progress)
                     statRow(icon: WS.percent, label: "Progress", value: "\(pct)%",
                             valueColor: entry.progress >= 1 ? .earthGreen : .earthCream)
                 }
