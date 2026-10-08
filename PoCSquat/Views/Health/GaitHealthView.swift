@@ -152,14 +152,29 @@ struct GaitMetricConfig: Identifiable {
     let whatAffects: [String]
     let tips: [String]
 
+    // Walking speed and step length follow the phone's units, like distance and
+    // pace everywhere else; they were metric-only until 2026-10-07. Health
+    // stores metres per second and centimetres, and the status thresholds stay
+    // in those units — only the words change.
+    static func speedText(_ mps: Double, usesMiles: Bool) -> String {
+        usesMiles ? String(format: "%.1f mph", mps * 2.236_936)
+                  : String(format: "%.1f km/h", mps * 3.6)
+    }
+
+    static func stepLengthText(_ cm: Double, usesMiles: Bool) -> String {
+        usesMiles ? "\(Int((cm / 2.54).rounded())) in" : "\(Int(cm.rounded())) cm"
+    }
+
+    private static var usesMiles: Bool { Locale.current.measurementSystem == .us }
+
     static let all: [GaitMetricConfig] = [
         GaitMetricConfig(
             id: "speed",
             title: "Walking speed",
             symbol: .walkMotion,
-            unit: "km/h",
+            unit: usesMiles ? "mph" : "km/h",
             higherIsBetter: true,
-            format: { String(format: "%.1f km/h", $0 * 3.6) },
+            format: { speedText($0, usesMiles: usesMiles) },
             values: { $0.speedMps },
             statusOf: {
                 let kmh = $0 * 3.6
@@ -168,7 +183,7 @@ struct GaitMetricConfig: Identifiable {
                 return .attention
             },
             goodThresholdRaw: 4.0 / 3.6,   // 4.0 km/h in m/s
-            normalRange: "3.5 – 5.5 km/h",
+            normalRange: usesMiles ? "2.2 – 3.4 mph" : "3.5 – 5.5 km/h",
             explanation: "Your average walking pace across all detected walking bouts. iPhone uses motion sensors to detect natural walking and records the speed throughout the day — not just during tracked workouts.",
             whatAffects: [
                 "Cardiovascular fitness and aerobic capacity",
@@ -188,9 +203,9 @@ struct GaitMetricConfig: Identifiable {
             id: "stride",
             title: "Step length",
             symbol: .cadenceArrow,
-            unit: "cm",
+            unit: usesMiles ? "in" : "cm",
             higherIsBetter: true,
-            format: { "\(Int($0.rounded())) cm" },
+            format: { stepLengthText($0, usesMiles: usesMiles) },
             values: { $0.stepLengthCm },
             statusOf: {
                 if $0 >= 68 { return .good }
@@ -198,7 +213,7 @@ struct GaitMetricConfig: Identifiable {
                 return .attention
             },
             goodThresholdRaw: 68,
-            normalRange: "55 – 80 cm",
+            normalRange: usesMiles ? "22 – 31 in" : "55 – 80 cm",
             explanation: "The distance your foot covers with each step. Longer strides reflect stronger hip flexors, better flexibility, and good neuromuscular coordination. Fatigue, pain, or poor balance typically cause shorter, more shuffled steps.",
             whatAffects: [
                 "Hip flexor and hamstring flexibility",
