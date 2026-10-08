@@ -116,6 +116,11 @@ struct TrailFeature: Identifiable, Hashable {
     /// never parses JSON for rows the list will not show. Nil when a source
     /// carries none.
     var tagsJSON: String?
+    /// Which trail this piece belongs to (pack builder 1.3.0, 2026-10-08):
+    /// every piece of one named trail shares it, so the list can show the
+    /// whole trail rather than the pieces within the search radius. Nil for
+    /// unnamed paths and in packs built before 1.3.0.
+    var trailKey: String?
 
     /// `tagsJSON` as strings, parsed on each call. Read for labelling only;
     /// every filterable fact has its own column. Unreadable JSON is no tags.

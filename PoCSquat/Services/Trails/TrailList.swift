@@ -150,13 +150,21 @@ enum TrailListBuilder {
 
     /// Builds list rows from pack rows ranked by distance (nearest first).
     /// `maxLengthMeters` drops rows whose shown length is longer.
+    ///
+    /// `wholeTrail`, when given, returns every piece of a keyed section's
+    /// trail (`TrailDataSource.trails(key:)`). A grouped row then shows the
+    /// whole trail and its full length, not only the pieces the search
+    /// reached (2026-10-08). It runs before the length filters, so they judge
+    /// the length the card shows.
     static func items(from ranked: [(trail: TrailFeature, distance: Double)],
                       grouped: Bool,
                       minLengthMeters: Double? = nil,
-                      maxLengthMeters: Double? = nil) -> [TrailListItem] {
+                      maxLengthMeters: Double? = nil,
+                      wholeTrail: ((TrailFeature) -> [TrailFeature])? = nil) -> [TrailListItem] {
         var items: [TrailListItem]
         if grouped {
             items = groups(from: ranked)
+            if let wholeTrail { items = items.map { completed($0, wholeTrail) } }
         } else {
             items = ranked.map { TrailListItem(id: "t\($0.trail.id)", name: $0.trail.displayName,
                                                sections: [$0.trail], distanceMeters: $0.distance) }
@@ -170,19 +178,56 @@ enum TrailListBuilder {
         return items.sorted { $0.distanceMeters < $1.distanceMeters }
     }
 
+    /// Neighbouring state packs both carry a path that crosses the state line
+    /// (Geofabrik extracts keep whole ways). Same upstream object, same trail:
+    /// keep the first, which in a ranked list is the nearest.
+    static func withoutDuplicates(_ ranked: [(trail: TrailFeature, distance: Double)])
+        -> [(trail: TrailFeature, distance: Double)] {
+        var seen = Set<String>()
+        return ranked.filter { seen.insert("\($0.trail.sourceID):\($0.trail.sourceRef)").inserted }
+    }
+
+    /// A grouped row with every piece of its trail: the ones the search found,
+    /// nearest first, then the rest of the trail. Rows without a trail key
+    /// (unnamed paths, older packs) are returned as they are.
+    private static func completed(_ item: TrailListItem,
+                                  _ wholeTrail: (TrailFeature) -> [TrailFeature]) -> TrailListItem {
+        guard let keyed = item.sections.first(where: { $0.trailKey != nil }) else { return item }
+        let have = Set(item.sections.map { "\($0.sourceID):\($0.sourceRef)" })
+        let rest = wholeTrail(keyed)
+            .filter { !have.contains("\($0.sourceID):\($0.sourceRef)") }
+            .sorted { $0.sourceRef < $1.sourceRef }
+        guard !rest.isEmpty else { return item }
+        return TrailListItem(id: item.id, name: item.name, sections: item.sections + rest,
+                             distanceMeters: item.distanceMeters)
+    }
+
     private static func groups(from ranked: [(trail: TrailFeature, distance: Double)]) -> [TrailListItem] {
         var result: [TrailListItem] = []
         var byName: [String: [(trail: TrailFeature, distance: Double)]] = [:]
         var nameOrder: [String] = []
+        var byTrailKey: [String: [(trail: TrailFeature, distance: Double)]] = [:]
+        var keyOrder: [String] = []
         var unnamed: [(trail: TrailFeature, distance: Double)] = []
         for entry in ranked {
             guard let raw = entry.trail.name?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else {
                 unnamed.append(entry)
                 continue
             }
+            // A trail key is the pack builder's grouping over the whole region,
+            // the same rule as below (one name, pieces within 400 m) but not
+            // limited to what the search reached; prefer it when present.
+            if let key = entry.trail.trailKey {
+                if byTrailKey[key] == nil { keyOrder.append(key) }
+                byTrailKey[key, default: []].append(entry)
+                continue
+            }
             let key = raw.lowercased()
             if byName[key] == nil { nameOrder.append(key) }
             byName[key, default: []].append(entry)
+        }
+        for key in keyOrder {
+            result.append(item(for: byTrailKey[key] ?? []))
         }
         for key in nameOrder {
             let members = byName[key] ?? []
@@ -462,11 +507,20 @@ final class TrailFinder {
             }
         }
         ranked.sort { $0.distance < $1.distance }
+        ranked = TrailListBuilder.withoutDuplicates(ranked)
+        let library = self.library
         items = TrailListBuilder.items(
             from: Array(ranked.prefix(Self.sectionLimit)),
             grouped: grouped,
             minLengthMeters: includeShortPaths ? nil : TrailFilters.minimumLengthMeters(usesMiles: usesMiles),
-            maxLengthMeters: filters.shortOnly ? TrailFilters.shortThresholdMeters(usesMiles: usesMiles) : nil
+            maxLengthMeters: filters.shortOnly ? TrailFilters.shortThresholdMeters(usesMiles: usesMiles) : nil,
+            wholeTrail: { section in
+                // The key starts with the region ("nc:w123"), naming the pack it came from.
+                guard let key = section.trailKey,
+                      let region = key.split(separator: ":").first,
+                      let source = library.source(for: String(region)) else { return [] }
+                return (try? source.trails(key: key)) ?? []
+            }
         )
     }
 }
