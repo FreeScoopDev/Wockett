@@ -27,7 +27,6 @@ struct TipJarView: View {
 
     @State private var banner: String?
     @State private var showThanks = false
-    @State private var restoring = false
 
     var body: some View {
         ZStack {
@@ -195,22 +194,12 @@ struct TipJarView: View {
 
     private var smallPrintSection: some View {
         Section {
-            // Guideline 3.1.1 expects a visible way to restore. Reconciliation
-            // also runs at every launch, so this is belt-and-braces — but a
-            // reviewer looking for the button should find one.
-            Button {
-                Task { await restore() }
-            } label: {
-                HStack {
-                    Text("Restore tips")
-                        .foregroundColor(.earthGreen)
-                    Spacer()
-                    if restoring { ProgressView() }
-                }
-            }
-            .disabled(restoring)
-            .listRowBackground(Color.earthCard)
-
+            // No "Restore tips" button. App Review rejected 1.14 (build 182,
+            // 2026-10-08, guideline 3.1.1) because it called AppStore.sync(),
+            // which asks for the Apple Account password, and consumables cannot
+            // be restored that way. Tips are still remembered: the ledger is
+            // rebuilt from StoreKit's own history at every launch
+            // (`reconcileWithStoreKitHistory`), which needs no sign-in.
             Text("Tips are one-off payments handled by Apple. They aren't refundable through Wockett — contact Apple Support for that.")
                 .font(.wktLabel)
                 .foregroundColor(.earthMuted)
@@ -231,19 +220,6 @@ struct TipJarView: View {
         case .failed(let message):
             banner = message
         }
-    }
-
-    private func restore() async {
-        restoring = true
-        defer { restoring = false }
-        let before = ledger.tipCount
-        await store.restore()
-        // The same sync restores a Pro purchase; keep the entitlement current.
-        await ProEntitlementStore.shared.refresh()
-        let added = ledger.tipCount - before
-        banner = added > 0
-            ? (added == 1 ? "Found 1 tip that wasn't recorded here. Thank you." : "Found \(added) tips that weren't recorded here. Thank you.")
-            : (ledger.hasTipped ? "Your tips are all accounted for." : "No tips found for this Apple Account.")
     }
 
     private var thanksMessage: String {
