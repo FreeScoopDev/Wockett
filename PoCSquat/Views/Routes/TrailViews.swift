@@ -268,7 +268,6 @@ struct TrailDetailView: View {
 
                 dogRule
 
-                if item.isGroup { sectionList }
 
                 TrailCreditLine()
                     .frame(maxWidth: .infinity)
@@ -321,34 +320,6 @@ struct TrailDetailView: View {
         .accessibilityElement(children: .combine)
     }
 
-    private var sectionList: some View {
-        WktSection(title: "\(item.sections.count) sections nearby") {
-            VStack(alignment: .leading, spacing: 0) {
-                ForEach(Array(item.sections.enumerated()), id: \.element.id) { index, section in
-                    if index > 0 { WktDivider() }
-                    HStack {
-                        Text("Section \(index + 1)")
-                            .font(.wktRowTitle)
-                            .foregroundColor(.earthCream)
-                        Spacer()
-                        Text(sectionLine(section))
-                            .font(.wktLabel)
-                            .foregroundColor(.earthMuted)
-                    }
-                    .padding(.vertical, 10)
-                    .accessibilityElement(children: .combine)
-                }
-            }
-            .wktCard(padding: 14)
-        }
-    }
-
-    private func sectionLine(_ section: TrailFeature) -> String {
-        let length = TrailText.distance(section.lengthMeters)
-        guard let userLocation else { return length }
-        let away = BundledTrailSource.distanceMeters(from: userLocation, to: section)
-        return "\(length) · \(TrailText.distance(away)) away"
-    }
 }
 
 // MARK: - Credit
@@ -397,17 +368,20 @@ enum TrailText {
         return mins < 60 ? "\(mins) min" : "\(mins / 60)h \(mins % 60)m"
     }
 
-    /// "6.5 mi · 4 sections · 1.5 mi away"
+    /// "6.5 mi · 1.5 mi away". One trail is one trail: how many pieces the
+    /// map data stores it in is not shown (Joe, 2026-10-08: "I don't want
+    /// there to be a bunch of trail segments for one trail"). The separate
+    /// view, in the list's menu, still lists the pieces.
     static func summary(for item: TrailListItem) -> String {
-        var parts = [distance(item.lengthMeters)]
-        if item.isGroup { parts.append("\(item.sections.count) sections") }
-        parts.append("\(distance(item.distanceMeters)) away")
-        return parts.joined(separator: " · ")
+        "\(distance(item.lengthMeters)) · \(distance(item.distanceMeters)) away"
     }
 
+    /// A trail in several pieces is neither a loop nor provably an out and
+    /// back, so it gets no shape word.
     static func detailSubtitle(for item: TrailListItem) -> String {
-        let shape = item.isLoop ? "Loop" : (item.isGroup ? "\(item.sections.count) sections" : "Out and back")
-        return "\(shape) · \(distance(item.distanceMeters)) from you"
+        let from = "\(distance(item.distanceMeters)) from you"
+        if item.isGroup { return from }
+        return "\(item.isLoop ? "Loop" : "Out and back") · \(from)"
     }
 
     static func tags(for item: TrailListItem) -> [Tag] {

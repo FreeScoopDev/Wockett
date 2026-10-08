@@ -20,18 +20,91 @@ struct TrailListTests {
     private func section(_ id: Int64, _ name: String?, lat: Double = 35.78, lon: Double = -78.64,
                          size: Double = 0.002, length: Double = 1_000, surface: String? = nil,
                          dog: DogAccess = .unknown, provenance: DogAccessProvenance = .default,
-                         bike: Bool = false, loop: Bool = false) -> TrailFeature {
+                         bike: Bool = false, loop: Bool = false, key: String? = nil) -> TrailFeature {
         TrailFeature(id: id, sourceID: "osm", sourceRef: "w\(id)", name: name,
                      encodedPolyline: "", pointCount: 0, lengthMeters: length,
                      bounds: TrailBounds(minLatitude: lat, minLongitude: lon,
                                          maxLatitude: lat + size, maxLongitude: lon + size),
                      surface: surface, difficulty: nil,
                      dogAccess: dog, dogAccessProvenance: provenance,
-                     allowsFoot: true, allowsBike: bike, allowsHorse: false, isLoop: loop)
+                     allowsFoot: true, allowsBike: bike, allowsHorse: false, isLoop: loop,
+                     trailKey: key)
     }
 
     private func ranked(_ trails: [TrailFeature], distances: [Double]? = nil) -> [(trail: TrailFeature, distance: Double)] {
         trails.enumerated().map { ($0.element, distances?[$0.offset] ?? Double($0.offset) * 100) }
+    }
+
+    // MARK: Whole trails (trail keys, pack builder 1.3.0)
+
+    @Test("Pieces with one trail key are one row, even farther apart than the 400 m name rule")
+    func keyedPiecesGroup() {
+        let near = section(1, "Neuse River Trail", lat: 35.78, key: "nc:w1")
+        let far = section(2, "Neuse River Trail", lat: 35.80, key: "nc:w1")    // ~2 km away
+        let items = TrailListBuilder.items(from: ranked([near, far]), grouped: true)
+        #expect(items.count == 1)
+        #expect(items[0].sections.count == 2)
+    }
+
+    @Test("Different keys with one name stay separate rows: two parks' Nature Trails")
+    func differentKeysSeparate() {
+        let a = section(1, "Nature Trail", key: "nc:w1")
+        let b = section(2, "Nature Trail", lon: -78.6395, key: "nc:w2")
+        #expect(TrailListBuilder.items(from: ranked([a, b]), grouped: true).count == 2)
+    }
+
+    @Test("A row is completed with the rest of its trail, so it shows the whole length")
+    func completesWholeTrail() {
+        let found = section(1, "Neuse River Trail", length: 1_000, key: "nc:w1")
+        let rest = [section(2, "Neuse River Trail", lat: 36.2, length: 30_000, key: "nc:w1"),
+                    section(1, "Neuse River Trail", length: 1_000, key: "nc:w1")]   // already shown: not added twice
+        var asked: [String] = []
+        let items = TrailListBuilder.items(from: ranked([found]), grouped: true, wholeTrail: {
+            asked.append($0.trailKey ?? ""); return rest
+        })
+        #expect(asked == ["nc:w1"])
+        #expect(items[0].sections.map(\.id) == [1, 2], "found pieces first, then the rest")
+        #expect(items[0].lengthMeters == 31_000)
+        #expect(items[0].distanceMeters == 0, "distance is still to the nearest piece")
+    }
+
+    @Test("The length filter judges the whole trail, not the piece the search reached")
+    func filterSeesWholeLength() {
+        let found = section(1, "Long Trail", length: 300, key: "nc:w1")
+        let items = TrailListBuilder.items(from: ranked([found]), grouped: true, maxLengthMeters: 3_000,
+                                           wholeTrail: { _ in [section(2, "Long Trail", length: 20_000, key: "nc:w1")] })
+        #expect(items.isEmpty, "20.3 km is not a short trail")
+    }
+
+    @Test("Packs without trail keys group by name and distance, as before")
+    func unkeyedFallsBack() {
+        let a = section(1, "Creek Trail")
+        let b = section(2, "Creek Trail", lon: -78.6395)
+        var asked = 0
+        let items = TrailListBuilder.items(from: ranked([a, b]), grouped: true, wholeTrail: { _ in asked += 1; return [] })
+        #expect(items.count == 1)
+        #expect(asked == 0, "nothing to complete without a key")
+    }
+
+    @Test("The same path from two state packs is listed once, the nearest copy")
+    func borderDuplicates() {
+        let nc = section(7, "State Line Trail")
+        var sc = section(99, "State Line Trail")
+        sc = TrailFeature(id: sc.id, sourceID: "osm", sourceRef: nc.sourceRef, name: sc.name,
+                          encodedPolyline: "", pointCount: 0, lengthMeters: sc.lengthMeters, bounds: sc.bounds,
+                          surface: nil, difficulty: nil, dogAccess: .unknown, dogAccessProvenance: .default,
+                          allowsFoot: true, allowsBike: false, allowsHorse: false, isLoop: false)
+        let out = TrailListBuilder.withoutDuplicates([(nc, 10), (sc, 12), (section(8, "Other"), 20)])
+        #expect(out.map(\.trail.id) == [7, 8])
+    }
+
+    @Test("A card says the length and the distance, not how many pieces")
+    func cardWording() {
+        let item = TrailListItem(id: "g1-2", name: "Creek Trail",
+                                 sections: [section(1, "Creek Trail"), section(2, "Creek Trail")], distanceMeters: 800)
+        #expect(!TrailText.summary(for: item).contains("section"))
+        #expect(!TrailText.detailSubtitle(for: item).contains("section"))
+        #expect(!TrailText.detailSubtitle(for: item).hasPrefix("Out and back"), "pieces are not provably an out and back")
     }
 
     // MARK: Official trails
@@ -158,7 +231,8 @@ struct TrailListTests {
         #expect(item.distanceMeters == 50)
         #expect(item.sections.map(\.id) == [2, 1, 3, 4], "nearest first")
         #expect(item.id == "g1-2-3-4")
-        #expect(TrailText.summary(for: item).contains("4 sections"))
+        #expect(TrailText.summary(for: item) == "0.4 mi · 0.0 mi away" || !TrailText.summary(for: item).contains("section"),
+                "a card does not count the pieces a trail is stored in")
     }
 
     @Test("A 31 m gap keeps two rows; a 29 m gap joins")

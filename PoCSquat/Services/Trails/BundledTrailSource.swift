@@ -20,6 +20,9 @@ final class BundledTrailSource: TrailDataSource {
     static let supportedSchemaVersions: ClosedRange<Int> = 1...1
 
     let packInfo: TrailPackInfo
+    /// Whether the pack has a `trail_key` column (builder 1.3.0 and later).
+    /// Asking an older pack for it would be a SQL error, not an empty result.
+    let hasTrailKeys: Bool
     let attributions: [TrailAttribution]
 
     private let db: OpaquePointer
@@ -58,6 +61,7 @@ final class BundledTrailSource: TrailDataSource {
                 sourceIDs: (meta["sources"] ?? "").split(separator: ",").map { String($0).trimmingCharacters(in: .whitespaces) }
             )
             attributions = try Self.readAttributions(db)
+            hasTrailKeys = meta["trail_keys"] == "1"
         } catch {
             sqlite3_close(handle)
             throw error
@@ -114,6 +118,13 @@ final class BundledTrailSource: TrailDataSource {
 
     func trail(id: Int64) throws -> TrailFeature? {
         try run("SELECT * FROM trails WHERE id = ?", binds: [.int(id)]).first
+    }
+
+    /// Every piece of one trail, by the key the pack builder gave them.
+    /// Empty for an unknown key or a pack built before trail keys (1.3.0).
+    func trails(key: String) throws -> [TrailFeature] {
+        guard hasTrailKeys else { return [] }
+        return try run("SELECT * FROM trails WHERE trail_key = ?", binds: [.text(key)])
     }
 
     /// The trail whose source reference (an OSM way id, "w1381466637") is
@@ -222,7 +233,8 @@ final class BundledTrailSource: TrailDataSource {
                 allowsBike: int("allows_bike") != 0,
                 allowsHorse: int("allows_horse") != 0,
                 isLoop: int("is_loop") != 0,
-                tagsJSON: text("tags_json")
+                tagsJSON: text("tags_json"),
+                trailKey: text("trail_key").flatMap { $0.isEmpty ? nil : $0 }
             ))
         }
         return rows
