@@ -217,6 +217,50 @@ struct TrailListTests {
         TrailListBuilder.items(from: ranked(trails), grouped: true)
     }
 
+    // MARK: Other paths (2026-10-08)
+
+    @Test("Short unnamed rows move to Other paths; named, road-named and long unnamed rows stay")
+    func otherPathsSplit() {
+        let named = section(1, "Little Rock Trail", length: 300)
+        // A road-derived name: the pack builder titled it from the road alongside.
+        let derived = TrailFeature(id: 2, sourceID: "osm", sourceRef: "w2", name: "Oberlin Road Sidewalk",
+                                   encodedPolyline: "", pointCount: 0, lengthMeters: 300,
+                                   bounds: TrailBounds(minLatitude: 35.78, minLongitude: -78.64,
+                                                       maxLatitude: 35.782, maxLongitude: -78.638),
+                                   surface: nil, difficulty: nil, dogAccess: .unknown, dogAccessProvenance: .default,
+                                   allowsFoot: true, allowsBike: false, allowsHorse: false, isLoop: false,
+                                   tagsJSON: #"{"name_source":"derived_road"}"#)
+        let short = section(3, nil, length: 500)
+        let atLimit = section(4, nil, length: 805)
+        let long = section(5, nil, length: 6_600)
+        let items = TrailListBuilder.items(from: ranked([named, derived, short, atLimit, long]), grouped: false)
+        let split = TrailListBuilder.splitOtherPaths(items, usesMiles: true)
+        #expect(split.main.map(\.sections[0].id) == [1, 2, 4, 5])
+        #expect(split.other.map(\.sections[0].id) == [3])
+        // Metric: 800 m, so 805 m stays either way, 790 m moves.
+        let metric = TrailListBuilder.splitOtherPaths(
+            TrailListBuilder.items(from: ranked([section(6, nil, length: 790)]), grouped: false), usesMiles: false)
+        #expect(metric.other.count == 1)
+    }
+
+    @Test("A chain of short unnamed pieces is judged by its whole length")
+    func otherPathsJudgeGroupedLength() {
+        // Four pieces, 655 m together: under half a mile, so Other paths;
+        // but each piece alone would be too, so also check one long chain stays.
+        let short = [piece(1, from: 0, to: 100), piece(2, from: 100, to: 300),
+                     piece(3, from: 320, to: 500), piece(4, from: 525, to: 700)]
+        #expect(TrailListBuilder.splitOtherPaths(grouped(short), usesMiles: true).other.count == 1)
+        let long = [piece(11, from: 0, to: 400), piece(12, from: 400, to: 900)]
+        let split = TrailListBuilder.splitOtherPaths(grouped(long), usesMiles: true)
+        #expect(split.main.count == 1 && split.other.isEmpty, "two 400-500 m pieces make a 900 m path")
+    }
+
+    @Test("The Other paths card says how many and that they have no name")
+    func otherPathsWording() {
+        #expect(TrailText.otherPathsSummary(count: 3, usesMiles: true) == "3 short paths with no name, under 0.5 mi")
+        #expect(TrailText.otherPathsSummary(count: 1, usesMiles: false) == "1 short path with no name, under 800 m")
+    }
+
     @Test("A chain of touching unnamed pieces of one path is one row, named for what it is")
     func unnamedChainGroups() {
         // Gaps of 0, 20 and 25 m: the pack drops the crossings between pieces.
@@ -648,7 +692,9 @@ struct TrailListTests {
 
         finder.refresh(near: raleigh, grouped: true, cycling: false, usesMiles: true, includeShortPaths: true)
         let shown = finder.items.flatMap { $0.sections.map(\.id) }
-        #expect(shown.contains(3) && shown.contains(6))
+        let other = finder.otherPaths.flatMap { $0.sections.map(\.id) }
+        #expect(shown.contains(3), "Dog Park Path has a name, so it stays in the list")
+        #expect(other == [6], "the 120 m path has none, so it is under Other paths")
     }
 
     @Test("No location means no rows and no error")

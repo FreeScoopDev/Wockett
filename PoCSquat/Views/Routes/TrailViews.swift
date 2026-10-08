@@ -25,6 +25,10 @@ struct TrailsPanel: View {
     let onStartApproach: (NavigableRoute) -> Void
     var refreshLocation: () async -> Void = {}
 
+    /// "Other paths" starts closed: it is the short unnamed connectors a
+    /// downloaded state pack carries, there if wanted but not in the way.
+    @State private var showOtherPaths = false
+
     var body: some View {
         VStack(spacing: 0) {
             Capsule()
@@ -106,6 +110,19 @@ struct TrailsPanel: View {
                         .accessibilityIdentifier("routes.trailCard")
                         .padding(.horizontal, 20)
                     }
+                    if !finder.otherPaths.isEmpty {
+                        otherPathsHeader
+                            .padding(.horizontal, 20)
+                        if showOtherPaths {
+                            ForEach(finder.otherPaths) { item in
+                                TrailCard(item: item, activityMode: activityMode) {
+                                    withAnimation(.spring(response: 0.3)) { selected = item }
+                                }
+                                .accessibilityIdentifier("routes.otherPathCard")
+                                .padding(.horizontal, 20)
+                            }
+                        }
+                    }
                 }
 
                 TrailCreditLine()
@@ -115,12 +132,39 @@ struct TrailsPanel: View {
         }
     }
 
+    /// One card that opens and closes the short unnamed paths, styled like a
+    /// trail card so the list reads as one set.
+    private var otherPathsHeader: some View {
+        Button {
+            withAnimation(.spring(response: 0.3)) { showOtherPaths.toggle() }
+        } label: {
+            HStack(alignment: .center, spacing: 12) {
+                WktIconBadge(symbol: .routeTrail)
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Other paths")
+                        .font(.wktRowTitle)
+                        .foregroundColor(.earthCream)
+                    Text(TrailText.otherPathsSummary(count: finder.otherPaths.count,
+                                                     usesMiles: Locale.current.measurementSystem == .us))
+                        .font(.wktLabel)
+                        .foregroundColor(.earthMuted)
+                }
+                Spacer(minLength: 0)
+                Image(wkt: showOtherPaths ? .chevronUp : .chevronDown).wktIcon(.inline, tint: .earthMuted)
+            }
+            .wktCard()
+        }
+        .buttonStyle(.plain)
+        .accessibilityValue(showOtherPaths ? "Shown" : "Hidden")
+        .accessibilityIdentifier("routes.otherPaths")
+    }
+
     private var emptyMessage: String? {
         if let failure = finder.failure { return failure }
         if userLocation == nil {
             return "Turn on location for Wockett to see trails near you."
         }
-        guard finder.hasSearched, finder.items.isEmpty else { return nil }
+        guard finder.hasSearched, finder.items.isEmpty, finder.otherPaths.isEmpty else { return nil }
         let active = finder.filters != TrailFilters()
         return active
             ? "No trails within 10 miles match these filters."
@@ -365,6 +409,13 @@ enum TrailText {
         // Same 1.4 m/s as CustomRoute.timeText.
         let mins = Int(meters / 1.4 / 60)
         return mins < 60 ? "\(mins) min" : "\(mins / 60)h \(mins % 60)m"
+    }
+
+    /// "3 short paths with no name, under 0.5 mi": what the closed "Other
+    /// paths" card holds, so it is clear nothing named is hidden there.
+    static func otherPathsSummary(count: Int, usesMiles: Bool) -> String {
+        let noun = count == 1 ? "short path" : "short paths"
+        return "\(count) \(noun) with no name, under \(usesMiles ? "0.5 mi" : "800 m")"
     }
 
     /// "6.5 mi · 1.5 mi away". One trail is one trail: how many pieces the

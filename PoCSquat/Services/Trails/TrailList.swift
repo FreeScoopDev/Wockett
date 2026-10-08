@@ -178,6 +178,28 @@ enum TrailListBuilder {
         return items.sorted { $0.distanceMeters < $1.distanceMeters }
     }
 
+    /// Unnamed rows shorter than this move out of the main list into "Other
+    /// paths". A downloaded state pack carries every unnamed path, and near
+    /// downtown Raleigh the NC v3 list read "Footpath 0.3 mi", "Footpath
+    /// 0.7 mi", "Footpath 0.3 mi" between the named trails. Joe, 2026-10-08:
+    /// fine to group short unnamed paths under "Other paths". Half a mile:
+    /// shorter than that, a path with no name is a connector, not a walk to
+    /// choose. A long unnamed greenway (the Duck Road path, 6.6 km) stays.
+    static func otherPathMaxMeters(usesMiles: Bool) -> Double { usesMiles ? 804.67 : 800 }
+
+    /// Splits list rows into the main list and "Other paths": short rows with
+    /// no name (`otherPathMaxMeters`). A road-derived name counts as a name.
+    /// Order is kept within each part.
+    static func splitOtherPaths(_ items: [TrailListItem],
+                                usesMiles: Bool) -> (main: [TrailListItem], other: [TrailListItem]) {
+        let limit = otherPathMaxMeters(usesMiles: usesMiles)
+        var main: [TrailListItem] = [], other: [TrailListItem] = []
+        for item in items {
+            if !item.hasName && item.lengthMeters < limit { other.append(item) } else { main.append(item) }
+        }
+        return (main, other)
+    }
+
     /// Neighbouring state packs both carry a path that crosses the state line
     /// (Geofabrik extracts keep whole ways). Same upstream object, same trail:
     /// keep the first, which in a ranked list is the nearest.
@@ -481,6 +503,9 @@ final class TrailFinder {
 
     var filters = TrailFilters()
     private(set) var items: [TrailListItem] = []
+    /// Short unnamed paths, listed under "Other paths" after `items`
+    /// (`TrailListBuilder.splitOtherPaths`).
+    private(set) var otherPaths: [TrailListItem] = []
     private(set) var hasSearched = false
     private(set) var failure: String?
 
@@ -494,7 +519,7 @@ final class TrailFinder {
                  includeShortPaths: Bool = false) {
         hasSearched = true
         failure = nil
-        guard let center else { items = []; return }
+        guard let center else { items = []; otherPaths = []; return }
         let query = filters.query(cycling: cycling)
         var ranked: [(trail: TrailFeature, distance: Double)] = []
         for source in library.sources.values {
@@ -509,7 +534,7 @@ final class TrailFinder {
         ranked.sort { $0.distance < $1.distance }
         ranked = TrailListBuilder.withoutDuplicates(ranked)
         let library = self.library
-        items = TrailListBuilder.items(
+        let all = TrailListBuilder.items(
             from: Array(ranked.prefix(Self.sectionLimit)),
             grouped: grouped,
             minLengthMeters: includeShortPaths ? nil : TrailFilters.minimumLengthMeters(usesMiles: usesMiles),
@@ -522,5 +547,6 @@ final class TrailFinder {
                 return (try? source.trails(key: key)) ?? []
             }
         )
+        (items, otherPaths) = TrailListBuilder.splitOtherPaths(all, usesMiles: usesMiles)
     }
 }
