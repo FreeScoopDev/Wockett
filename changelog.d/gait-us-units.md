@@ -1,0 +1,2 @@
+### Fixed
+- Walking speed and step length in Health → Walking health follow the phone's units: mph and inches on a US phone, km/h and cm elsewhere, like distance and pace everywhere else in Wockett. They were always km/h and cm, including the "Normal" ranges (now 2.2 – 3.4 mph and 22 – 31 in on a US phone) and the chart axes. The status thresholds are unchanged: Health stores metres per second and centimetres, and only the words change. Found while taking the 1.14 App Store screenshots. `GaitUnitsTests` covers both; making speed always km/h turned it red.

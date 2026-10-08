@@ -29,14 +29,14 @@ struct PetDetailSheet: View {
                             WktGoalRing(progress: progress, lineWidth: 16, tint: pet.accentColor) {
                                 VStack(spacing: 4) {
                                     Text(pet.displayEmoji).font(.system(size: 40)) // the pet's own emoji (data)
-                                    Text("\(Int(progress * 100))%")
+                                    Text(WktPercent.text(progress))
                                         .font(.wktCardTitle)
                                         .foregroundColor(.earthCream)
                                 }
                             }
                             .frame(width: 176, height: 176)
                             .accessibilityElement(children: .ignore)
-                            .accessibilityLabel("\(pet.name), \(Int(progress * 100)) percent of today's goal")
+                            .accessibilityLabel("\(pet.name), \(WktPercent.value(progress)) percent of today's goal")
 
                             Text(pet.name)
                                 .font(.wktCardTitle).foregroundColor(.earthCream)

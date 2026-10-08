@@ -174,11 +174,11 @@ struct ActivitySummaryView: View {
                             Text(c.pet.displayEmoji).font(.title2) // the pet's own emoji (data)
                         }
                         Text(c.pet.name).font(.wktLabel).foregroundColor(.earthCream)
-                        Text("\(Int(progress * 100))%").font(.wktLabel).foregroundColor(c.pet.accentColor)
+                        Text(WktPercent.text(progress)).font(.wktLabel).foregroundColor(c.pet.accentColor)
                     }
                     .accessibilityElement(children: .ignore)
                     .accessibilityLabel(c.pet.name)
-                    .accessibilityValue("\(Int(progress * 100))% of daily step goal")
+                    .accessibilityValue("\(WktPercent.text(progress)) of daily step goal")
                 }
             }
             .frame(maxWidth: .infinity)

@@ -279,3 +279,20 @@ extension UIColor {
     }
 }
 
+
+// MARK: - Progress percentage
+
+/// How a goal or badge fraction is shown as a percentage, everywhere: rounded
+/// down, so "100%" appears only once the goal is actually met. Before
+/// 2026-10-07 some screens rounded and some truncated, so the same pet read 47%
+/// on Home and 46% in its detail, and a badge at 99.6% read "100%" while still
+/// unearned. Shared with the widget, which shows the same step progress.
+enum WktPercent {
+    static func value(_ fraction: Double) -> Int {
+        guard fraction.isFinite, fraction > 0 else { return 0 }
+        // The epsilon keeps 0.29 (28.999… in binary) at 29.
+        return Int((fraction * 100 + 1e-9).rounded(.down))
+    }
+
+    static func text(_ fraction: Double) -> String { "\(value(fraction))%" }
+}

@@ -280,7 +280,7 @@ private struct DayCell: View {
                                 .font(.system(size: 10, weight: .bold))
                                 .foregroundColor(.earthGreen)
                         } else if let steps = day.steps, steps > 0 {
-                            Text("\(Int(Double(steps) / Double(max(1, day.goal)) * 100))%")
+                            Text(WktPercent.text(Double(steps) / Double(max(1, day.goal))))
                                 .font(.wktBody(9))
                                 .foregroundColor(.earthOrange)
                                 .minimumScaleFactor(0.7)
