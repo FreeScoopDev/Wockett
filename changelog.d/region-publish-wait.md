@@ -1,0 +1,2 @@
+### Internal
+- `tools/region_publish.py` waits up to about a minute for a record it just created to show up in CloudKit before giving up. On 2026-10-08 the South Carolina v1 upload stopped with "not visible" although the record was there a minute later; CloudKit's query index lags a create. The safety rule is unchanged: nothing older is removed until the new record is seen. 1 new test with a fake that lags like CloudKit; without the wait it goes red, and the not-visible test now also checks the whole wait happened.
