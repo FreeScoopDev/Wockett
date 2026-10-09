@@ -99,7 +99,7 @@ final class AchievementFeedService {
         let record = CKRecord(recordType: recordType)
         record["badgeName"]  = badgeName
         record["badgeEmoji"] = badgeEmoji
-        record["authorName"] = username
+        record["authorName"] = try await CommunityNameService.shared.claimedName()
         record["message"]    = message.trimmingCharacters(in: .whitespacesAndNewlines)
         record["likes"]      = 0
         _ = try await db.save(record)

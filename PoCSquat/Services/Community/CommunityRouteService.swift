@@ -66,28 +66,17 @@ final class CommunityRouteService {
     private let db         = CKContainer(identifier: WockettCloud.containerID).publicCloudDatabase
     private let recordType = "SharedRoute"
     private let votedKey      = "communityVotedRoutes"
-    private let usernameKey   = "communityUsername"
     private let publishedKey  = "wkt_publishedRouteIds"
 
-    private let adjectives = [
-        "Misty", "Golden", "Ancient", "Silent", "Swift", "Wild", "Calm",
-        "Wandering", "Gentle", "Humble", "Mossy", "Amber", "Russet", "Dappled", "Sunlit"
-    ]
-    private let nouns = [
-        "Oak", "Heron", "Fern", "Cedar", "Maple", "Wolf", "Falcon", "Birch",
-        "Stone", "River", "Meadow", "Pine", "Hawk", "Willow", "Aspen", "Moss", "Elk", "Sage"
-    ]
 
     init() {}
 
     // MARK: - Username
 
-    var username: String {
-        if let existing = UserDefaults.standard.string(forKey: usernameKey) { return existing }
-        let generated = (adjectives.randomElement() ?? "Misty") + (nouns.randomElement() ?? "Oak")
-        UserDefaults.standard.set(generated, forKey: usernameKey)
-        return generated
-    }
+    /// The name to show for this user (CommunityNameService). Writes use the
+    /// claimed name instead, so nothing is posted under a name the account
+    /// doesn't hold.
+    var username: String { CommunityNameService.shared.displayName }
 
     // MARK: - Vote tracking (local device)
 
@@ -150,7 +139,7 @@ final class CommunityRouteService {
         record["distanceMeters"] = route.totalDistance
         record["difficultyTag"] = difficultyTag(for: route.totalDistance)
         record["upvotes"]       = 0
-        record["authorName"]    = username
+        record["authorName"]    = try await CommunityNameService.shared.claimedName()
 
         let saved = try await db.save(record)
         // Track published route ID so we can fetch received wocketts later
