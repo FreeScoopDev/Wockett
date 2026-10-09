@@ -47,6 +47,9 @@ struct WalkChallenge: Identifiable {
     let startDate:    Date
     let endDate:      Date
     let authorName:   String
+    /// The account that created it (CloudKit's creator), for Block.
+    let authorAccount: String?
+    var author: CommunityAuthor { CommunityAuthor(name: authorName, account: authorAccount) }
 
     var isActive: Bool { Date() >= startDate && Date() <= endDate }
 
@@ -143,7 +146,8 @@ struct WalkChallenge: Identifiable {
         }
     }
 
-    init?(record: CKRecord) {
+    /// `creator` is a seam for tests (records built in a test have none).
+    init?(record: CKRecord, creator: CKRecord.ID? = nil) {
         guard
             let title     = record["title"]     as? String,
             let startDate = record["startDate"] as? Date,
@@ -156,6 +160,7 @@ struct WalkChallenge: Identifiable {
         self.startDate  = startDate
         self.endDate    = endDate
         self.authorName = record["authorName"] as? String ?? "Anonymous"
+        self.authorAccount = CommunityAuthor.account(of: record, creator: creator)
 
         // goalType absent on existing records → default to .steps (backward compat)
         let rawType = record["goalType"] as? String ?? ChallengeGoalType.steps.rawValue
@@ -252,7 +257,7 @@ final class ChallengeService {
             guard let rec = try? r.get() else { return nil }
             return WalkChallenge(record: rec)
         }
-        .filter { !CommunityModerationStore.shared.shouldHide(id: $0.id, author: $0.authorName) }
+        .filter { !CommunityModerationStore.shared.shouldHide(id: $0.id, author: $0.author) }
     }
 
     func fetchLeaderboard(for challenge: WalkChallenge) async throws -> [ChallengeParticipant] {
@@ -365,3 +370,5 @@ final class ChallengeService {
 
 // Swift doesn't have a built-in min for Date — add one here to avoid ambiguity.
 private func min(_ a: Date, _ b: Date) -> Date { a < b ? a : b }
+
+extension WalkChallenge: CommunityModerated {}

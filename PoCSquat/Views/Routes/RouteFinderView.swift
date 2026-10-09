@@ -690,7 +690,7 @@ struct RouteFinderContentView: View {
                                 }
                                 onNavigateAway?()
                             },
-                            onHide: { communityModel.routes.removeAll { $0.id == route.id } }
+                            onHide: { communityModel.dropHidden(also: route.id) }
                         )
                         .padding(.horizontal, 20)
                     }
@@ -699,7 +699,7 @@ struct RouteFinderContentView: View {
         }
         .animation(.easeInOut(duration: 0.2), value: showCommunityRoutes)
         .animation(.easeInOut(duration: 0.2), value: communityModel.loadError != nil)
-        .onAppear { communityModel.wocketError = nil }   // the other route screen's message isn't about a tap here
+        .onAppear { communityModel.wocketError = nil; communityModel.dropHidden() }   // the other route screen's message isn't about a tap here
     }
 
     // MARK: - Helpers

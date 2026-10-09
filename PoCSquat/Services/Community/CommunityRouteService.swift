@@ -13,6 +13,9 @@ struct SharedRoute: Identifiable {
     let difficulty: RouteDifficulty
     var wocketts: Int
     let authorName: String
+    /// The account that created it (CloudKit's creator), for Block.
+    let authorAccount: String?
+    var author: CommunityAuthor { CommunityAuthor(name: authorName, account: authorAccount) }
     let createdAt: Date
 
     var distanceText: String {
@@ -37,7 +40,8 @@ struct SharedRoute: Identifiable {
         )
     }
 
-    init?(record: CKRecord) {
+    /// `creator` is a seam for tests (records built in a test have none).
+    init?(record: CKRecord, creator: CKRecord.ID? = nil) {
         guard
             let name          = record["name"] as? String,
             let waypointsJSON = record["waypointsJSON"] as? String,
@@ -54,6 +58,7 @@ struct SharedRoute: Identifiable {
         self.difficulty     = RouteDifficulty(rawValue: record["difficultyTag"] as? String ?? "") ?? .easy
         self.wocketts       = record["upvotes"] as? Int ?? 0
         self.authorName     = record["authorName"] as? String ?? "Anonymous"
+        self.authorAccount = CommunityAuthor.account(of: record, creator: creator)
         self.createdAt      = record.creationDate ?? Date()
     }
 }
@@ -123,7 +128,7 @@ final class CommunityRouteService {
             guard let record = try? result.get() else { return nil }
             return SharedRoute(record: record)
         }
-        .filter { !CommunityModerationStore.shared.shouldHide(id: $0.id, author: $0.authorName) }
+        .filter { !CommunityModerationStore.shared.shouldHide(id: $0.id, author: $0.author) }
         // Wocketts are CommunityVote records (CommunityVotes.swift), not the
         // route's own `upvotes` field, which only its author could ever change.
         let tally = await CommunityVoteService.shared.tally(for: routes.map(\.id.recordName))
@@ -185,3 +190,5 @@ final class CommunityRouteService {
         return RouteDifficulty.hard.rawValue
     }
 }
+
+extension SharedRoute: CommunityModerated {}

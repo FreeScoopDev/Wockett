@@ -43,7 +43,7 @@ struct AchievementFeedContentView: View {
                             AchievementPostCard(post: post,
                                                 isLiked: feed.isLiked(post.id),
                                                 onLike: { feed.like(post.id) },
-                                                onHide: { feed.posts.removeAll { $0.id == post.id } })
+                                                onHide: { feed.posts = CommunityModerationStore.shared.visible(feed.posts.filter { $0.id != post.id }) })
                         }
                     }
                     .padding(.horizontal, WktSpacing.screen)
@@ -197,16 +197,7 @@ private struct AchievementPostCard: View {
         .contextMenu {
             if let onHide {
                 CommunityReportButton("Report Post") { report = CommunityReport(post: post) }
-                Button(role: .destructive) {
-                    CommunityModerationStore.shared.block(author: post.authorName)
-                    onHide()
-                } label: {
-                    Label {
-                        Text("Block \(post.authorName)")
-                    } icon: {
-                        Image(wkt: .blockUser).wktIcon(.inline, tint: .red)
-                    }
-                }
+                CommunityBlockButton(author: post.author, onHide: onHide)
             }
         }
         .communityReporting($report, onHide: { _ in onHide?() })
