@@ -140,3 +140,45 @@ class ManifestTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CoverageGateTests(unittest.TestCase):
+    """2026-10-08: a state ships only if most of its towns get a named trail within 3 miles."""
+
+    def towns(self, *places):
+        d = tempfile.mkdtemp()
+        path = os.path.join(d, "towns.geojsonseq")
+        write_seq(path, [{"type": "Feature", "geometry": {"type": "Point", "coordinates": [lon, lat]},
+                          "properties": {"name": name, "place": "town"}} for name, lat, lon in places])
+        return rr.load_towns(path)
+
+    RALEIGH_TOWN = ("Raleigh", 35.79, -78.64)
+    FAR = [("Far One", 36.40, -78.64), ("Far Two", 36.45, -78.64)]  # ~70 km north of every trail
+
+    def test_half_the_towns_covered_passes_and_a_third_fails(self):
+        pack = build(FEATURES)
+        self.assertEqual(rr.gates(pack, REGION, None, self.towns(self.RALEIGH_TOWN, self.FAR[0])), [])
+        failures = rr.gates(pack, REGION, None, self.towns(self.RALEIGH_TOWN, *self.FAR))
+        self.assertTrue(any("33% of 3 cities and towns" in f for f in failures), failures)
+
+    def test_a_short_named_trail_does_not_cover_a_town(self):
+        stub = [corridor(i, 35.70) for i in range(118)] + [
+            corridor(0, 35.790, name="Stub Trail", n=2, lon=-78.640, fid="w950")]  # ~220 m
+        share, without = rr.coverage(build(stub), self.towns(self.RALEIGH_TOWN))
+        self.assertEqual((share, without), (0.0, ["Raleigh"]))
+
+    def test_a_bike_only_path_does_not_cover_a_town(self):
+        bike_only = [corridor(i, 35.70) for i in range(118)] + [
+            feature("w960", [[-78.64, 35.790 + k * 0.001] for k in range(9)],
+                    highway="cycleway", name="Cycle Track", foot="no")]
+        share, _ = rr.coverage(build(bike_only), self.towns(self.RALEIGH_TOWN))
+        self.assertEqual(share, 0.0)
+
+    def test_a_trail_is_judged_on_its_whole_length(self):
+        # Two ~220 m pieces of one trail, ~100 m apart: one trail key, ~440 m
+        # in all, over the quarter-mile floor although each piece is under it.
+        pieces = [corridor(i, 35.70) for i in range(118)] + [
+            corridor(0, 35.790, name="Split Trail", n=2, lon=-78.640, fid="w970"),
+            corridor(0, 35.793, name="Split Trail", n=2, lon=-78.640, fid="w971")]
+        share, _ = rr.coverage(build(pieces), self.towns(self.RALEIGH_TOWN))
+        self.assertEqual(share, 1.0)

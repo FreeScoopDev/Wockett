@@ -38,6 +38,15 @@ SIZE_BUDGET_BYTES = 150_000_000      # well under CloudKit's asset limit; a big 
 PROBE_RADIUS_M = 25_000.0
 BBOX_MARGIN_DEG = 0.05               # ways that cross the state line poke out a little
 MIN_PIECES = 100
+# Coverage (2026-10-08): the share of the region's cities and towns with a
+# named, walkable trail of at least a quarter mile within 3 miles. That is
+# what makes a downloaded state worth having: measured over 1,563 towns, the
+# ten published states ranged from 51% (Kentucky) to 96% (Maryland) after
+# builder 1.4.0. Joe: "If we can't deliver useful trails, we should hold off
+# adding more."
+COVERAGE_RADIUS_M = 4_828.0
+COVERAGE_MIN_LENGTH_M = 402.34       # the list's quarter-mile floor
+COVERAGE_MIN_SHARE = 0.50
 
 
 def load_regions(path: str) -> dict:
@@ -68,7 +77,50 @@ def named_near(conn, lat: float, lon: float, radius_m: float) -> int:
         (lat - dlat, lat + dlat, lon - dlon, lon + dlon)).fetchone()[0]
 
 
-def gates(pack: str, region: dict, extract_bbox) -> list[str]:
+def load_towns(path: str) -> list[tuple[str, float, float]]:
+    """(name, lat, lon) of each place=city/town point in an osmium geojsonseq."""
+    towns = []
+    for feature in btp.read_features(path):
+        geom = feature.get("geometry") or {}
+        if geom.get("type") == "Point":
+            lon, lat = geom["coordinates"][:2]
+            towns.append(((feature.get("properties") or {}).get("name", "?"), lat, lon))
+    return towns
+
+
+def coverage(pack: str, towns: list[tuple[str, float, float]]) -> tuple[float, list[str]]:
+    """Share of towns with a named, walkable trail within COVERAGE_RADIUS_M,
+    judged on the whole trail's length (its trail key), and the towns without."""
+    conn = sqlite3.connect(f"file:{pack}?mode=ro", uri=True)
+    key_length = dict(conn.execute(
+        "select trail_key, sum(length_m) from trails where trail_key is not null group by trail_key"))
+    without = []
+    for name, lat, lon in towns:
+        dlat = COVERAGE_RADIUS_M / pack_quality.M_PER_DEG_LAT
+        mlon = pack_quality.M_PER_DEG_LAT * max(0.01, math.cos(math.radians(lat)))
+        dlon = COVERAGE_RADIUS_M / mlon
+        rows = conn.execute(
+            "select t.length_m, t.trail_key, r.min_lat, r.max_lat, r.min_lon, r.max_lon "
+            "from trails t join trails_rtree r on r.id = t.id "
+            "where t.name is not null and t.allows_foot = 1 and r.max_lat >= ? and r.min_lat <= ? "
+            "and r.max_lon >= ? and r.min_lon <= ?",
+            (lat - dlat, lat + dlat, lon - dlon, lon + dlon)).fetchall()
+        found = False
+        for length, key, a, b, c, d in rows:
+            whole = key_length.get(key, length) if key else length
+            gap_y = max(a - lat, 0, lat - b) * pack_quality.M_PER_DEG_LAT
+            gap_x = max(c - lon, 0, lon - d) * mlon
+            if whole >= COVERAGE_MIN_LENGTH_M and math.hypot(gap_x, gap_y) <= COVERAGE_RADIUS_M:
+                found = True
+                break
+        if not found:
+            without.append(name)
+    conn.close()
+    share = 1 - len(without) / len(towns) if towns else 1.0
+    return share, without
+
+
+def gates(pack: str, region: dict, extract_bbox, towns=None) -> list[str]:
     """Every failed gate, as a sentence. Empty means the pack may ship."""
     failures = []
     if not btp.verify_pack(pack):
@@ -88,6 +140,13 @@ def gates(pack: str, region: dict, extract_bbox) -> list[str]:
     if near == 0:
         failures.append(f"no named trails within {PROBE_RADIUS_M / 1000:.0f} km of {p['place']}")
     conn.close()
+    if towns:
+        share, without = coverage(pack, towns)
+        print(f"Coverage: {share:.0%} of {len(towns)} cities and towns have a named trail within 3 miles"
+              + (f" (without: {', '.join(sorted(without)[:8])}{'…' if len(without) > 8 else ''})" if without else ""))
+        if share < COVERAGE_MIN_SHARE:
+            failures.append(f"only {share:.0%} of {len(towns)} cities and towns have a named trail within "
+                            f"3 miles (the bar is {COVERAGE_MIN_SHARE:.0%})")
     size = os.path.getsize(pack)
     if size > SIZE_BUDGET_BYTES:
         failures.append(f"{size / 1e6:.0f} MB is over the {SIZE_BUDGET_BYTES / 1e6:.0f} MB budget")
@@ -135,6 +194,7 @@ def main(argv=None) -> int:
     ap.add_argument("--extract-md5", default="")
     ap.add_argument("--extract-bbox", default="", help="minlon,minlat,maxlon,maxlat from osmium fileinfo")
     ap.add_argument("--regions", default=os.path.join(here, "regions.json"))
+    ap.add_argument("--towns", default="", help="place=city,town points (osmium geojsonseq) for the coverage gate")
     ap.add_argument("--live-version", type=int, default=None,
                     help="the packVersion live in CloudKit Production (make_region.sh reads it with "
                          "region_publish.py live-version); overrides published/<region>.json")
@@ -147,7 +207,8 @@ def main(argv=None) -> int:
     region = regions[args.region]
     bbox = tuple(float(x) for x in args.extract_bbox.split(",")) if args.extract_bbox else None
 
-    failures = gates(args.pack, region, bbox)
+    towns = load_towns(args.towns) if args.towns else None
+    failures = gates(args.pack, region, bbox, towns)
     quality = pack_quality.report(args.pack)
     print(f"\nQuality — {region['name']}")
     pack_quality.main([args.pack])
