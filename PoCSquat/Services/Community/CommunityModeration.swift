@@ -139,7 +139,7 @@ final class CommunityModerationStore {
         // the old one. Forget it, look the new one up, and redraw anything that
         // decided "yours" with the old one.
         notifications.addObserver(forName: .CKAccountChanged, object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.accountChanged() }
+            MainActor.assumeIsolated { _ = self?.accountChanged() }   // Xcode 26.6 can't infer this closure's type otherwise
         }
     }
 
