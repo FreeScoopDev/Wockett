@@ -62,15 +62,22 @@ struct TrailGuide {
     }
 
     /// Distance along the line of the point on it nearest `point`, looking
-    /// only at or after `minimum`. Nearest wins outright; on an exact tie the
-    /// earlier point does.
+    /// only at or after `minimum`. Nearest wins outright; on a tie (within
+    /// `tieMeters`) the earlier point does.
+    /// Within this, two points are equally near and the earlier one wins.
+    static let tieMeters = 0.5
+
     func nearestAlong(to point: CLLocationCoordinate2D, atOrAfter minimum: Double) -> Double {
         guard path.count >= 2 else { return 0 }
         var best: Position?
         for i in 0..<(path.count - 1) where cumulative[i + 1] >= minimum {
             let candidate = project(point, onSegment: i)
             guard candidate.along >= minimum - 0.01 else { continue }
-            if best == nil || candidate.offset < best?.offset ?? .infinity { best = candidate }
+            // Nearer by more than half a metre to win: a line that retraces
+            // itself (an out-and-back walk, 2026-10-09) has every point twice,
+            // the same distance away to within float noise, and noise picked
+            // the way back for a checkpoint on the way out.
+            if best == nil || candidate.offset < (best?.offset ?? .infinity) - Self.tieMeters { best = candidate }
         }
         return best?.along ?? minimum
     }

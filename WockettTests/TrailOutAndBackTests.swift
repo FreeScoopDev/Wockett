@@ -204,25 +204,32 @@ struct TrailOutAndBackTests {
 
     @Test("On a 3 km round trip, each checkpoint sits where it is on the walk, not at its twin on the way out")
     func checkpointsOnTheRightLeg() throws {
+        // Expected distances written out, not derived from the path: derived
+        // ones shared the code's first-match bias and passed while the
+        // 1,600 m checkpoint registered at 1,400 m on the way out (critic run
+        // 2 of #163). Out 1,500 m: checkpoints every 750 m and one at the
+        // turnaround, the same on the way back.
         let coords = line(51)
         let plan = try #require(TrailWalkPlanner.plan(along: coords, isLoop: false, name: "G",
                                                        from: coords[10], target: .roundTrip(meters: 3_000)))
         let progress = try #require(TrailProgress(route: plan.navigableRoute(activityMode: .walking)))
-        var travelled = 0.0, expected: [Double] = []
-        var next = 0
-        for (a, b) in zip(plan.path, plan.path.dropFirst()) {
-            while next < plan.waypoints.count,
-                  TrailWalkPlanner.meters(a, plan.waypoints[next]) + TrailWalkPlanner.meters(plan.waypoints[next], b)
-                    <= TrailWalkPlanner.meters(a, b) + 0.5 {
-                expected.append(travelled + TrailWalkPlanner.meters(a, plan.waypoints[next]))
-                next += 1
-            }
-            travelled += TrailWalkPlanner.meters(a, b)
-        }
-        #expect(progress.checkpointAlong.count == plan.waypoints.count)
+        let expected: [Double] = [0, 750, 1_500, 2_250, 3_000]
+        #expect(progress.checkpointAlong.count == expected.count)
         for (got, want) in zip(progress.checkpointAlong, expected) {
             #expect(abs(got - want) < 5, "checkpoint at \(got) m, expected \(want) m")
         }
+    }
+
+    @Test("The pace stored for arriving at a trail is the activity's own: a run's pace never times a walk")
+    func storedPacePerActivity() throws {
+        let defaults = try #require(UserDefaults(suiteName: "TrailOutAndBackTests-\(UUID().uuidString)"))
+        defaults.set(true, forKey: TrailWalkOption.byTimeKey)
+        defaults.set("t30", forKey: TrailWalkOption.choiceKey)
+        defaults.set(3.0, forKey: TrailWalkOption.paceKey(for: .running))
+        let walk = TrailWalkOption.lastChosenTarget(reach: 20_000, isLoop: false, activityMode: .walking, defaults: defaults)
+        #expect(walk == .roundTrip(meters: 30 * 60 * 1.3), "no walking pace stored: the typical 1.3 m/s")
+        let run = TrailWalkOption.lastChosenTarget(reach: 20_000, isLoop: false, activityMode: .running, defaults: defaults)
+        #expect(run == .roundTrip(meters: 30 * 60 * 3.0))
     }
 
     @Test("Short loops start on the full loop; long loops on the usual round trip")

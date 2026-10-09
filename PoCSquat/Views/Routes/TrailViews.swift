@@ -263,7 +263,6 @@ struct TrailDetailView: View {
     /// distance most days).
     @AppStorage(TrailWalkOption.byTimeKey) private var byTime = false
     @AppStorage(TrailWalkOption.choiceKey) private var storedChoice = ""
-    @AppStorage(TrailWalkOption.paceKey) private var storedPace = 0.0
 
     /// How far there is to go from here: toward the farther end of a line,
     /// or half way round a loop.
@@ -272,6 +271,13 @@ struct TrailDetailView: View {
     }
 
     private var pace: Double { TrailWalkOption.pace(for: activityMode, history: historyStore.sessions) }
+
+    /// For a walk planned without this screen (arriving at a trail), so "30
+    /// min" means the same distance there; per activity, so a run's pace
+    /// never times a walk (critic runs 1 and 2 of #163).
+    private func rememberPace() {
+        UserDefaults.standard.set(pace, forKey: TrailWalkOption.paceKey(for: activityMode))
+    }
 
     private var options: [TrailWalkOption] {
         guard let reach else { return [] }
@@ -320,7 +326,7 @@ struct TrailDetailView: View {
                     startButton(plan)
                 } else {
                     TrailDirectionsSection(item: item, userLocation: userLocation, activityMode: activityMode,
-                                           directions: directions, onStart: onStartApproach,
+                                           directions: directions, onStart: { rememberPace(); onStartApproach($0) },
                                            refreshLocation: refreshLocation)
                 }
 
@@ -354,9 +360,7 @@ struct TrailDetailView: View {
         VStack(spacing: 8) {
             if options.count > 1 { chooser }
             Button {
-                // For a walk planned without this screen (arriving at a trail),
-                // so "30 min" means the same distance there (critic, #163).
-                storedPace = pace
+                rememberPace()
                 onStart(plan)
             } label: {
                 WktPrimaryLabel(title: "Start \(activityMode.sessionLabel)", symbol: activityMode.wktSymbol)
@@ -557,7 +561,7 @@ struct TrailWalkOption: Identifiable, Equatable {
 
     static let byTimeKey = "trailWalkByTime"
     static let choiceKey = "trailWalkChoice"
-    static let paceKey = "trailWalkPace"
+    static func paceKey(for mode: ActivityMode) -> String { "trailWalkPace.\(mode.rawValue)" }
     static let wholeID = "whole"
     /// Loops up to this long start on the full loop, as before out-and-back
     /// existed (5 mi / 8 km); longer ones start on the usual round trip.
@@ -599,10 +603,11 @@ struct TrailWalkOption: Identifiable, Equatable {
 
     /// The choice last made on a trail's detail (its @AppStorage keys), for a
     /// walk planned without that screen: arriving at a trail the session was
-    /// heading for. A typical pace stands in for the person's own.
+    /// heading for. The pace is the one that screen last used for this
+    /// activity, or a typical one.
     static func lastChosenTarget(reach: Double, isLoop: Bool, activityMode: ActivityMode,
                                  defaults: UserDefaults = .standard) -> TrailWalkTarget {
-        let storedPace = defaults.double(forKey: paceKey)
+        let storedPace = defaults.double(forKey: paceKey(for: activityMode))
         let all = options(reach: reach, isLoop: isLoop, byTime: defaults.bool(forKey: byTimeKey),
                           usesMiles: Locale.current.measurementSystem == .us,
                           metersPerSecond: storedPace > 0 ? storedPace : pace(for: activityMode, history: []))

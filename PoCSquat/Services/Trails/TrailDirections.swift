@@ -161,11 +161,13 @@ struct TrailApproach: Hashable, Codable {
     /// within `TrailWalkPlanner.startRadiusMeters` of a section — the same
     /// rule and the same plan as Start Walk on the trail's own detail, with
     /// the "how far" the person last chose there (2026-10-09).
-    func arrivalPlan(at location: CLLocationCoordinate2D, activityMode: ActivityMode = .walking) -> TrailWalkPlan? {
+    func arrivalPlan(at location: CLLocationCoordinate2D, activityMode: ActivityMode = .walking,
+                     defaults: UserDefaults = .standard) -> TrailWalkPlan? {
         guard let section = TrailWalkPlanner.section(of: item, at: location),
               let whole = TrailWalkPlanner.plan(for: section, name: trailName, from: location) else { return nil }
         let reach = whole.isLoop ? whole.distanceMeters / 2 : whole.distanceMeters
-        let target = TrailWalkOption.lastChosenTarget(reach: reach, isLoop: whole.isLoop, activityMode: activityMode)
+        let target = TrailWalkOption.lastChosenTarget(reach: reach, isLoop: whole.isLoop, activityMode: activityMode,
+                                                      defaults: defaults)
         return TrailWalkPlanner.plan(along: section.coordinates, isLoop: section.isLoop, name: trailName,
                                      from: location, target: target) ?? whole
     }

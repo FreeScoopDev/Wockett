@@ -145,12 +145,22 @@ enum TrailWalkPlanner {
             let out = min(meters / 2, distance)
             let outPath = prefix(of: path, meters: out)
             guard outPath.count >= 2, out >= 25 else { return nil }
-            let roundTrip = outPath + outPath.reversed().dropFirst()
+            let backPath = Array(outPath.reversed())
+            let roundTrip = outPath + backPath.dropFirst()
             let total = length(roundTrip)
-            var plan = TrailWalkPlan(name: name, path: roundTrip,
-                                     waypoints: checkpoints(along: roundTrip, isLoop: false, length: total),
+            // Checkpoints per leg, with one at the turnaround. Spaced over the
+            // whole round trip, a checkpoint on the way back has a twin at the
+            // same spot on the way out, and TrailProgress placed it there
+            // when the turnaround fell late in a checkpoint interval
+            // ("Checkpoint 2 of 4" 100 m before turning, on a 3 km round trip;
+            // critic run 2 of #163). With the turnaround a checkpoint, every
+            // return checkpoint comes after it, past its twin.
+            let outLength = length(outPath)
+            let waypoints = checkpoints(along: outPath, isLoop: false, length: outLength)
+                + checkpoints(along: backPath, isLoop: false, length: outLength).dropFirst()
+            var plan = TrailWalkPlan(name: name, path: roundTrip, waypoints: Array(waypoints),
                                      isLoop: false, distanceMeters: total)
-            plan.turnaroundMeters = length(outPath)
+            plan.turnaroundMeters = outLength
             plan.turnsAtTrailEnd = !isLoop && out >= distance - 1
             return plan
         }
