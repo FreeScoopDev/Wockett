@@ -14,7 +14,7 @@ import Observation
 
 @MainActor
 @Observable
-final class CommunityHubModel {
+final class CommunityHubModel: PostLiking {
     var challenges: [WalkChallenge] = []
     var yourChallenge: WalkChallenge?
     private(set) var yourValue = 0
@@ -25,6 +25,16 @@ final class CommunityHubModel {
     private(set) var feedFailed = false
 
     private(set) var receivedWocketts: Int?
+
+    /// Set when a like failed to save; the hub shows it as an alert.
+    var likeError: String?
+
+    /// Saves a like. A seam for tests; the app saves a CommunityVote.
+    var saveLike: (CKRecord.ID) async throws -> Void = { try await AchievementFeedService.shared.like(id: $0) }
+    /// Where liked posts are remembered (a seam for tests).
+    var likeMarks = VoteMarks.likes
+    /// Likes still saving (PostLiking).
+    var pendingVotes: Set<String> = []
 
     /// Where reports and blocks are remembered (a seam for tests).
     var moderation = CommunityModerationStore.shared
@@ -62,6 +72,7 @@ final class CommunityHubModel {
         isLoading = true
         defer { isLoading = false; didLoad = true }
         Task { await MyAccount.refresh() }
+        Task { await UnsentVoteCatchUp.runIfNeeded() }
 
         async let challengeList = try? ChallengeService.shared.fetchActiveChallenges()
         async let feed = try? AchievementFeedService.shared.fetchPosts(limit: 3)
@@ -74,7 +85,7 @@ final class CommunityHubModel {
             challengesFailed = true
         }
         if let feed = await feed {
-            posts = feed
+            show(feed)
             feedFailed = false
         } else {
             feedFailed = true
@@ -105,11 +116,7 @@ final class CommunityHubModel {
         }
     }
 
-    func markLiked(_ post: AchievementPost) {
-        guard !AchievementFeedService.shared.hasLiked(id: post.id),
-              let index = posts.firstIndex(where: { $0.id == post.id }) else { return }
-        posts[index].likes += 1
-        AchievementFeedService.shared.markLiked(id: post.id)
-        Task { try? await AchievementFeedService.shared.like(id: post.id) }
-    }
+    /// Likes `post` (PostLiking.like). Returns the save, for tests to await.
+    @discardableResult
+    func markLiked(_ post: AchievementPost) -> Task<Void, Never>? { like(post.id) }
 }

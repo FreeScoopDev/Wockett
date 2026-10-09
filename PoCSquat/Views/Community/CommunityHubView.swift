@@ -67,6 +67,7 @@ struct CommunityHubView: View {
         .accessibilityIdentifier("community.root")
         .navigationTitle("Community")
         .navigationBarTitleDisplayMode(.large)
+        .likeErrorAlert($model.likeError)
         .communityReporting($hubReport) { report in
             model.hide(report.recordID)
             communityRoutesModel.routes.removeAll { $0.id == report.recordID }
@@ -387,7 +388,7 @@ struct CommunityHubView: View {
     }
 
     private func feedRow(_ post: AchievementPost) -> some View {
-        let liked = AchievementFeedService.shared.hasLiked(id: post.id)
+        let liked = model.isLiked(post.id)
         let when = Self.relative(post.createdAt)
         return HStack(spacing: 12) {
             avatar(post.authorName, size: 40, tint: Self.nameTint(post.authorName), filled: false)

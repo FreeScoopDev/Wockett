@@ -44,7 +44,7 @@ struct AchievementPost: Identifiable {
 final class AchievementFeedService {
     static let shared = AchievementFeedService()
 
-    private let db         = CKContainer(identifier: "iCloud.Scoops.PoCSquat").publicCloudDatabase
+    private let db         = CKContainer(identifier: WockettCloud.containerID).publicCloudDatabase
     private let recordType = "WocketAchievement"
     private let likedKey   = "achievementLikedIds"
 
@@ -53,6 +53,9 @@ final class AchievementFeedService {
     var username: String { CommunityRouteService.shared.username }
 
     // MARK: - Like tracking (local device)
+
+    /// Every post this device marked as liked.
+    var likedIDs: [String] { UserDefaults.standard.stringArray(forKey: likedKey) ?? [] }
 
     func hasLiked(id: CKRecord.ID) -> Bool {
         (UserDefaults.standard.stringArray(forKey: likedKey) ?? []).contains(id.recordName)
@@ -65,17 +68,33 @@ final class AchievementFeedService {
         UserDefaults.standard.set(liked, forKey: likedKey)
     }
 
+    /// Undoes `markLiked` after a like failed to save.
+    func unmarkLiked(id: CKRecord.ID) {
+        let liked = (UserDefaults.standard.stringArray(forKey: likedKey) ?? []).filter { $0 != id.recordName }
+        UserDefaults.standard.set(liked, forKey: likedKey)
+    }
+
     // MARK: - Fetch
 
     func fetchPosts(limit: Int = 40) async throws -> [AchievementPost] {
         let query = CKQuery(recordType: recordType, predicate: NSPredicate(value: true))
         query.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
         let (results, _) = try await db.records(matching: query, resultsLimit: limit)
-        return results.compactMap { _, result -> AchievementPost? in
+        var posts = results.compactMap { _, result -> AchievementPost? in
             guard let record = try? result.get() else { return nil }
             return AchievementPost(record: record)
         }
         .filter { !CommunityModerationStore.shared.shouldHide(id: $0.id, author: $0.author) }
+        // Likes are CommunityVote records (CommunityVotes.swift), not the
+        // post's own `likes` field, which only its author could ever change.
+        let tally = await CommunityVoteService.shared.tally(for: posts.map(\.id.recordName))
+        // Cancelled (the screen went away): a tally that gave up is all 0s, not real counts.
+        try Task.checkCancellation()
+        for i in posts.indices {
+            posts[i].likes = tally.count(for: posts[i].id.recordName)
+            if tally.mine.contains(posts[i].id.recordName) { markLiked(id: posts[i].id) }
+        }
+        return posts
     }
 
     // MARK: - Post
@@ -94,10 +113,7 @@ final class AchievementFeedService {
     // MARK: - Like
 
     func like(id: CKRecord.ID) async throws {
-        let record  = try await db.record(for: id)
-        let current = record["likes"] as? Int ?? 0
-        record["likes"] = current + 1
-        _ = try await db.save(record)
+        try await CommunityVoteService.shared.vote(for: id.recordName, type: .post)
         markLiked(id: id)
     }
 }
