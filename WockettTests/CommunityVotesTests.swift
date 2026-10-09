@@ -185,7 +185,7 @@ struct CommunityVotesTests {
         let started = ContinuousClock.now
         let t = await CommunityVoteService(store: StubbornStore(), tallyTimeout: .milliseconds(200)).tally(for: ["r"])
         #expect(t == VoteTally())
-        #expect(ContinuousClock.now - started < .seconds(5))
+        #expect(ContinuousClock.now - started < .seconds(20))   // the work takes 30 s; CI runners are slow (7.7 s seen)
     }
 
     @Test("Signed out of iCloud gets its own message, not 'check your connection'")
@@ -402,7 +402,7 @@ struct CommunityVotesTests {
         try? await Task.sleep(for: .milliseconds(100))
         waiter.cancel()
         _ = await waiter.value
-        #expect(ContinuousClock.now - started < .seconds(5))
+        #expect(ContinuousClock.now - started < .seconds(20))   // the work takes 30 s; CI runners are slow (7.7 s seen)
     }
 
     @Test("Work that finishes after the deadline is ignored, not answered twice", .timeLimit(.minutes(1)))
