@@ -182,3 +182,28 @@ class CoverageGateTests(unittest.TestCase):
             corridor(0, 35.793, name="Split Trail", n=2, lon=-78.640, fid="w971")]
         share, _ = rr.coverage(build(pieces), self.towns(self.RALEIGH_TOWN))
         self.assertEqual(share, 1.0)
+
+
+class ImprovementTests(unittest.TestCase):
+    """2026-10-09: each update must leave a region at least as useful as before."""
+
+    def test_coverage_may_not_fall_without_a_reason(self):
+        published = {"coverage": 0.73}
+        self.assertEqual(rr.regression(0.72, published, ""), [], "within the 2-point tolerance")
+        self.assertEqual(rr.regression(0.80, published, ""), [])
+        failed = rr.regression(0.65, published, "")
+        self.assertTrue(failed and "73%" in failed[0] and "65%" in failed[0], failed)
+        self.assertEqual(rr.regression(0.65, published, "OSM deleted a county's paths"), [])
+        self.assertEqual(rr.regression(0.10, None, ""), [], "a first release has nothing to hold it to")
+
+    def test_review_lists_repeated_names_and_huge_trails(self):
+        parks = [corridor(i, 35.70) for i in range(118)]
+        # "Logging Road" in 6 places ~1 km apart: six trail keys, one name.
+        parks += [corridor(0, 35.80 + k * 0.01, name="Logging Road Trail", lon=-78.60, fid=f"w98{k}")
+                  for k in range(6)]
+        # One name painted on a long line of ways: ~176 km under one trail key.
+        parks.append(feature("w990", [[-78.0 + k * 0.05, 35.0] for k in range(40)], name="Base Perimeter", highway="track",
+                             foot="yes"))
+        notes = rr.review(build(parks))
+        self.assertIn(["Logging Road Trail", 6], notes["repeated"])
+        self.assertEqual([n for n, _ in notes["huge"]], ["Base Perimeter"])

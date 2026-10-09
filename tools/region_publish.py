@@ -32,6 +32,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -166,12 +167,37 @@ def publish(region: str, work: str, production: bool, tested: bool, run=None, lo
             run(["delete-record", *_base(env, team=False), "--record-name", r["recordName"], "--yes"])
             log(f"Removed the older {region} v{r.get('packVersion')} record ({r['recordName']}).")
 
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     result = {"region": region, "packVersion": int(m["packVersion"]), "environment": env,
               "recordName": mine[0]["recordName"], "pack": m["pack"], "sha256": m["sha256"],
-              "publishedAt": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}
+              "publishedAt": now}
     if production:
-        os.makedirs(os.path.join(work, "published"), exist_ok=True)
-        with open(os.path.join(work, "published", f"{region}.json"), "w") as f:
+        published = os.path.join(work, "published")
+        os.makedirs(published, exist_ok=True)
+        record_path = os.path.join(published, f"{region}.json")
+        previous = {}
+        if os.path.exists(record_path):
+            with open(record_path) as f:
+                previous = json.load(f)
+        # Keep a copy of exactly what users have. The build folder's pack is
+        # overwritten by the next build, so a record pointing at it made the
+        # next release compare the new pack with itself (found 2026-10-09).
+        archive = os.path.join(published, f"{region}-v{m['packVersion']}.wktpack")
+        shutil.copyfile(m["pack"], archive)
+        if sha256(archive) != m["sha256"]:
+            raise PublishError(f"the archived copy of {region} v{m['packVersion']} does not match its manifest")
+        old = previous.get("pack")
+        if old and old != archive and os.path.dirname(old) == published and os.path.exists(old):
+            os.remove(old)  # one archived version per region: the live one
+        result["pack"] = archive
+        result["builderVersion"] = m.get("builderVersion")
+        result["coverage"] = m.get("coverage")
+        result["acceptedRegression"] = m.get("acceptedRegression")
+        result["history"] = previous.get("history", []) + [{
+            "packVersion": int(m["packVersion"]), "publishedAt": now,
+            "builderVersion": m.get("builderVersion"), "trailCount": m.get("trailCount"),
+            "coverage": m.get("coverage"), "acceptedRegression": m.get("acceptedRegression")}]
+        with open(record_path, "w") as f:
             json.dump(result, f, indent=2)
     log(f"Published {region} v{m['packVersion']} to {env}.")
     return result

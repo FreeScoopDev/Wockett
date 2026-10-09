@@ -139,6 +139,7 @@ osmium export "$T-towns.osm.pbf" -f geojsonseq --geometry-types=point -o "$T-tow
 
 python3 tools/region_release.py "$REGION" \
   --towns "$T-towns.geojsonseq" \
+  ${ACCEPT_REGRESSION:+--accept-regression "$ACCEPT_REGRESSION"} \
   --pack "$WORK/packs/$REGION-full.wktpack" --work "$WORK" \
   --extract-md5 "$MD5" --extract-bbox "$BBOX" --live-version "$LIVE_VERSION"
 
