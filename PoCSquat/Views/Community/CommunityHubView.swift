@@ -429,7 +429,7 @@ struct CommunityHubView: View {
 
     @ViewBuilder
     private var routesSection: some View {
-        let top = CommunityHubSummary.topRoutes(communityRoutesModel.routes, near: routeManager.lastLocation)
+        let top = CommunityHubSummary.topRoutes(communityRoutesModel.visibleRoutes, near: routeManager.lastLocation)
         if !top.isEmpty {
             WktSection(title: "Top community routes", actionTitle: "See all", action: { pushRoutes = true }, content: {
                 ScrollView(.horizontal, showsIndicators: false) {

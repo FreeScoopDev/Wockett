@@ -174,10 +174,14 @@ enum OptimisticVote {
         }
     }
 
+    /// How a deadline waits. Tests pass one they fire themselves, so no
+    /// test depends on how fast the machine is.
+    typealias Sleep = @MainActor (Duration) async throws -> Void
+
     /// Runs `work`, giving up after `deadline`, or as soon as the caller is
     /// cancelled, without waiting for `work` to stop: nothing says a CloudKit
     /// query stops early when cancelled. The loser is cancelled.
-    static func withDeadline<T>(_ deadline: Duration,
+    static func withDeadline<T>(_ deadline: Duration, sleep: @escaping Sleep = { try await Task.sleep(for: $0) },
                                 _ work: @escaping @MainActor () async throws -> T) async throws -> T? {
         try Task.checkCancellation()   // already cancelled: start nothing
         let race = DeadlineRace<T>()
@@ -188,7 +192,7 @@ enum OptimisticVote {
                     do { race.finish(.success(try await work())) } catch { race.finish(.failure(error)) }
                 }
                 race.sleeper = Task { @MainActor in
-                    guard (try? await Task.sleep(for: deadline)) != nil else { return }
+                    guard (try? await sleep(deadline)) != nil else { return }
                     race.finish(.success(nil))
                 }
             }
@@ -348,11 +352,14 @@ final class CommunityVoteService {
     private let log = Logger(subsystem: "com.wockett.app", category: "CommunityVotes")
     /// How long counts may hold up a feed before it shows with 0s.
     private let tallyTimeout: Duration
+    private let sleep: OptimisticVote.Sleep
 
     init(store: CommunityVoteStore, tallyTimeout: Duration = .seconds(6),
+         sleep: @escaping OptimisticVote.Sleep = { try await Task.sleep(for: $0) },
          notifications: NotificationCenter = .default) {
         self.store = store
         self.tallyTimeout = tallyTimeout
+        self.sleep = sleep
         // iOS doesn't restart the app when the iCloud account changes; a
         // remembered user would file the new person's votes under the old one.
         notifications.addObserver(forName: .CKAccountChanged, object: nil, queue: .main) { [weak self] _ in
@@ -384,7 +391,7 @@ final class CommunityVoteService {
     func tally(for targets: [String]) async -> VoteTally {
         guard !targets.isEmpty else { return VoteTally() }
         do {
-            let result = try await OptimisticVote.withDeadline(tallyTimeout) { [store] in
+            let result = try await OptimisticVote.withDeadline(tallyTimeout, sleep: sleep) { [store] in
                 let votes = try await store.votes(for: targets)
                 return CommunityVotes.tally(votes, me: try? await self.me())
             }
