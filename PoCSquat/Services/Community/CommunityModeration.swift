@@ -53,7 +53,12 @@ final class CommunityModerationStore {
     private let reportedKey = "communityReportedIds"
     private let blockedKey  = "communityBlockedAuthors"
 
-    init() {}
+    private let defaults: UserDefaults
+
+    /// `defaults` is for tests, so they don't write into the app's own settings.
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+    }
 
     // MARK: - Report
 
@@ -84,13 +89,13 @@ final class CommunityModerationStore {
     // MARK: - Private
 
     private func stored(forKey key: String) -> [String] {
-        UserDefaults.standard.stringArray(forKey: key) ?? []
+        defaults.stringArray(forKey: key) ?? []
     }
 
     private func append(_ value: String, toKey key: String) {
         var list = stored(forKey: key)
         guard !list.contains(value) else { return }
         list.append(value)
-        UserDefaults.standard.set(list, forKey: key)
+        defaults.set(list, forKey: key)
     }
 }

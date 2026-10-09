@@ -1,3 +1,4 @@
+import CloudKit
 import Foundation
 import Observation
 
@@ -24,6 +25,25 @@ final class CommunityHubModel {
     private(set) var feedFailed = false
 
     private(set) var receivedWocketts: Int?
+
+    /// Where reports and blocks are remembered (a seam for tests).
+    var moderation = CommunityModerationStore.shared
+
+    /// The cached lists, minus anything reported or blocked since they were
+    /// fetched: the feed and challenge screens hide items only in their own
+    /// lists, and the hub would go on showing them until a refresh.
+    var visiblePosts: [AchievementPost] {
+        posts.filter { !moderation.shouldHide(id: $0.id, author: $0.authorName) }
+    }
+    var visibleChallenges: [WalkChallenge] {
+        challenges.filter { !moderation.shouldHide(id: $0.id, author: $0.authorName) }
+    }
+
+    /// Drops a reported item from the hub's own lists.
+    func hide(_ id: CKRecord.ID) {
+        posts.removeAll { $0.id == id }
+        challenges.removeAll { $0.id == id }
+    }
 
     private(set) var isLoading = false
     private(set) var didLoad = false

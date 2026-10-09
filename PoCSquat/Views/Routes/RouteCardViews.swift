@@ -181,15 +181,7 @@ struct CommunityRouteCard: View {
         .wktCard()
         .contextMenu {
             if let onHide {
-                Button(role: .destructive) {
-                    report = CommunityReport(route: route)
-                } label: {
-                    Label {
-                        Text("Report Route")
-                    } icon: {
-                        Image(wkt: .flagReport).wktIcon(.inline, tint: .red)
-                    }
-                }
+                CommunityReportButton("Report Route") { report = CommunityReport(route: route) }
                 Button(role: .destructive) {
                     CommunityModerationStore.shared.block(author: route.authorName)
                     onHide()
@@ -202,7 +194,7 @@ struct CommunityRouteCard: View {
                 }
             }
         }
-        .communityReporting($report, onHide: onHide)
+        .communityReporting($report, onHide: { _ in onHide?() })
     }
 }
 

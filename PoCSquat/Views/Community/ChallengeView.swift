@@ -232,15 +232,7 @@ private struct ChallengeCard: View {
         .accessibilityAddTraits(.isButton)
         .contextMenu {
             if let onHide {
-                Button(role: .destructive) {
-                    report = CommunityReport(challenge: challenge)
-                } label: {
-                    Label {
-                        Text("Report Challenge")
-                    } icon: {
-                        Image(wkt: .flagReport).wktIcon(.inline, tint: .red)
-                    }
-                }
+                CommunityReportButton("Report Challenge") { report = CommunityReport(challenge: challenge) }
                 Button(role: .destructive) {
                     CommunityModerationStore.shared.block(author: challenge.authorName)
                     onHide()
@@ -253,7 +245,7 @@ private struct ChallengeCard: View {
                 }
             }
         }
-        .communityReporting($report, onHide: onHide)
+        .communityReporting($report, onHide: { _ in onHide?() })
     }
 }
 

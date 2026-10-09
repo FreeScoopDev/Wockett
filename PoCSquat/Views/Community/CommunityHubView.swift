@@ -23,6 +23,10 @@ struct CommunityHubView: View {
     var streakStore: StreakStore = .shared
 
     @State private var model = CommunityHubModel()
+    /// The report in progress from any hub row. Hosted here, not on the row:
+    /// a row can leave the screen mid-alert (a refresh, a location fix that
+    /// reorders the top routes) and would take the alert with it.
+    @State private var hubReport: CommunityReport?
     @State private var trailFinder = TrailFinder()
 
     @State private var pushBadges       = false
@@ -63,6 +67,10 @@ struct CommunityHubView: View {
         .accessibilityIdentifier("community.root")
         .navigationTitle("Community")
         .navigationBarTitleDisplayMode(.large)
+        .communityReporting($hubReport) { report in
+            model.hide(report.recordID)
+            communityRoutesModel.routes.removeAll { $0.id == report.recordID }
+        }
         .navigationDestination(isPresented: $pushBadges) { BadgesContentView() }
         .navigationDestination(isPresented: $pushFeed) { AchievementFeedContentView() }
         .navigationDestination(isPresented: $pushChallenges) { ChallengesContentView() }
@@ -156,8 +164,8 @@ struct CommunityHubView: View {
         } else {
             WktSection(title: "Challenges", actionTitle: "All", action: { pushChallenges = true }, content: {
               VStack(alignment: .leading, spacing: 12) {
-                if !model.challenges.isEmpty {
-                    ForEach(model.challenges.prefix(2)) { challenge in
+                if !model.visibleChallenges.isEmpty {
+                    ForEach(model.visibleChallenges.prefix(2)) { challenge in
                         HStack(spacing: 12) {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(challenge.title)
@@ -169,6 +177,10 @@ struct CommunityHubView: View {
                             }
                             Spacer()
                             WktPillButton(title: "Join") { pushChallenges = true }
+                        }
+                        .contentShape(Rectangle())
+                        .contextMenu {
+                            CommunityReportButton("Report Challenge") { hubReport = CommunityReport(challenge: challenge) }
                         }
                     }
                 } else if model.didLoad {
@@ -359,12 +371,12 @@ struct CommunityHubView: View {
         if !model.posts.isEmpty || (model.didLoad && !model.feedFailed) {
             WktSection(title: "From the community", actionTitle: "See all", action: { pushFeed = true }, content: {
                 VStack(alignment: .leading, spacing: 4) {
-                    if model.posts.isEmpty {
+                    if model.visiblePosts.isEmpty {
                         Text("No milestones shared yet. Earn a badge and share it.")
                             .font(.wktBodyText)
                             .foregroundColor(.earthMuted)
                     }
-                    ForEach(Array(model.posts.enumerated()), id: \.element.id) { index, post in
+                    ForEach(Array(model.visiblePosts.enumerated()), id: \.element.id) { index, post in
                         if index > 0 { WktDivider() }
                         feedRow(post)
                     }
@@ -407,8 +419,7 @@ struct CommunityHubView: View {
             .accessibilityLabel(liked ? "Liked, \(post.likes) likes" : "Like, \(post.likes) likes")
         }
         .padding(.vertical, 8)
-        .communityReportMenu("Report Post", report: { CommunityReport(post: post) },
-                             onHide: { model.posts.removeAll { $0.id == post.id } })
+        .contextMenu { CommunityReportButton("Report Post") { hubReport = CommunityReport(post: post) } }
     }
 
     // MARK: - Community routes
@@ -480,8 +491,7 @@ struct CommunityHubView: View {
         .buttonStyle(BounceButtonStyle(scale: 0.97))
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(route.name), number \(rank), \(route.wocketts) wocketts, \(detail)")
-        .communityReportMenu("Report Route", report: { CommunityReport(route: route) },
-                             onHide: { communityRoutesModel.routes.removeAll { $0.id == route.id } })
+        .contextMenu { CommunityReportButton("Report Route") { hubReport = CommunityReport(route: route) } }
     }
 
     // MARK: - Trails

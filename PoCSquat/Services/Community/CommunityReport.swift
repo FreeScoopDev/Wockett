@@ -88,8 +88,6 @@ struct CommunityReport: Equatable {
     var clipboardText: String { "To: \(SupportContact.email)\nSubject: \(subject)\n\n\(body)" }
 }
 
-// MARK: - Report action
-
 // MARK: - Handoff
 
 /// The order a report goes in, kept out of the view so it can be tested: the
@@ -108,60 +106,62 @@ enum CommunityReportHandoff {
         }
     }
 
+    /// The fallback alert closed (Copy Report or OK): hide what it was about,
+    /// once. A second call, or one with no alert up, does nothing.
+    static func alertClosed(_ unsent: inout CommunityReport?, hide: (CommunityReport) -> Void) {
+        guard let report = unsent else { return }
+        unsent = nil
+        hide(report)
+    }
+
     /// Hides `report`'s item: remembered, so it stays hidden after a relaunch,
     /// then removed from the screen.
-    static func hide(_ report: CommunityReport, store: CommunityModerationStore = .shared, onHide: () -> Void) {
+    static func hide(_ report: CommunityReport, store: CommunityModerationStore = .shared,
+                     onHide: (CommunityReport) -> Void) {
         store.report(report.recordID)
-        onHide()
+        onHide(report)
     }
 }
 
-extension View {
-    /// Sends `report` when it is set: remembers it locally (the reporter no
-    /// longer sees the item, across launches), opens the email, and hides the
-    /// item once a mail app took it. With no mail app it shows the address and
-    /// a Copy Report button, and hides the item when that alert closes. The
-    /// card stays on screen until then, because a card that removes itself
-    /// can no longer show the alert.
-    func communityReporting(_ report: Binding<CommunityReport?>, onHide: (() -> Void)?) -> some View {
-        modifier(CommunityReportModifier(request: report, onHide: onHide ?? {}))
-    }
-}
+// MARK: - Views
 
-extension View {
-    /// A Report menu on its own, for rows that have no menu of their own
-    /// (the Community hub's posts and top routes).
-    func communityReportMenu(_ title: String, report: @escaping () -> CommunityReport, onHide: @escaping () -> Void) -> some View {
-        modifier(CommunityReportMenuModifier(title: title, makeReport: report, onHide: onHide))
-    }
-}
-
-private struct CommunityReportMenuModifier: ViewModifier {
+/// The Report item in a community context menu: one look everywhere.
+struct CommunityReportButton: View {
     let title: String
-    let makeReport: () -> CommunityReport
-    let onHide: () -> Void
-    @State private var request: CommunityReport?
+    let action: () -> Void
 
-    func body(content: Content) -> some View {
-        content
-            .contextMenu {
-                Button(role: .destructive) {
-                    request = makeReport()
-                } label: {
-                    Label {
-                        Text(title)
-                    } icon: {
-                        Image(wkt: .flagReport).wktIcon(.inline, tint: .red)
-                    }
-                }
+    init(_ title: String, action: @escaping () -> Void) {
+        self.title = title
+        self.action = action
+    }
+
+    var body: some View {
+        Button(role: .destructive, action: action) {
+            Label {
+                Text(title)
+            } icon: {
+                Image(wkt: .flagReport).wktIcon(.inline, tint: .red)
             }
-            .communityReporting($request, onHide: onHide)
+        }
+    }
+}
+
+extension View {
+    /// Sends `report` when it is set: opens the email, then remembers and
+    /// hides the item (`onHide`) only once a mail app took it, or once the
+    /// fallback alert (the address and Copy Report) closed. Attach it to a
+    /// view that outlives the item's row, or to a card that stays on screen
+    /// until `onHide` runs: a view that goes away mid-alert takes the alert,
+    /// and the hide, with it.
+    func communityReporting(_ report: Binding<CommunityReport?>,
+                            onHide: @escaping (CommunityReport) -> Void) -> some View {
+        modifier(CommunityReportModifier(request: report, onHide: onHide))
     }
 }
 
 private struct CommunityReportModifier: ViewModifier {
     @Binding var request: CommunityReport?
-    let onHide: () -> Void
+    let onHide: (CommunityReport) -> Void
     @Environment(\.openURL) private var openURL
     @State private var unsent: CommunityReport?
 
@@ -178,9 +178,10 @@ private struct CommunityReportModifier: ViewModifier {
             .alert("Couldn't open Mail",
                    isPresented: Binding(get: { unsent != nil },
                                         set: { shown in
-                                            guard !shown, let report = unsent else { return }
-                                            unsent = nil
-                                            CommunityReportHandoff.hide(report, onHide: onHide)
+                                            guard !shown else { return }
+                                            CommunityReportHandoff.alertClosed(&unsent) {
+                                                CommunityReportHandoff.hide($0, onHide: onHide)
+                                            }
                                         }),
                    presenting: unsent) { report in
                 Button("Copy Report") { UIPasteboard.general.string = report.clipboardText }

@@ -31,7 +31,7 @@ struct CommunityReportTests {
             "name": "Lake loop" as CKRecordValue, "waypointsJSON": "[]" as CKRecordValue,
             "distanceMeters": 2400.0 as CKRecordValue, "authorName": "MistyOak" as CKRecordValue])))
         let mail = try decoded(CommunityReport(route: route).mailURL)
-        #expect(mail.to == SupportContact.email)
+        #expect(mail.to == "support@wockett.app")
         #expect(mail.subject == "Wockett report: Route")
         let body = try #require(mail.body)
         #expect(body.contains("Record: route-123"))
@@ -95,43 +95,114 @@ struct CommunityReportTests {
 
     // MARK: Hand-off order
 
+    /// A moderation store on a throwaway settings suite, so tests never write
+    /// into the app's own reported list.
+    private func isolatedStore() -> CommunityModerationStore {
+        let name = "CommunityReportTests-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: name) ?? .standard
+        defaults.removePersistentDomain(forName: name)
+        return CommunityModerationStore(defaults: defaults)
+    }
+
     private func freshReport() -> CommunityReport {
         CommunityReport(kind: .route, recordID: CKRecord.ID(recordName: "handoff-\(UUID().uuidString)"), author: "A", content: "B")
     }
 
     @Test("Hidden only once a mail app took the email, not before")
     func hiddenAfterHandoff() {
+        let store = isolatedStore()
         let report = freshReport()
         var pending: ((Bool) -> Void)?
-        var hidden = 0, fallbacks = 0
+        var hidden: [CommunityReport] = []
+        var fallbacks = 0
         CommunityReportHandoff.begin(report,
                                      open: { _, done in pending = done },
-                                     hide: { CommunityReportHandoff.hide($0, onHide: { hidden += 1 }) },
+                                     hide: { CommunityReportHandoff.hide($0, store: store, onHide: { hidden.append($0) }) },
                                      showFallback: { _ in fallbacks += 1 })
-        #expect(!CommunityModerationStore.shared.isReported(report.recordID), "not remembered while Mail is opening")
-        #expect(hidden == 0)
+        #expect(!store.isReported(report.recordID), "not remembered while Mail is opening")
+        #expect(hidden.isEmpty)
         pending?(true)
-        #expect(CommunityModerationStore.shared.isReported(report.recordID))
-        #expect(hidden == 1)
+        #expect(store.isReported(report.recordID))
+        #expect(hidden == [report])
         #expect(fallbacks == 0)
     }
 
     @Test("With no mail app: the fallback shows and nothing is hidden yet")
     func fallbackWhenNoMail() {
+        let store = isolatedStore()
         let report = freshReport()
         var hidden = 0
         var shown: CommunityReport?
         CommunityReportHandoff.begin(report,
                                      open: { _, done in done(false) },
-                                     hide: { CommunityReportHandoff.hide($0, onHide: { hidden += 1 }) },
+                                     hide: { CommunityReportHandoff.hide($0, store: store, onHide: { _ in hidden += 1 }) },
                                      showFallback: { shown = $0 })
         #expect(shown == report)
         #expect(hidden == 0)
-        #expect(!CommunityModerationStore.shared.isReported(report.recordID), "hidden only when the alert closes")
-        // Closing the alert hides it.
-        CommunityReportHandoff.hide(report, onHide: { hidden += 1 })
-        #expect(CommunityModerationStore.shared.isReported(report.recordID))
-        #expect(hidden == 1)
+        #expect(!store.isReported(report.recordID), "hidden only when the alert closes")
+    }
+
+    @Test("Closing the fallback alert hides its item once; a second close does nothing")
+    func alertClosedHidesOnce() {
+        let store = isolatedStore()
+        let report = freshReport()
+        var unsent: CommunityReport? = report
+        var hidden: [CommunityReport] = []
+        let hide: (CommunityReport) -> Void = { CommunityReportHandoff.hide($0, store: store, onHide: { hidden.append($0) }) }
+        CommunityReportHandoff.alertClosed(&unsent, hide: hide)
+        #expect(unsent == nil)
+        #expect(hidden == [report])
+        #expect(store.isReported(report.recordID))
+        CommunityReportHandoff.alertClosed(&unsent, hide: hide)
+        #expect(hidden == [report], "closing again hides nothing more")
+    }
+
+    @Test("Closing with no alert up hides nothing")
+    func alertClosedWithNothing() {
+        var unsent: CommunityReport?
+        var hidden = 0
+        CommunityReportHandoff.alertClosed(&unsent) { _ in hidden += 1 }
+        #expect(hidden == 0)
+    }
+
+    // MARK: Exact text
+
+    @Test("The email body, line for line")
+    func exactBody() {
+        let report = CommunityReport(kind: .route, recordID: CKRecord.ID(recordName: "route-123"),
+                                     author: "MistyOak", content: "Lake loop")
+        #expect(report.body == """
+            I'm reporting this route in Wockett's community.
+
+            Kind: Route
+            Record: route-123
+            Author: MistyOak
+            Content: Lake loop
+
+            Why I'm reporting it (optional):
+
+            """)
+    }
+
+    @Test("Copy Report holds exactly the address, the subject and the body")
+    func exactClipboard() {
+        let report = CommunityReport(kind: .challenge, recordID: CKRecord.ID(recordName: "c"), author: "A", content: "B")
+        #expect(report.clipboardText == "To: support@wockett.app\nSubject: Wockett report: Challenge\n\n\(report.body)")
+    }
+
+    // MARK: Hub
+
+    @Test("The hub stops showing a post reported elsewhere, without a reload")
+    func hubFiltersReported() throws {
+        let rec = record("WocketAchievement", "post-hub-\(UUID().uuidString)", [
+            "badgeName": "Trailblazer" as CKRecordValue, "badgeEmoji": "🥾" as CKRecordValue])
+        let post = try #require(AchievementPost(record: rec))
+        let model = CommunityHubModel()
+        model.moderation = isolatedStore()
+        model.posts = [post]
+        #expect(model.visiblePosts.map(\.id) == [post.id])
+        model.moderation.report(post.id)
+        #expect(model.visiblePosts.isEmpty)
     }
 
     @Test("The report says nothing about the reporter")
@@ -148,12 +219,5 @@ struct CommunityReportTests {
         #expect(mail.to == "support@wockett.app")
         #expect(mail.subject == "Wockett Feedback")
         #expect(mail.body == nil)
-    }
-
-    @Test("Copy Report holds the address, the subject and the body")
-    func clipboardText() {
-        let report = CommunityReport(kind: .challenge, recordID: CKRecord.ID(recordName: "c"), author: "A", content: "B")
-        #expect(report.clipboardText.hasPrefix("To: support@wockett.app\nSubject: Wockett report: Challenge\n\n"))
-        #expect(report.clipboardText.hasSuffix(report.body))
     }
 }

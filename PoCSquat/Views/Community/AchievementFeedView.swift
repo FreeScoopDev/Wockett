@@ -179,15 +179,7 @@ private struct AchievementPostCard: View {
         .onAppear { hasLiked = AchievementFeedService.shared.hasLiked(id: post.id) }
         .contextMenu {
             if let onHide {
-                Button(role: .destructive) {
-                    report = CommunityReport(post: post)
-                } label: {
-                    Label {
-                        Text("Report Post")
-                    } icon: {
-                        Image(wkt: .flagReport).wktIcon(.inline, tint: .red)
-                    }
-                }
+                CommunityReportButton("Report Post") { report = CommunityReport(post: post) }
                 Button(role: .destructive) {
                     CommunityModerationStore.shared.block(author: post.authorName)
                     onHide()
@@ -200,7 +192,7 @@ private struct AchievementPostCard: View {
                 }
             }
         }
-        .communityReporting($report, onHide: onHide)
+        .communityReporting($report, onHide: { _ in onHide?() })
     }
 
     private func timeAgo(_ date: Date) -> String {
