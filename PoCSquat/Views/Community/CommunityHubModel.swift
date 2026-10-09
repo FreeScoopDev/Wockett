@@ -33,6 +33,8 @@ final class CommunityHubModel: PostLiking {
     var saveLike: (CKRecord.ID) async throws -> Void = { try await AchievementFeedService.shared.like(id: $0) }
     /// Where liked posts are remembered (a seam for tests).
     var likeMarks = VoteMarks.likes
+    /// Likes still saving (PostLiking).
+    var pendingVotes: Set<String> = []
 
     /// Where reports and blocks are remembered (a seam for tests).
     var moderation = CommunityModerationStore.shared
@@ -69,6 +71,7 @@ final class CommunityHubModel: PostLiking {
         guard !isLoading, force || !didLoad else { return }
         isLoading = true
         defer { isLoading = false; didLoad = true }
+        Task { await UnsentVoteCatchUp.runIfNeeded() }
 
         async let challengeList = try? ChallengeService.shared.fetchActiveChallenges()
         async let feed = try? AchievementFeedService.shared.fetchPosts(limit: 3)
@@ -81,7 +84,7 @@ final class CommunityHubModel: PostLiking {
             challengesFailed = true
         }
         if let feed = await feed {
-            posts = feed
+            show(feed)
             feedFailed = false
         } else {
             feedFailed = true

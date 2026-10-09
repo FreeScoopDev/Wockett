@@ -49,6 +49,9 @@ final class AchievementFeedService {
 
     // MARK: - Like tracking (local device)
 
+    /// Every post this device marked as liked.
+    var likedIDs: [String] { UserDefaults.standard.stringArray(forKey: likedKey) ?? [] }
+
     func hasLiked(id: CKRecord.ID) -> Bool {
         (UserDefaults.standard.stringArray(forKey: likedKey) ?? []).contains(id.recordName)
     }

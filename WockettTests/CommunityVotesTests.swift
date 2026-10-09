@@ -169,7 +169,7 @@ struct CommunityVotesTests {
         #expect(store.saved.map(\.recordName) == ["vote.r._me", "vote.r._someoneElse"])
     }
 
-    @Test("Counts that take too long give up, even when the query ignores cancellation")
+    @Test("Counts that take too long give up, even when the query ignores cancellation", .timeLimit(.minutes(1)))
     func tallyTimesOut() async {
         /// Like a CloudKit call that doesn't stop when cancelled: answers after 30 s, whatever happens.
         final class StubbornStore: CommunityVoteStore {
@@ -322,13 +322,98 @@ struct CommunityVotesTests {
         let save = model.wockett(r.id)
         #expect(model.routes[0].wocketts == 1)
         var fresh = r
-        fresh.wocketts = 3                                 // a refresh landed: the server's count
-        model.routes = [fresh]
+        fresh.wocketts = 3                                 // a refresh landed: the server's count, without mine
+        model.show([fresh])
+        #expect(model.routes[0].wocketts == 4, "mine is added back while it saves")
         for _ in 0..<10_000 where release == nil { await Task.yield() }
         guard let release else { Issue.record("the save was never started"); return }
         release.resume()
         await save?.value
-        #expect(model.routes[0].wocketts == 3, "nobody else's Wockett taken off")
+        #expect(model.routes[0].wocketts == 3, "exactly mine taken back, nobody else's")
         #expect(model.wocketError != nil)
+    }
+
+    @Test("A Wockett that saves after a refresh keeps showing")
+    func savedVoteAfterRefresh() async throws {
+        let r = try route("route-refresh-ok")
+        let marks = MemoryMarks()
+        let model = CommunityRoutesModel()
+        model.wockettMarks = marks.marks
+        model.routes = [r]
+        var release: CheckedContinuation<Void, Never>?
+        model.saveWockett = { _ in await withCheckedContinuation { release = $0 } }
+        let save = model.wockett(r.id)
+        var fresh = r
+        fresh.wocketts = 3
+        model.show([fresh])
+        for _ in 0..<10_000 where release == nil { await Task.yield() }
+        guard let release else { Issue.record("the save was never started"); return }
+        release.resume()
+        await save?.value
+        #expect(model.routes[0].wocketts == 4)
+        #expect(model.pendingVotes.isEmpty)
+        model.show([fresh])                                 // the next refresh no longer adds it
+        #expect(model.routes[0].wocketts == 3)
+    }
+
+    // MARK: Catching up old marks
+
+    private func throwawayDefaults() -> UserDefaults {
+        let name = "CommunityVotesTests-\(UUID().uuidString)"
+        let d = UserDefaults(suiteName: name) ?? .standard
+        d.removePersistentDomain(forName: name)
+        return d
+    }
+
+    @Test("Old marks get a real vote each, once")
+    func catchUpSendsOnce() async {
+        let store = FakeStore()
+        let defaults = throwawayDefaults()
+        let service = CommunityVoteService(store: store)
+        await UnsentVoteCatchUp.runIfNeeded(service: service, likes: ["post-x"], wocketts: ["route-y"], defaults: defaults)
+        #expect(store.saved.map(\.recordName) == ["vote.post-x._me", "vote.route-y._me"])
+        #expect(store.saved.map(\.type) == [.post, .route])
+        await UnsentVoteCatchUp.runIfNeeded(service: service, likes: ["post-x"], wocketts: ["route-y"], defaults: defaults)
+        #expect(store.saved.count == 2, "done once, not again")
+    }
+
+    @Test("A catch-up that fails tries again next time")
+    func catchUpRetries() async {
+        let store = FakeStore()
+        store.userError = CKError(.notAuthenticated)
+        let defaults = throwawayDefaults()
+        await UnsentVoteCatchUp.runIfNeeded(service: CommunityVoteService(store: store), likes: ["post-x"], wocketts: [], defaults: defaults)
+        #expect(store.saved.isEmpty)
+        store.userError = nil
+        await UnsentVoteCatchUp.runIfNeeded(service: CommunityVoteService(store: store), likes: ["post-x"], wocketts: [], defaults: defaults)
+        #expect(store.saved.map(\.recordName) == ["vote.post-x._me"])
+    }
+
+    // MARK: Deadline
+
+    @Test("A cancelled caller stops waiting at once", .timeLimit(.minutes(1)))
+    func deadlineHonoursCancellation() async {
+        let started = ContinuousClock.now
+        let waiter = Task { @MainActor in
+            try? await OptimisticVote.withDeadline(.seconds(30)) { () async throws -> Int in
+                try await Task.sleep(for: .seconds(30)); return 1
+            }
+        }
+        try? await Task.sleep(for: .milliseconds(100))
+        waiter.cancel()
+        _ = await waiter.value
+        #expect(ContinuousClock.now - started < .seconds(5))
+    }
+
+    @Test("Work that finishes after the deadline is ignored, not answered twice", .timeLimit(.minutes(1)))
+    func lateWorkIgnored() async {
+        var gate: CheckedContinuation<Void, Never>?
+        let result = try? await OptimisticVote.withDeadline(.milliseconds(50)) { () async -> Int in
+            await withCheckedContinuation { gate = $0 }
+            return 7
+        }
+        #expect(result == .some(nil), "the deadline answered")
+        gate?.resume()                                     // the work finishes late; a second resume would trap
+        for _ in 0..<1_000 { await Task.yield() }
     }
 }

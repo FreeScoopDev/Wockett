@@ -123,64 +123,100 @@ struct VoteMarks {
     }
 }
 
-/// A like or Wockett shows at once and is saved behind it. If saving fails it
-/// is taken back, but only from the item with this id, and only if the item
-/// still shows it: a refresh mid-save replaces the count with the server's,
-/// which never included the vote, and taking one off that would remove
-/// someone else's (critic, 2026-10-09). One function for every screen.
-/// Whether a `withDeadline` race has been decided.
-@MainActor
-private final class DeadlineFlag { var done = false }
-
+/// A like or Wockett shows at once and is saved behind it. The owner keeps
+/// the ids still saving (`pending`): a refresh mid-save brings the server's
+/// count, which can't include the vote yet, so `withPending` adds it back;
+/// and a failed save takes back exactly the one it added, from the item with
+/// this id wherever it is now (critic, 2026-10-09). One function for every screen.
 @MainActor
 enum OptimisticVote {
     @discardableResult
     static func vote<Owner: AnyObject, Item>(
         _ id: CKRecord.ID, on owner: Owner,
-        list: ReferenceWritableKeyPath<Owner, [Item]>, idPath: KeyPath<Item, CKRecord.ID>,
-        count: WritableKeyPath<Item, Int>, marks: VoteMarks,
+        list: ReferenceWritableKeyPath<Owner, [Item]>, pending: ReferenceWritableKeyPath<Owner, Set<String>>,
+        idPath: KeyPath<Item, CKRecord.ID>, count: WritableKeyPath<Item, Int>, marks: VoteMarks,
         save: @escaping (CKRecord.ID) async throws -> Void,
         failed: @escaping (Error) -> Void
     ) -> Task<Void, Never>? {
-        guard !marks.has(id),
+        guard !marks.has(id), !owner[keyPath: pending].contains(id.recordName),
               let i = owner[keyPath: list].firstIndex(where: { $0[keyPath: idPath] == id }) else { return nil }
         owner[keyPath: list][i][keyPath: count] += 1
-        let shown = owner[keyPath: list][i][keyPath: count]
+        owner[keyPath: pending].insert(id.recordName)
         marks.mark(id)
         return Task { [weak owner] in
             do {
                 try await save(id)
+                owner?[keyPath: pending].remove(id.recordName)
             } catch {
                 marks.unmark(id)
-                if let owner,
-                   let j = owner[keyPath: list].firstIndex(where: { $0[keyPath: idPath] == id }),
-                   owner[keyPath: list][j][keyPath: count] == shown {
-                    owner[keyPath: list][j][keyPath: count] = max(0, shown - 1)
+                if let owner, owner[keyPath: pending].remove(id.recordName) != nil,
+                   let j = owner[keyPath: list].firstIndex(where: { $0[keyPath: idPath] == id }) {
+                    owner[keyPath: list][j][keyPath: count] = max(0, owner[keyPath: list][j][keyPath: count] - 1)
                 }
                 failed(error)
             }
         }
     }
 
-    /// Runs `work`, giving up after `deadline` without waiting for it to
-    /// stop: a task group would wait for a cancelled CloudKit query to return,
-    /// and nothing says CloudKit stops early when cancelled.
+    /// A freshly fetched list with the votes still saving added back in.
+    static func withPending<Item>(_ items: [Item], pending: Set<String>,
+                                  idPath: KeyPath<Item, CKRecord.ID>, count: WritableKeyPath<Item, Int>) -> [Item] {
+        guard !pending.isEmpty else { return items }
+        return items.map { item in
+            var item = item
+            if pending.contains(item[keyPath: idPath].recordName) { item[keyPath: count] += 1 }
+            return item
+        }
+    }
+
+    /// Runs `work`, giving up after `deadline`, or as soon as the caller is
+    /// cancelled, without waiting for `work` to stop: nothing says a CloudKit
+    /// query stops early when cancelled. The loser is cancelled.
     static func withDeadline<T>(_ deadline: Duration,
                                 _ work: @escaping @MainActor () async throws -> T) async throws -> T? {
-        let once = DeadlineFlag()
-        return try await withCheckedThrowingContinuation { (cont: CheckedContinuation<T?, Error>) in
-            let worker = Task { @MainActor in
-                do {
-                    let value = try await work()
-                    if !once.done { once.done = true; cont.resume(returning: value) }
-                } catch {
-                    if !once.done { once.done = true; cont.resume(throwing: error) }
+        let race = DeadlineRace<T>()
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation(isolation: MainActor.shared) { (cont: CheckedContinuation<T?, Error>) in
+                race.start(cont)
+                race.worker = Task { @MainActor in
+                    do { race.finish(.success(try await work())) } catch { race.finish(.failure(error)) }
+                }
+                race.sleeper = Task { @MainActor in
+                    guard (try? await Task.sleep(for: deadline)) != nil else { return }
+                    race.finish(.success(nil))
                 }
             }
-            Task { @MainActor in
-                try? await Task.sleep(for: deadline)
-                if !once.done { once.done = true; worker.cancel(); cont.resume(returning: nil) }
-            }
+        } onCancel: {
+            Task { @MainActor in race.finish(.failure(CancellationError())) }
+        }
+    }
+}
+
+/// One `withDeadline` race: resumes its caller exactly once, with whichever
+/// of the work, the deadline or a cancellation comes first, and cancels the rest.
+@MainActor
+private final class DeadlineRace<T> {
+    private var continuation: CheckedContinuation<T?, Error>?
+    private var early: Result<T?, Error>?
+    private var decided = false
+    var worker: Task<Void, Never>?
+    var sleeper: Task<Void, Never>?
+
+    func start(_ cont: CheckedContinuation<T?, Error>) {
+        if let early { cont.resume(with: early); return }   // cancelled before it started
+        continuation = cont
+    }
+
+    func finish(_ result: Result<T?, Error>) {
+        guard !decided else { return }
+        decided = true
+        worker?.cancel()
+        sleeper?.cancel()
+        if let continuation {
+            self.continuation = nil
+            continuation.resume(with: result)
+        } else {
+            early = result
         }
     }
 }
@@ -202,6 +238,7 @@ extension View {
 @MainActor
 protocol PostLiking: AnyObject {
     var posts: [AchievementPost] { get set }
+    var pendingVotes: Set<String> { get set }
     var likeError: String? { get set }
     var saveLike: (CKRecord.ID) async throws -> Void { get }
     var likeMarks: VoteMarks { get }
@@ -211,9 +248,14 @@ extension PostLiking {
     /// Likes the post at once and saves it; see OptimisticVote.vote.
     @discardableResult
     func like(_ id: CKRecord.ID) -> Task<Void, Never>? {
-        OptimisticVote.vote(id, on: self, list: \.posts, idPath: \.id, count: \.likes,
+        OptimisticVote.vote(id, on: self, list: \.posts, pending: \.pendingVotes, idPath: \.id, count: \.likes,
                             marks: likeMarks, save: saveLike,
                             failed: { [weak self] in self?.likeError = CommunityVotes.failureMessage($0, noun: "like") })
+    }
+
+    /// Shows freshly fetched posts, keeping likes that are still saving.
+    func show(_ fetched: [AchievementPost]) {
+        posts = OptimisticVote.withPending(fetched, pending: pendingVotes, idPath: \.id, count: \.likes)
     }
 }
 
@@ -250,6 +292,7 @@ final class CloudKitCommunityVoteStore: CommunityVoteStore {
         // route the user ever published, a list that only grows.
         var all: [StoredVote] = []
         for start in stride(from: 0, to: targets.count, by: 100) {
+            try Task.checkCancellation()
             all += try await votes(inChunk: Array(targets[start..<min(start + 100, targets.count)]))
         }
         return all
@@ -339,5 +382,40 @@ final class CommunityVoteService {
             log.error("Vote counts unavailable: \(error.localizedDescription, privacy: .public)")
             return VoteTally()
         }
+    }
+}
+
+// MARK: - Catching up old marks
+
+/// Before votes existed, every like and Wockett was marked on the phone and
+/// then failed to save for anyone but the author, so existing installs hold
+/// marks with no vote behind them. Trusted as they are, those items would show
+/// as voted, with the button disabled, and never count (critic, 2026-10-09).
+/// This sends a vote for each mark, once. Sending is safe to repeat: a vote
+/// that already exists counts as success. Any failure (signed out, offline)
+/// leaves it to try again next time; the marks stay, since the Wockett Giver
+/// badge counts them.
+@MainActor
+enum UnsentVoteCatchUp {
+    static let doneKey = "wkt_votes_catchUp_v1"
+    private static var running = false
+
+    static func runIfNeeded(service: CommunityVoteService? = nil,
+                            likes: [String]? = nil, wocketts: [String]? = nil,
+                            defaults: UserDefaults = .standard) async {
+        guard !defaults.bool(forKey: doneKey), !running else { return }
+        running = true
+        defer { running = false }
+        let service = service ?? .shared
+        let jobs = (likes ?? AchievementFeedService.shared.likedIDs).map { ($0, VoteTarget.post) }
+                 + (wocketts ?? CommunityRouteService.shared.votedIDs).map { ($0, VoteTarget.route) }
+        for (id, type) in jobs {
+            do {
+                try await service.vote(for: id, type: type)
+            } catch {
+                return   // try again next time; the rest would fail the same way
+            }
+        }
+        defaults.set(true, forKey: doneKey)
     }
 }

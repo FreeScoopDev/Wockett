@@ -14,6 +14,8 @@ final class AchievementFeedModel: PostLiking {
     var saveLike: (CKRecord.ID) async throws -> Void = { try await AchievementFeedService.shared.like(id: $0) }
     /// Where liked posts are remembered (a seam for tests).
     var likeMarks = VoteMarks.likes
+    /// Likes still saving (PostLiking).
+    var pendingVotes: Set<String> = []
 }
 
 // MARK: - Achievement Feed Content View (push-safe — no NavigationStack, no Done button)
@@ -86,7 +88,7 @@ struct AchievementFeedContentView: View {
         isLoading  = true
         loadError  = nil
         do {
-            feed.posts = try await AchievementFeedService.shared.fetchPosts()
+            feed.show(try await AchievementFeedService.shared.fetchPosts())
         } catch let ck as CKError {
             switch ck.code {
             case .notAuthenticated:

@@ -17,14 +17,21 @@ final class CommunityRoutesModel {
     var saveWockett: (CKRecord.ID) async throws -> Void = { try await CommunityRouteService.shared.wockett(id: $0) }
     /// Where Wocketted routes are remembered (a seam for tests).
     var wockettMarks = VoteMarks.wocketts
+    /// Wocketts still saving: a refresh mid-save adds them back (OptimisticVote).
+    var pendingVotes: Set<String> = []
 
     /// Gives `id` a Wockett at once and saves it; a failed save is taken back
     /// by id and reported in `wocketError`. One place for both route screens.
     /// Returns the save, for tests to await.
+    /// Shows freshly fetched routes, keeping Wocketts that are still saving.
+    func show(_ fetched: [SharedRoute]) {
+        routes = OptimisticVote.withPending(fetched, pending: pendingVotes, idPath: \.id, count: \.wocketts)
+    }
+
     @discardableResult
     func wockett(_ id: CKRecord.ID) -> Task<Void, Never>? {
         wocketError = nil
-        return OptimisticVote.vote(id, on: self, list: \.routes, idPath: \.id, count: \.wocketts,
+        return OptimisticVote.vote(id, on: self, list: \.routes, pending: \.pendingVotes, idPath: \.id, count: \.wocketts,
                                    marks: wockettMarks, save: saveWockett,
                                    failed: { [weak self] in self?.wocketError = CommunityVotes.failureMessage($0, noun: "Wockett") })
     }
@@ -35,7 +42,8 @@ final class CommunityRoutesModel {
         isLoading = true
         loadError = nil
         do {
-            routes = try await CommunityRouteService.shared.fetchRoutes()
+            Task { await UnsentVoteCatchUp.runIfNeeded() }
+            show(try await CommunityRouteService.shared.fetchRoutes())
             didLoad = true
         } catch let ck as CKError {
             loadError = ckMessage(ck)

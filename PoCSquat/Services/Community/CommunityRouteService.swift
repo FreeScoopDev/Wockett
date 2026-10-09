@@ -91,6 +91,9 @@ final class CommunityRouteService {
 
     // MARK: - Vote tracking (local device)
 
+    /// Every route this device marked as Wocketted.
+    var votedIDs: [String] { UserDefaults.standard.stringArray(forKey: votedKey) ?? [] }
+
     func hasVoted(for id: CKRecord.ID) -> Bool {
         (UserDefaults.standard.stringArray(forKey: votedKey) ?? []).contains(id.recordName)
     }
