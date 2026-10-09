@@ -45,7 +45,6 @@ final class AchievementFeedService {
 
     init() {}
 
-    var username: String { CommunityRouteService.shared.username }
 
     // MARK: - Like tracking (local device)
 

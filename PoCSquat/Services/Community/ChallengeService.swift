@@ -239,7 +239,6 @@ final class ChallengeService {
         return v
     }
 
-    var username: String { CommunityRouteService.shared.username }
 
     // MARK: - Fetch
 
