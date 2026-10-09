@@ -33,14 +33,14 @@ final class CommunityHubModel {
     /// fetched: the feed and challenge screens hide items only in their own
     /// lists, and the hub would go on showing them until a refresh.
     var visiblePosts: [AchievementPost] {
-        posts.filter { !moderation.shouldHide(id: $0.id, author: $0.authorName) }
+        posts.filter { !moderation.shouldHide(id: $0.id, author: $0.author) }
     }
     var visibleChallenges: [WalkChallenge] {
-        challenges.filter { !moderation.shouldHide(id: $0.id, author: $0.authorName) }
+        challenges.filter { !moderation.shouldHide(id: $0.id, author: $0.author) }
     }
     /// Your joined challenge, unless it was reported or its author blocked.
     var visibleYourChallenge: WalkChallenge? {
-        yourChallenge.flatMap { moderation.shouldHide(id: $0.id, author: $0.authorName) ? nil : $0 }
+        yourChallenge.flatMap { moderation.shouldHide(id: $0.id, author: $0.author) ? nil : $0 }
     }
     /// Your place in that challenge; gone with it.
     var visibleStanding: CommunityHubSummary.Standing? {

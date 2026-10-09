@@ -13,6 +13,9 @@ struct SharedRoute: Identifiable {
     let difficulty: RouteDifficulty
     var wocketts: Int
     let authorName: String
+    /// The account that created it (CloudKit's creator), for Block.
+    let authorAccount: String?
+    var author: CommunityAuthor { CommunityAuthor(name: authorName, account: authorAccount) }
     let createdAt: Date
 
     var distanceText: String {
@@ -54,6 +57,7 @@ struct SharedRoute: Identifiable {
         self.difficulty     = RouteDifficulty(rawValue: record["difficultyTag"] as? String ?? "") ?? .easy
         self.wocketts       = record["upvotes"] as? Int ?? 0
         self.authorName     = record["authorName"] as? String ?? "Anonymous"
+        self.authorAccount = record.creatorUserRecordID?.recordName
         self.createdAt      = record.creationDate ?? Date()
     }
 }
@@ -115,7 +119,7 @@ final class CommunityRouteService {
             return SharedRoute(record: record)
         }
         return routes
-            .filter { !CommunityModerationStore.shared.shouldHide(id: $0.id, author: $0.authorName) }
+            .filter { !CommunityModerationStore.shared.shouldHide(id: $0.id, author: $0.author) }
             .sorted { $0.wocketts > $1.wocketts }
     }
 

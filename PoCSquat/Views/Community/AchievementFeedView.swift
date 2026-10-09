@@ -180,14 +180,16 @@ private struct AchievementPostCard: View {
         .contextMenu {
             if let onHide {
                 CommunityReportButton("Report Post") { report = CommunityReport(post: post) }
-                Button(role: .destructive) {
-                    CommunityModerationStore.shared.block(author: post.authorName)
-                    onHide()
-                } label: {
-                    Label {
-                        Text("Block \(post.authorName)")
-                    } icon: {
-                        Image(wkt: .blockUser).wktIcon(.inline, tint: .red)
+                if !post.author.isMe {   // never offer to block yourself
+                    Button(role: .destructive) {
+                        CommunityModerationStore.shared.block(post.author)
+                        onHide()
+                    } label: {
+                        Label {
+                            Text("Block \(post.authorName)")
+                        } icon: {
+                            Image(wkt: .blockUser).wktIcon(.inline, tint: .red)
+                        }
                     }
                 }
             }

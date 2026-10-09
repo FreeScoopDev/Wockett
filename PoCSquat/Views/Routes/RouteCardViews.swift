@@ -182,14 +182,16 @@ struct CommunityRouteCard: View {
         .contextMenu {
             if let onHide {
                 CommunityReportButton("Report Route") { report = CommunityReport(route: route) }
-                Button(role: .destructive) {
-                    CommunityModerationStore.shared.block(author: route.authorName)
-                    onHide()
-                } label: {
-                    Label {
-                        Text("Block \(route.authorName)")
-                    } icon: {
-                        Image(wkt: .blockUser).wktIcon(.inline, tint: .red)
+                if !route.author.isMe {   // never offer to block yourself
+                    Button(role: .destructive) {
+                        CommunityModerationStore.shared.block(route.author)
+                        onHide()
+                    } label: {
+                        Label {
+                            Text("Block \(route.authorName)")
+                        } icon: {
+                            Image(wkt: .blockUser).wktIcon(.inline, tint: .red)
+                        }
                     }
                 }
             }

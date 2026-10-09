@@ -8,6 +8,9 @@ struct AchievementPost: Identifiable {
     let badgeName: String
     let badgeEmoji: String
     let authorName: String
+    /// The account that created it (CloudKit's creator), for Block.
+    let authorAccount: String?
+    var author: CommunityAuthor { CommunityAuthor(name: authorName, account: authorAccount) }
     let message: String
     let createdAt: Date
     var likes: Int
@@ -22,6 +25,7 @@ struct AchievementPost: Identifiable {
         self.badgeName  = badgeName
         self.badgeEmoji = badgeEmoji
         self.authorName = record["authorName"] as? String ?? "Anonymous"
+        self.authorAccount = record.creatorUserRecordID?.recordName
         self.message    = record["message"]    as? String ?? ""
         self.createdAt  = record.creationDate  ?? Date()
         self.likes      = record["likes"]      as? Int    ?? 0
@@ -70,7 +74,7 @@ final class AchievementFeedService {
             guard let record = try? result.get() else { return nil }
             return AchievementPost(record: record)
         }
-        .filter { !CommunityModerationStore.shared.shouldHide(id: $0.id, author: $0.authorName) }
+        .filter { !CommunityModerationStore.shared.shouldHide(id: $0.id, author: $0.author) }
     }
 
     // MARK: - Post

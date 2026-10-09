@@ -46,6 +46,26 @@ struct ContentFilter {
     }
 }
 
+// MARK: - Community author
+
+/// Who is behind a piece of community content: the display name it shows,
+/// and the iCloud account CloudKit stamps on it (`creatorUserRecordID`). The
+/// name is text the posting phone writes, picked from 270 combinations, so two
+/// people can share one and anyone can write any; the account can't be faked.
+struct CommunityAuthor: Equatable {
+    let name: String
+    /// The creator's user record name; nil when CloudKit didn't say.
+    let account: String?
+
+    /// CloudKit gives your own records this creator.
+    var isMe: Bool { account == CKCurrentUserDefaultName }
+
+    init(name: String, account: String?) {
+        self.name = name
+        self.account = account
+    }
+}
+
 // MARK: - Community Moderation Store
 
 /// Observable, so a screen that filters with `shouldHide` (the Community hub's
@@ -57,7 +77,10 @@ final class CommunityModerationStore {
     static let shared = CommunityModerationStore()
 
     @ObservationIgnored private let reportedKey = "communityReportedIds"
+    /// Names blocked before 2026-10-09, and authors whose account is unknown.
     @ObservationIgnored private let blockedKey  = "communityBlockedAuthors"
+    /// Accounts blocked since 2026-10-09.
+    @ObservationIgnored private let blockedAccountsKey = "communityBlockedAccounts"
     private(set) var revision = 0
 
     @ObservationIgnored private let defaults: UserDefaults
@@ -79,18 +102,30 @@ final class CommunityModerationStore {
 
     // MARK: - Block author
 
-    func isBlocked(author: String) -> Bool {
-        stored(forKey: blockedKey).contains(author)
+    /// Blocked when the author's account is blocked, or their name is on the
+    /// older list (blocks from before accounts, and authors with no account).
+    func isBlocked(_ author: CommunityAuthor) -> Bool {
+        if let account = author.account, !author.isMe,
+           stored(forKey: blockedAccountsKey).contains(account) { return true }
+        return stored(forKey: blockedKey).contains(author.name)
     }
 
-    func block(author: String) {
-        append(author, toKey: blockedKey)
+    /// Blocks the author's account, so a name change doesn't get past it and a
+    /// namesake isn't hidden. Only an author with no known account is blocked
+    /// by name. Never blocks yourself.
+    func block(_ author: CommunityAuthor) {
+        guard !author.isMe else { return }
+        if let account = author.account {
+            append(account, toKey: blockedAccountsKey)
+        } else {
+            append(author.name, toKey: blockedKey)
+        }
     }
 
     // MARK: - Convenience
 
-    func shouldHide(id: CKRecord.ID, author: String) -> Bool {
-        isReported(id) || isBlocked(author: author)
+    func shouldHide(id: CKRecord.ID, author: CommunityAuthor) -> Bool {
+        isReported(id) || isBlocked(author)
     }
 
     // MARK: - Private

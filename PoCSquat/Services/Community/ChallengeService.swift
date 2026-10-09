@@ -47,6 +47,9 @@ struct WalkChallenge: Identifiable {
     let startDate:    Date
     let endDate:      Date
     let authorName:   String
+    /// The account that created it (CloudKit's creator), for Block.
+    let authorAccount: String?
+    var author: CommunityAuthor { CommunityAuthor(name: authorName, account: authorAccount) }
 
     var isActive: Bool { Date() >= startDate && Date() <= endDate }
 
@@ -156,6 +159,7 @@ struct WalkChallenge: Identifiable {
         self.startDate  = startDate
         self.endDate    = endDate
         self.authorName = record["authorName"] as? String ?? "Anonymous"
+        self.authorAccount = record.creatorUserRecordID?.recordName
 
         // goalType absent on existing records → default to .steps (backward compat)
         let rawType = record["goalType"] as? String ?? ChallengeGoalType.steps.rawValue
@@ -252,7 +256,7 @@ final class ChallengeService {
             guard let rec = try? r.get() else { return nil }
             return WalkChallenge(record: rec)
         }
-        .filter { !CommunityModerationStore.shared.shouldHide(id: $0.id, author: $0.authorName) }
+        .filter { !CommunityModerationStore.shared.shouldHide(id: $0.id, author: $0.author) }
     }
 
     func fetchLeaderboard(for challenge: WalkChallenge) async throws -> [ChallengeParticipant] {
