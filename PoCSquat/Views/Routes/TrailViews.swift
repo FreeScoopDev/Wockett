@@ -258,9 +258,34 @@ struct TrailDetailView: View {
     var refreshLocation: () async -> Void = {}
     let onBack: () -> Void
 
+    @EnvironmentObject private var historyStore: WalkHistoryStore
+    /// The last choice, so the next trail starts with it (Joe walks the same
+    /// distance most days).
+    @AppStorage("trailWalkByTime") private var byTime = false
+    @AppStorage("trailWalkChoice") private var storedChoice = ""
+
+    /// How far there is to go from here: toward the farther end of a line,
+    /// or half way round a loop.
+    private var reach: (meters: Double, isLoop: Bool)? {
+        TrailWalkPlanner.reach(for: item, from: userLocation)
+    }
+
+    private var options: [TrailWalkOption] {
+        guard let reach else { return [] }
+        return TrailWalkOption.options(reach: reach.meters, isLoop: reach.isLoop, byTime: byTime,
+                                       usesMiles: Locale.current.measurementSystem == .us,
+                                       metersPerSecond: TrailWalkOption.pace(for: activityMode,
+                                                                             history: historyStore.sessions))
+    }
+
+    private var chosen: TrailWalkOption? {
+        let all = options
+        return all.first { $0.id == storedChoice } ?? TrailWalkOption.defaultChoice(in: all)
+    }
+
     /// A walk from where the person stands, when they are at the trail.
     private var startPlan: TrailWalkPlan? {
-        TrailWalkPlanner.plan(for: item, from: userLocation)
+        TrailWalkPlanner.plan(for: item, from: userLocation, target: chosen?.target ?? .whole)
     }
 
     var body: some View {
@@ -325,6 +350,7 @@ struct TrailDetailView: View {
 
     private func startButton(_ plan: TrailWalkPlan) -> some View {
         VStack(spacing: 8) {
+            if options.count > 1 { chooser }
             Button { onStart(plan) } label: {
                 WktPrimaryLabel(title: "Start \(activityMode.sessionLabel)", symbol: activityMode.wktSymbol)
             }
@@ -335,6 +361,28 @@ struct TrailDetailView: View {
                 .foregroundColor(.earthMuted)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity)
+        }
+    }
+
+    /// How far to go: Distance | Time, then a choice of round trips and the
+    /// whole trail (2026-10-09).
+    private var chooser: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            WktSegmentedPicker(selection: $byTime, options: [
+                .init(value: false, title: "Distance"),
+                .init(value: true, title: "Time")
+            ])
+            .accessibilityIdentifier("routes.trailWalkBy")
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(options) { option in
+                        WktChoiceChip(title: option.title, selected: option.id == chosen?.id) {
+                            storedChoice = option.id
+                        }
+                        .accessibilityIdentifier("routes.trailWalkOption")
+                    }
+                }
+            }
         }
     }
 
@@ -398,6 +446,12 @@ enum TrailText {
 
     /// "Starts where you are and goes round the loop · 1.1 mi"
     static func startCaption(for plan: TrailWalkPlan) -> String {
+        if let turn = plan.turnaroundMeters {
+            let what = plan.turnsAtTrailEnd ? "To the trail's end and back"
+                                            : "Out \(distance(turn)) and back to where you start"
+            let scope = plan.isSectionOnly ? "On the section you're at. " : ""
+            return "\(scope)\(what) · \(distance(plan.distanceMeters))"
+        }
         let route = plan.isLoop ? "goes round the loop" : "follows the trail to its far end"
         let scope = plan.isSectionOnly ? "On the section you're at: starts where you are and \(route)"
                             : "Starts where you are and \(route)"
@@ -478,5 +532,92 @@ enum TrailText {
             here.distance(from: CLLocation(latitude: $0.latitude, longitude: $0.longitude))
                 < here.distance(from: CLLocation(latitude: $1.latitude, longitude: $1.longitude))
         } ?? first
+    }
+}
+
+
+// MARK: - How far to walk
+
+/// One choice in the trail detail's "how far" row (2026-10-09). A line trail
+/// is always walked out and back, so the walk ends where it began; the whole
+/// trail is "to the end and back", or the full loop.
+struct TrailWalkOption: Identifiable, Equatable {
+    let id: String
+    let title: String
+    let target: TrailWalkTarget
+
+    static let mileChoices: [Double] = [1, 2, 3, 5]
+    static let kilometreChoices: [Double] = [2, 3, 5, 8]
+    static let minuteChoices: [Int] = [20, 30, 45, 60]
+
+    /// The choices from where the person stands, `reach` metres from the far
+    /// end (or half a loop). A round trip as long as the whole trail or longer
+    /// is left out: it would only be the whole trail again.
+    static func options(reach: Double, isLoop: Bool, byTime: Bool, usesMiles: Bool,
+                        metersPerSecond: Double) -> [TrailWalkOption] {
+        let wholeMeters = 2 * reach
+        let whole = TrailWalkOption(
+            id: "whole",
+            title: "\(isLoop ? "Full loop" : "End and back") · \(TrailText.distance(wholeMeters))",
+            target: isLoop ? .whole : .roundTrip(meters: wholeMeters))
+        var shorter: [TrailWalkOption] = []
+        if byTime {
+            for minutes in minuteChoices {
+                let meters = Double(minutes) * 60 * metersPerSecond
+                guard meters < wholeMeters - 100 else { continue }
+                shorter.append(TrailWalkOption(id: "t\(minutes)", title: "\(minutes) min",
+                                               target: .roundTrip(meters: meters)))
+            }
+        } else {
+            for value in usesMiles ? mileChoices : kilometreChoices {
+                let meters = value * (usesMiles ? 1_609.344 : 1_000)
+                guard meters < wholeMeters - 100 else { continue }
+                shorter.append(TrailWalkOption(id: "d\(Int(value))\(usesMiles ? "mi" : "km")",
+                                               title: "\(Int(value)) \(usesMiles ? "mi" : "km")",
+                                               target: .roundTrip(meters: meters)))
+            }
+        }
+        return shorter + [whole]
+    }
+
+    /// The choice last made on a trail's detail (its @AppStorage keys), for a
+    /// walk planned without that screen: arriving at a trail the session was
+    /// heading for. A typical pace stands in for the person's own.
+    static func lastChosenTarget(reach: Double, isLoop: Bool, activityMode: ActivityMode,
+                                 defaults: UserDefaults = .standard) -> TrailWalkTarget {
+        let all = options(reach: reach, isLoop: isLoop, byTime: defaults.bool(forKey: "trailWalkByTime"),
+                          usesMiles: Locale.current.measurementSystem == .us,
+                          metersPerSecond: pace(for: activityMode, history: []))
+        let stored = defaults.string(forKey: "trailWalkChoice")
+        return (all.first { $0.id == stored } ?? defaultChoice(in: all))?.target ?? .whole
+    }
+
+    /// 2 mi or 3 km when there is room for it, else the nearest shorter
+    /// choice, else the whole trail.
+    static func defaultChoice(in options: [TrailWalkOption]) -> TrailWalkOption? {
+        let preferred = ["d2mi", "d3km", "t30"]
+        return options.first { preferred.contains($0.id) }
+            ?? options.last { $0.id != "whole" }
+            ?? options.last
+    }
+
+    /// The person's usual speed for this activity, from their last 20 that
+    /// were long enough to judge (over 500 m and 5 minutes), else a typical
+    /// one. Kept within sensible bounds, so one GPS-glitched walk cannot
+    /// place a 30-minute turnaround three miles out.
+    static func pace(for mode: ActivityMode, history: [WalkSession]) -> Double {
+        let (fallback, low, high): (Double, Double, Double) = switch mode {
+        case .running: (2.7, 1.8, 5.0)
+        case .cycling: (5.0, 3.0, 9.0)
+        default:       (1.3, 0.7, 2.2)
+        }
+        let speeds = history
+            .filter { $0.activityType == mode.rawValue && !$0.flaggedPossibleVehicle
+                && $0.totalDistance > 500 && $0.elapsedTime > 300 }
+            .prefix(20)
+            .map { $0.totalDistance / $0.elapsedTime }
+            .sorted()
+        guard !speeds.isEmpty else { return fallback }
+        return min(max(speeds[speeds.count / 2], low), high)
     }
 }
