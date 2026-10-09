@@ -1,6 +1,7 @@
 import Testing
 import CloudKit
 import Foundation
+import Observation
 @testable import PoCSquat
 
 /// The email a community report opens (`CommunityReport`, `SupportContact`).
@@ -203,6 +204,55 @@ struct CommunityReportTests {
         #expect(model.visiblePosts.map(\.id) == [post.id])
         model.moderation.report(post.id)
         #expect(model.visiblePosts.isEmpty)
+    }
+
+    private func challenge(_ name: String, author: String = "QuietPine") throws -> WalkChallenge {
+        try #require(WalkChallenge(record: record("Challenge", name, [
+            "title": "10k a day" as CKRecordValue, "startDate": Date() as CKRecordValue,
+            "endDate": Date().addingTimeInterval(86_400) as CKRecordValue,
+            "goalSteps": 10_000 as CKRecordValue, "authorName": author as CKRecordValue])))
+    }
+
+    @Test("The hub stops showing a challenge reported, or by an author blocked, elsewhere")
+    func hubFiltersChallenges() throws {
+        let reported = try challenge("chal-r-\(UUID().uuidString)")
+        let blocked = try challenge("chal-b-\(UUID().uuidString)", author: "LoudCrow")
+        let kept = try challenge("chal-k-\(UUID().uuidString)")
+        let model = CommunityHubModel()
+        model.moderation = isolatedStore()
+        model.challenges = [reported, blocked, kept]
+        #expect(model.visibleChallenges.count == 3)
+        model.moderation.report(reported.id)
+        model.moderation.block(author: "LoudCrow")
+        #expect(model.visibleChallenges.map(\.id) == [kept.id])
+    }
+
+    @Test("Your challenge, once reported, leaves the hub with its standing")
+    func hubHidesYourChallenge() throws {
+        let mine = try challenge("chal-mine-\(UUID().uuidString)")
+        let model = CommunityHubModel()
+        model.moderation = isolatedStore()
+        model.yourChallenge = mine
+        model.standing = CommunityHubSummary.Standing(rank: 2, total: 5, aheadName: nil, gapToAhead: nil)
+        #expect(model.visibleYourChallenge?.id == mine.id)
+        #expect(model.visibleStanding != nil)
+        model.moderation.report(mine.id)
+        #expect(model.visibleYourChallenge == nil)
+        #expect(model.visibleStanding == nil)
+    }
+
+    @Test("Reporting elsewhere tells a screen that reads the hub's lists to redraw")
+    func reportIsObserved() throws {
+        let rec = record("WocketAchievement", "post-obs-\(UUID().uuidString)", [
+            "badgeName": "Trailblazer" as CKRecordValue, "badgeEmoji": "🥾" as CKRecordValue])
+        let post = try #require(AchievementPost(record: rec))
+        let model = CommunityHubModel()
+        model.moderation = isolatedStore()
+        model.posts = [post]
+        var changed = false
+        withObservationTracking { _ = model.visiblePosts } onChange: { changed = true }
+        model.moderation.report(post.id)
+        #expect(changed, "SwiftUI only redraws what Observation says changed")
     }
 
     @Test("The report says nothing about the reporter")

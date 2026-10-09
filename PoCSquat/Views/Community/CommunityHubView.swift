@@ -123,7 +123,7 @@ struct CommunityHubView: View {
             HStack(spacing: 0) {
                 youStat(value: "\(currentStreak)", label: "Day streak") { pushBadges = true }
                 youStat(value: "\(earned)", label: "Badges") { pushBadges = true }
-                youStat(value: model.standing.map { "#\($0.rank)" } ?? "–", label: "Challenge") { pushChallenges = true }
+                youStat(value: model.visibleStanding.map { "#\($0.rank)" } ?? "–", label: "Challenge") { pushChallenges = true }
                 youStat(value: model.receivedWocketts.map { "\($0)" } ?? "–", label: "Wocketts") { pushRoutes = true }
             }
             HStack(spacing: 8) {
@@ -159,7 +159,7 @@ struct CommunityHubView: View {
 
     @ViewBuilder
     private var challengeCard: some View {
-        if let challenge = model.yourChallenge {
+        if let challenge = model.visibleYourChallenge {
             yourChallengeCard(challenge)
         } else {
             WktSection(title: "Challenges", actionTitle: "All", action: { pushChallenges = true }, content: {
@@ -224,7 +224,7 @@ struct CommunityHubView: View {
                             .font(.wktLabel)
                             .foregroundColor(.earthMuted)
                         HStack(spacing: 6) {
-                            if let standing = model.standing {
+                            if let standing = model.visibleStanding {
                                 chip("#\(standing.rank) of \(standing.total)", tint: .earthGreen)
                             }
                             chip(challenge.timeRemainingText, tint: .earthOrange)
@@ -236,7 +236,7 @@ struct CommunityHubView: View {
             }
             .buttonStyle(.plain)
             .accessibilityElement(children: .combine)
-            if let standing = model.standing,
+            if let standing = model.visibleStanding,
                let nudge = CommunityHubSummary.nudge(goal: challenge.goalType, gap: standing.gapToAhead,
                                                      aheadName: standing.aheadName, rank: standing.rank,
                                                      activity: challenge.activityFilter) {
@@ -247,7 +247,7 @@ struct CommunityHubView: View {
                     .padding(.vertical, 10)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(Color.earthGreen.opacity(0.10), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            } else if model.standing?.rank == 1 {
+            } else if model.visibleStanding?.rank == 1 {
                 Text("You're in the lead. Keep it up.")
                     .font(.wktBodyText)
                     .foregroundColor(.earthGreen)
@@ -419,6 +419,7 @@ struct CommunityHubView: View {
             .accessibilityLabel(liked ? "Liked, \(post.likes) likes" : "Like, \(post.likes) likes")
         }
         .padding(.vertical, 8)
+        .contentShape(Rectangle())
         .contextMenu { CommunityReportButton("Report Post") { hubReport = CommunityReport(post: post) } }
     }
 

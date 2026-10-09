@@ -1,5 +1,6 @@
 import Foundation
 import CloudKit
+import Observation
 
 // MARK: - Content Filter
 
@@ -47,13 +48,19 @@ struct ContentFilter {
 
 // MARK: - Community Moderation Store
 
+/// Observable, so a screen that filters with `shouldHide` (the Community hub's
+/// cached lists) redraws when something is reported or blocked on another
+/// screen: the lists live in UserDefaults, which Observation can't see, so
+/// every change bumps `revision` and every read touches it.
+@Observable
 final class CommunityModerationStore {
     static let shared = CommunityModerationStore()
 
-    private let reportedKey = "communityReportedIds"
-    private let blockedKey  = "communityBlockedAuthors"
+    @ObservationIgnored private let reportedKey = "communityReportedIds"
+    @ObservationIgnored private let blockedKey  = "communityBlockedAuthors"
+    private(set) var revision = 0
 
-    private let defaults: UserDefaults
+    @ObservationIgnored private let defaults: UserDefaults
 
     /// `defaults` is for tests, so they don't write into the app's own settings.
     init(defaults: UserDefaults = .standard) {
@@ -89,7 +96,8 @@ final class CommunityModerationStore {
     // MARK: - Private
 
     private func stored(forKey key: String) -> [String] {
-        defaults.stringArray(forKey: key) ?? []
+        _ = revision
+        return defaults.stringArray(forKey: key) ?? []
     }
 
     private func append(_ value: String, toKey key: String) {
@@ -97,5 +105,6 @@ final class CommunityModerationStore {
         guard !list.contains(value) else { return }
         list.append(value)
         defaults.set(list, forKey: key)
+        revision += 1
     }
 }
