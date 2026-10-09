@@ -92,6 +92,17 @@ way unless there's a strong reason; adding the first one is a real decision.
   hand-written `CKRecord` types (SharedRoute, Challenge, …) are compared by
   hand. Deploying cannot be undone, so read the Deploy dialog's full list
   before confirming.
+- **Public-database permissions are part of the schema, and `cktool` can't
+  test them.** Since 2026-10-09 only the custom role `TrailPublisher` (given
+  to Joe's user record in both environments) may create `TrailRegionPack`
+  records; `_icloud` (any signed-in user) no longer can. The other public
+  types keep CloudKit's defaults: any signed-in user creates, only the
+  creator writes, everyone reads. `cktool` runs as the container's developer,
+  which gets past security roles: a create without the role succeeded in
+  Development and in Production. So a `cktool` run proves publishing works,
+  never that a role blocks anyone; that needs an ordinary iCloud account
+  (Console → Act As iCloud Account…), not yet done. Check the grants with
+  `xcrun cktool export-schema … --environment production`.
 - **`.safeAreaInset` already respects the safe area** even when the view it is
   attached to calls `.ignoresSafeArea()`. The modifier places its content inside
   the container's safe area regardless; `.ignoresSafeArea()` governs the view
