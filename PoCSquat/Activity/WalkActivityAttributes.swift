@@ -40,3 +40,4 @@ public struct WalkActivityAttributes: ActivityAttributes {
         self.startDate            = startDate
     }
 }
+// break-check: throwaway, never merged
