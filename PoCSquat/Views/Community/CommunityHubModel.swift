@@ -82,23 +82,21 @@ final class CommunityHubModel {
         }
     }
 
-    func markLiked(_ post: AchievementPost) {
+    /// Likes `post` at once and saves it; a failed save is taken back by id
+    /// and reported in `likeError`. Returns the save, for tests to await.
+    @discardableResult
+    func markLiked(_ post: AchievementPost) -> Task<Void, Never>? {
         guard !AchievementFeedService.shared.hasLiked(id: post.id),
-              let index = posts.firstIndex(where: { $0.id == post.id }) else { return }
-        posts[index].likes += 1
-        AchievementFeedService.shared.markLiked(id: post.id)
-        Task { await saveLikeOrUndo(post.id) }
-    }
-
-    /// Saves the like; when that fails, takes back the +1 and the liked mark
-    /// so the screen matches what was saved, and says so.
-    func saveLikeOrUndo(_ id: CKRecord.ID) async {
-        do {
-            try await saveLike(id)
-        } catch {
-            AchievementFeedService.shared.unmarkLiked(id: id)
-            if let i = posts.firstIndex(where: { $0.id == id }) { posts[i].likes -= 1 }
-            likeError = "Couldn't save your like. Check your connection and try again."
-        }
+              posts.contains(where: { $0.id == post.id }) else { return nil }
+        return OptimisticVote.apply(
+            id: post.id,
+            change: { [weak self] id, delta in
+                guard let self else { return }
+                OptimisticVote.adjust(&self.posts, id: id, by: delta, idPath: \.id, count: \.likes)
+            },
+            mark: { AchievementFeedService.shared.markLiked(id: $0) },
+            unmark: { AchievementFeedService.shared.unmarkLiked(id: $0) },
+            save: saveLike,
+            failed: { [weak self] in self?.likeError = CommunityVotes.failureMessage($0, noun: "like") })
     }
 }

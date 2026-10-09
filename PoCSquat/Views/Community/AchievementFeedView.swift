@@ -7,6 +7,7 @@ struct AchievementFeedContentView: View {
     @State private var posts:     [AchievementPost] = []
     @State private var isLoading  = false
     @State private var loadError: String?            = nil
+    @State private var likeError: String?
 
     var body: some View {
         ZStack {
@@ -22,8 +23,11 @@ struct AchievementFeedContentView: View {
             } else {
                 ScrollView {
                     LazyVStack(spacing: WktSpacing.betweenCards) {
-                        ForEach($posts) { $post in
-                            AchievementPostCard(post: $post, onHide: { posts.removeAll { $0.id == post.id } })
+                        ForEach(posts) { post in
+                            AchievementPostCard(post: post,
+                                                isLiked: AchievementFeedService.shared.hasLiked(id: post.id),
+                                                onLike: { like(post.id) },
+                                                onHide: { posts.removeAll { $0.id == post.id } })
                         }
                     }
                     .padding(.horizontal, WktSpacing.screen)
@@ -48,6 +52,11 @@ struct AchievementFeedContentView: View {
             }
         }
         .task { await load() }
+        .alert("Like not saved", isPresented: Binding(get: { likeError != nil }, set: { if !$0 { likeError = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(likeError ?? "")
+        }
     }
 
     private var emptyState: some View {
@@ -61,6 +70,19 @@ struct AchievementFeedContentView: View {
             loadError = nil
             Task { await load() }
         }
+    }
+
+    /// Likes the post at once and saves it; a failed save is taken back from
+    /// the post with this id, wherever it is in the list by then.
+    private func like(_ id: CKRecord.ID) {
+        guard !AchievementFeedService.shared.hasLiked(id: id) else { return }
+        OptimisticVote.apply(
+            id: id,
+            change: { id, delta in OptimisticVote.adjust(&posts, id: id, by: delta, idPath: \.id, count: \.likes) },
+            mark: { AchievementFeedService.shared.markLiked(id: $0) },
+            unmark: { AchievementFeedService.shared.unmarkLiked(id: $0) },
+            save: { try await AchievementFeedService.shared.like(id: $0) },
+            failed: { likeError = CommunityVotes.failureMessage($0, noun: "like") })
     }
 
     private func load() async {
@@ -106,10 +128,10 @@ struct AchievementFeedView: View {
 // MARK: - Achievement Post Card
 
 private struct AchievementPostCard: View {
-    @Binding var post: AchievementPost
+    let post: AchievementPost
+    let isLiked: Bool
+    let onLike: () -> Void
     var onHide: (() -> Void)? = nil
-    @State private var hasLiked = false
-    @State private var likeFailed = false
 
     private let green = Color.earthGreen
 
@@ -148,26 +170,12 @@ private struct AchievementPostCard: View {
                     Spacer()
 
                     Button {
-                        guard !hasLiked else { return }
-                        hasLiked    = true
-                        post.likes += 1
-                        AchievementFeedService.shared.markLiked(id: post.id)
-                        Task {
-                            do {
-                                try await AchievementFeedService.shared.like(id: post.id)
-                            } catch {
-                                // Undo the optimistic +1, so the count and the button match what was saved.
-                                AchievementFeedService.shared.unmarkLiked(id: post.id)
-                                hasLiked = false
-                                post.likes -= 1
-                                likeFailed = true
-                            }
-                        }
+                        onLike()
                     } label: {
                         // The same like pill as the Community hub's feed card.
                         HStack(spacing: 4) {
                             Image(wkt: .like)
-                                .wktIcon(.inline, tint: .accentRun, filled: hasLiked)
+                                .wktIcon(.inline, tint: .accentRun, filled: isLiked)
                             Text("\(post.likes)")
                                 .font(.wktLabel)
                                 .foregroundColor(.earthCream)
@@ -179,19 +187,13 @@ private struct AchievementPostCard: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(BounceButtonStyle(scale: 0.93))
-                    .disabled(hasLiked)
-                    .accessibilityLabel(hasLiked ? "Liked, \(post.likes) likes" : "Like, \(post.likes) likes")
+                    .disabled(isLiked)
+                    .accessibilityLabel(isLiked ? "Liked, \(post.likes) likes" : "Like, \(post.likes) likes")
                 }
                 .padding(.top, 2)
             }
         }
         .wktCard()
-        .onAppear { hasLiked = AchievementFeedService.shared.hasLiked(id: post.id) }
-        .alert("Like not saved", isPresented: $likeFailed) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text("Couldn't save your like. Check your connection and try again.")
-        }
         .contextMenu {
             if let onHide {
                 Button(role: .destructive) {

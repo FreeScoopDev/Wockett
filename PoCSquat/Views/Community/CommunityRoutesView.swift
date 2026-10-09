@@ -10,6 +10,31 @@ final class CommunityRoutesModel {
     var loadError: String? = nil
     private(set) var didLoad = false
 
+    /// Set when a Wockett failed to save; the route screens show it.
+    var wocketError: String?
+    /// Saves a Wockett. A seam for tests; the app saves a CommunityVote.
+    var saveWockett: (CKRecord.ID) async throws -> Void = { try await CommunityRouteService.shared.wockett(id: $0) }
+
+    /// Gives `id` a Wockett at once and saves it; a failed save is taken back
+    /// by id and reported in `wocketError`. One place for both route screens.
+    /// Returns the save, for tests to await.
+    @discardableResult
+    func wockett(_ id: CKRecord.ID) -> Task<Void, Never>? {
+        guard !CommunityRouteService.shared.hasVoted(for: id),
+              routes.contains(where: { $0.id == id }) else { return nil }
+        wocketError = nil
+        return OptimisticVote.apply(
+            id: id,
+            change: { [weak self] id, delta in
+                guard let self else { return }
+                OptimisticVote.adjust(&self.routes, id: id, by: delta, idPath: \.id, count: \.wocketts)
+            },
+            mark: { CommunityRouteService.shared.markVoted(for: $0) },
+            unmark: { CommunityRouteService.shared.unmarkVoted(for: $0) },
+            save: saveWockett,
+            failed: { [weak self] in self?.wocketError = CommunityVotes.failureMessage($0, noun: "Wockett") })
+    }
+
     func load(force: Bool = false) async {
         guard !isLoading else { return }
         guard force || !didLoad else { return }
@@ -50,7 +75,6 @@ struct CommunityRoutesView: View {
     @EnvironmentObject private var tabRouter: TabRouter
 
     @State private var savedIds: Set<String> = []
-    @State private var wocketError: String? = nil
     @State private var showActiveSessionAlert = false
 
     var body: some View {
@@ -84,7 +108,7 @@ struct CommunityRoutesView: View {
     private var routeList: some View {
         ScrollView {
             LazyVStack(spacing: WktSpacing.betweenCards) {
-                if let err = wocketError {
+                if let err = model.wocketError {
                     HStack(spacing: 6) {
                         Image(wkt: .errorCircle).wktIcon(.inline, tint: .earthOrange, filled: true)
                         Text(err).font(.wktLabel)
@@ -110,7 +134,7 @@ struct CommunityRoutesView: View {
             .padding(.horizontal, WktSpacing.screen)
             .padding(.top, 12)
             .padding(.bottom, WktSpacing.betweenSections)
-            .animation(.easeInOut(duration: 0.2), value: wocketError != nil)
+            .animation(.easeInOut(duration: 0.2), value: model.wocketError != nil)
         }
         .refreshable { await model.load(force: true) }
     }
@@ -129,20 +153,7 @@ struct CommunityRoutesView: View {
 
     private func handleWockett(at i: Int) {
         guard i < model.routes.count else { return }
-        let route = model.routes[i]
-        guard !CommunityRouteService.shared.hasVoted(for: route.id) else { return }
-        model.routes[i].wocketts += 1
-        CommunityRouteService.shared.markVoted(for: route.id)
-        Task {
-            do {
-                try await CommunityRouteService.shared.wockett(id: route.id)
-            } catch {
-                // Undo the optimistic +1, so the count and the button match what was saved.
-                CommunityRouteService.shared.unmarkVoted(for: route.id)
-                if let j = model.routes.firstIndex(where: { $0.id == route.id }) { model.routes[j].wocketts -= 1 }
-                wocketError = "Couldn't save your Wockett — check your connection."
-            }
-        }
+        model.wockett(model.routes[i].id)
     }
 
     private func handleSave(at i: Int) {

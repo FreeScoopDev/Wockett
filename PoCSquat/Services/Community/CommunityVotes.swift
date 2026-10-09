@@ -1,5 +1,6 @@
 import CloudKit
 import Foundation
+import os
 
 // MARK: - Community votes
 //
@@ -16,6 +17,11 @@ import Foundation
 //
 // Production needs the record type and a QUERYABLE index on
 // `targetRecordName` (CloudKit Console) before a build with this ships.
+
+enum WockettCloud {
+    /// The app's CloudKit container. (Older files still spell it out.)
+    static let containerID = "iCloud.Scoops.PoCSquat"
+}
 
 enum VoteTarget: String {
     case post
@@ -68,6 +74,53 @@ enum CommunityVotes {
     static func isAlreadyVoted(_ error: Error) -> Bool {
         (error as? CKError)?.code == .serverRecordChanged
     }
+
+    /// What to tell someone whose vote didn't save. Signed out of iCloud is
+    /// its own answer: "check your connection" would send them the wrong way.
+    static func failureMessage(_ error: Error, noun: String) -> String {
+        if (error as? CKError)?.code == .notAuthenticated {
+            return "Sign in to iCloud in the Settings app to give a \(noun)."
+        }
+        return "Couldn't save your \(noun). Check your connection and try again."
+    }
+}
+
+// MARK: - On screen
+
+/// A like or Wockett shows at once and is saved behind it. If saving fails,
+/// it is taken back from the item with this id, wherever that item is now,
+/// and never below 0: the list may have been refreshed or had a row removed
+/// while the save was in flight, so its position can't be trusted (critic,
+/// 2026-10-09), and a refreshed count never included the vote at all.
+@MainActor
+enum OptimisticVote {
+    @discardableResult
+    static func apply(id: CKRecord.ID,
+                      change: @escaping (CKRecord.ID, Int) -> Void,
+                      mark: @escaping (CKRecord.ID) -> Void,
+                      unmark: @escaping (CKRecord.ID) -> Void,
+                      save: @escaping (CKRecord.ID) async throws -> Void,
+                      failed: @escaping (Error) -> Void) -> Task<Void, Never> {
+        change(id, 1)
+        mark(id)
+        return Task {
+            do {
+                try await save(id)
+            } catch {
+                unmark(id)
+                change(id, -1)
+                failed(error)
+            }
+        }
+    }
+
+    /// Adds `delta` to the count of the item with `id`, if it is still listed,
+    /// keeping the count at 0 or more.
+    static func adjust<Item>(_ items: inout [Item], id: CKRecord.ID, by delta: Int,
+                             idPath: KeyPath<Item, CKRecord.ID>, count: WritableKeyPath<Item, Int>) {
+        guard let i = items.firstIndex(where: { $0[keyPath: idPath] == id }) else { return }
+        items[i][keyPath: count] = max(0, items[i][keyPath: count] + delta)
+    }
 }
 
 // MARK: - Store seam
@@ -84,7 +137,7 @@ protocol CommunityVoteStore: AnyObject {
 }
 
 final class CloudKitCommunityVoteStore: CommunityVoteStore {
-    private let container = CKContainer(identifier: "iCloud.Scoops.PoCSquat")
+    private let container = CKContainer(identifier: WockettCloud.containerID)
     private var db: CKDatabase { container.publicCloudDatabase }
 
     func currentUserRecordName() async throws -> String {
@@ -129,9 +182,19 @@ final class CommunityVoteService {
 
     private let store: CommunityVoteStore
     private var cachedUser: String?
+    private let log = Logger(subsystem: "com.wockett.app", category: "CommunityVotes")
+    /// How long counts may hold up a feed before it shows with 0s.
+    private let tallyTimeout: Duration
 
-    init(store: CommunityVoteStore) {
+    init(store: CommunityVoteStore, tallyTimeout: Duration = .seconds(6),
+         notifications: NotificationCenter = .default) {
         self.store = store
+        self.tallyTimeout = tallyTimeout
+        // iOS doesn't restart the app when the iCloud account changes; a
+        // remembered user would file the new person's votes under the old one.
+        notifications.addObserver(forName: .CKAccountChanged, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.cachedUser = nil }
+        }
     }
 
     private func me() async throws -> String {
@@ -156,7 +219,26 @@ final class CommunityVoteService {
     /// network, not signed in, or Production without the vote type yet) every
     /// count is 0, so the feed or list still shows.
     func tally(for targets: [String]) async -> VoteTally {
-        guard !targets.isEmpty, let votes = try? await store.votes(for: targets) else { return VoteTally() }
+        guard !targets.isEmpty else { return VoteTally() }
+        let store = self.store
+        let timeout = tallyTimeout
+        let votes: [(target: String, recordName: String)]?
+        do {
+            votes = try await withThrowingTaskGroup(of: [(target: String, recordName: String)]?.self) { group in
+                group.addTask { try await store.votes(for: targets) }
+                group.addTask { try await Task.sleep(for: timeout); return nil }
+                let first = try await group.next() ?? nil
+                group.cancelAll()
+                return first
+            }
+        } catch {
+            log.error("Vote counts unavailable: \(error.localizedDescription, privacy: .public)")
+            return VoteTally()
+        }
+        guard let votes else {
+            log.error("Vote counts timed out; showing 0s")
+            return VoteTally()
+        }
         return CommunityVotes.tally(votes, me: try? await me())
     }
 }

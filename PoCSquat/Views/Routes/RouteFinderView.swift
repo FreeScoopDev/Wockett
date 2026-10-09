@@ -47,7 +47,6 @@ struct RouteFinderContentView: View {
     @State private var elevationCache: [UUID: ElevationProfile] = [:]
     @State private var elevationError: String? = nil
 
-    @State private var wocketError: String? = nil
 
     // Trails — the Routes | Trails switch (design agreed 2026-09-23).
     private enum Mode: Hashable { case routes, trails }
@@ -608,7 +607,7 @@ struct RouteFinderContentView: View {
     @ViewBuilder
     private var communitySection: some View {
         VStack(spacing: 10) {
-            if let err = wocketError {
+            if let err = communityModel.wocketError {
                 HStack(spacing: 6) {
                     Image(wkt: .errorCircle).wktIcon(.inline, tint: .earthOrange, filled: true)
                     Text(err)
@@ -669,24 +668,7 @@ struct RouteFinderContentView: View {
                             ),
                             hasVoted: CommunityRouteService.shared.hasVoted(for: route.id),
                             isSaved: savedCommunityIds.contains(route.id.recordName),
-                            onWockett: {
-                                guard i < communityModel.routes.count,
-                                      !CommunityRouteService.shared.hasVoted(for: route.id) else { return }
-                                communityModel.routes[i].wocketts += 1
-                                CommunityRouteService.shared.markVoted(for: route.id)
-                                Task {
-                                    do {
-                                        try await CommunityRouteService.shared.wockett(id: route.id)
-                                    } catch {
-                                        // Undo the optimistic +1, so the count and the button match what was saved.
-                                        CommunityRouteService.shared.unmarkVoted(for: route.id)
-                                        if let j = communityModel.routes.firstIndex(where: { $0.id == route.id }) {
-                                            communityModel.routes[j].wocketts -= 1
-                                        }
-                                        wocketError = "Couldn't save your Wockett — check your connection and try again."
-                                    }
-                                }
-                            },
+                            onWockett: { communityModel.wockett(route.id) },
                             onSave: {
                                 routeStore.save(CustomRoute(
                                     id: UUID(), name: route.name,
@@ -777,7 +759,7 @@ struct RouteFinderContentView: View {
         routeWeather = nil
         elevationProfile = nil
         elevationError = nil
-        wocketError = nil
+        communityModel.wocketError = nil
     }
 
     private func loadElevation() {
