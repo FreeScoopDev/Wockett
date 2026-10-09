@@ -391,8 +391,11 @@ not call them, so a clone without the toolkit still builds and passes CI.
 - **Never move what is checked out in `~/Desktop/Apps/PoCSquat`.** That folder is
   Joe's; git there is read-only with `--no-optional-locks`, because past
   sessions left `.git/index.lock` files behind. Do all branch work in a
-  separate worktree (`git worktree add ~/Desktop/Apps/PoCSquat-claude -b <branch>
-  origin/main`), and remove it once the PR merges. No `switch`, `checkout`,
+  worktree of its own per branch, at `~/Desktop/Apps/Wockett-claude/<branch>`
+  with the slash as a dash (`git worktree add -b fix/x
+  ~/Desktop/Apps/Wockett-claude/fix-x origin/main`, shared PROCESS.md step 1),
+  so several sessions can work on Wockett at once, and remove it once the PR
+  merges. No `switch`, `checkout`,
   `merge`, `pull` or `commit` in Joe's folder. If it needs updating before an
   emergency archive, give Joe the command instead. Cost: on
   2026-09-23 a fast-forward landed 14 s into Joe's 1.12 archive, and build 84
