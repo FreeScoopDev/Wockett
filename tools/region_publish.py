@@ -22,6 +22,11 @@ the seconds in between the region has two records; the app lists the newest
 Tokens: cktool reads them from ~/.config/cktool (saved once with
 `xcrun cktool save-token --type management|user --method file`). The user
 token is short-lived; when a call fails with an auth error, save it again.
+Paste it with `xcrun cktool save-token "$(pbpaste)" --type user --method file
+--force`: the interactive prompt saves editing keys typed into it as part of
+the token (2026-10-09), and the next call fails with "DecodableRequestBuilderError".
+Creating TrailRegionPack records needs the TrailPublisher role in the
+container's security roles (CLAUDE.md).
 Stdlib only.
 """
 from __future__ import annotations
