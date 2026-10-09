@@ -242,7 +242,8 @@ Wockett's specifics:
 - **Required checks** on `main` (`.claude/app.json` → `requiredChecks`):
   `Unit tests (iOS)` (GitHub Actions, since 2026-09-28),
   `Language-consistency guard`, `SwiftLint` (required since 2026-09-09, once
-  its error-severity backlog reached zero). `~/.claude/toolkit/bin/repo-check.sh .`
+  its error-severity backlog reached zero), and `Critic verdict` (since
+  2026-10-09; fails a major PR with no critic verdict or a BLOCK one). `~/.claude/toolkit/bin/repo-check.sh .`
   confirms GitHub still matches. `UI smoke tests (iOS)` runs on every PR but
   is advisory until the runner has proven it can run the UI target
   (`docs/ci.md` has the numbers and the rule for promoting it).

@@ -124,7 +124,9 @@ Added 2026-10-09. Fails a major PR (a `feat/` branch, or more than
 verdict, or a BLOCK one. The shared PROCESS.md makes the critic a step on every
 major change; this checks the step happened, not that the review was good. A
 workflow of its own because it re-runs when the description is edited. Not
-required until it has posted on a PR.
+required until it has posted on a PR. **Required since 2026-10-09**, after it
+posted on #158 and failed a deliberate break (#159: a `feat/` PR with no
+verdict went red).
 
 ## GitHub Actions — `.github/workflows/tests.yml`
 
