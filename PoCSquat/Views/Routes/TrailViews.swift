@@ -25,7 +25,7 @@ struct TrailsPanel: View {
     let onStartApproach: (NavigableRoute) -> Void
     var refreshLocation: () async -> Void = {}
 
-    /// "Other paths" starts closed: it is the short unnamed connectors a
+    /// "Other paths" starts closed: it is the unnamed paths a
     /// downloaded state pack carries, there if wanted but not in the way.
     @State private var showOtherPaths = false
 
@@ -132,7 +132,7 @@ struct TrailsPanel: View {
         }
     }
 
-    /// One card that opens and closes the short unnamed paths, styled like a
+    /// One card that opens and closes the unnamed paths, styled like a
     /// trail card so the list reads as one set.
     private var otherPathsHeader: some View {
         Button {
@@ -144,8 +144,7 @@ struct TrailsPanel: View {
                     Text("Other paths")
                         .font(.wktRowTitle)
                         .foregroundColor(.earthCream)
-                    Text(TrailText.otherPathsSummary(count: finder.otherPaths.count,
-                                                     usesMiles: Locale.current.measurementSystem == .us))
+                    Text(TrailText.otherPathsSummary(count: finder.otherPaths.count))
                         .font(.wktLabel)
                         .foregroundColor(.earthMuted)
                 }
@@ -411,11 +410,10 @@ enum TrailText {
         return mins < 60 ? "\(mins) min" : "\(mins / 60)h \(mins % 60)m"
     }
 
-    /// "3 short paths with no name, under 0.5 mi": what the closed "Other
-    /// paths" card holds, so it is clear nothing named is hidden there.
-    static func otherPathsSummary(count: Int, usesMiles: Bool) -> String {
-        let noun = count == 1 ? "short path" : "short paths"
-        return "\(count) \(noun) with no name, under \(usesMiles ? "0.5 mi" : "800 m")"
+    /// "3 paths with no name": what the closed "Other paths" card holds, so
+    /// it is clear nothing named is hidden there.
+    static func otherPathsSummary(count: Int) -> String {
+        "\(count) \(count == 1 ? "path" : "paths") with no name"
     }
 
     /// "6.5 mi · 1.5 mi away". One trail is one trail: how many pieces the
@@ -442,7 +440,11 @@ enum TrailText {
         case .unpaved: tags.append(Tag(text: "Unpaved", isDogRule: false))
         case nil: break
         }
-        if item.allowsBike { tags.append(Tag(text: "Bikes OK", isDogRule: false)) }
+        if item.isBikePath {
+            tags.append(Tag(text: "Bike path", isDogRule: false))
+        } else if item.allowsBike {
+            tags.append(Tag(text: "Bikes OK", isDogRule: false))
+        }
         if item.isLoop { tags.append(Tag(text: "Loop", isDogRule: false)) }
         return tags
     }
