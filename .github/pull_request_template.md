@@ -16,6 +16,15 @@
      that matters. An assertion that cannot fail counts as coverage while
      guarding nothing. -->
 
+## Critic
+
+**Critic verdict:** <!-- APPROVE, APPROVE WITH FINDINGS or BLOCK: the final run's verdict.
+     Required on a major change (a feat/ branch, or more Swift than criticMinLines
+     in .claude/app.json); the "Critic verdict" check reads this line. Otherwise
+     write "not major". -->
+
+**Spec:** <!-- the spec file's path, e.g. App/feat/thing.md. The path only: no link. -->
+
 ## Anything left unfinished or untested
 
 <!-- "Nothing" is a fine answer. Silence is not. -->

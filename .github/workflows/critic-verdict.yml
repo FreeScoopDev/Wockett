@@ -1,0 +1,36 @@
+# Fails a major PR whose description records no critic verdict, or a BLOCK
+# verdict (PROCESS.md, Every change). "Major" is criticMinLines in
+# .claude/app.json; the logic is scripts/critic_verdict.py.
+#
+# A workflow of its own, not a job in guards.yml, because it must re-run when
+# the PR description is edited ("edited"), and SwiftLint need not. Add
+# "Critic verdict" to requiredChecks only after it has posted on a PR: a
+# required check that has never posted blocks every PR.
+
+name: Critic verdict
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, edited, synchronize, reopened]
+
+jobs:
+  critic-verdict:
+    name: Critic verdict
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      # The description and branch name go through env, never pasted into
+      # the shell line, so nothing in them can run as a command.
+      - name: Critic verdict
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: python3 scripts/critic_verdict.py "$BASE_SHA" "$HEAD_SHA" "$HEAD_REF"
