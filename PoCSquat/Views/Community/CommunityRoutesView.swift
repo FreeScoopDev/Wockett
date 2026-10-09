@@ -127,7 +127,7 @@ struct CommunityRoutesView: View {
                         onWockett: { handleWockett(at: i) },
                         onSave: { handleSave(at: i) },
                         onStart: { handleStart(at: i) },
-                        onHide: { if i < model.routes.count { model.routes.remove(at: i) } }
+                        onHide: { model.routes.removeAll { $0.id == route.id } }
                     )
                 }
             }

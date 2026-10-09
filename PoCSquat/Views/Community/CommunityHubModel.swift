@@ -15,10 +15,10 @@ import Observation
 @MainActor
 @Observable
 final class CommunityHubModel {
-    private(set) var challenges: [WalkChallenge] = []
-    private(set) var yourChallenge: WalkChallenge?
+    var challenges: [WalkChallenge] = []
+    var yourChallenge: WalkChallenge?
     private(set) var yourValue = 0
-    private(set) var standing: CommunityHubSummary.Standing?
+    var standing: CommunityHubSummary.Standing?
     private(set) var challengesFailed = false
 
     var posts: [AchievementPost] = []
@@ -31,6 +31,34 @@ final class CommunityHubModel {
 
     /// Saves a like. A seam for tests; the app saves a CommunityVote.
     var saveLike: (CKRecord.ID) async throws -> Void = { try await AchievementFeedService.shared.like(id: $0) }
+
+    /// Where reports and blocks are remembered (a seam for tests).
+    var moderation = CommunityModerationStore.shared
+
+    /// The cached lists, minus anything reported or blocked since they were
+    /// fetched: the feed and challenge screens hide items only in their own
+    /// lists, and the hub would go on showing them until a refresh.
+    var visiblePosts: [AchievementPost] {
+        posts.filter { !moderation.shouldHide(id: $0.id, author: $0.authorName) }
+    }
+    var visibleChallenges: [WalkChallenge] {
+        challenges.filter { !moderation.shouldHide(id: $0.id, author: $0.authorName) }
+    }
+    /// Your joined challenge, unless it was reported or its author blocked.
+    var visibleYourChallenge: WalkChallenge? {
+        yourChallenge.flatMap { moderation.shouldHide(id: $0.id, author: $0.authorName) ? nil : $0 }
+    }
+    /// Your place in that challenge; gone with it.
+    var visibleStanding: CommunityHubSummary.Standing? {
+        visibleYourChallenge == nil ? nil : standing
+    }
+
+    /// Drops a reported item from the hub's own lists.
+    func hide(_ id: CKRecord.ID) {
+        posts.removeAll { $0.id == id }
+        challenges.removeAll { $0.id == id }
+        if yourChallenge?.id == id { yourChallenge = nil; standing = nil }
+    }
 
     private(set) var isLoading = false
     private(set) var didLoad = false

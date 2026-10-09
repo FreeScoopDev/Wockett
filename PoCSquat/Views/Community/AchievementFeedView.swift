@@ -132,6 +132,7 @@ private struct AchievementPostCard: View {
     let isLiked: Bool
     let onLike: () -> Void
     var onHide: (() -> Void)? = nil
+    @State private var report: CommunityReport?
 
     private let green = Color.earthGreen
 
@@ -196,16 +197,7 @@ private struct AchievementPostCard: View {
         .wktCard()
         .contextMenu {
             if let onHide {
-                Button(role: .destructive) {
-                    CommunityModerationStore.shared.report(post.id)
-                    onHide()
-                } label: {
-                    Label {
-                        Text("Report Post")
-                    } icon: {
-                        Image(wkt: .flagReport).wktIcon(.inline, tint: .red)
-                    }
-                }
+                CommunityReportButton("Report Post") { report = CommunityReport(post: post) }
                 Button(role: .destructive) {
                     CommunityModerationStore.shared.block(author: post.authorName)
                     onHide()
@@ -218,6 +210,7 @@ private struct AchievementPostCard: View {
                 }
             }
         }
+        .communityReporting($report, onHide: { _ in onHide?() })
     }
 
     private func timeAgo(_ date: Date) -> String {
