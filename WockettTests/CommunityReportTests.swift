@@ -1,0 +1,97 @@
+import Testing
+import CloudKit
+import Foundation
+@testable import PoCSquat
+
+/// The email a community report opens (`CommunityReport`, `SupportContact`).
+/// App Review 1.2 wants reports to reach the developer, so what matters here
+/// is that the email names the right item and survives being a URL.
+@MainActor
+struct CommunityReportTests {
+
+    /// Reads a mailto URL back the way a mail app does.
+    private func decoded(_ url: URL?) throws -> (to: String, subject: String?, body: String?) {
+        let url = try #require(url)
+        let components = try #require(URLComponents(url: url, resolvingAgainstBaseURL: false))
+        #expect(components.scheme == "mailto")
+        let items = components.queryItems ?? []
+        #expect(Set(items.map(\.name)).isSubset(of: ["subject", "body"]), "no extra fields: \(items.map(\.name))")
+        return (components.path, items.first { $0.name == "subject" }?.value, items.first { $0.name == "body" }?.value)
+    }
+
+    private func record(_ type: String, _ name: String, _ fields: [String: CKRecordValue]) -> CKRecord {
+        let r = CKRecord(recordType: type, recordID: CKRecord.ID(recordName: name))
+        for (k, v) in fields { r[k] = v }
+        return r
+    }
+
+    @Test("A route report names the route, its record and its author")
+    func routeReport() throws {
+        let route = try #require(SharedRoute(record: record("SharedRoute", "route-123", [
+            "name": "Lake loop" as CKRecordValue, "waypointsJSON": "[]" as CKRecordValue,
+            "distanceMeters": 2400.0 as CKRecordValue, "authorName": "MistyOak" as CKRecordValue])))
+        let mail = try decoded(CommunityReport(route: route).mailURL)
+        #expect(mail.to == SupportContact.email)
+        #expect(mail.subject == "Wockett report: Route")
+        let body = try #require(mail.body)
+        #expect(body.contains("Record: route-123"))
+        #expect(body.contains("Author: MistyOak"))
+        #expect(body.contains("Content: Lake loop"))
+        #expect(body.contains("Why I'm reporting it (optional):"))
+    }
+
+    @Test("A post report carries the badge and the message")
+    func postReport() throws {
+        let post = try #require(AchievementPost(record: record("WocketAchievement", "post-9", [
+            "badgeName": "Trailblazer" as CKRecordValue, "badgeEmoji": "🥾" as CKRecordValue,
+            "authorName": "SunnyFern" as CKRecordValue, "message": "Rude words here" as CKRecordValue])))
+        let mail = try decoded(CommunityReport(post: post).mailURL)
+        #expect(mail.subject == "Wockett report: Post")
+        let body = try #require(mail.body)
+        #expect(body.contains("Record: post-9"))
+        #expect(body.contains("Content: 🥾 Trailblazer: Rude words here"))
+    }
+
+    @Test("A challenge report carries the emoji and the title")
+    func challengeReport() throws {
+        let challenge = try #require(WalkChallenge(record: record("Challenge", "chal-7", [
+            "title": "10k a day" as CKRecordValue, "emoji": "🔥" as CKRecordValue,
+            "startDate": Date() as CKRecordValue, "endDate": Date().addingTimeInterval(86_400) as CKRecordValue,
+            "goalSteps": 10_000 as CKRecordValue, "authorName": "QuietPine" as CKRecordValue])))
+        let mail = try decoded(CommunityReport(challenge: challenge).mailURL)
+        #expect(mail.subject == "Wockett report: Challenge")
+        #expect(try #require(mail.body).contains("Content: 🔥 10k a day"))
+    }
+
+    @Test("Text that means something in a URL stays text",
+          arguments: ["a & b = c", "what? #tag 100%", "1+1", "line one\nline two", "Привет 東京 🐕", "x&body=injected"])
+    func encodingRoundTrips(_ text: String) throws {
+        let report = CommunityReport(kind: .post, recordID: CKRecord.ID(recordName: "r"), author: text, content: text)
+        let mail = try decoded(report.mailURL)
+        #expect(mail.body == report.body, "the body reads back exactly")
+        #expect(mail.subject == report.subject)
+    }
+
+    @Test("The report says nothing about the reporter")
+    func nothingAboutReporter() {
+        let report = CommunityReport(kind: .route, recordID: CKRecord.ID(recordName: "r"), author: "A", content: "B")
+        let text = report.body + report.subject
+        #expect(!text.contains(CommunityRouteService.shared.username))
+        #expect(!text.contains(ChallengeService.shared.deviceID))
+    }
+
+    @Test("Send Feedback uses the same address")
+    func feedbackAddress() throws {
+        let mail = try decoded(SupportContact.mailURL(subject: "Wockett Feedback"))
+        #expect(mail.to == "support@wockett.app")
+        #expect(mail.subject == "Wockett Feedback")
+        #expect(mail.body == nil)
+    }
+
+    @Test("Copy Report holds the address, the subject and the body")
+    func clipboardText() {
+        let report = CommunityReport(kind: .challenge, recordID: CKRecord.ID(recordName: "c"), author: "A", content: "B")
+        #expect(report.clipboardText.hasPrefix("To: support@wockett.app\nSubject: Wockett report: Challenge\n\n"))
+        #expect(report.clipboardText.hasSuffix(report.body))
+    }
+}

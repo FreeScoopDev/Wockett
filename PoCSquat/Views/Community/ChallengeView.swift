@@ -184,6 +184,7 @@ private struct ChallengeCard: View {
     let challenge: WalkChallenge
     let isJoined:  Bool
     var onHide: (() -> Void)? = nil
+    @State private var report: CommunityReport?
 
     var body: some View {
         HStack(spacing: 14) {
@@ -232,8 +233,7 @@ private struct ChallengeCard: View {
         .contextMenu {
             if let onHide {
                 Button(role: .destructive) {
-                    CommunityModerationStore.shared.report(challenge.id)
-                    onHide()
+                    report = CommunityReport(challenge: challenge)
                 } label: {
                     Label {
                         Text("Report Challenge")
@@ -253,6 +253,7 @@ private struct ChallengeCard: View {
                 }
             }
         }
+        .communityReporting($report, onHide: onHide)
     }
 }
 

@@ -120,6 +120,7 @@ struct CommunityRouteCard: View {
     var onSave: (() -> Void)? = nil
     let onStart: () -> Void
     var onHide: (() -> Void)? = nil
+    @State private var report: CommunityReport?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -181,8 +182,7 @@ struct CommunityRouteCard: View {
         .contextMenu {
             if let onHide {
                 Button(role: .destructive) {
-                    CommunityModerationStore.shared.report(route.id)
-                    onHide()
+                    report = CommunityReport(route: route)
                 } label: {
                     Label {
                         Text("Report Route")
@@ -202,6 +202,7 @@ struct CommunityRouteCard: View {
                 }
             }
         }
+        .communityReporting($report, onHide: onHide)
     }
 }
 

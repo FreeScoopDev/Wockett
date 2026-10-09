@@ -109,6 +109,7 @@ private struct AchievementPostCard: View {
     @Binding var post: AchievementPost
     var onHide: (() -> Void)? = nil
     @State private var hasLiked = false
+    @State private var report: CommunityReport?
 
     private let green = Color.earthGreen
 
@@ -179,8 +180,7 @@ private struct AchievementPostCard: View {
         .contextMenu {
             if let onHide {
                 Button(role: .destructive) {
-                    CommunityModerationStore.shared.report(post.id)
-                    onHide()
+                    report = CommunityReport(post: post)
                 } label: {
                     Label {
                         Text("Report Post")
@@ -200,6 +200,7 @@ private struct AchievementPostCard: View {
                 }
             }
         }
+        .communityReporting($report, onHide: onHide)
     }
 
     private func timeAgo(_ date: Date) -> String {

@@ -1,0 +1,2 @@
+### Fixed
+- Community: Report on a shared route, post or challenge now opens an email to support@wockett.app naming the item, so a report reaches us and the item can be removed for everyone. Until now a report only hid the item on the reporter's own phone. The item is still hidden for the reporter; with no mail app set up, the app shows the address and a Copy Report button instead. Send Feedback and reports share one address.
