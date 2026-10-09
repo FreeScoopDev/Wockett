@@ -22,10 +22,13 @@ struct CommunityNamesTests {
         var lookups = 0
         var gates: [CheckedContinuation<Void, Never>] = []
         var holdClaims = false
+        var duringLookup: (() -> Void)?              // runs while the lookup is in flight
+        var ownerAsRealID = false                    // report my records by my real ID, not the default owner
 
         func currentUser() async throws -> String { me }
         func claimedName() async throws -> String? {
             lookups += 1
+            duringLookup?()
             if lookupMisses { return nil }
             if let oldest { return oldest }
             return owners.first { $0.value == me }.map { $0.key } .flatMap { key in names[key] }
@@ -43,7 +46,7 @@ struct CommunityNamesTests {
         }
         func owner(of name: String) async throws -> String? {
             guard let owner = owners[name.lowercased()] else { return nil }
-            return owner == me ? CKCurrentUserDefaultName : owner
+            return owner == me && !ownerAsRealID ? CKCurrentUserDefaultName : owner
         }
         func hold(_ name: String, by account: String) {
             owners[name.lowercased()] = account
@@ -266,5 +269,32 @@ struct CommunityNamesTests {
         cloud.lookupMisses = false
         await service.refreshDisplayName()
         #expect(service.displayName == "CalmOwl17")
+    }
+
+    @Test("An account switch while the lookup is in flight: the old account's answer isn't kept or posted under")
+    func switchMidLookup() async throws {
+        let cloud = FakeCloud()
+        cloud.hold("SunnyFox42", by: "_me")
+        let center = NotificationCenter()
+        let service = CommunityNameService(store: cloud, defaults: defaults(), makeName: names(["QuietLark33"]),
+                                           notifications: center)
+        cloud.duringLookup = {
+            cloud.duringLookup = nil
+            cloud.me = "_newOwner"
+            center.post(name: .CKAccountChanged, object: nil)
+        }
+        await #expect(throws: CommunityNameService.AccountChanged.self) { try await service.claimedName() }
+        #expect(service.displayName != "SunnyFox42")
+        #expect(try await service.claimedName() == "QuietLark33", "the new account gets its own name")
+    }
+
+    @Test("A name saved by my real ID (not the default owner) is still mine")
+    func mineByRealID() async throws {
+        let cloud = FakeCloud()
+        cloud.ownerAsRealID = true
+        cloud.hold("MistyOak", by: "_me")
+        cloud.lookupMisses = true
+        let service = CommunityNameService(store: cloud, defaults: defaults(local: "MistyOak"), makeName: names(["SunnyFox42"]))
+        #expect(try await service.claimedName() == "MistyOak")
     }
 }

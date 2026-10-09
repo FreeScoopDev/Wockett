@@ -143,6 +143,11 @@ final class CommunityNameService {
     @ObservationIgnored private var inFlight: Task<String, Error>?
     /// Bumped on every change, so labels showing `displayName` redraw.
     private(set) var revision = 0
+    /// Bumped when the claim is forgotten (an account change): an answer that
+    /// arrives after it belongs to the old account and is thrown away.
+    @ObservationIgnored private var generation = 0
+
+    struct AccountChanged: Error {}
 
     init(store: CommunityNameStore, defaults: UserDefaults = .standard,
          makeName: @escaping () -> String = { CommunityNames.random() },
@@ -168,6 +173,7 @@ final class CommunityNameService {
     }
 
     func forgetClaim() {
+        generation += 1
         defaults.removeObject(forKey: Self.claimedKey)
         defaults.removeObject(forKey: Self.claimedOwnerKey)
         revision += 1
@@ -180,15 +186,17 @@ final class CommunityNameService {
     func refreshDisplayName() async {
         guard let me = try? await store.currentUser() else { return }
         forgetClaimOfAnotherAccount(me)
+        let started = generation
         // Also when this phone has a claim: another of this account's devices
         // may hold an older one, and every device should show the oldest.
         if let existing = try? await store.claimedName() {
+            guard generation == started else { return }
             if defaults.string(forKey: Self.claimedKey) != existing { remember(existing, owner: me) }
             return
         }
         if defaults.string(forKey: Self.claimedOwnerKey) == me { return }
         let local = displayName
-        if let owner = try? await store.owner(of: local), !isMine(owner, me: me) {
+        if let owner = try? await store.owner(of: local), generation == started, !isMine(owner, me: me) {
             defaults.set(makeName(), forKey: Self.localKey)
             revision += 1
         }
@@ -208,16 +216,23 @@ final class CommunityNameService {
     private func resolveName() async throws -> String {
         let me = try await store.currentUser()
         forgetClaimOfAnotherAccount(me)
+        let started = generation
+        /// Throws if the iCloud account changed while waiting on CloudKit:
+        /// whatever came back belongs to the old account.
+        func stillSameAccount() throws { if generation != started { throw AccountChanged() } }
         if defaults.string(forKey: Self.claimedOwnerKey) == me,
            let claimed = defaults.string(forKey: Self.claimedKey) { return claimed }
         if let existing = try await store.claimedName() {
+            try stillSameAccount()
             remember(existing, owner: me)
             return existing
         }
+        try stillSameAccount()
         var candidate = displayName                 // keep the name this phone already shows, if free
         for _ in 0..<Self.maxTries {
             do {
                 try await store.claim(candidate)
+                try stillSameAccount()
                 remember(candidate, owner: me)
                 return candidate
             } catch {
@@ -226,6 +241,7 @@ final class CommunityNameService {
                 // of our devices) means keep it; someone else's means try
                 // another; nobody's means the failure was something else.
                 guard let owner = try await store.owner(of: candidate) else { throw error }
+                try stillSameAccount()
                 if isMine(owner, me: me) {
                     remember(candidate, owner: me)
                     return candidate
