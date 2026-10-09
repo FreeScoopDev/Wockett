@@ -23,7 +23,7 @@ struct AchievementFeedContentView: View {
                 ScrollView {
                     LazyVStack(spacing: WktSpacing.betweenCards) {
                         ForEach($posts) { $post in
-                            AchievementPostCard(post: $post, onHide: { posts.removeAll { $0.id == post.id } })
+                            AchievementPostCard(post: $post, onHide: { posts.removeAll { $0.id == post.id || CommunityModerationStore.shared.shouldHide(id: $0.id, author: $0.author) } })
                         }
                     }
                     .padding(.horizontal, WktSpacing.screen)
@@ -180,18 +180,7 @@ private struct AchievementPostCard: View {
         .contextMenu {
             if let onHide {
                 CommunityReportButton("Report Post") { report = CommunityReport(post: post) }
-                if !post.author.isMe {   // never offer to block yourself
-                    Button(role: .destructive) {
-                        CommunityModerationStore.shared.block(post.author)
-                        onHide()
-                    } label: {
-                        Label {
-                            Text("Block \(post.authorName)")
-                        } icon: {
-                            Image(wkt: .blockUser).wktIcon(.inline, tint: .red)
-                        }
-                    }
-                }
+                CommunityBlockButton(author: post.author, onHide: onHide)
             }
         }
         .communityReporting($report, onHide: { _ in onHide?() })

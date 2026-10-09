@@ -15,6 +15,7 @@ final class CommunityRoutesModel {
         guard force || !didLoad else { return }
         isLoading = true
         loadError = nil
+        Task { await MyAccount.refresh() }
         do {
             routes = try await CommunityRouteService.shared.fetchRoutes()
             didLoad = true
@@ -103,7 +104,7 @@ struct CommunityRoutesView: View {
                         onWockett: { handleWockett(at: i) },
                         onSave: { handleSave(at: i) },
                         onStart: { handleStart(at: i) },
-                        onHide: { model.routes.removeAll { $0.id == route.id } }
+                        onHide: { model.routes.removeAll { $0.id == route.id || CommunityModerationStore.shared.shouldHide(id: $0.id, author: $0.author) } }
                     )
                 }
             }

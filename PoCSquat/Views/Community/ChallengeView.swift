@@ -81,7 +81,7 @@ struct ChallengesContentView: View {
                             ChallengeCard(
                                 challenge: challenge,
                                 isJoined: ChallengeService.shared.hasJoined(challenge),
-                                onHide: { challenges.removeAll { $0.id == challenge.id } }
+                                onHide: { challenges.removeAll { $0.id == challenge.id || CommunityModerationStore.shared.shouldHide(id: $0.id, author: $0.author) } }
                             )
                             .onTapGesture { selectedChallenge = challenge; showDetail = true }
                         }
@@ -233,18 +233,7 @@ private struct ChallengeCard: View {
         .contextMenu {
             if let onHide {
                 CommunityReportButton("Report Challenge") { report = CommunityReport(challenge: challenge) }
-                if !challenge.author.isMe {   // never offer to block yourself
-                    Button(role: .destructive) {
-                        CommunityModerationStore.shared.block(challenge.author)
-                        onHide()
-                    } label: {
-                        Label {
-                            Text("Block \(challenge.authorName)")
-                        } icon: {
-                            Image(wkt: .blockUser).wktIcon(.inline, tint: .red)
-                        }
-                    }
-                }
+                CommunityBlockButton(author: challenge.author, onHide: onHide)
             }
         }
         .communityReporting($report, onHide: { _ in onHide?() })

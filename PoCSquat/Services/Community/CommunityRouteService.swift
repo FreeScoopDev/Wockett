@@ -40,7 +40,8 @@ struct SharedRoute: Identifiable {
         )
     }
 
-    init?(record: CKRecord) {
+    /// `creator` is a seam for tests (records built in a test have none).
+    init?(record: CKRecord, creator: CKRecord.ID? = nil) {
         guard
             let name          = record["name"] as? String,
             let waypointsJSON = record["waypointsJSON"] as? String,
@@ -57,7 +58,7 @@ struct SharedRoute: Identifiable {
         self.difficulty     = RouteDifficulty(rawValue: record["difficultyTag"] as? String ?? "") ?? .easy
         self.wocketts       = record["upvotes"] as? Int ?? 0
         self.authorName     = record["authorName"] as? String ?? "Anonymous"
-        self.authorAccount = record.creatorUserRecordID?.recordName
+        self.authorAccount = CommunityAuthor.account(of: creator ?? record.creatorUserRecordID)
         self.createdAt      = record.creationDate ?? Date()
     }
 }

@@ -182,18 +182,7 @@ struct CommunityRouteCard: View {
         .contextMenu {
             if let onHide {
                 CommunityReportButton("Report Route") { report = CommunityReport(route: route) }
-                if !route.author.isMe {   // never offer to block yourself
-                    Button(role: .destructive) {
-                        CommunityModerationStore.shared.block(route.author)
-                        onHide()
-                    } label: {
-                        Label {
-                            Text("Block \(route.authorName)")
-                        } icon: {
-                            Image(wkt: .blockUser).wktIcon(.inline, tint: .red)
-                        }
-                    }
-                }
+                CommunityBlockButton(author: route.author, onHide: onHide)
             }
         }
         .communityReporting($report, onHide: { _ in onHide?() })

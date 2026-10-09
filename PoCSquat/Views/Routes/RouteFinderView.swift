@@ -700,7 +700,7 @@ struct RouteFinderContentView: View {
                                 }
                                 onNavigateAway?()
                             },
-                            onHide: { communityModel.routes.removeAll { $0.id == route.id } }
+                            onHide: { communityModel.routes.removeAll { $0.id == route.id || CommunityModerationStore.shared.shouldHide(id: $0.id, author: $0.author) } }
                         )
                         .padding(.horizontal, 20)
                     }

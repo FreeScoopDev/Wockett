@@ -15,7 +15,8 @@ struct AchievementPost: Identifiable {
     let createdAt: Date
     var likes: Int
 
-    init?(record: CKRecord) {
+    /// `creator` is a seam for tests (records built in a test have none).
+    init?(record: CKRecord, creator: CKRecord.ID? = nil) {
         guard
             let badgeName  = record["badgeName"]  as? String,
             let badgeEmoji = record["badgeEmoji"] as? String
@@ -25,7 +26,7 @@ struct AchievementPost: Identifiable {
         self.badgeName  = badgeName
         self.badgeEmoji = badgeEmoji
         self.authorName = record["authorName"] as? String ?? "Anonymous"
-        self.authorAccount = record.creatorUserRecordID?.recordName
+        self.authorAccount = CommunityAuthor.account(of: creator ?? record.creatorUserRecordID)
         self.message    = record["message"]    as? String ?? ""
         self.createdAt  = record.creationDate  ?? Date()
         self.likes      = record["likes"]      as? Int    ?? 0

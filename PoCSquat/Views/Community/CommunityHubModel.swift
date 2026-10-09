@@ -61,6 +61,7 @@ final class CommunityHubModel {
         guard !isLoading, force || !didLoad else { return }
         isLoading = true
         defer { isLoading = false; didLoad = true }
+        Task { await MyAccount.refresh() }
 
         async let challengeList = try? ChallengeService.shared.fetchActiveChallenges()
         async let feed = try? AchievementFeedService.shared.fetchPosts(limit: 3)

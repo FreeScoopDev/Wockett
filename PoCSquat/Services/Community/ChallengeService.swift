@@ -146,7 +146,8 @@ struct WalkChallenge: Identifiable {
         }
     }
 
-    init?(record: CKRecord) {
+    /// `creator` is a seam for tests (records built in a test have none).
+    init?(record: CKRecord, creator: CKRecord.ID? = nil) {
         guard
             let title     = record["title"]     as? String,
             let startDate = record["startDate"] as? Date,
@@ -159,7 +160,7 @@ struct WalkChallenge: Identifiable {
         self.startDate  = startDate
         self.endDate    = endDate
         self.authorName = record["authorName"] as? String ?? "Anonymous"
-        self.authorAccount = record.creatorUserRecordID?.recordName
+        self.authorAccount = CommunityAuthor.account(of: creator ?? record.creatorUserRecordID)
 
         // goalType absent on existing records → default to .steps (backward compat)
         let rawType = record["goalType"] as? String ?? ChallengeGoalType.steps.rawValue
