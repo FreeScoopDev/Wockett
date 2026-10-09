@@ -30,6 +30,14 @@ struct TrailRegionRecord: Identifiable, Hashable {
 
     var id: String { region }
 
+    /// Region codes are short lowercase letters (`nc`, `va`), the same codes
+    /// tools/regions.json uses. The code becomes a file name
+    /// (`<region>.wktpack`), so anything else from a record is refused rather
+    /// than used: no slashes, dots, spaces or capitals.
+    static func isValidRegionCode(_ code: String) -> Bool {
+        (2...3).contains(code.count) && code.allSatisfy { ("a"..."z").contains($0) }
+    }
+
     /// Whether this build can read the pack without downloading it first.
     var isReadable: Bool { BundledTrailSource.supportedSchemaVersions.contains(schemaVersion) }
 }
@@ -82,7 +90,7 @@ final class CloudKitTrailRegionRemote: TrailRegionRemote {
     }
 
     static func parse(_ record: CKRecord) -> TrailRegionRecord? {
-        guard let region = record["region"] as? String, !region.isEmpty,
+        guard let region = record["region"] as? String, TrailRegionRecord.isValidRegionCode(region),
               let schema = record["schemaVersion"] as? Int,
               let packVersion = record["packVersion"] as? Int else { return nil }
         return TrailRegionRecord(
