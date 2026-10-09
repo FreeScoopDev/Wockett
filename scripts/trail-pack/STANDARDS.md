@@ -61,6 +61,7 @@ broken on purpose to prove it guards something.
 | 1.3.1 | Descriptions ("abandoned track", "Logging Road", "WMA Road") are unnamed |
 | 1.3.2 | Military installation names and names with no letter or digit are unnamed; `access=military` dropped |
 | 1.4.0 | Unnamed dirt roads (`highway=track`) dropped unless open or within 100 m of a trailhead; street-named dirt roads likewise (trail-like names stay); bike paths walkable unless `foot=no`; ways closed to walking and riding dropped |
+| 1.5.0 | Name variants of one trail (case, spacing, a trailing "Trail") share its key, named by the spelling covering most of its length, best written; trail numbers are identity ("Loop #1" and "Loop #2", "#109" and "#109A" stay apart); "access line/connector/point/spur" names are unnamed, "Access Trail/Path" names are kept |
 
 Source filters in `make_region.sh`: sidewalks, traffic islands and
 `access=private/no/military` never enter the build.
@@ -100,9 +101,6 @@ Source filters in `make_region.sh`: sidewalks, traffic islands and
 - Long-distance trails split into many keys: Mountains-to-Sea Trail (55),
   Florida Trail (39), Sheltowee Trace (11), Palmetto Trail (7). Fine as
   separate nearby rows, but the card could say it is part of a longer trail.
-- Name variants of one trail: "Sheltowee Trace" / "Sheltowee Trace Trail" /
-  "Sheltowee Trace Trail #100". Normalise trail numbers and repeated suffixes.
-- Mapping artefacts used as names: "Beltline Access Line" (Atlanta, 15).
 - Dog rules: almost no ways carry them, so "informative" needs another source
   before dog access can be shown for most trails.
 - Road-side paths are 3–31% of a town's named list (Florida highest). Kept on

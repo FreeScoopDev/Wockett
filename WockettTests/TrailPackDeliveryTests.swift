@@ -218,7 +218,7 @@ struct TrailPackDeliveryTests {
         library.loadBundled(from: .main)  // the host app, which ships nc.wktpack
 
         let nc = try #require(library.source(for: "nc"), "the home region went dark")
-        #expect(nc.packInfo.trailCount > 6_000, "the bundled pack (6,373 rows since builder 1.4.0), not the fixture")
+        #expect(nc.packInfo.trailCount > 6_000, "the bundled pack (6,354 rows since builder 1.5.0), not the fixture")
         #expect(registry.attributions.map(\.sourceID) == ["osm"])
         #expect(library.loadErrors["nc"]?.hasPrefix("Pack is malformed") == true, "\(library.loadErrors)")
         #expect(library.installed == ["nc": 1], "kept, so the regions screen knows it was downloaded")
