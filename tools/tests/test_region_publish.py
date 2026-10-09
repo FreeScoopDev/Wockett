@@ -184,3 +184,43 @@ class PublishTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PublishedRecordTests(unittest.TestCase):
+    """2026-10-09: the published record keeps an exact copy of what users have,
+    and a history of every version's coverage, so each update can be held to
+    the last one."""
+
+    def setUp(self):
+        self.work = tempfile.mkdtemp()
+        self.quiet = lambda *a, **k: None
+
+    def publish(self, version, coverage):
+        m = release(self.work, version)
+        with open(os.path.join(self.work, "release", f"nc-v{version}.json")) as f:
+            manifest = json.load(f)
+        manifest.update({"coverage": coverage, "builderVersion": "1.4.0"})
+        with open(os.path.join(self.work, "release", f"nc-v{version}.json"), "w") as f:
+            json.dump(manifest, f)
+        live = [dict(LIVE_V2, packVersion=version - 1)]
+        rp.publish("nc", self.work, production=True, tested=True, run=FakeCloudKit({"production": live}),
+                   log=self.quiet)
+        with open(os.path.join(self.work, "published", "nc.json")) as f:
+            return m, json.load(f)
+
+    def test_the_record_points_at_an_archived_copy_not_the_build_folder(self):
+        m, record = self.publish(3, 0.73)
+        self.assertEqual(record["pack"], os.path.join(self.work, "published", "nc-v3.wktpack"))
+        self.assertNotEqual(record["pack"], m["pack"])
+        # The next build overwrites the build folder's pack; the archive keeps what users have.
+        with open(m["pack"], "wb") as f:
+            f.write(b"a different build")
+        self.assertEqual(rp.sha256(record["pack"]), record["sha256"])
+
+    def test_history_grows_and_only_the_live_archive_is_kept(self):
+        self.publish(3, 0.70)
+        _, record = self.publish(4, 0.73)
+        self.assertEqual([(h["packVersion"], h["coverage"]) for h in record["history"]], [(3, 0.70), (4, 0.73)])
+        self.assertEqual(record["coverage"], 0.73)
+        self.assertFalse(os.path.exists(os.path.join(self.work, "published", "nc-v3.wktpack")))
+        self.assertTrue(os.path.exists(os.path.join(self.work, "published", "nc-v4.wktpack")))

@@ -125,6 +125,12 @@ way unless there's a strong reason; adding the first one is a real decision.
 
 ## Conventions
 
+- **Trail regions follow `scripts/trail-pack/STANDARDS.md`**: the gates a
+  pack must clear (coverage of at least 50% of a state's towns, and no
+  coverage regression against the published version), what each build prints
+  for review, the curation rules by builder version, and the loop for adding
+  and improving states. A state that cannot clear the bar waits (Joe,
+  2026-10-08). Update the page when a rule changes.
 - **Icons** go through `WktSymbol` + `.wktIcon()`. No hardcoded `systemName:`
   or `systemImage:` strings. Variable-driven `systemName:` from a model
   property is fine and intended. There are zero again since 2026-10-01; keep

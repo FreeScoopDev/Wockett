@@ -47,6 +47,15 @@ MIN_PIECES = 100
 COVERAGE_RADIUS_M = 4_828.0
 COVERAGE_MIN_LENGTH_M = 402.34       # the list's quarter-mile floor
 COVERAGE_MIN_SHARE = 0.50
+# A new version may not cover fewer towns than the one users have, give or
+# take noise in the source data. Each update should leave the region at least
+# as useful as before (Joe, 2026-10-09: "improves with each update"). A real,
+# understood drop is shipped with --accept-regression "<why>", and the reason
+# is kept in the manifest and the published record.
+COVERAGE_REGRESSION_TOLERANCE = 0.02
+# Review lists printed on every build, the input to the next builder rule.
+REVIEW_REPEATED_PLACES = 6           # one name used by this many separate trails
+REVIEW_HUGE_TRAIL_M = 150_000.0      # one "trail" longer than this (Eglin AFB was 369 km)
 
 
 def load_regions(path: str) -> dict:
@@ -153,6 +162,40 @@ def gates(pack: str, region: dict, extract_bbox, towns=None) -> list[str]:
     return failures
 
 
+def review(pack: str) -> dict:
+    """What a person should look at before the next builder change. Never a gate.
+
+    - repeated: one name on many separate trails (different trail keys). Real
+      park-blaze names ("Red Trail") are expected here; descriptions ("Logging
+      Road", "Multi-Modal Path") are candidates for the builder's generic list.
+    - huge: one named trail longer than REVIEW_HUGE_TRAIL_M, usually a place
+      name painted on every way inside it.
+    """
+    conn = sqlite3.connect(f"file:{pack}?mode=ro", uri=True)
+    repeated = conn.execute(
+        "select name, count(distinct trail_key) n from trails where name is not null and trail_key is not null "
+        "and coalesce(tags_json, '') not like '%derived_road%' group by lower(name) having n >= ? "
+        "order by n desc limit 25", (REVIEW_REPEATED_PLACES,)).fetchall()
+    huge = conn.execute(
+        "select min(name), round(sum(length_m) / 1000) km from trails where trail_key is not null "
+        "group by trail_key having sum(length_m) > ? order by km desc limit 10",
+        (REVIEW_HUGE_TRAIL_M,)).fetchall()
+    conn.close()
+    # Generic names never reach here: the builder already blanks them.
+    return {"repeated": [[n, c] for n, c in repeated],
+            "huge": [[n, km] for n, km in huge]}
+
+
+def regression(share: float, previous: dict | None, accept_reason: str) -> list[str]:
+    """The coverage regression gate: empty unless this version covers fewer
+    towns than the published one and no reason was given."""
+    before = (previous or {}).get("coverage")
+    if before is None or share >= before - COVERAGE_REGRESSION_TOLERANCE or accept_reason:
+        return []
+    return [f"coverage fell from {before:.0%} to {share:.0%} of towns against the published version; "
+            f"find out why, or ship it with --accept-regression \"<why>\""]
+
+
 def names(path: str) -> set[str]:
     conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
     out = {r[0] for r in conn.execute("select distinct name from trails where name is not null")}
@@ -195,6 +238,8 @@ def main(argv=None) -> int:
     ap.add_argument("--extract-bbox", default="", help="minlon,minlat,maxlon,maxlat from osmium fileinfo")
     ap.add_argument("--regions", default=os.path.join(here, "regions.json"))
     ap.add_argument("--towns", default="", help="place=city,town points (osmium geojsonseq) for the coverage gate")
+    ap.add_argument("--accept-regression", default="", metavar="WHY",
+                    help="ship although coverage fell against the published version; the reason is recorded")
     ap.add_argument("--live-version", type=int, default=None,
                     help="the packVersion live in CloudKit Production (make_region.sh reads it with "
                          "region_publish.py live-version); overrides published/<region>.json")
@@ -212,17 +257,26 @@ def main(argv=None) -> int:
     quality = pack_quality.report(args.pack)
     print(f"\nQuality — {region['name']}")
     pack_quality.main([args.pack])
-    if failures:
-        print("\nGATES FAILED — do not publish:")
-        for f in failures:
-            print(f"  • {f}")
-        return 1
 
     published_path = os.path.join(args.work, "published", f"{args.region}.json")
     previous = None
     if os.path.exists(published_path):
         with open(published_path) as f:
             previous = json.load(f)
+    share = coverage(args.pack, towns)[0] if towns else None
+    if share is not None:
+        failures += regression(share, previous, args.accept_regression)
+    notes = review(args.pack)
+    print("\nFor review before the next builder change (not gates):")
+    print("  one name on many separate trails: "
+          + (", ".join(f"{n} ({c})" for n, c in notes["repeated"][:12]) or "none"))
+    print("  very long single trails: " + (", ".join(f"{n} ({km:.0f} km)" for n, km in notes["huge"]) or "none"))
+    if failures:
+        print("\nGATES FAILED — do not publish:")
+        for f in failures:
+            print(f"  • {f}")
+        return 1
+
     # CloudKit is the truth about what users have; the local record is the
     # fallback when it cannot be read (and what the tests use).
     base = args.live_version if args.live_version is not None else (previous["packVersion"] if previous else 0)
@@ -247,6 +301,10 @@ def main(argv=None) -> int:
         "builderVersion": meta.get("builder_version"),
         "pack": os.path.abspath(args.pack),
         "quality": quality,
+        "coverage": share,
+        "coverageTowns": len(towns) if towns else None,
+        "acceptedRegression": args.accept_regression or None,
+        "review": notes,
         "changes": diff(previous.get("pack") if previous else None, args.pack, quality),
     }
     os.makedirs(os.path.join(args.work, "release"), exist_ok=True)
@@ -255,6 +313,8 @@ def main(argv=None) -> int:
         json.dump(manifest, f, indent=2)
     print(f"\nGates passed. Release manifest: {out}")
     c = manifest["changes"]
+    if share is not None and previous and previous.get("coverage") is not None:
+        print(f"Coverage: {previous['coverage']:.0%} published, {share:.0%} now")
     if c.get("previous"):
         print(f"Against v{pack_version - 1}: pieces {c['pieces']:+}, named trails {c['named_trails']:+}, "
               f"names +{c['names_added']} / -{c['names_removed']}")
