@@ -40,6 +40,7 @@ import hashlib
 import json
 import math
 import os
+import re
 import sqlite3
 import sys
 import time
@@ -52,7 +53,7 @@ from typing import Any, Iterable, Iterator, Optional, Sequence
 # ---------------------------------------------------------------------------
 
 SCHEMA_VERSION = 1
-BUILDER_VERSION = "1.3.1"
+BUILDER_VERSION = "1.3.2"
 
 # ---------------------------------------------------------------------------
 # Source registry. Attribution lives here and is copied into every pack, so a
@@ -380,11 +381,29 @@ GENERIC_NAMES = frozenset({
     "jeep trail", "tank trail", "field road", "access road",
     "forest service road", "fire road", "wildlife planting",
     "shortcut", "short cut", "cut through", "cut-through",
+    # 1.3.2: Florida, Alabama, Kentucky, West Virginia, Maryland (2026-10-08).
+    # "Multi-Modal Path" was 86 pieces in one Florida county, and misspelt
+    # "Multi-Model Path" in the next.
+    "multi-modal path", "multimodal path", "multi-model path", "multi-modal trail",
+    "tunnel", "farm road", "forest road", "national forest road",
+    "power line road", "powerline road", "tram road",
 })
+
+# A military installation's name on the ways inside it: Eglin Air Force Base
+# was 193 tracks, 369 km, listed as one trail. Most carry no access tag, so
+# only the name gives them away. Treated as unnamed, not dropped: some of a
+# base's land is open to the public with a permit.
+_INSTALLATION_NAME = re.compile(r"\b(air force base|afb|naval air station|army airfield|military reservation)\b")
 
 
 def is_generic_name(name: Optional[str]) -> bool:
-    return bool(name) and " ".join(str(name).lower().split()) in GENERIC_NAMES
+    if not name:
+        return False
+    text = " ".join(str(name).lower().split())
+    # "???" and the like: no letter or digit, nothing to read.
+    if not any(ch.isalnum() for ch in text):
+        return True
+    return text in GENERIC_NAMES or bool(_INSTALLATION_NAME.search(text))
 
 
 def normalize_feature(
