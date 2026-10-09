@@ -184,6 +184,12 @@ final class TrailPackLibrary {
     /// first: a download that cannot be read is discarded and reported, and
     /// the previous pack (bundled or installed) stays in place.
     func download(_ record: TrailRegionRecord) async {
+        // Also checked when a record is parsed; checked again here because
+        // the code names files below.
+        guard TrailRegionRecord.isValidRegionCode(record.region) else {
+            transient[record.region] = .failed("Not a valid region code: \(record.region)")
+            return
+        }
         guard record.isReadable else {
             transient[record.region] = .needsAppUpdate
             return

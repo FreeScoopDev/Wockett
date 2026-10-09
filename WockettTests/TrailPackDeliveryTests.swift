@@ -69,6 +69,21 @@ struct TrailPackDeliveryTests {
         #expect(library.state(of: record("va", version: 2)) == .updateAvailable(installed: 1, latest: 2))
     }
 
+    @Test("A region code that is not a plain short code is refused before anything is downloaded or written")
+    func downloadRefusesBadRegionCode() async throws {
+        let dir = scratchDirectory()
+        let remote = FakeRemote(regions: [], fileToServe: try fixtureURL)
+        let library = TrailPackLibrary(registry: TrailAttributionRegistry(), remote: remote, packsDirectory: dir)
+        await library.download(record("../va"))
+        #expect(remote.downloads == 0)
+        #expect(library.installed.isEmpty)
+        guard case .failed = library.state(of: record("../va")) else {
+            Issue.record("expected .failed, got \(library.state(of: record("../va")))"); return
+        }
+        let written = (try? FileManager.default.contentsOfDirectory(atPath: dir.deletingLastPathComponent().path)) ?? []
+        #expect(!written.contains("va.wktpack"), "nothing written beside the packs folder")
+    }
+
     @Test("A region with two records (mid-publish) is listed once, at its newest version")
     func newestRecordWins() {
         let list = TrailPackLibrary.newestPerRegion([record("sc", version: 1), record("nc", version: 2),
@@ -228,6 +243,18 @@ struct TrailPackDeliveryTests {
 
         let missing = CKRecordFixture.make(region: "", regionName: "x", schema: 1, packVersion: 1, trailCount: 0, sizeBytes: 0)
         #expect(CloudKitTrailRegionRemote.parse(missing) == nil)
+    }
+
+    @Test("Refuses a record whose region code is not a plain short code",
+          arguments: ["../nc", "nc/x", "..", "NC", "n c", "n", "ncxx", "nc.wktpack", "ñc"])
+    func refusesBadRegionCode(_ code: String) {
+        let rec = CKRecordFixture.make(region: code, regionName: "x", schema: 1, packVersion: 9, trailCount: 1, sizeBytes: 1)
+        #expect(CloudKitTrailRegionRemote.parse(rec) == nil)
+    }
+
+    @Test("Accepts every region code tools/regions.json uses", arguments: ["nc", "sc", "va", "tn", "ga", "fl", "al", "ky", "wv", "md"])
+    func acceptsRegionCodes(_ code: String) {
+        #expect(TrailRegionRecord.isValidRegionCode(code))
     }
 }
 
