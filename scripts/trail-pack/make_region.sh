@@ -30,6 +30,7 @@
 #      access=no goes too: the shipped 1.1.0 packs were built with
 #      access=private,no (their input reproduces byte for byte only with
 #      both), though this script said private alone until 2026-09-26.
+#      access=military goes too since 2026-10-08 (Florida: closed ranges).
 #   4. Export to GeoJSON-seq with feature-level ids (osmium's real output
 #      shape — a hand-made fixture that differed from it hid two bugs).
 #   5. Build the bundled pack (bundled regions only): named trails only (the bundle is the trimmed
@@ -81,7 +82,7 @@ osmium tags-filter "$EXTRACT" w/highway=path,footway,track,bridleway,cycleway,st
   -o "$T-trails.osm.pbf" --overwrite
 osmium tags-filter -i "$T-trails.osm.pbf" w/footway=sidewalk,access_aisle,traffic_island \
   -o "$T-trails-clean.osm.pbf" --overwrite
-osmium tags-filter -i "$T-trails-clean.osm.pbf" w/access=private,no \
+osmium tags-filter -i "$T-trails-clean.osm.pbf" w/access=private,no,military \
   -o "$T-trails-public.osm.pbf" --overwrite
 osmium export "$T-trails-public.osm.pbf" -f geojsonseq --add-unique-id=type_id --geometry-types=linestring \
   -o "$T-trails-public.geojsonseq" --overwrite
