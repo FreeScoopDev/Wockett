@@ -28,6 +28,8 @@ struct ActiveWalkSnapshot: Codable {
         let pathIsRecording: Bool?
         /// The trail a session is heading for. Optional for the same reason.
         let approach: TrailApproach?
+        /// Out and back: where to turn round. Optional for the same reason.
+        let turnaroundMeters: Double?
 
         init(_ route: NavigableRoute) {
             name = route.name
@@ -42,6 +44,7 @@ struct ActiveWalkSnapshot: Codable {
             path = route.path?.map { WaypointCoord($0) }
             pathIsRecording = route.pathIsRecording
             approach = route.approach
+            turnaroundMeters = route.turnaroundMeters
         }
 
         /// Written out so a trail destination that no longer decodes (a later
@@ -62,6 +65,7 @@ struct ActiveWalkSnapshot: Codable {
             path = try c.decodeIfPresent([WaypointCoord].self, forKey: .path)
             pathIsRecording = try c.decodeIfPresent(Bool.self, forKey: .pathIsRecording)
             approach = (try? c.decodeIfPresent(TrailApproach.self, forKey: .approach)) ?? nil
+            turnaroundMeters = try c.decodeIfPresent(Double.self, forKey: .turnaroundMeters)
         }
 
         var navigableRoute: NavigableRoute {
@@ -77,7 +81,8 @@ struct ActiveWalkSnapshot: Codable {
                 customRouteId: customRouteId,
                 path: path?.map(\.clCoordinate),
                 pathIsRecording: pathIsRecording ?? false,
-                approach: approach
+                approach: approach,
+                turnaroundMeters: turnaroundMeters
             )
         }
     }
