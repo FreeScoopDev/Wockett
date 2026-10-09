@@ -17,6 +17,20 @@ final class CommunityRoutesModel {
     var saveWockett: (CKRecord.ID) async throws -> Void = { try await CommunityRouteService.shared.wockett(id: $0) }
     /// Where Wocketted routes are remembered (a seam for tests).
     var wockettMarks = VoteMarks.wocketts
+    /// Where reports and blocks are remembered (a seam for tests).
+    var moderation = CommunityModerationStore.shared
+
+    /// Routes minus anything reported or blocked since they loaded: a block on
+    /// a post or challenge also covers this author's routes, which this
+    /// app-wide model would otherwise show until a refresh.
+    var visibleRoutes: [SharedRoute] { moderation.visible(routes) }
+
+    /// Removes reported and blocked routes (and `id`) from the list itself;
+    /// the route screens address routes by position, so they call this.
+    func dropHidden(also id: CKRecord.ID? = nil) {
+        routes = moderation.visible(routes.filter { $0.id != id })
+    }
+
     /// Wocketts still saving: a refresh mid-save adds them back (OptimisticVote).
     var pendingVotes: Set<String> = []
 
@@ -107,7 +121,7 @@ struct CommunityRoutesView: View {
         .navigationTitle("Community Routes")
         .navigationBarTitleDisplayMode(.inline)
         .task { await model.load() }
-        .onAppear { model.wocketError = nil }   // the other route screen's message isn't about a tap here
+        .onAppear { model.wocketError = nil; model.dropHidden() }   // the other route screen's message isn't about a tap here
         .alert("Session Already Active", isPresented: $showActiveSessionAlert) {
             Button("OK", role: .cancel) {}
         } message: {
@@ -137,7 +151,7 @@ struct CommunityRoutesView: View {
                         onWockett: { handleWockett(at: i) },
                         onSave: { handleSave(at: i) },
                         onStart: { handleStart(at: i) },
-                        onHide: { model.routes.removeAll { $0.id == route.id || CommunityModerationStore.shared.shouldHide(id: $0.id, author: $0.author) } }
+                        onHide: { model.dropHidden(also: route.id) }
                     )
                 }
             }

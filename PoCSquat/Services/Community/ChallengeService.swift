@@ -160,7 +160,7 @@ struct WalkChallenge: Identifiable {
         self.startDate  = startDate
         self.endDate    = endDate
         self.authorName = record["authorName"] as? String ?? "Anonymous"
-        self.authorAccount = CommunityAuthor.account(of: creator ?? record.creatorUserRecordID)
+        self.authorAccount = CommunityAuthor.account(of: record, creator: creator)
 
         // goalType absent on existing records → default to .steps (backward compat)
         let rawType = record["goalType"] as? String ?? ChallengeGoalType.steps.rawValue
@@ -370,3 +370,5 @@ final class ChallengeService {
 
 // Swift doesn't have a built-in min for Date — add one here to avoid ambiguity.
 private func min(_ a: Date, _ b: Date) -> Date { a < b ? a : b }
+
+extension WalkChallenge: CommunityModerated {}

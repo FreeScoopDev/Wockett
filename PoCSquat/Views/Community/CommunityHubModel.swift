@@ -43,10 +43,10 @@ final class CommunityHubModel: PostLiking {
     /// fetched: the feed and challenge screens hide items only in their own
     /// lists, and the hub would go on showing them until a refresh.
     var visiblePosts: [AchievementPost] {
-        posts.filter { !moderation.shouldHide(id: $0.id, author: $0.author) }
+        moderation.visible(posts)
     }
     var visibleChallenges: [WalkChallenge] {
-        challenges.filter { !moderation.shouldHide(id: $0.id, author: $0.author) }
+        moderation.visible(challenges)
     }
     /// Your joined challenge, unless it was reported or its author blocked.
     var visibleYourChallenge: WalkChallenge? {

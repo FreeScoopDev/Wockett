@@ -62,9 +62,11 @@ struct CommunityAuthor: Equatable {
     /// moderation store (`isMine`), which also knows that name.
     var isDefaultOwner: Bool { account == CKCurrentUserDefaultName }
 
-    /// The account part of a record's creator, read in one place for every
-    /// community type.
-    static func account(of creator: CKRecord.ID?) -> String? { creator?.recordName }
+    /// The account behind a record: its CloudKit creator, unless a test passes
+    /// one. Read in one place for every community type.
+    static func account(of record: CKRecord, creator: CKRecord.ID? = nil) -> String? {
+        (creator ?? record.creatorUserRecordID)?.recordName
+    }
 
     init(name: String, account: String?) {
         self.name = name
@@ -82,10 +84,22 @@ nonisolated enum MyAccount {
     static var recordName: String? { UserDefaults.standard.string(forKey: key) }
 
     static func refresh() async {
-        if let id = try? await CKContainer(identifier: "iCloud.Scoops.PoCSquat").userRecordID() {
+        if let id = try? await CKContainer(identifier: WockettCloud.containerID).userRecordID() {
             UserDefaults.standard.set(id.recordName, forKey: key)
         }
     }
+
+    /// Forgets the saved ID: the iCloud account changed, and the old one's
+    /// content must not count as yours.
+    static func clear() {
+        UserDefaults.standard.removeObject(forKey: key)
+    }
+}
+
+/// Community content that Report and Block can hide.
+protocol CommunityModerated {
+    var id: CKRecord.ID { get }
+    var author: CommunityAuthor { get }
 }
 
 // MARK: - Community Moderation Store
@@ -110,10 +124,34 @@ final class CommunityModerationStore {
     /// Your own account's record name, if known (a seam for tests).
     @ObservationIgnored private let myAccount: () -> String?
 
-    /// `defaults` and `myAccount` are for tests, so they don't touch the app's own settings.
-    init(defaults: UserDefaults = .standard, myAccount: @escaping () -> String? = { MyAccount.recordName }) {
+    @ObservationIgnored private let accountChangeWork: () async -> Void
+
+    /// `defaults`, `myAccount`, `notifications` and `onAccountChange` are for
+    /// tests, so they don't touch the app's own settings or iCloud.
+    init(defaults: UserDefaults = .standard,
+         myAccount: @escaping () -> String? = { MyAccount.recordName },
+         notifications: NotificationCenter = .default,
+         onAccountChange: @escaping () async -> Void = { MyAccount.clear(); await MyAccount.refresh() }) {
         self.defaults = defaults
         self.myAccount = myAccount
+        self.accountChangeWork = onAccountChange
+        // A different iCloud account on this phone: the saved own ID belongs to
+        // the old one. Forget it, look the new one up, and redraw anything that
+        // decided "yours" with the old one.
+        notifications.addObserver(forName: .CKAccountChanged, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.accountChanged() }
+        }
+    }
+
+    /// Returns the save of the new ID, for tests to await.
+    @discardableResult
+    func accountChanged() -> Task<Void, Never> {
+        revision += 1
+        let work = accountChangeWork
+        return Task { [weak self] in
+            await work()
+            self?.revision += 1
+        }
     }
 
     /// Your own content: never blockable, never hidden by a block.
@@ -159,6 +197,11 @@ final class CommunityModerationStore {
 
     func shouldHide(id: CKRecord.ID, author: CommunityAuthor) -> Bool {
         isReported(id) || isBlocked(author)
+    }
+
+    /// `items` minus anything reported or blocked: the one filter every list uses.
+    func visible<Item: CommunityModerated>(_ items: [Item]) -> [Item] {
+        items.filter { !shouldHide(id: $0.id, author: $0.author) }
     }
 
     // MARK: - Private

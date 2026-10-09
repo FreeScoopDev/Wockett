@@ -43,7 +43,7 @@ struct AchievementFeedContentView: View {
                             AchievementPostCard(post: post,
                                                 isLiked: feed.isLiked(post.id),
                                                 onLike: { feed.like(post.id) },
-                                                onHide: { feed.posts.removeAll { $0.id == post.id || CommunityModerationStore.shared.shouldHide(id: $0.id, author: $0.author) } })
+                                                onHide: { feed.posts = CommunityModerationStore.shared.visible(feed.posts.filter { $0.id != post.id }) })
                         }
                     }
                     .padding(.horizontal, WktSpacing.screen)

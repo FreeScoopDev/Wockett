@@ -81,7 +81,7 @@ struct ChallengesContentView: View {
                             ChallengeCard(
                                 challenge: challenge,
                                 isJoined: ChallengeService.shared.hasJoined(challenge),
-                                onHide: { challenges.removeAll { $0.id == challenge.id || CommunityModerationStore.shared.shouldHide(id: $0.id, author: $0.author) } }
+                                onHide: { challenges = CommunityModerationStore.shared.visible(challenges.filter { $0.id != challenge.id }) }
                             )
                             .onTapGesture { selectedChallenge = challenge; showDetail = true }
                         }

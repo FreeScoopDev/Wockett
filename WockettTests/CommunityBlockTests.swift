@@ -120,4 +120,40 @@ struct CommunityBlockTests {
             #expect(author == CommunityAuthor(name: "MistyOak", account: "_creator"))
         }
     }
+
+    // MARK: Run 2
+
+    private func route(_ name: String, account: String) throws -> SharedRoute {
+        let r = record("SharedRoute", ["name": name as CKRecordValue, "waypointsJSON": "[]" as CKRecordValue,
+                                       "distanceMeters": 1000.0 as CKRecordValue, "authorName": "Someone" as CKRecordValue])
+        return try #require(SharedRoute(record: r, creator: CKRecord.ID(recordName: account)))
+    }
+
+    @Test("A block made anywhere hides that author's routes in the app-wide route list")
+    func routesModelHidesBlocked() throws {
+        let f = fixture()
+        let model = CommunityRoutesModel()
+        model.moderation = f.store
+        let theirs = try route("Theirs", account: "_troll"), other = try route("Other", account: "_ok")
+        model.routes = [theirs, other]
+        f.store.block(theirs.author)                    // blocked from a post elsewhere
+        #expect(model.visibleRoutes.map(\.id) == [other.id])
+        model.dropHidden()
+        #expect(model.routes.map(\.id) == [other.id])
+    }
+
+    @Test("An iCloud account change forgets and refreshes the saved ID, and redraws")
+    func accountChangeRefreshes() async {
+        let center = NotificationCenter()
+        var refreshed = 0
+        let suite = "CommunityBlockTests-\(UUID().uuidString)"
+        let store = CommunityModerationStore(defaults: UserDefaults(suiteName: suite) ?? .standard,
+                                             myAccount: { nil }, notifications: center,
+                                             onAccountChange: { refreshed += 1 })
+        let before = store.revision
+        center.post(name: .CKAccountChanged, object: nil)
+        #expect(store.revision > before, "screens that decided 'yours' redraw at once")
+        for _ in 0..<1_000 where refreshed == 0 { await Task.yield() }
+        #expect(refreshed == 1)
+    }
 }

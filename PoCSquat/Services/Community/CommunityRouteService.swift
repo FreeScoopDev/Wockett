@@ -58,7 +58,7 @@ struct SharedRoute: Identifiable {
         self.difficulty     = RouteDifficulty(rawValue: record["difficultyTag"] as? String ?? "") ?? .easy
         self.wocketts       = record["upvotes"] as? Int ?? 0
         self.authorName     = record["authorName"] as? String ?? "Anonymous"
-        self.authorAccount = CommunityAuthor.account(of: creator ?? record.creatorUserRecordID)
+        self.authorAccount = CommunityAuthor.account(of: record, creator: creator)
         self.createdAt      = record.creationDate ?? Date()
     }
 }
@@ -190,3 +190,5 @@ final class CommunityRouteService {
         return RouteDifficulty.hard.rawValue
     }
 }
+
+extension SharedRoute: CommunityModerated {}

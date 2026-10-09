@@ -26,7 +26,7 @@ struct AchievementPost: Identifiable {
         self.badgeName  = badgeName
         self.badgeEmoji = badgeEmoji
         self.authorName = record["authorName"] as? String ?? "Anonymous"
-        self.authorAccount = CommunityAuthor.account(of: creator ?? record.creatorUserRecordID)
+        self.authorAccount = CommunityAuthor.account(of: record, creator: creator)
         self.message    = record["message"]    as? String ?? ""
         self.createdAt  = record.creationDate  ?? Date()
         self.likes      = record["likes"]      as? Int    ?? 0
@@ -117,3 +117,5 @@ final class AchievementFeedService {
         markLiked(id: id)
     }
 }
+
+extension AchievementPost: CommunityModerated {}
