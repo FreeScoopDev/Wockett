@@ -53,7 +53,7 @@ from typing import Any, Iterable, Iterator, Optional, Sequence
 # ---------------------------------------------------------------------------
 
 SCHEMA_VERSION = 1
-BUILDER_VERSION = "1.4.0"
+BUILDER_VERSION = "1.5.0"
 
 # ---------------------------------------------------------------------------
 # Source registry. Attribution lives here and is copied into every pack, so a
@@ -306,6 +306,17 @@ class Trail:
     # crossings are links, not trail, and do not count (None = length_m).
     floor_length_m: Optional[float] = None
     trail_key: Optional[str] = None
+    # Metres of this row under each spelling of its name. A merged row joins
+    # ways whose names differ only as `pool_key` allows ("Raider Camp" and
+    # "Raider Camp Trail"); the trail's name is voted on these, not on the
+    # first way's name (critic run 2 of #160). None = {name: length_m}.
+    name_weights: Optional[dict] = None
+
+
+def _name_weights(t: "Trail") -> dict:
+    if t.name_weights is not None:
+        return t.name_weights
+    return {t.name: t.length_m} if t.name else {}
 
 
 @dataclass
@@ -330,6 +341,7 @@ class Stats:
     skipped_unnamed_track: int = 0
     skipped_street_named_track: int = 0
     kept_track_at_trailhead: int = 0
+    unified_names: int = 0
     trail_keys: int = 0
     read: int = 0
     written: int = 0
@@ -400,6 +412,52 @@ GENERIC_NAMES = frozenset({
 _INSTALLATION_NAME = re.compile(r"\b(air force base|afb|naval air station|army airfield|military reservation)\b")
 
 
+# 1.5.0: a connector named for what it reaches. Atlanta's "Beltline Access
+# Line" was 63 ways averaging 92 m, listed in 15 places (2026-10-09 review list).
+# "Access Trail" and "Access Path" are left alone: in North Carolina alone
+# 27 such ways, 6.7 km, include real trails ("Hazel Creek Access Trail",
+# 1.1 km) that this rule took the names of (critic run 1 of #160).
+_ACCESS_CONNECTOR = re.compile(r"\baccess (line|connector|point|spur)$")
+
+
+# A trailing trail number: "#100", "#109A", "#100:9". The number is part of a
+# trail's identity: "Loop #1" and "Loop #2", Florida's "Beach Access #1"-"#4",
+# Kentucky's Limestone Bike Trail #109 and its spurs #109A-D are different
+# trails. Only `name_key` drops it, and `trail_number` keeps it so a trail key
+# never joins two different numbers (critic run 1 of #160).
+_TRAIL_NUMBER = re.compile(r"\s+#\s*(\d+[a-z]?)(:\d+)?$")
+
+
+def trail_number(name: str) -> Optional[str]:
+    match = _TRAIL_NUMBER.search(" ".join(name.lower().split()))
+    return match.group(1) if match else None
+
+
+def pool_key(name: str) -> str:
+    """Ways that may be merged end to end: one name up to variants, and the
+    same trail number or none on both."""
+    number = trail_number(name)
+    return name_key(name) + (f" #{number}" if number else "")
+
+
+def name_key(name: str) -> str:
+    """What makes two names one trail's name (builder 1.5.0, 2026-10-09).
+
+    Kentucky's review list showed one trail as "Sheltowee Trace", "Sheltowee
+    Trace Trail", "Sheltowee Trace #100" and "Sheltowee Trace Trail #100".
+    Case and spacing are ignored; a trailing trail number written "#100" is
+    dropped (see `trail_number`: it still keeps different numbers apart), and
+    then a trailing "Trail"/"Trails" when two words remain. Kept
+    narrow on purpose: "IR-#16-Easy" and "IR-#27-Easy" are two mountain-bike
+    trails, and "Nature Trail" must not become "Nature".
+    """
+    text = _TRAIL_NUMBER.sub("", " ".join(name.lower().split()))
+    words = text.split()
+    if len(words) >= 3 and words[-1] in ("trail", "trails"):
+        text = " ".join(words[:-1])
+    return text
+
+
 def is_generic_name(name: Optional[str]) -> bool:
     if not name:
         return False
@@ -407,7 +465,7 @@ def is_generic_name(name: Optional[str]) -> bool:
     # "???" and the like: no letter or digit, nothing to read.
     if not any(ch.isalnum() for ch in text):
         return True
-    return text in GENERIC_NAMES or bool(_INSTALLATION_NAME.search(text))
+    return text in GENERIC_NAMES or bool(_INSTALLATION_NAME.search(text)) or bool(_ACCESS_CONNECTOR.search(text))
 
 
 def normalize_feature(
@@ -916,6 +974,11 @@ def _merged_row(parts, coords: list[list[float]], base: Optional[Trail] = None):
         forbids_horse=any(t.forbids_horse for t, _ in parts),
         floor_length_m=sum(t.length_m for t, _ in all_parts if not t.is_crossing),
     )
+    weights: dict = {}
+    for t, _ in all_parts:
+        for spelling, metres in _name_weights(t).items():
+            weights[spelling] = weights.get(spelling, 0.0) + metres
+    trail.name_weights = weights or None
     return trail, coords
 
 
@@ -1674,6 +1737,16 @@ def _bbox_gap_m(a: "Trail", b: "Trail") -> float:
     return math.hypot(dlat, dlon)
 
 
+def _odd_case(name: str) -> bool:
+    """A capital inside a word ("HIgh", "TRail"): usually a typo. All-capital
+    words ("NC", "BHAM") are not odd."""
+    return any(any(c.isupper() for c in w[1:]) and not w.isupper() for w in name.split())
+
+
+def _capitalised_words(name: str) -> int:
+    return sum(1 for w in name.split() if w[:1].isupper())
+
+
 def assign_trail_keys(rows: list, region: str, stats: Stats) -> None:
     """Give every piece of one named trail the same `trail_key`.
 
@@ -1686,9 +1759,14 @@ def assign_trail_keys(rows: list, region: str, stats: Stats) -> None:
     by_name: dict[str, list[int]] = {}
     for i, (t, _) in enumerate(rows):
         if t.name:
-            by_name.setdefault(" ".join(t.name.lower().split()), []).append(i)
+            by_name.setdefault(name_key(t.name), []).append(i)
     for idx in by_name.values():
         parent = {i: i for i in idx}
+        # The trail numbers each group already holds: a group joins another
+        # only if together they hold at most one ("Sheltowee Trace" joins
+        # "Sheltowee Trace #100"; "Loop #1" never joins "Loop #2", not even
+        # through an unnumbered "Loop" between them).
+        numbers = {i: ({trail_number(rows[i][0].name)} - {None}) for i in idx}
 
         def find(i: int) -> int:
             while parent[i] != i:
@@ -1703,7 +1781,10 @@ def assign_trail_keys(rows: list, region: str, stats: Stats) -> None:
                 if rows[j][0].min_lon - rows[i][0].max_lon > pad:
                     break
                 if _bbox_gap_m(rows[i][0], rows[j][0]) <= TRAIL_KEY_JOIN_GAP_M:
-                    parent[find(i)] = find(j)
+                    ri, rj = find(i), find(j)
+                    if ri != rj and len(numbers[ri] | numbers[rj]) <= 1:
+                        parent[ri] = rj
+                        numbers[rj] |= numbers[ri]
         groups: dict[int, list[int]] = {}
         for i in idx:
             groups.setdefault(find(i), []).append(i)
@@ -1712,6 +1793,37 @@ def assign_trail_keys(rows: list, region: str, stats: Stats) -> None:
             for i in members:
                 rows[i][0].trail_key = key
             stats.trail_keys += 1
+            # One trail, one name: the variant carried by the most length,
+            # then the one written in ordinary case. Counting pieces picked a
+            # 239 m "North Slope" over 5.8 km of "North Slope Trail", and the
+            # shortest-on-a-tie rule picked "HIgh Falls Loop" (critic run 1
+            # of #160).
+            # Voted on the original ways' spellings and lengths, carried
+            # through merges (`name_weights`).
+            weight: dict[str, float] = {}
+            for i in members:
+                for spelling, metres in _name_weights(rows[i][0]).items():
+                    weight[spelling] = weight.get(spelling, 0.0) + metres
+            # Spellings that differ only in capitals or spacing are one name:
+            # the length decides between names, then the best-written
+            # spelling of the winner is used whatever its share: no capital
+            # inside a word ("HIgh"), then the most capitalised words
+            # ("Croatan" over "croatan", "Nature Trail" over "Nature trail"),
+            # single-spaced. On a tie between names a numbered name wins:
+            # the number tells the trail apart.
+            def fold(n: str) -> str:
+                return " ".join(n.lower().split())
+            folded: dict[str, float] = {}
+            for n, w in weight.items():
+                folded[fold(n)] = folded.get(fold(n), 0.0) + w
+            best = min(folded, key=lambda f: (-round(folded[f], 1), trail_number(f) is None, f))
+            chosen = " ".join(min((n for n in weight if fold(n) == best),
+                                  key=lambda n: (_odd_case(n), -_capitalised_words(n),
+                                                 -round(weight[n], 1), n)).split())
+            for i in members:
+                if rows[i][0].name != chosen:
+                    rows[i][0].name = chosen
+                    stats.unified_names += 1
 
 
 # --- Which ways are worth listing (builder 1.4.0, 2026-10-08) ---------------
@@ -1895,7 +2007,7 @@ def build_pack(
                 # way is exactly what joins two long pieces of a named trail,
                 # and dropping it first left the Mountains-to-Sea Trail with
                 # 246 of 300 endpoints touching nothing.
-                pool.setdefault(trail.name, []).append((trail, coords))
+                pool.setdefault(pool_key(trail.name), []).append((trail, coords))
             else:
                 keep((trail, coords))
 
@@ -2159,6 +2271,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     print(f"  dirt roads         {stats.skipped_unnamed_track:,} unnamed and {stats.skipped_street_named_track:,} street-named dropped, "
           f"{stats.kept_track_at_trailhead:,} kept at a trailhead")
     print(f"  closed to all      {stats.skipped_closed:,} dropped (no walking and no riding)")
+    print(f"  name variants      {stats.unified_names:,} pieces renamed to their trail's main name")
     print(f"  junction merges    {stats.junction_merges:,}")
     print(f"  bridged gaps       {stats.bridged_gaps:,} (same name, facing, under {BRIDGE_MAX_GAP_M:.0f} m)")
     print(f"  named trails       {stats.trail_keys:,} (trail keys)")

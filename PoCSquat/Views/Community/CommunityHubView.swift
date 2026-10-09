@@ -23,6 +23,10 @@ struct CommunityHubView: View {
     var streakStore: StreakStore = .shared
 
     @State private var model = CommunityHubModel()
+    /// The report in progress from any hub row. Hosted here, not on the row:
+    /// a row can leave the screen mid-alert (a refresh, a location fix that
+    /// reorders the top routes) and would take the alert with it.
+    @State private var hubReport: CommunityReport?
     @State private var trailFinder = TrailFinder()
 
     @State private var pushBadges       = false
@@ -63,6 +67,11 @@ struct CommunityHubView: View {
         .accessibilityIdentifier("community.root")
         .navigationTitle("Community")
         .navigationBarTitleDisplayMode(.large)
+        .likeErrorAlert($model.likeError)
+        .communityReporting($hubReport) { report in
+            model.hide(report.recordID)
+            communityRoutesModel.routes.removeAll { $0.id == report.recordID }
+        }
         .navigationDestination(isPresented: $pushBadges) { BadgesContentView() }
         .navigationDestination(isPresented: $pushFeed) { AchievementFeedContentView() }
         .navigationDestination(isPresented: $pushChallenges) { ChallengesContentView() }
@@ -115,7 +124,7 @@ struct CommunityHubView: View {
             HStack(spacing: 0) {
                 youStat(value: "\(currentStreak)", label: "Day streak") { pushBadges = true }
                 youStat(value: "\(earned)", label: "Badges") { pushBadges = true }
-                youStat(value: model.standing.map { "#\($0.rank)" } ?? "–", label: "Challenge") { pushChallenges = true }
+                youStat(value: model.visibleStanding.map { "#\($0.rank)" } ?? "–", label: "Challenge") { pushChallenges = true }
                 youStat(value: model.receivedWocketts.map { "\($0)" } ?? "–", label: "Wocketts") { pushRoutes = true }
             }
             HStack(spacing: 8) {
@@ -151,13 +160,13 @@ struct CommunityHubView: View {
 
     @ViewBuilder
     private var challengeCard: some View {
-        if let challenge = model.yourChallenge {
+        if let challenge = model.visibleYourChallenge {
             yourChallengeCard(challenge)
         } else {
             WktSection(title: "Challenges", actionTitle: "All", action: { pushChallenges = true }, content: {
               VStack(alignment: .leading, spacing: 12) {
-                if !model.challenges.isEmpty {
-                    ForEach(model.challenges.prefix(2)) { challenge in
+                if !model.visibleChallenges.isEmpty {
+                    ForEach(model.visibleChallenges.prefix(2)) { challenge in
                         HStack(spacing: 12) {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(challenge.title)
@@ -169,6 +178,10 @@ struct CommunityHubView: View {
                             }
                             Spacer()
                             WktPillButton(title: "Join") { pushChallenges = true }
+                        }
+                        .contentShape(Rectangle())
+                        .contextMenu {
+                            CommunityReportButton("Report Challenge") { hubReport = CommunityReport(challenge: challenge) }
                         }
                     }
                 } else if model.didLoad {
@@ -212,7 +225,7 @@ struct CommunityHubView: View {
                             .font(.wktLabel)
                             .foregroundColor(.earthMuted)
                         HStack(spacing: 6) {
-                            if let standing = model.standing {
+                            if let standing = model.visibleStanding {
                                 chip("#\(standing.rank) of \(standing.total)", tint: .earthGreen)
                             }
                             chip(challenge.timeRemainingText, tint: .earthOrange)
@@ -224,7 +237,7 @@ struct CommunityHubView: View {
             }
             .buttonStyle(.plain)
             .accessibilityElement(children: .combine)
-            if let standing = model.standing,
+            if let standing = model.visibleStanding,
                let nudge = CommunityHubSummary.nudge(goal: challenge.goalType, gap: standing.gapToAhead,
                                                      aheadName: standing.aheadName, rank: standing.rank,
                                                      activity: challenge.activityFilter) {
@@ -235,7 +248,7 @@ struct CommunityHubView: View {
                     .padding(.vertical, 10)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(Color.earthGreen.opacity(0.10), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            } else if model.standing?.rank == 1 {
+            } else if model.visibleStanding?.rank == 1 {
                 Text("You're in the lead. Keep it up.")
                     .font(.wktBodyText)
                     .foregroundColor(.earthGreen)
@@ -359,12 +372,12 @@ struct CommunityHubView: View {
         if !model.posts.isEmpty || (model.didLoad && !model.feedFailed) {
             WktSection(title: "From the community", actionTitle: "See all", action: { pushFeed = true }, content: {
                 VStack(alignment: .leading, spacing: 4) {
-                    if model.posts.isEmpty {
+                    if model.visiblePosts.isEmpty {
                         Text("No milestones shared yet. Earn a badge and share it.")
                             .font(.wktBodyText)
                             .foregroundColor(.earthMuted)
                     }
-                    ForEach(Array(model.posts.enumerated()), id: \.element.id) { index, post in
+                    ForEach(Array(model.visiblePosts.enumerated()), id: \.element.id) { index, post in
                         if index > 0 { WktDivider() }
                         feedRow(post)
                     }
@@ -375,7 +388,7 @@ struct CommunityHubView: View {
     }
 
     private func feedRow(_ post: AchievementPost) -> some View {
-        let liked = AchievementFeedService.shared.hasLiked(id: post.id)
+        let liked = model.isLiked(post.id)
         let when = Self.relative(post.createdAt)
         return HStack(spacing: 12) {
             avatar(post.authorName, size: 40, tint: Self.nameTint(post.authorName), filled: false)
@@ -407,6 +420,8 @@ struct CommunityHubView: View {
             .accessibilityLabel(liked ? "Liked, \(post.likes) likes" : "Like, \(post.likes) likes")
         }
         .padding(.vertical, 8)
+        .contentShape(Rectangle())
+        .contextMenu { CommunityReportButton("Report Post") { hubReport = CommunityReport(post: post) } }
     }
 
     // MARK: - Community routes
@@ -478,6 +493,7 @@ struct CommunityHubView: View {
         .buttonStyle(BounceButtonStyle(scale: 0.97))
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(route.name), number \(rank), \(route.wocketts) wocketts, \(detail)")
+        .contextMenu { CommunityReportButton("Report Route") { hubReport = CommunityReport(route: route) } }
     }
 
     // MARK: - Trails

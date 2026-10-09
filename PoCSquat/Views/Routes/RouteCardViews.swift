@@ -120,6 +120,7 @@ struct CommunityRouteCard: View {
     var onSave: (() -> Void)? = nil
     let onStart: () -> Void
     var onHide: (() -> Void)? = nil
+    @State private var report: CommunityReport?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -180,16 +181,7 @@ struct CommunityRouteCard: View {
         .wktCard()
         .contextMenu {
             if let onHide {
-                Button(role: .destructive) {
-                    CommunityModerationStore.shared.report(route.id)
-                    onHide()
-                } label: {
-                    Label {
-                        Text("Report Route")
-                    } icon: {
-                        Image(wkt: .flagReport).wktIcon(.inline, tint: .red)
-                    }
-                }
+                CommunityReportButton("Report Route") { report = CommunityReport(route: route) }
                 Button(role: .destructive) {
                     CommunityModerationStore.shared.block(author: route.authorName)
                     onHide()
@@ -202,6 +194,7 @@ struct CommunityRouteCard: View {
                 }
             }
         }
+        .communityReporting($report, onHide: { _ in onHide?() })
     }
 }
 

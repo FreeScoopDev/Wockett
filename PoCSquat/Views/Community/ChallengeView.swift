@@ -184,6 +184,7 @@ private struct ChallengeCard: View {
     let challenge: WalkChallenge
     let isJoined:  Bool
     var onHide: (() -> Void)? = nil
+    @State private var report: CommunityReport?
 
     var body: some View {
         HStack(spacing: 14) {
@@ -231,16 +232,7 @@ private struct ChallengeCard: View {
         .accessibilityAddTraits(.isButton)
         .contextMenu {
             if let onHide {
-                Button(role: .destructive) {
-                    CommunityModerationStore.shared.report(challenge.id)
-                    onHide()
-                } label: {
-                    Label {
-                        Text("Report Challenge")
-                    } icon: {
-                        Image(wkt: .flagReport).wktIcon(.inline, tint: .red)
-                    }
-                }
+                CommunityReportButton("Report Challenge") { report = CommunityReport(challenge: challenge) }
                 Button(role: .destructive) {
                     CommunityModerationStore.shared.block(author: challenge.authorName)
                     onHide()
@@ -253,6 +245,7 @@ private struct ChallengeCard: View {
                 }
             }
         }
+        .communityReporting($report, onHide: { _ in onHide?() })
     }
 }
 

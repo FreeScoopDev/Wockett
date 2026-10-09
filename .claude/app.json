@@ -15,7 +15,8 @@
   "requiredChecks": [
     "Unit tests (iOS)",
     "Language-consistency guard",
-    "SwiftLint"
+    "SwiftLint",
+    "Critic verdict"
   ],
   "criticMinLines": 40,
   "reviewFocus": [

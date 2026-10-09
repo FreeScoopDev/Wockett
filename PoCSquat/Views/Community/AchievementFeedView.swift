@@ -1,10 +1,27 @@
 import SwiftUI
 import CloudKit
 
+// MARK: - Feed model
+
+/// The feed's posts and its likes: the same like path as the Community hub
+/// (PostLiking), so both are covered by one set of tests.
+@MainActor
+@Observable
+final class AchievementFeedModel: PostLiking {
+    var posts: [AchievementPost] = []
+    var likeError: String?
+    /// Saves a like. A seam for tests; the app saves a CommunityVote.
+    var saveLike: (CKRecord.ID) async throws -> Void = { try await AchievementFeedService.shared.like(id: $0) }
+    /// Where liked posts are remembered (a seam for tests).
+    var likeMarks = VoteMarks.likes
+    /// Likes still saving (PostLiking).
+    var pendingVotes: Set<String> = []
+}
+
 // MARK: - Achievement Feed Content View (push-safe — no NavigationStack, no Done button)
 
 struct AchievementFeedContentView: View {
-    @State private var posts:     [AchievementPost] = []
+    @State private var feed = AchievementFeedModel()
     @State private var isLoading  = false
     @State private var loadError: String?            = nil
 
@@ -12,18 +29,21 @@ struct AchievementFeedContentView: View {
         ZStack {
             Color.earthBg.ignoresSafeArea()
 
-            if isLoading && posts.isEmpty {
+            if isLoading && feed.posts.isEmpty {
                 ProgressView("Loading achievements…")
                     .foregroundColor(.earthMuted)
-            } else if let error = loadError, posts.isEmpty {
+            } else if let error = loadError, feed.posts.isEmpty {
                 errorState(error)
-            } else if posts.isEmpty {
+            } else if feed.posts.isEmpty {
                 emptyState
             } else {
                 ScrollView {
                     LazyVStack(spacing: WktSpacing.betweenCards) {
-                        ForEach($posts) { $post in
-                            AchievementPostCard(post: $post, onHide: { posts.removeAll { $0.id == post.id } })
+                        ForEach(feed.posts) { post in
+                            AchievementPostCard(post: post,
+                                                isLiked: feed.isLiked(post.id),
+                                                onLike: { feed.like(post.id) },
+                                                onHide: { feed.posts.removeAll { $0.id == post.id } })
                         }
                     }
                     .padding(.horizontal, WktSpacing.screen)
@@ -48,6 +68,7 @@ struct AchievementFeedContentView: View {
             }
         }
         .task { await load() }
+        .likeErrorAlert(Bindable(feed).likeError)
     }
 
     private var emptyState: some View {
@@ -67,7 +88,7 @@ struct AchievementFeedContentView: View {
         isLoading  = true
         loadError  = nil
         do {
-            posts = try await AchievementFeedService.shared.fetchPosts()
+            feed.show(try await AchievementFeedService.shared.fetchPosts())
         } catch let ck as CKError {
             switch ck.code {
             case .notAuthenticated:
@@ -106,9 +127,11 @@ struct AchievementFeedView: View {
 // MARK: - Achievement Post Card
 
 private struct AchievementPostCard: View {
-    @Binding var post: AchievementPost
+    let post: AchievementPost
+    let isLiked: Bool
+    let onLike: () -> Void
     var onHide: (() -> Void)? = nil
-    @State private var hasLiked = false
+    @State private var report: CommunityReport?
 
     private let green = Color.earthGreen
 
@@ -147,16 +170,12 @@ private struct AchievementPostCard: View {
                     Spacer()
 
                     Button {
-                        guard !hasLiked else { return }
-                        hasLiked    = true
-                        post.likes += 1
-                        AchievementFeedService.shared.markLiked(id: post.id)
-                        Task { try? await AchievementFeedService.shared.like(id: post.id) }
+                        onLike()
                     } label: {
                         // The same like pill as the Community hub's feed card.
                         HStack(spacing: 4) {
                             Image(wkt: .like)
-                                .wktIcon(.inline, tint: .accentRun, filled: hasLiked)
+                                .wktIcon(.inline, tint: .accentRun, filled: isLiked)
                             Text("\(post.likes)")
                                 .font(.wktLabel)
                                 .foregroundColor(.earthCream)
@@ -168,26 +187,16 @@ private struct AchievementPostCard: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(BounceButtonStyle(scale: 0.93))
-                    .disabled(hasLiked)
-                    .accessibilityLabel(hasLiked ? "Liked, \(post.likes) likes" : "Like, \(post.likes) likes")
+                    .disabled(isLiked)
+                    .accessibilityLabel(isLiked ? "Liked, \(post.likes) likes" : "Like, \(post.likes) likes")
                 }
                 .padding(.top, 2)
             }
         }
         .wktCard()
-        .onAppear { hasLiked = AchievementFeedService.shared.hasLiked(id: post.id) }
         .contextMenu {
             if let onHide {
-                Button(role: .destructive) {
-                    CommunityModerationStore.shared.report(post.id)
-                    onHide()
-                } label: {
-                    Label {
-                        Text("Report Post")
-                    } icon: {
-                        Image(wkt: .flagReport).wktIcon(.inline, tint: .red)
-                    }
-                }
+                CommunityReportButton("Report Post") { report = CommunityReport(post: post) }
                 Button(role: .destructive) {
                     CommunityModerationStore.shared.block(author: post.authorName)
                     onHide()
@@ -200,6 +209,7 @@ private struct AchievementPostCard: View {
                 }
             }
         }
+        .communityReporting($report, onHide: { _ in onHide?() })
     }
 
     private func timeAgo(_ date: Date) -> String {

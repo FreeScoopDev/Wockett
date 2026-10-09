@@ -69,6 +69,27 @@ struct TrailPackDeliveryTests {
         #expect(library.state(of: record("va", version: 2)) == .updateAvailable(installed: 1, latest: 2))
     }
 
+    @Test("A region code that is not a plain short code is refused before anything is downloaded or written")
+    func downloadRefusesBadRegionCode() async throws {
+        // A folder of its own around the packs folder, so "nothing written
+        // beside it" can't be failed by another run's leftover: the shared
+        // temporary directory held a va.wktpack from a break-check run
+        // (2026-10-09) and failed every later run on that simulator.
+        let parent = scratchDirectory()
+        let dir = parent.appendingPathComponent("packs", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: parent) }
+        let remote = FakeRemote(regions: [], fileToServe: try fixtureURL)
+        let library = TrailPackLibrary(registry: TrailAttributionRegistry(), remote: remote, packsDirectory: dir)
+        await library.download(record("../va"))
+        #expect(remote.downloads == 0)
+        #expect(library.installed.isEmpty)
+        guard case .failed = library.state(of: record("../va")) else {
+            Issue.record("expected .failed, got \(library.state(of: record("../va")))"); return
+        }
+        let written = (try? FileManager.default.contentsOfDirectory(atPath: parent.path)) ?? []
+        #expect(!written.contains("va.wktpack"), "nothing written beside the packs folder: \(written)")
+    }
+
     @Test("A region with two records (mid-publish) is listed once, at its newest version")
     func newestRecordWins() {
         let list = TrailPackLibrary.newestPerRegion([record("sc", version: 1), record("nc", version: 2),
@@ -197,7 +218,7 @@ struct TrailPackDeliveryTests {
         library.loadBundled(from: .main)  // the host app, which ships nc.wktpack
 
         let nc = try #require(library.source(for: "nc"), "the home region went dark")
-        #expect(nc.packInfo.trailCount > 6_000, "the bundled pack (6,373 rows since builder 1.4.0), not the fixture")
+        #expect(nc.packInfo.trailCount > 6_000, "the bundled pack (6,354 rows since builder 1.5.0), not the fixture")
         #expect(registry.attributions.map(\.sourceID) == ["osm"])
         #expect(library.loadErrors["nc"]?.hasPrefix("Pack is malformed") == true, "\(library.loadErrors)")
         #expect(library.installed == ["nc": 1], "kept, so the regions screen knows it was downloaded")
@@ -228,6 +249,18 @@ struct TrailPackDeliveryTests {
 
         let missing = CKRecordFixture.make(region: "", regionName: "x", schema: 1, packVersion: 1, trailCount: 0, sizeBytes: 0)
         #expect(CloudKitTrailRegionRemote.parse(missing) == nil)
+    }
+
+    @Test("Refuses a record whose region code is not a plain short code",
+          arguments: ["../nc", "nc/x", "..", "NC", "n c", "n", "ncxx", "nc.wktpack", "ñc"])
+    func refusesBadRegionCode(_ code: String) {
+        let rec = CKRecordFixture.make(region: code, regionName: "x", schema: 1, packVersion: 9, trailCount: 1, sizeBytes: 1)
+        #expect(CloudKitTrailRegionRemote.parse(rec) == nil)
+    }
+
+    @Test("Accepts every region code tools/regions.json uses", arguments: ["nc", "sc", "va", "tn", "ga", "fl", "al", "ky", "wv", "md"])
+    func acceptsRegionCodes(_ code: String) {
+        #expect(TrailRegionRecord.isValidRegionCode(code))
     }
 }
 
