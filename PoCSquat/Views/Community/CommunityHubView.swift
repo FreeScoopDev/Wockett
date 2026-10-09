@@ -407,6 +407,8 @@ struct CommunityHubView: View {
             .accessibilityLabel(liked ? "Liked, \(post.likes) likes" : "Like, \(post.likes) likes")
         }
         .padding(.vertical, 8)
+        .communityReportMenu("Report Post", report: { CommunityReport(post: post) },
+                             onHide: { model.posts.removeAll { $0.id == post.id } })
     }
 
     // MARK: - Community routes
@@ -478,6 +480,8 @@ struct CommunityHubView: View {
         .buttonStyle(BounceButtonStyle(scale: 0.97))
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(route.name), number \(rank), \(route.wocketts) wocketts, \(detail)")
+        .communityReportMenu("Report Route", report: { CommunityReport(route: route) },
+                             onHide: { communityRoutesModel.routes.removeAll { $0.id == route.id } })
     }
 
     // MARK: - Trails

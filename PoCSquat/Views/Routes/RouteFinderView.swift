@@ -700,7 +700,7 @@ struct RouteFinderContentView: View {
                                 }
                                 onNavigateAway?()
                             },
-                            onHide: { if i < communityModel.routes.count { communityModel.routes.remove(at: i) } }
+                            onHide: { communityModel.routes.removeAll { $0.id == route.id } }
                         )
                         .padding(.horizontal, 20)
                     }

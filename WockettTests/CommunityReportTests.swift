@@ -49,7 +49,17 @@ struct CommunityReportTests {
         #expect(mail.subject == "Wockett report: Post")
         let body = try #require(mail.body)
         #expect(body.contains("Record: post-9"))
+        #expect(body.contains("Author: SunnyFern"))
         #expect(body.contains("Content: 🥾 Trailblazer: Rude words here"))
+    }
+
+    @Test("A post with no message reports just the badge")
+    func postReportNoMessage() throws {
+        let post = try #require(AchievementPost(record: record("WocketAchievement", "post-10", [
+            "badgeName": "Trailblazer" as CKRecordValue, "badgeEmoji": "🥾" as CKRecordValue,
+            "authorName": "SunnyFern" as CKRecordValue])))
+        let body = CommunityReport(post: post).body
+        #expect(body.contains("Content: 🥾 Trailblazer\n"), "no dangling ': '")
     }
 
     @Test("A challenge report carries the emoji and the title")
@@ -60,7 +70,10 @@ struct CommunityReportTests {
             "goalSteps": 10_000 as CKRecordValue, "authorName": "QuietPine" as CKRecordValue])))
         let mail = try decoded(CommunityReport(challenge: challenge).mailURL)
         #expect(mail.subject == "Wockett report: Challenge")
-        #expect(try #require(mail.body).contains("Content: 🔥 10k a day"))
+        let body = try #require(mail.body)
+        #expect(body.contains("Record: chal-7"))
+        #expect(body.contains("Author: QuietPine"))
+        #expect(body.contains("Content: 🔥 10k a day"))
     }
 
     @Test("Text that means something in a URL stays text",
@@ -70,6 +83,55 @@ struct CommunityReportTests {
         let mail = try decoded(report.mailURL)
         #expect(mail.body == report.body, "the body reads back exactly")
         #expect(mail.subject == report.subject)
+    }
+
+    @Test("A + stays a +, not a space, in mail apps that decode like a web form")
+    func plusIsEncoded() throws {
+        let report = CommunityReport(kind: .route, recordID: CKRecord.ID(recordName: "r"), author: "A", content: "A+B Loop")
+        let url = try #require(report.mailURL).absoluteString
+        #expect(url.contains("A%2BB"))
+        #expect(!url.contains("+"))
+    }
+
+    // MARK: Hand-off order
+
+    private func freshReport() -> CommunityReport {
+        CommunityReport(kind: .route, recordID: CKRecord.ID(recordName: "handoff-\(UUID().uuidString)"), author: "A", content: "B")
+    }
+
+    @Test("Hidden only once a mail app took the email, not before")
+    func hiddenAfterHandoff() {
+        let report = freshReport()
+        var pending: ((Bool) -> Void)?
+        var hidden = 0, fallbacks = 0
+        CommunityReportHandoff.begin(report,
+                                     open: { _, done in pending = done },
+                                     hide: { CommunityReportHandoff.hide($0, onHide: { hidden += 1 }) },
+                                     showFallback: { _ in fallbacks += 1 })
+        #expect(!CommunityModerationStore.shared.isReported(report.recordID), "not remembered while Mail is opening")
+        #expect(hidden == 0)
+        pending?(true)
+        #expect(CommunityModerationStore.shared.isReported(report.recordID))
+        #expect(hidden == 1)
+        #expect(fallbacks == 0)
+    }
+
+    @Test("With no mail app: the fallback shows and nothing is hidden yet")
+    func fallbackWhenNoMail() {
+        let report = freshReport()
+        var hidden = 0
+        var shown: CommunityReport?
+        CommunityReportHandoff.begin(report,
+                                     open: { _, done in done(false) },
+                                     hide: { CommunityReportHandoff.hide($0, onHide: { hidden += 1 }) },
+                                     showFallback: { shown = $0 })
+        #expect(shown == report)
+        #expect(hidden == 0)
+        #expect(!CommunityModerationStore.shared.isReported(report.recordID), "hidden only when the alert closes")
+        // Closing the alert hides it.
+        CommunityReportHandoff.hide(report, onHide: { hidden += 1 })
+        #expect(CommunityModerationStore.shared.isReported(report.recordID))
+        #expect(hidden == 1)
     }
 
     @Test("The report says nothing about the reporter")

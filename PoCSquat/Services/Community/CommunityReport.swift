@@ -19,6 +19,9 @@ enum SupportContact {
         var items = [URLQueryItem(name: "subject", value: subject)]
         if let body { items.append(URLQueryItem(name: "body", value: body)) }
         components.queryItems = items
+        // `+` is left as is, and mail apps that decode the query like a web
+        // form (Gmail) read it as a space: "A+B Loop" arrived as "A B Loop".
+        components.percentEncodedQuery = components.percentEncodedQuery?.replacingOccurrences(of: "+", with: "%2B")
         return components.url
     }
 }
@@ -87,6 +90,32 @@ struct CommunityReport: Equatable {
 
 // MARK: - Report action
 
+// MARK: - Handoff
+
+/// The order a report goes in, kept out of the view so it can be tested: the
+/// item is hidden (remembered across launches, and removed from the list) only
+/// once a mail app took the email, or once the reporter closed the fallback
+/// alert. Hiding sooner removes the card that shows the alert, and a list
+/// refresh would drop it mid-alert (critic, 2026-10-09).
+enum CommunityReportHandoff {
+    static func begin(_ report: CommunityReport,
+                      open: (URL, @escaping (Bool) -> Void) -> Void,
+                      hide: @escaping (CommunityReport) -> Void,
+                      showFallback: @escaping (CommunityReport) -> Void) {
+        guard let url = report.mailURL else { showFallback(report); return }
+        open(url) { accepted in
+            if accepted { hide(report) } else { showFallback(report) }
+        }
+    }
+
+    /// Hides `report`'s item: remembered, so it stays hidden after a relaunch,
+    /// then removed from the screen.
+    static func hide(_ report: CommunityReport, store: CommunityModerationStore = .shared, onHide: () -> Void) {
+        store.report(report.recordID)
+        onHide()
+    }
+}
+
 extension View {
     /// Sends `report` when it is set: remembers it locally (the reporter no
     /// longer sees the item, across launches), opens the email, and hides the
@@ -96,6 +125,37 @@ extension View {
     /// can no longer show the alert.
     func communityReporting(_ report: Binding<CommunityReport?>, onHide: (() -> Void)?) -> some View {
         modifier(CommunityReportModifier(request: report, onHide: onHide ?? {}))
+    }
+}
+
+extension View {
+    /// A Report menu on its own, for rows that have no menu of their own
+    /// (the Community hub's posts and top routes).
+    func communityReportMenu(_ title: String, report: @escaping () -> CommunityReport, onHide: @escaping () -> Void) -> some View {
+        modifier(CommunityReportMenuModifier(title: title, makeReport: report, onHide: onHide))
+    }
+}
+
+private struct CommunityReportMenuModifier: ViewModifier {
+    let title: String
+    let makeReport: () -> CommunityReport
+    let onHide: () -> Void
+    @State private var request: CommunityReport?
+
+    func body(content: Content) -> some View {
+        content
+            .contextMenu {
+                Button(role: .destructive) {
+                    request = makeReport()
+                } label: {
+                    Label {
+                        Text(title)
+                    } icon: {
+                        Image(wkt: .flagReport).wktIcon(.inline, tint: .red)
+                    }
+                }
+            }
+            .communityReporting($request, onHide: onHide)
     }
 }
 
@@ -110,15 +170,18 @@ private struct CommunityReportModifier: ViewModifier {
             .onChange(of: request) { _, report in
                 guard let report else { return }
                 request = nil
-                CommunityModerationStore.shared.report(report.recordID)
-                guard let url = report.mailURL else { unsent = report; return }
-                openURL(url) { accepted in
-                    if accepted { onHide() } else { unsent = report }
-                }
+                CommunityReportHandoff.begin(report,
+                                             open: { url, done in openURL(url, completion: done) },
+                                             hide: { CommunityReportHandoff.hide($0, onHide: onHide) },
+                                             showFallback: { unsent = $0 })
             }
             .alert("Couldn't open Mail",
                    isPresented: Binding(get: { unsent != nil },
-                                        set: { shown in if !shown { unsent = nil; onHide() } }),
+                                        set: { shown in
+                                            guard !shown, let report = unsent else { return }
+                                            unsent = nil
+                                            CommunityReportHandoff.hide(report, onHide: onHide)
+                                        }),
                    presenting: unsent) { report in
                 Button("Copy Report") { UIPasteboard.general.string = report.clipboardText }
                 Button("OK", role: .cancel) {}
