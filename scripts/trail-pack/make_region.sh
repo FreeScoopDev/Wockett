@@ -124,7 +124,13 @@ if [[ -z "${LIVE_VERSION:-}" ]]; then
 fi
 echo "Live in Production: $NAME v$LIVE_VERSION"
 
+# Cities and towns, for the coverage gate: a state ships only if most of its
+# towns get a named trail within 3 miles (2026-10-08).
+osmium tags-filter "$EXTRACT" n/place=city,town -o "$T-towns.osm.pbf" --overwrite
+osmium export "$T-towns.osm.pbf" -f geojsonseq --geometry-types=point -o "$T-towns.geojsonseq" --overwrite
+
 python3 tools/region_release.py "$REGION" \
+  --towns "$T-towns.geojsonseq" \
   --pack "$WORK/packs/$REGION-full.wktpack" --work "$WORK" \
   --extract-md5 "$MD5" --extract-bbox "$BBOX" --live-version "$LIVE_VERSION"
 
