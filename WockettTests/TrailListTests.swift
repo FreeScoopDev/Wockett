@@ -1,6 +1,7 @@
 import Testing
 import CoreLocation
 import Foundation
+import SQLite3
 @testable import PoCSquat
 
 /// The Trails list in the Routes tab: grouping a trail's sections, the filter
@@ -48,8 +49,10 @@ struct TrailListTests {
 
     @Test("Different keys with one name stay separate rows: two parks' Nature Trails")
     func differentKeysSeparate() {
+        // Two parks ~5 km apart. (Within 1.5 km, one name is one trail: see
+        // sameNameNearbyMerges.)
         let a = section(1, "Nature Trail", key: "nc:w1")
-        let b = section(2, "Nature Trail", lon: -78.6395, key: "nc:w2")
+        let b = section(2, "Nature Trail", lon: -78.585, key: "nc:w2")
         #expect(TrailListBuilder.items(from: ranked([a, b]), grouped: true).count == 2)
     }
 
@@ -219,7 +222,7 @@ struct TrailListTests {
 
     // MARK: Other paths (2026-10-08)
 
-    @Test("Short unnamed rows move to Other paths; named, road-named and long unnamed rows stay")
+    @Test("Every unnamed row goes to Other paths; named and road-named rows stay")
     func otherPathsSplit() {
         let named = section(1, "Little Rock Trail", length: 300)
         // A road-derived name: the pack builder titled it from the road alongside.
@@ -231,34 +234,55 @@ struct TrailListTests {
                                    allowsFoot: true, allowsBike: false, allowsHorse: false, isLoop: false,
                                    tagsJSON: #"{"name_source":"derived_road"}"#)
         let short = section(3, nil, length: 500)
-        let atLimit = section(4, nil, length: 805)
         let long = section(5, nil, length: 6_600)
-        let items = TrailListBuilder.items(from: ranked([named, derived, short, atLimit, long]), grouped: false)
-        let split = TrailListBuilder.splitOtherPaths(items, usesMiles: true)
-        #expect(split.main.map(\.sections[0].id) == [1, 2, 4, 5])
-        #expect(split.other.map(\.sections[0].id) == [3])
-        // Metric: 800 m, so 805 m stays either way, 790 m moves.
-        let metric = TrailListBuilder.splitOtherPaths(
-            TrailListBuilder.items(from: ranked([section(6, nil, length: 790)]), grouped: false), usesMiles: false)
-        #expect(metric.other.count == 1)
-    }
-
-    @Test("A chain of short unnamed pieces is judged by its whole length")
-    func otherPathsJudgeGroupedLength() {
-        // Four pieces, 655 m together: under half a mile, so Other paths;
-        // but each piece alone would be too, so also check one long chain stays.
-        let short = [piece(1, from: 0, to: 100), piece(2, from: 100, to: 300),
-                     piece(3, from: 320, to: 500), piece(4, from: 525, to: 700)]
-        #expect(TrailListBuilder.splitOtherPaths(grouped(short), usesMiles: true).other.count == 1)
-        let long = [piece(11, from: 0, to: 400), piece(12, from: 400, to: 900)]
-        let split = TrailListBuilder.splitOtherPaths(grouped(long), usesMiles: true)
-        #expect(split.main.count == 1 && split.other.isEmpty, "two 400-500 m pieces make a 900 m path")
+        let items = TrailListBuilder.items(from: ranked([named, derived, short, long]), grouped: false)
+        let split = TrailListBuilder.splitOtherPaths(items)
+        #expect(split.main.map(\.sections[0].id) == [1, 2])
+        #expect(split.other.map(\.sections[0].id) == [3, 5], "a 4-mile unnamed path is under Other paths too")
     }
 
     @Test("The Other paths card says how many and that they have no name")
     func otherPathsWording() {
-        #expect(TrailText.otherPathsSummary(count: 3, usesMiles: true) == "3 short paths with no name, under 0.5 mi")
-        #expect(TrailText.otherPathsSummary(count: 1, usesMiles: false) == "1 short path with no name, under 800 m")
+        #expect(TrailText.otherPathsSummary(count: 3) == "3 paths with no name")
+        #expect(TrailText.otherPathsSummary(count: 1) == "1 path with no name")
+    }
+
+    // MARK: Bike paths and one trail listed twice (2026-10-08)
+
+    @Test("A bike path says so; another path that allows bikes says Bikes OK")
+    func bikePathTag() {
+        let cycleway = TrailFeature(id: 1, sourceID: "osm", sourceRef: "w1", name: "Rail Trail",
+                                    encodedPolyline: "", pointCount: 0, lengthMeters: 2_000,
+                                    bounds: TrailBounds(minLatitude: 35.78, minLongitude: -78.64,
+                                                        maxLatitude: 35.79, maxLongitude: -78.63),
+                                    surface: "asphalt", difficulty: nil, dogAccess: .unknown, dogAccessProvenance: .default,
+                                    allowsFoot: true, allowsBike: true, allowsHorse: false, isLoop: false,
+                                    tagsJSON: #"{"highway":"cycleway"}"#)
+        let path = section(2, "River Path", bike: true)
+        let rows = TrailListBuilder.items(from: ranked([cycleway, path]), grouped: false)
+        let tags = rows.map { TrailText.tags(for: $0).map(\.text) }
+        #expect(tags[0].contains("Bike path") && !tags[0].contains("Bikes OK"))
+        #expect(tags[1].contains("Bikes OK") && !tags[1].contains("Bike path"))
+    }
+
+    @Test("Walk mode asks the pack for walkable paths; Ride does not")
+    func walkModeAsksForFoot() {
+        #expect(TrailFilters().query(cycling: false).allowsFoot == true)
+        #expect(TrailFilters().query(cycling: true).allowsFoot == nil)
+    }
+
+    @Test("One name under two trail keys close together is one row; far apart, two")
+    func sameNameNearbyMerges() {
+        // Sections 0.002 deg (~200 m) across. 0.012 deg north leaves a ~1.1 km
+        // gap: one trail with a gap the builder's 400 m rule did not bridge.
+        let a = section(1, "Swamp Rabbit Trail", lat: 34.85, key: "sc:w1")
+        let b = section(2, "Swamp Rabbit Trail", lat: 34.862, key: "sc:w2")
+        let merged = TrailListBuilder.items(from: ranked([a, b]), grouped: true)
+        #expect(merged.count == 1)
+        #expect(merged.first?.sections.map(\.id) == [1, 2])
+        // 0.04 deg (~4.2 km gap): two parks' trails of one name stay apart.
+        let far = section(3, "Swamp Rabbit Trail", lat: 34.89, key: "sc:w3")
+        #expect(TrailListBuilder.items(from: ranked([a, far]), grouped: true).count == 2)
     }
 
     @Test("A chain of touching unnamed pieces of one path is one row, named for what it is")
@@ -382,11 +406,12 @@ struct TrailListTests {
             piece(3, from: 900, to: 1_100, name: "Duck Trail"),   // 700 m past piece 1
             piece(4, from: 400, to: 600)
         ])
-        // Named: 1 and 3 are 700 m apart, over the 400 m join, so two rows even
-        // though unnamed pieces bridge them. Unnamed 2 and 4 chain.
-        #expect(items.filter { $0.name == "Duck Trail" }.count == 2)
+        // Named: 1 and 3 are 700 m apart, over the 400 m join but within the
+        // list's 1.5 km same-name merge (2026-10-08), so one row; the unnamed
+        // pieces between them never join it. Unnamed 2 and 4 chain.
+        #expect(items.filter { $0.name == "Duck Trail" }.map { $0.sections.map(\.id) } == [[1, 3]])
         #expect(items.filter { $0.name == "Paved Bike Path" }.map { $0.sections.map(\.id) } == [[2, 4]])
-        #expect(items.filter(\.hasName).count == 2, "only the named rows count as named")
+        #expect(items.filter(\.hasName).count == 1, "only the named rows count as named")
 
         // A builder-derived name is a name like any other.
         let derivedTags = ["highway": "cycleway", "name_source": "derived"]
@@ -657,7 +682,7 @@ struct TrailListTests {
     func finderRadius() throws {
         let finder = TrailFinder(library: try fixtureLibrary())
         finder.refresh(near: raleigh, grouped: true, cycling: false, usesMiles: true, includeShortPaths: true)
-        let ids = finder.items.flatMap { $0.sections.map(\.id) }
+        let ids = (finder.items + finder.otherPaths).flatMap { $0.sections.map(\.id) }
         #expect(!ids.contains(5), "Far Ridge Trail is outside ten miles")
         #expect(ids.contains(1) && ids.contains(2) && ids.contains(3))
         let distances = finder.items.map(\.distanceMeters)
@@ -675,7 +700,7 @@ struct TrailListTests {
         finder.filters = TrailFilters()
         finder.filters.hideNoDogs = true
         finder.refresh(near: raleigh, grouped: true, cycling: false, usesMiles: true)
-        #expect(!finder.items.flatMap { $0.sections.map(\.id) }.contains(4))
+        #expect(!(finder.items + finder.otherPaths).flatMap { $0.sections.map(\.id) }.contains(4))
 
         finder.filters = TrailFilters()
         finder.refresh(near: raleigh, grouped: true, cycling: true, usesMiles: true)
@@ -694,7 +719,27 @@ struct TrailListTests {
         let shown = finder.items.flatMap { $0.sections.map(\.id) }
         let other = finder.otherPaths.flatMap { $0.sections.map(\.id) }
         #expect(shown.contains(3), "Dog Park Path has a name, so it stays in the list")
-        #expect(other == [6], "the 120 m path has none, so it is under Other paths")
+        #expect(Set(other) == [4, 6], "unnamed, so under Other paths, whatever the length")
+    }
+
+    @Test("Walk mode leaves out a bike-only path; Ride lists it")
+    func finderBikeOnly() throws {
+        // The fixture with Riverside Greenway marked foot=no.
+        let source = try #require(Bundle(for: Marker.self).url(forResource: "fixture", withExtension: "wktpack"))
+        let copy = FileManager.default.temporaryDirectory.appendingPathComponent("bike-only-\(UUID().uuidString).wktpack")
+        try FileManager.default.copyItem(at: source, to: copy)
+        var db: OpaquePointer?
+        try #require(sqlite3_open(copy.path, &db) == SQLITE_OK)
+        try #require(sqlite3_exec(db, "UPDATE trails SET allows_foot = 0 WHERE id = 2", nil, nil, nil) == SQLITE_OK)
+        sqlite3_close(db)
+        let library = TrailPackLibrary(registry: TrailAttributionRegistry())
+        try #require(library.open(url: copy, region: "fixture") != nil)
+        let finder = TrailFinder(library: library)
+
+        finder.refresh(near: raleigh, grouped: true, cycling: false, usesMiles: true)
+        #expect(!(finder.items + finder.otherPaths).flatMap { $0.sections.map(\.id) }.contains(2))
+        finder.refresh(near: raleigh, grouped: true, cycling: true, usesMiles: true)
+        #expect(finder.items.flatMap { $0.sections.map(\.id) } == [2])
     }
 
     @Test("No location means no rows and no error")

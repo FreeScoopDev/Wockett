@@ -271,6 +271,7 @@ struct TrailQuery: Hashable {
     var maxLengthMeters: Double?
     var surfaces: Set<String>?
     var allowsBike: Bool?
+    var allowsFoot: Bool?
     var loopsOnly = false
     var nameContains: String?
 
@@ -279,6 +280,7 @@ struct TrailQuery: Hashable {
          maxLengthMeters: Double? = nil,
          surfaces: Set<String>? = nil,
          allowsBike: Bool? = nil,
+         allowsFoot: Bool? = nil,
          loopsOnly: Bool = false,
          nameContains: String? = nil) {
         self.dogAccess = dogAccess
@@ -286,6 +288,7 @@ struct TrailQuery: Hashable {
         self.maxLengthMeters = maxLengthMeters
         self.surfaces = surfaces
         self.allowsBike = allowsBike
+        self.allowsFoot = allowsFoot
         self.loopsOnly = loopsOnly
         self.nameContains = nameContains
     }

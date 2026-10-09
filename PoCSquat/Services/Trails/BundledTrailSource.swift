@@ -164,6 +164,9 @@ final class BundledTrailSource: TrailDataSource {
         if let bike = query.allowsBike {
             sql += " AND t.allows_bike = ?"; binds.append(.int(bike ? 1 : 0))
         }
+        if let foot = query.allowsFoot {
+            sql += " AND t.allows_foot = ?"; binds.append(.int(foot ? 1 : 0))
+        }
         if query.loopsOnly {
             sql += " AND t.is_loop = 1"
         }

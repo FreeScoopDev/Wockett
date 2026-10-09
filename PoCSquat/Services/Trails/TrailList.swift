@@ -91,6 +91,8 @@ struct TrailFilters: Hashable {
             dogAccess: hideNoDogs ? Set(DogAccess.allCases).subtracting([.notPermitted]) : nil,
             surfaces: surface?.osmValues,
             allowsBike: cycling ? true : nil,
+            // Walk mode leaves out bike-only paths (foot=no); Ride shows them.
+            allowsFoot: cycling ? nil : true,
             loopsOnly: loopsOnly
         )
     }
@@ -117,6 +119,10 @@ struct TrailListItem: Identifiable, Hashable {
     /// Only a single section can be a loop; a group of sections is a network.
     var isLoop: Bool { sections.count == 1 && sections[0].isLoop }
     var allowsBike: Bool { sections.allSatisfy(\.allowsBike) }
+    /// Mapped as a bike path (highway=cycleway). Most are shared-use and
+    /// walkable; the card says what it is (Joe, 2026-10-08: "if it is
+    /// specifically a bike path, we should list it as such").
+    var isBikePath: Bool { sections.allSatisfy { $0.tags["highway"] == "cycleway" } }
 
     /// A surface tag only when every section that states one agrees.
     var surfaceKind: TrailSurfaceKind? {
@@ -178,24 +184,18 @@ enum TrailListBuilder {
         return items.sorted { $0.distanceMeters < $1.distanceMeters }
     }
 
-    /// Unnamed rows shorter than this move out of the main list into "Other
-    /// paths". A downloaded state pack carries every unnamed path, and near
+    /// Splits list rows into the main list and "Other paths": every row with
+    /// no name. A downloaded state pack carries every unnamed path, and near
     /// downtown Raleigh the NC v3 list read "Footpath 0.3 mi", "Footpath
-    /// 0.7 mi", "Footpath 0.3 mi" between the named trails. Joe, 2026-10-08:
-    /// fine to group short unnamed paths under "Other paths". Half a mile:
-    /// shorter than that, a path with no name is a connector, not a walk to
-    /// choose. A long unnamed greenway (the Duck Road path, 6.6 km) stays.
-    static func otherPathMaxMeters(usesMiles: Bool) -> Double { usesMiles ? 804.67 : 800 }
-
-    /// Splits list rows into the main list and "Other paths": short rows with
-    /// no name (`otherPathMaxMeters`). A road-derived name counts as a name.
-    /// Order is kept within each part.
-    static func splitOtherPaths(_ items: [TrailListItem],
-                                usesMiles: Bool) -> (main: [TrailListItem], other: [TrailListItem]) {
-        let limit = otherPathMaxMeters(usesMiles: usesMiles)
+    /// 0.7 mi", "Footpath 0.3 mi" between the named trails; Joe first chose
+    /// to move short ones (under half a mile, #146). Measured over 1,563 towns
+    /// in ten states on 2026-10-08, the long unnamed rows were still 50-77% of
+    /// a town's list, and Joe agreed the main list should be named places
+    /// only. A road-derived name counts as a name. Order is kept within each part.
+    static func splitOtherPaths(_ items: [TrailListItem]) -> (main: [TrailListItem], other: [TrailListItem]) {
         var main: [TrailListItem] = [], other: [TrailListItem] = []
         for item in items {
-            if !item.hasName && item.lengthMeters < limit { other.append(item) } else { main.append(item) }
+            if item.hasName { main.append(item) } else { other.append(item) }
         }
         return (main, other)
     }
@@ -259,8 +259,55 @@ enum TrailListBuilder {
                 result.append(item(for: cluster))
             }
         }
+        result = mergedSameName(result)
         result += unnamedGroups(unnamed).map(item(for:))
         return result
+    }
+
+    /// Rows of one name this close together are one trail. The pack builder
+    /// keys a trail's pieces when they sit within 400 m, so a trail with a
+    /// longer gap (a road walk, a missing bridge) arrived as two rows:
+    /// Greenville's Swamp Rabbit Trail Green Line and Cary's Chapel Hill Road
+    /// Path were each listed twice (2026-10-08). Wider than the builder's
+    /// rule, but only between rows already in one list, so two parks' Nature
+    /// Trails a town apart stay separate.
+    static let sameNameMergeMeters = 1_500.0
+
+    private static func mergedSameName(_ items: [TrailListItem]) -> [TrailListItem] {
+        var byName: [String: [Int]] = [:]
+        var order: [String] = []
+        for (i, item) in items.enumerated() {
+            let key = item.name.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+            if byName[key] == nil { order.append(key) }
+            byName[key, default: []].append(i)
+        }
+        var result: [TrailListItem] = []
+        for key in order {
+            let members = (byName[key] ?? []).map { items[$0] }
+            guard members.count > 1 else { result += members; continue }
+            let boxes = members.map { bounds(of: $0) }
+            for cluster in clusters(members.map { ($0.sections[0], $0.distanceMeters) }, joined: {
+                gapMeters(boxes[$0], boxes[$1]) <= sameNameMergeMeters
+            }) {
+                let ids = Set(cluster.map(\.trail.id))
+                let parts = members.filter { ids.contains($0.sections[0].id) }
+                guard parts.count > 1 else { result += parts; continue }
+                let nearest = parts.min { $0.distanceMeters < $1.distanceMeters } ?? parts[0]
+                let sections = parts.sorted { $0.distanceMeters < $1.distanceMeters }.flatMap(\.sections)
+                let id = "g" + sections.map { String($0.id) }.sorted().joined(separator: "-")
+                result.append(TrailListItem(id: id, name: nearest.name, sections: sections,
+                                            distanceMeters: nearest.distanceMeters))
+            }
+        }
+        return result
+    }
+
+    private static func bounds(of item: TrailListItem) -> TrailBounds {
+        let all = item.sections.map(\.bounds)
+        return TrailBounds(minLatitude: all.map(\.minLatitude).min() ?? 0,
+                           minLongitude: all.map(\.minLongitude).min() ?? 0,
+                           maxLatitude: all.map(\.maxLatitude).max() ?? 0,
+                           maxLongitude: all.map(\.maxLongitude).max() ?? 0)
     }
 
     /// One row for a cluster: nearest section first, an id that does not
@@ -547,6 +594,6 @@ final class TrailFinder {
                 return (try? source.trails(key: key)) ?? []
             }
         )
-        (items, otherPaths) = TrailListBuilder.splitOtherPaths(all, usesMiles: usesMiles)
+        (items, otherPaths) = TrailListBuilder.splitOtherPaths(all)
     }
 }
