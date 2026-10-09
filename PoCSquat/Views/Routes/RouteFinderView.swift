@@ -666,7 +666,7 @@ struct RouteFinderContentView: View {
                                 get: { i < communityModel.routes.count ? communityModel.routes[i] : route },
                                 set: { if i < communityModel.routes.count { communityModel.routes[i] = $0 } }
                             ),
-                            hasVoted: CommunityRouteService.shared.hasVoted(for: route.id),
+                            hasVoted: communityModel.hasVoted(route.id),
                             isSaved: savedCommunityIds.contains(route.id.recordName),
                             onWockett: { communityModel.wockett(route.id) },
                             onSave: {

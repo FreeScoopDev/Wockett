@@ -388,7 +388,7 @@ struct CommunityHubView: View {
     }
 
     private func feedRow(_ post: AchievementPost) -> some View {
-        let liked = model.likeMarks.has(post.id)
+        let liked = model.isLiked(post.id)
         let when = Self.relative(post.createdAt)
         return HStack(spacing: 12) {
             avatar(post.authorName, size: 40, tint: Self.nameTint(post.authorName), filled: false)

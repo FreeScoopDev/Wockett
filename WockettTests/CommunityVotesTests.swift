@@ -416,4 +416,63 @@ struct CommunityVotesTests {
         gate?.resume()                                     // the work finishes late; a second resume would trap
         for _ in 0..<1_000 { await Task.yield() }
     }
+
+    // MARK: Run 4
+
+    @Test("A vote is remembered only once saved; while saving it shows from pending")
+    func markOnlyAfterSave() async throws {
+        let p = try post("post-gated")
+        let marks = MemoryMarks()
+        let feed = AchievementFeedModel()
+        feed.likeMarks = marks.marks
+        feed.posts = [p]
+        var release: CheckedContinuation<Void, Never>?
+        feed.saveLike = { _ in await withCheckedContinuation { release = $0 } }
+        let save = feed.like(p.id)
+        #expect(marks.ids.isEmpty, "nothing on disk while the save is in flight")
+        #expect(feed.isLiked(p.id), "shown as liked from pending")
+        for _ in 0..<10_000 where release == nil { await Task.yield() }
+        guard let release else { Issue.record("the save was never started"); return }
+        release.resume()
+        await save?.value
+        #expect(marks.ids.contains(p.id.recordName))
+        #expect(feed.isLiked(p.id))
+    }
+
+    @Test("A refresh that already counted my saving vote doesn't add it again")
+    func pendingNotCountedTwice() throws {
+        let p = try post("post-counted")
+        var fresh = p
+        fresh.likes = 5                       // the server already has my vote among these 5
+        let shown = OptimisticVote.withPending([fresh], pending: [p.id.recordName], counted: { _ in true },
+                                               idPath: \.id, count: \.likes)
+        #expect(shown[0].likes == 5)
+        let notYet = OptimisticVote.withPending([fresh], pending: [p.id.recordName], counted: { _ in false },
+                                                idPath: \.id, count: \.likes)
+        #expect(notYet[0].likes == 6)
+    }
+
+    @Test("When the deadline wins, the work is cancelled", .timeLimit(.minutes(1)))
+    func loserCancelled() async {
+        var sawCancel = false
+        let result = try? await OptimisticVote.withDeadline(.milliseconds(50)) { () async -> Int in
+            do { try await Task.sleep(for: .seconds(10)) } catch { sawCancel = true }
+            return 1
+        }
+        #expect(result == .some(nil))
+        for _ in 0..<200 where !sawCancel { try? await Task.sleep(for: .milliseconds(10)) }
+        #expect(sawCancel)
+    }
+
+    @Test("Already cancelled: the work never starts", .timeLimit(.minutes(1)))
+    func cancelledBeforeStart() async {
+        var ran = false
+        let caller = Task { @MainActor in
+            withUnsafeCurrentTask { $0?.cancel() }
+            return try? await OptimisticVote.withDeadline(.seconds(5)) { () async -> Int in ran = true; return 1 }
+        }
+        _ = await caller.value
+        for _ in 0..<100 { await Task.yield() }
+        #expect(!ran)
+    }
 }

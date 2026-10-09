@@ -127,6 +127,8 @@ final class CommunityRouteService {
         // Wocketts are CommunityVote records (CommunityVotes.swift), not the
         // route's own `upvotes` field, which only its author could ever change.
         let tally = await CommunityVoteService.shared.tally(for: routes.map(\.id.recordName))
+        // Cancelled (the screen went away): a tally that gave up is all 0s, not real counts.
+        try Task.checkCancellation()
         for i in routes.indices {
             routes[i].wocketts = tally.count(for: routes[i].id.recordName)
             if tally.mine.contains(routes[i].id.recordName) { markVoted(for: routes[i].id) }

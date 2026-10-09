@@ -41,7 +41,7 @@ struct AchievementFeedContentView: View {
                     LazyVStack(spacing: WktSpacing.betweenCards) {
                         ForEach(feed.posts) { post in
                             AchievementPostCard(post: post,
-                                                isLiked: feed.likeMarks.has(post.id),
+                                                isLiked: feed.isLiked(post.id),
                                                 onLike: { feed.like(post.id) },
                                                 onHide: { feed.posts.removeAll { $0.id == post.id } })
                         }

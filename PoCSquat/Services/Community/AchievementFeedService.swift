@@ -83,6 +83,8 @@ final class AchievementFeedService {
         // Likes are CommunityVote records (CommunityVotes.swift), not the
         // post's own `likes` field, which only its author could ever change.
         let tally = await CommunityVoteService.shared.tally(for: posts.map(\.id.recordName))
+        // Cancelled (the screen went away): a tally that gave up is all 0s, not real counts.
+        try Task.checkCancellation()
         for i in posts.indices {
             posts[i].likes = tally.count(for: posts[i].id.recordName)
             if tally.mine.contains(posts[i].id.recordName) { markLiked(id: posts[i].id) }

@@ -20,14 +20,20 @@ final class CommunityRoutesModel {
     /// Wocketts still saving: a refresh mid-save adds them back (OptimisticVote).
     var pendingVotes: Set<String> = []
 
+    /// Shows freshly fetched routes, keeping Wocketts that are still saving.
+    func show(_ fetched: [SharedRoute]) {
+        routes = OptimisticVote.withPending(fetched, pending: pendingVotes, counted: wockettMarks.has,
+                                            idPath: \.id, count: \.wocketts)
+    }
+
+    /// Wocketted: saved and remembered, or still saving.
+    func hasVoted(_ id: CKRecord.ID) -> Bool {
+        wockettMarks.has(id) || pendingVotes.contains(id.recordName)
+    }
+
     /// Gives `id` a Wockett at once and saves it; a failed save is taken back
     /// by id and reported in `wocketError`. One place for both route screens.
     /// Returns the save, for tests to await.
-    /// Shows freshly fetched routes, keeping Wocketts that are still saving.
-    func show(_ fetched: [SharedRoute]) {
-        routes = OptimisticVote.withPending(fetched, pending: pendingVotes, idPath: \.id, count: \.wocketts)
-    }
-
     @discardableResult
     func wockett(_ id: CKRecord.ID) -> Task<Void, Never>? {
         wocketError = nil
@@ -125,7 +131,7 @@ struct CommunityRoutesView: View {
                             get: { i < model.routes.count ? model.routes[i] : route },
                             set: { if i < model.routes.count { model.routes[i] = $0 } }
                         ),
-                        hasVoted: CommunityRouteService.shared.hasVoted(for: route.id),
+                        hasVoted: model.hasVoted(route.id),
                         isSaved: savedIds.contains(route.id.recordName),
                         onWockett: { handleWockett(at: i) },
                         onSave: { handleSave(at: i) },

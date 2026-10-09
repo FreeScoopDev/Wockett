@@ -123,7 +123,8 @@ struct VoteMarks {
     }
 }
 
-/// A like or Wockett shows at once and is saved behind it. The owner keeps
+/// A like or Wockett shows at once and is saved behind it; screens show an
+/// item as voted while it is in `pending` or marked. The owner keeps
 /// the ids still saving (`pending`): a refresh mid-save brings the server's
 /// count, which can't include the vote yet, so `withPending` adds it back;
 /// and a failed save takes back exactly the one it added, from the item with
@@ -142,13 +143,14 @@ enum OptimisticVote {
               let i = owner[keyPath: list].firstIndex(where: { $0[keyPath: idPath] == id }) else { return nil }
         owner[keyPath: list][i][keyPath: count] += 1
         owner[keyPath: pending].insert(id.recordName)
-        marks.mark(id)
         return Task { [weak owner] in
             do {
                 try await save(id)
+                // Remembered only once saved: a mark written first outlives an
+                // app killed mid-save, and the item would read voted for good.
+                marks.mark(id)
                 owner?[keyPath: pending].remove(id.recordName)
             } catch {
-                marks.unmark(id)
                 if let owner, owner[keyPath: pending].remove(id.recordName) != nil,
                    let j = owner[keyPath: list].firstIndex(where: { $0[keyPath: idPath] == id }) {
                     owner[keyPath: list][j][keyPath: count] = max(0, owner[keyPath: list][j][keyPath: count] - 1)
@@ -158,13 +160,16 @@ enum OptimisticVote {
         }
     }
 
-    /// A freshly fetched list with the votes still saving added back in.
-    static func withPending<Item>(_ items: [Item], pending: Set<String>,
+    /// A freshly fetched list with the votes still saving added back in,
+    /// except where the fetch already counted this user's vote (`counted`:
+    /// it reached the server before its reply did), so it isn't shown twice.
+    static func withPending<Item>(_ items: [Item], pending: Set<String>, counted: (CKRecord.ID) -> Bool,
                                   idPath: KeyPath<Item, CKRecord.ID>, count: WritableKeyPath<Item, Int>) -> [Item] {
         guard !pending.isEmpty else { return items }
         return items.map { item in
             var item = item
-            if pending.contains(item[keyPath: idPath].recordName) { item[keyPath: count] += 1 }
+            let id = item[keyPath: idPath]
+            if pending.contains(id.recordName), !counted(id) { item[keyPath: count] += 1 }
             return item
         }
     }
@@ -174,10 +179,11 @@ enum OptimisticVote {
     /// query stops early when cancelled. The loser is cancelled.
     static func withDeadline<T>(_ deadline: Duration,
                                 _ work: @escaping @MainActor () async throws -> T) async throws -> T? {
+        try Task.checkCancellation()   // already cancelled: start nothing
         let race = DeadlineRace<T>()
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation(isolation: MainActor.shared) { (cont: CheckedContinuation<T?, Error>) in
-                race.start(cont)
+                guard race.start(cont) else { return }   // cancelled before it began: nothing to run
                 race.worker = Task { @MainActor in
                     do { race.finish(.success(try await work())) } catch { race.finish(.failure(error)) }
                 }
@@ -202,9 +208,12 @@ private final class DeadlineRace<T> {
     var worker: Task<Void, Never>?
     var sleeper: Task<Void, Never>?
 
-    func start(_ cont: CheckedContinuation<T?, Error>) {
-        if let early { cont.resume(with: early); return }   // cancelled before it started
+    /// False when the race was already decided (the caller was cancelled
+    /// before it started): the caller has its answer and nothing should run.
+    func start(_ cont: CheckedContinuation<T?, Error>) -> Bool {
+        if let early { cont.resume(with: early); return false }
         continuation = cont
+        return true
     }
 
     func finish(_ result: Result<T?, Error>) {
@@ -255,7 +264,13 @@ extension PostLiking {
 
     /// Shows freshly fetched posts, keeping likes that are still saving.
     func show(_ fetched: [AchievementPost]) {
-        posts = OptimisticVote.withPending(fetched, pending: pendingVotes, idPath: \.id, count: \.likes)
+        posts = OptimisticVote.withPending(fetched, pending: pendingVotes, counted: likeMarks.has,
+                                           idPath: \.id, count: \.likes)
+    }
+
+    /// Liked: saved and remembered, or still saving.
+    func isLiked(_ id: CKRecord.ID) -> Bool {
+        likeMarks.has(id) || pendingVotes.contains(id.recordName)
     }
 }
 
