@@ -71,13 +71,7 @@ struct TrailPackDeliveryTests {
 
     @Test("A region code that is not a plain short code is refused before anything is downloaded or written")
     func downloadRefusesBadRegionCode() async throws {
-        // A folder of its own around the packs folder, so "nothing written
-        // beside it" can't be failed by another run's leftover: the shared
-        // temporary directory held a va.wktpack from a break-check run
-        // (2026-10-09) and failed every later run on that simulator.
-        let parent = scratchDirectory()
-        let dir = parent.appendingPathComponent("packs", isDirectory: true)
-        defer { try? FileManager.default.removeItem(at: parent) }
+        let dir = scratchDirectory()
         let remote = FakeRemote(regions: [], fileToServe: try fixtureURL)
         let library = TrailPackLibrary(registry: TrailAttributionRegistry(), remote: remote, packsDirectory: dir)
         await library.download(record("../va"))
@@ -86,8 +80,8 @@ struct TrailPackDeliveryTests {
         guard case .failed = library.state(of: record("../va")) else {
             Issue.record("expected .failed, got \(library.state(of: record("../va")))"); return
         }
-        let written = (try? FileManager.default.contentsOfDirectory(atPath: parent.path)) ?? []
-        #expect(!written.contains("va.wktpack"), "nothing written beside the packs folder: \(written)")
+        let written = (try? FileManager.default.contentsOfDirectory(atPath: dir.deletingLastPathComponent().path)) ?? []
+        #expect(!written.contains("va.wktpack"), "nothing written beside the packs folder")
     }
 
     @Test("A region with two records (mid-publish) is listed once, at its newest version")

@@ -675,8 +675,16 @@ struct RouteFinderContentView: View {
                                 communityModel.routes[i].wocketts += 1
                                 CommunityRouteService.shared.markVoted(for: route.id)
                                 Task {
-                                    do { try await CommunityRouteService.shared.wockett(id: route.id) }
-                                    catch { wocketError = "Couldn't save your Wockett — check your connection and try again." }
+                                    do {
+                                        try await CommunityRouteService.shared.wockett(id: route.id)
+                                    } catch {
+                                        // Undo the optimistic +1, so the count and the button match what was saved.
+                                        CommunityRouteService.shared.unmarkVoted(for: route.id)
+                                        if let j = communityModel.routes.firstIndex(where: { $0.id == route.id }) {
+                                            communityModel.routes[j].wocketts -= 1
+                                        }
+                                        wocketError = "Couldn't save your Wockett — check your connection and try again."
+                                    }
                                 }
                             },
                             onSave: {

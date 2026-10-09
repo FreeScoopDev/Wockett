@@ -63,6 +63,11 @@ struct CommunityHubView: View {
         .accessibilityIdentifier("community.root")
         .navigationTitle("Community")
         .navigationBarTitleDisplayMode(.large)
+        .alert("Like not saved", isPresented: Binding(get: { model.likeError != nil }, set: { if !$0 { model.likeError = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(model.likeError ?? "")
+        }
         .navigationDestination(isPresented: $pushBadges) { BadgesContentView() }
         .navigationDestination(isPresented: $pushFeed) { AchievementFeedContentView() }
         .navigationDestination(isPresented: $pushChallenges) { ChallengesContentView() }

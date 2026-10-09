@@ -1,3 +1,4 @@
+import CloudKit
 import Foundation
 import Observation
 
@@ -24,6 +25,12 @@ final class CommunityHubModel {
     private(set) var feedFailed = false
 
     private(set) var receivedWocketts: Int?
+
+    /// Set when a like failed to save; the hub shows it as an alert.
+    var likeError: String?
+
+    /// Saves a like. A seam for tests; the app saves a CommunityVote.
+    var saveLike: (CKRecord.ID) async throws -> Void = { try await AchievementFeedService.shared.like(id: $0) }
 
     private(set) var isLoading = false
     private(set) var didLoad = false
@@ -80,6 +87,18 @@ final class CommunityHubModel {
               let index = posts.firstIndex(where: { $0.id == post.id }) else { return }
         posts[index].likes += 1
         AchievementFeedService.shared.markLiked(id: post.id)
-        Task { try? await AchievementFeedService.shared.like(id: post.id) }
+        Task { await saveLikeOrUndo(post.id) }
+    }
+
+    /// Saves the like; when that fails, takes back the +1 and the liked mark
+    /// so the screen matches what was saved, and says so.
+    func saveLikeOrUndo(_ id: CKRecord.ID) async {
+        do {
+            try await saveLike(id)
+        } catch {
+            AchievementFeedService.shared.unmarkLiked(id: id)
+            if let i = posts.firstIndex(where: { $0.id == id }) { posts[i].likes -= 1 }
+            likeError = "Couldn't save your like. Check your connection and try again."
+        }
     }
 }

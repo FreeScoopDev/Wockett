@@ -109,6 +109,7 @@ private struct AchievementPostCard: View {
     @Binding var post: AchievementPost
     var onHide: (() -> Void)? = nil
     @State private var hasLiked = false
+    @State private var likeFailed = false
 
     private let green = Color.earthGreen
 
@@ -151,7 +152,17 @@ private struct AchievementPostCard: View {
                         hasLiked    = true
                         post.likes += 1
                         AchievementFeedService.shared.markLiked(id: post.id)
-                        Task { try? await AchievementFeedService.shared.like(id: post.id) }
+                        Task {
+                            do {
+                                try await AchievementFeedService.shared.like(id: post.id)
+                            } catch {
+                                // Undo the optimistic +1, so the count and the button match what was saved.
+                                AchievementFeedService.shared.unmarkLiked(id: post.id)
+                                hasLiked = false
+                                post.likes -= 1
+                                likeFailed = true
+                            }
+                        }
                     } label: {
                         // The same like pill as the Community hub's feed card.
                         HStack(spacing: 4) {
@@ -176,6 +187,11 @@ private struct AchievementPostCard: View {
         }
         .wktCard()
         .onAppear { hasLiked = AchievementFeedService.shared.hasLiked(id: post.id) }
+        .alert("Like not saved", isPresented: $likeFailed) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Couldn't save your like. Check your connection and try again.")
+        }
         .contextMenu {
             if let onHide {
                 Button(role: .destructive) {
