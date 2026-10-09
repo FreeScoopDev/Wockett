@@ -84,7 +84,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: FreeScoopDev/app-toolkit
-          ref: ae80891596ff42467b598a828306ca2a9d21667b
+          ref: 391616fbead6f540c02684f36fa8fef8e63f2d8a
           path: toolkit
 
       - name: Select Xcode 26.6
@@ -131,7 +131,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: FreeScoopDev/app-toolkit
-          ref: ae80891596ff42467b598a828306ca2a9d21667b
+          ref: 391616fbead6f540c02684f36fa8fef8e63f2d8a
           path: toolkit
 
       - name: Select Xcode 26.6
