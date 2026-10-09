@@ -963,3 +963,70 @@ class NameVariantTests(unittest.TestCase):
         names = {r[0]: r[1] for r in rows}
         self.assertNotIn("Beltline Access Line", names.values())
         self.assertEqual(names["w2"], "Atlanta Beltline Eastside Trail")
+
+
+class NumberedTrailTests(unittest.TestCase):
+    """Critic run 1 of #160: different trail numbers are different trails;
+    the shared name is the one carried by the most length, in ordinary case."""
+
+    def build(self, features):
+        d = tempfile.mkdtemp()
+        src = os.path.join(d, "in.geojsonseq")
+        out = os.path.join(d, "out.wktpack")
+        write_seq(src, features)
+        btp.build_pack([(src, "osm")], out, "t", "Test", 0.00002, 30.0, built_at="2026-01-01T00:00:00Z")
+        conn = sqlite3.connect(out)
+        rows = conn.execute("SELECT source_ref, name, trail_key, length_m FROM trails ORDER BY source_ref").fetchall()
+        conn.close()
+        return rows
+
+    def test_different_numbers_stay_different_trails(self):
+        # Beach Access #5, #6, #7, ~150 m apart.
+        rows = self.build([feature(f"w{n}", [[-80.0 + n * 0.0015, 26.0], [-80.0 + n * 0.0015, 26.002]],
+                                   name=f"Beach Access #{n}", highway="footway") for n in (5, 6, 7)])
+        self.assertEqual(sorted(r[1] for r in rows), ["Beach Access #5", "Beach Access #6", "Beach Access #7"])
+        self.assertEqual(len({r[2] for r in rows}), 3)
+
+    def test_numbered_loops_sharing_a_trailhead_stay_two_rows(self):
+        a = feature("w1", [[-84.0, 37.0], [-84.0, 37.01]], name="Loop #1", highway="path")
+        b = feature("w2", [[-84.0, 37.0], [-83.99, 37.0]], name="Loop #2", highway="path")
+        rows = self.build([a, b])
+        self.assertEqual(sorted(r[1] for r in rows), ["Loop #1", "Loop #2"])
+
+    def test_spur_letters_are_their_own_trails(self):
+        self.assertNotEqual(btp.trail_number("Limestone Bike Trail #109"), btp.trail_number("Limestone Bike Trail #109A"))
+
+    def test_an_unnumbered_piece_never_bridges_two_numbers(self):
+        rows = self.build([
+            feature("w1", [[-84.0, 37.000], [-84.0, 37.002]], name="Loop #1", highway="path"),
+            feature("w2", [[-84.0, 37.003], [-84.0, 37.005]], name="Loop", highway="path"),
+            feature("w3", [[-84.0, 37.006], [-84.0, 37.008]], name="Loop #2", highway="path"),
+        ])
+        keys = {r[0]: r[2] for r in rows}
+        self.assertNotEqual(keys["w1"], keys["w3"])
+        self.assertIn("Loop #1", {r[1] for r in rows})
+        self.assertIn("Loop #2", {r[1] for r in rows})
+
+    def test_variants_meeting_end_to_end_merge_into_one_row(self):
+        rows = self.build([
+            feature("w1", [[-84.0, 37.000], [-84.0, 37.004]], name="Sheltowee Trace", highway="path"),
+            feature("w2", [[-84.0, 37.004], [-84.0, 37.008]], name="Sheltowee Trace Trail", highway="path"),
+        ])
+        self.assertEqual(len(rows), 1, rows)
+
+    def test_the_shared_name_is_the_longest_carried_and_ordinary_case(self):
+        rows = self.build([
+            feature("w1", [[-82.0, 35.000], [-82.0, 35.036]], name="North Slope Trail", highway="path"),  # ~4 km
+            feature("w2", [[-82.0, 35.037], [-82.0, 35.042]], name="North Slope", highway="path"),        # ~0.6 km
+        ])
+        self.assertEqual({r[1] for r in rows}, {"North Slope Trail"})
+        # The typo carries more of the trail; the ordinary spelling still wins.
+        typo = self.build([
+            feature("w1", [[-82.0, 35.000], [-82.0, 35.010]], name="HIgh Falls Loop", highway="path"),
+            feature("w2", [[-82.0, 35.011], [-82.0, 35.013]], name="High Falls Loop", highway="path"),
+        ])
+        self.assertEqual({r[1] for r in typo}, {"High Falls Loop"})
+
+    def test_access_trails_keep_their_names(self):
+        rows = self.build([feature("w1", [[-83.0, 35.0], [-83.0, 35.01]], name="Hazel Creek Access Trail", highway="path")])
+        self.assertEqual(rows[0][1], "Hazel Creek Access Trail")
