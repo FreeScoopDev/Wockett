@@ -1027,6 +1027,48 @@ class NumberedTrailTests(unittest.TestCase):
         ])
         self.assertEqual({r[1] for r in typo}, {"High Falls Loop"})
 
+    def test_a_merged_row_is_named_for_its_longest_spelling(self):
+        # 445 m "Raider Camp" then 4 km "Raider Camp Trail": end to end, and across a 30 m gap.
+        for gap in (0.0, 0.0003):
+            rows = self.build([
+                feature("w1", [[-82.0, 35.000], [-82.0, 35.004]], name="Raider Camp", highway="path"),
+                feature("w2", [[-82.0, 35.004 + gap], [-82.0, 35.040 + gap]], name="Raider Camp Trail", highway="path"),
+            ])
+            self.assertEqual([r[1] for r in rows], ["Raider Camp Trail"], f"gap {gap}: {rows}")
+
+    def test_lowercase_and_double_spaced_spellings_never_win(self):
+        rows = self.build([
+            feature("w1", [[-82.0, 35.000], [-82.0, 35.010]], name="croatan", highway="path"),
+            feature("w2", [[-82.0, 35.011], [-82.0, 35.013]], name="Croatan", highway="path"),
+        ])
+        self.assertEqual({r[1] for r in rows}, {"Croatan"})
+        spaced = self.build([
+            feature("w1", [[-82.0, 35.000], [-82.0, 35.010]], name="Walking Path - Torrence  Chapel Park", highway="path"),
+            feature("w2", [[-82.0, 35.011], [-82.0, 35.013]], name="Walking Path - Torrence Chapel Park", highway="path"),
+        ])
+        self.assertEqual({r[1] for r in spaced}, {"Walking Path - Torrence Chapel Park"})
+
+    def test_two_spacings_of_one_name_add_up(self):
+        # "Fox  Run" (~550 m) and "Fox Run" (~440 m) are one spelling, 990 m in
+        # all, against ~880 m of "Fox Run Trail".
+        rows = self.build([
+            feature("w1", [[-82.0, 35.000], [-82.0, 35.005]], name="Fox  Run", highway="path"),
+            feature("w2", [[-82.0, 35.006], [-82.0, 35.010]], name="Fox Run", highway="path"),
+            feature("w3", [[-82.0, 35.011], [-82.0, 35.019]], name="Fox Run Trail", highway="path"),
+        ])
+        self.assertEqual({r[1] for r in rows}, {"Fox Run"}, rows)
+
+    def test_an_unnumbered_piece_never_bridges_two_numbers_east_to_west(self):
+        # Laid out west to east, so "Loop #1" is visited first and the group's
+        # number has to carry through the join with "Loop".
+        rows = self.build([
+            feature("w1", [[-84.000, 37.0], [-83.998, 37.0]], name="Loop #1", highway="path"),
+            feature("w2", [[-83.997, 37.0], [-83.995, 37.0]], name="Loop", highway="path"),
+            feature("w3", [[-83.994, 37.0], [-83.992, 37.0]], name="Loop #2", highway="path"),
+        ])
+        keys = {r[0]: r[2] for r in rows}
+        self.assertNotEqual(keys["w1"], keys["w3"], rows)
+
     def test_access_trails_keep_their_names(self):
         rows = self.build([feature("w1", [[-83.0, 35.0], [-83.0, 35.01]], name="Hazel Creek Access Trail", highway="path")])
         self.assertEqual(rows[0][1], "Hazel Creek Access Trail")

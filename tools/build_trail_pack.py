@@ -306,6 +306,17 @@ class Trail:
     # crossings are links, not trail, and do not count (None = length_m).
     floor_length_m: Optional[float] = None
     trail_key: Optional[str] = None
+    # Metres of this row under each spelling of its name. A merged row joins
+    # ways whose names differ only as `pool_key` allows ("Raider Camp" and
+    # "Raider Camp Trail"); the trail's name is voted on these, not on the
+    # first way's name (critic run 2 of #160). None = {name: length_m}.
+    name_weights: Optional[dict] = None
+
+
+def _name_weights(t: "Trail") -> dict:
+    if t.name_weights is not None:
+        return t.name_weights
+    return {t.name: t.length_m} if t.name else {}
 
 
 @dataclass
@@ -963,6 +974,11 @@ def _merged_row(parts, coords: list[list[float]], base: Optional[Trail] = None):
         forbids_horse=any(t.forbids_horse for t, _ in parts),
         floor_length_m=sum(t.length_m for t, _ in all_parts if not t.is_crossing),
     )
+    weights: dict = {}
+    for t, _ in all_parts:
+        for spelling, metres in _name_weights(t).items():
+            weights[spelling] = weights.get(spelling, 0.0) + metres
+    trail.name_weights = weights or None
     return trail, coords
 
 
@@ -1727,6 +1743,10 @@ def _odd_case(name: str) -> bool:
     return any(any(c.isupper() for c in w[1:]) and not w.isupper() for w in name.split())
 
 
+def _capitalised_words(name: str) -> int:
+    return sum(1 for w in name.split() if w[:1].isupper())
+
+
 def assign_trail_keys(rows: list, region: str, stats: Stats) -> None:
     """Give every piece of one named trail the same `trail_key`.
 
@@ -1778,20 +1798,28 @@ def assign_trail_keys(rows: list, region: str, stats: Stats) -> None:
             # 239 m "North Slope" over 5.8 km of "North Slope Trail", and the
             # shortest-on-a-tie rule picked "HIgh Falls Loop" (critic run 1
             # of #160).
+            # Voted on the original ways' spellings and lengths, carried
+            # through merges (`name_weights`).
             weight: dict[str, float] = {}
             for i in members:
-                weight[rows[i][0].name] = weight.get(rows[i][0].name, 0.0) + rows[i][0].length_m
-            # Spellings that differ only in capitals are one name: the
-            # length decides between names, then the ordinary spelling is
-            # used whatever its share ("HIgh Falls Loop" carried more of the
-            # trail than "High Falls Loop"). On a tie a numbered name wins:
+                for spelling, metres in _name_weights(rows[i][0]).items():
+                    weight[spelling] = weight.get(spelling, 0.0) + metres
+            # Spellings that differ only in capitals or spacing are one name:
+            # the length decides between names, then the best-written
+            # spelling of the winner is used whatever its share: no capital
+            # inside a word ("HIgh"), then the most capitalised words
+            # ("Croatan" over "croatan", "Nature Trail" over "Nature trail"),
+            # single-spaced. On a tie between names a numbered name wins:
             # the number tells the trail apart.
+            def fold(n: str) -> str:
+                return " ".join(n.lower().split())
             folded: dict[str, float] = {}
             for n, w in weight.items():
-                folded[n.lower()] = folded.get(n.lower(), 0.0) + w
+                folded[fold(n)] = folded.get(fold(n), 0.0) + w
             best = min(folded, key=lambda f: (-round(folded[f], 1), trail_number(f) is None, f))
-            chosen = min((n for n in weight if n.lower() == best),
-                         key=lambda n: (_odd_case(n), -round(weight[n], 1), n))
+            chosen = " ".join(min((n for n in weight if fold(n) == best),
+                                  key=lambda n: (_odd_case(n), -_capitalised_words(n),
+                                                 -round(weight[n], 1), n)).split())
             for i in members:
                 if rows[i][0].name != chosen:
                     rows[i][0].name = chosen
