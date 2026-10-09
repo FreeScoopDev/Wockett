@@ -39,6 +39,38 @@ struct CommunityVotesTests {
                    creator: creator ?? voter)
     }
 
+    // MARK: Waiting without a clock
+    //
+    // The deadline tests used to sleep, set 1-minute time limits and compare
+    // wall-clock times. On CI, where every test starts at once and queues for
+    // the main actor, that failed tests that had passed (2026-10-09: one took
+    // 84 s waiting its turn, and its time limit killed the test run).
+    // Everything below runs on the main actor, so the steps a test waits for
+    // take a fixed number of main-actor turns, however busy the machine is.
+
+    /// A deadline that passes only when the test says so.
+    private final class ManualDeadline {
+        private var waiting: CheckedContinuation<Void, Never>?
+        private(set) var started = false
+        var sleep: OptimisticVote.Sleep {
+            { [unowned self] _ in
+                started = true
+                await withCheckedContinuation { waiting = $0 }
+            }
+        }
+        func pass() {
+            waiting?.resume()
+            waiting = nil
+        }
+    }
+
+    /// Gives the main actor up to 10,000 turns for `done` to become true, so
+    /// a broken build fails the expectation instead of hanging the run.
+    private func turns(until done: () -> Bool) async -> Bool {
+        for _ in 0..<10_000 where !done() { await Task.yield() }
+        return done()
+    }
+
     // MARK: Naming and counting
 
     @Test("A vote's name is built from the item and the voter, and read back")
@@ -169,23 +201,33 @@ struct CommunityVotesTests {
         #expect(store.saved.map(\.recordName) == ["vote.r._me", "vote.r._someoneElse"])
     }
 
-    @Test("Counts that take too long give up, even when the query ignores cancellation", .timeLimit(.minutes(1)))
+    @Test("Counts that take too long give up, even when the query ignores cancellation")
     func tallyTimesOut() async {
-        /// Like a CloudKit call that doesn't stop when cancelled: answers after 30 s, whatever happens.
+        /// Like a CloudKit call that doesn't stop when cancelled: answers only when the test lets it.
         final class StubbornStore: CommunityVoteStore {
+            var answer: CheckedContinuation<Void, Never>?
             func currentUserRecordName() async throws -> String { "_me" }
             func saveVote(recordName: String, target: String, type: VoteTarget) async throws {}
             func votes(for targets: [String]) async throws -> [StoredVote] {
-                await withCheckedContinuation { cont in
-                    DispatchQueue.global().asyncAfter(deadline: .now() + 30) { cont.resume() }
-                }
-                return []
+                await withCheckedContinuation { answer = $0 }
+                return [vote("r", by: "_x")]
+            }
+            private func vote(_ t: String, by v: String) -> StoredVote {
+                StoredVote(target: t, recordName: CommunityVotes.recordName(target: t, voter: v), creator: v)
             }
         }
-        let started = ContinuousClock.now
-        let t = await CommunityVoteService(store: StubbornStore(), tallyTimeout: .milliseconds(200)).tally(for: ["r"])
-        #expect(t == VoteTally())
-        #expect(ContinuousClock.now - started < .seconds(20))   // the work takes 30 s; CI runners are slow (7.7 s seen)
+        let store = StubbornStore()
+        let deadline = ManualDeadline()
+        let service = CommunityVoteService(store: store, sleep: deadline.sleep)
+        var tally: VoteTally?
+        let counting = Task { tally = await service.tally(for: ["r"]) }
+        #expect(await turns { store.answer != nil && deadline.started }, "the query and the deadline both began")
+        deadline.pass()
+        #expect(await turns { tally != nil }, "gave up without waiting for the query")
+        #expect(tally == VoteTally())
+        store.answer?.resume()                             // the query answers late; nothing is listening
+        await counting.value
+        #expect(tally == VoteTally(), "the late answer changed nothing")
     }
 
     @Test("Signed out of iCloud gets its own message, not 'check your connection'")
@@ -391,29 +433,49 @@ struct CommunityVotesTests {
 
     // MARK: Deadline
 
-    @Test("A cancelled caller stops waiting at once", .timeLimit(.minutes(1)))
+    @Test("A cancelled caller stops waiting at once")
     func deadlineHonoursCancellation() async {
-        let started = ContinuousClock.now
-        let waiter = Task { @MainActor in
-            try? await OptimisticVote.withDeadline(.seconds(30)) { () async throws -> Int in
-                try await Task.sleep(for: .seconds(30)); return 1
-            }
+        let deadline = ManualDeadline()
+        var gate: CheckedContinuation<Void, Never>?
+        var outcome: Result<Int?, Error>?
+        let waiter = Task {
+            do {
+                outcome = .success(try await OptimisticVote.withDeadline(.seconds(30), sleep: deadline.sleep) {
+                    () async -> Int in
+                    await withCheckedContinuation { gate = $0 }   // ignores cancellation
+                    return 1
+                })
+            } catch { outcome = .failure(error) }
         }
-        try? await Task.sleep(for: .milliseconds(100))
+        #expect(await turns { gate != nil }, "the work began")
         waiter.cancel()
-        _ = await waiter.value
-        #expect(ContinuousClock.now - started < .seconds(20))   // the work takes 30 s; CI runners are slow (7.7 s seen)
+        #expect(await turns { outcome != nil }, "stopped waiting while the work was still running")
+        #expect(throws: CancellationError.self) { try outcome?.get() }
+        gate?.resume()                                     // the work finishes late; a second answer would trap
+        deadline.pass()
+        await waiter.value
     }
 
-    @Test("Work that finishes after the deadline is ignored, not answered twice", .timeLimit(.minutes(1)))
+    @Test("Work that finishes after the deadline is ignored, not answered twice")
     func lateWorkIgnored() async {
+        let deadline = ManualDeadline()
         var gate: CheckedContinuation<Void, Never>?
-        let result = try? await OptimisticVote.withDeadline(.milliseconds(50)) { () async -> Int in
-            await withCheckedContinuation { gate = $0 }
-            return 7
+        var result: Result<Int?, Error>?
+        let call = Task {
+            do {
+                result = .success(try await OptimisticVote.withDeadline(.milliseconds(50), sleep: deadline.sleep) {
+                    () async -> Int in
+                    await withCheckedContinuation { gate = $0 }
+                    return 7
+                })
+            } catch { result = .failure(error) }
         }
-        #expect(result == .some(nil), "the deadline answered")
+        #expect(await turns { gate != nil && deadline.started })
+        deadline.pass()
+        #expect(await turns { result != nil })
+        #expect({ if case .success(.none)? = result { true } else { false } }(), "the deadline answered")
         gate?.resume()                                     // the work finishes late; a second resume would trap
+        await call.value
         for _ in 0..<1_000 { await Task.yield() }
     }
 
@@ -452,27 +514,42 @@ struct CommunityVotesTests {
         #expect(notYet[0].likes == 6)
     }
 
-    @Test("When the deadline wins, the work is cancelled", .timeLimit(.minutes(1)))
+    @Test("When the deadline wins, the work is cancelled")
     func loserCancelled() async {
-        var sawCancel = false
-        let result = try? await OptimisticVote.withDeadline(.milliseconds(50)) { () async -> Int in
-            do { try await Task.sleep(for: .seconds(10)) } catch { sawCancel = true }
-            return 1
+        let deadline = ManualDeadline()
+        var started = false, sawCancel = false
+        var result: Result<Int?, Error>?
+        Task {
+            do {
+                result = .success(try await OptimisticVote.withDeadline(.milliseconds(50), sleep: deadline.sleep) {
+                    () async -> Int in
+                    started = true
+                    // Never ends by itself: only a cancel gets it out.
+                    do { try await Task.sleep(for: .seconds(3_600)) } catch { sawCancel = true }
+                    return 1
+                })
+            } catch { result = .failure(error) }
         }
-        #expect(result == .some(nil))
-        for _ in 0..<200 where !sawCancel { try? await Task.sleep(for: .milliseconds(10)) }
-        #expect(sawCancel)
+        #expect(await turns { started && deadline.started })
+        deadline.pass()
+        #expect(await turns { result != nil })
+        #expect({ if case .success(.none)? = result { true } else { false } }(), "the deadline answered")
+        #expect(await turns { sawCancel })
     }
 
-    @Test("Already cancelled: the work never starts", .timeLimit(.minutes(1)))
+    @Test("Already cancelled: the work never starts")
     func cancelledBeforeStart() async {
+        let deadline = ManualDeadline()
         var ran = false
         let caller = Task { @MainActor in
             withUnsafeCurrentTask { $0?.cancel() }
-            return try? await OptimisticVote.withDeadline(.seconds(5)) { () async -> Int in ran = true; return 1 }
+            return try? await OptimisticVote.withDeadline(.seconds(5), sleep: deadline.sleep) { () async -> Int in
+                ran = true; return 1
+            }
         }
         _ = await caller.value
         for _ in 0..<100 { await Task.yield() }
         #expect(!ran)
+        #expect(!deadline.started, "nor does the deadline")
     }
 }
