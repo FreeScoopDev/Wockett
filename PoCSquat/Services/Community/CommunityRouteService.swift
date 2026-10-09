@@ -63,7 +63,7 @@ struct SharedRoute: Identifiable {
 final class CommunityRouteService {
     static let shared = CommunityRouteService()
 
-    private let db         = CKContainer(identifier: "iCloud.Scoops.PoCSquat").publicCloudDatabase
+    private let db         = CKContainer(identifier: WockettCloud.containerID).publicCloudDatabase
     private let recordType = "SharedRoute"
     private let votedKey      = "communityVotedRoutes"
     private let usernameKey   = "communityUsername"
@@ -91,6 +91,9 @@ final class CommunityRouteService {
 
     // MARK: - Vote tracking (local device)
 
+    /// Every route this device marked as Wocketted.
+    var votedIDs: [String] { UserDefaults.standard.stringArray(forKey: votedKey) ?? [] }
+
     func hasVoted(for id: CKRecord.ID) -> Bool {
         (UserDefaults.standard.stringArray(forKey: votedKey) ?? []).contains(id.recordName)
     }
@@ -102,6 +105,12 @@ final class CommunityRouteService {
         UserDefaults.standard.set(voted, forKey: votedKey)
     }
 
+    /// Undoes `markVoted` after a Wockett failed to save.
+    func unmarkVoted(for id: CKRecord.ID) {
+        let voted = (UserDefaults.standard.stringArray(forKey: votedKey) ?? []).filter { $0 != id.recordName }
+        UserDefaults.standard.set(voted, forKey: votedKey)
+    }
+
     // MARK: - Fetch
 
     // Fetches newest 30 routes, sorts by Wocketts client-side.
@@ -110,13 +119,21 @@ final class CommunityRouteService {
         let query = CKQuery(recordType: recordType, predicate: NSPredicate(value: true))
         query.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
         let (results, _) = try await db.records(matching: query, resultsLimit: limit)
-        let routes = results.compactMap { _, result -> SharedRoute? in
+        var routes = results.compactMap { _, result -> SharedRoute? in
             guard let record = try? result.get() else { return nil }
             return SharedRoute(record: record)
         }
-        return routes
-            .filter { !CommunityModerationStore.shared.shouldHide(id: $0.id, author: $0.authorName) }
-            .sorted { $0.wocketts > $1.wocketts }
+        .filter { !CommunityModerationStore.shared.shouldHide(id: $0.id, author: $0.authorName) }
+        // Wocketts are CommunityVote records (CommunityVotes.swift), not the
+        // route's own `upvotes` field, which only its author could ever change.
+        let tally = await CommunityVoteService.shared.tally(for: routes.map(\.id.recordName))
+        // Cancelled (the screen went away): a tally that gave up is all 0s, not real counts.
+        try Task.checkCancellation()
+        for i in routes.indices {
+            routes[i].wocketts = tally.count(for: routes[i].id.recordName)
+            if tally.mine.contains(routes[i].id.recordName) { markVoted(for: routes[i].id) }
+        }
+        return routes.sorted { $0.wocketts > $1.wocketts }
     }
 
     // MARK: - Publish
@@ -145,27 +162,18 @@ final class CommunityRouteService {
 
     // MARK: - Received Wocketts
 
-    /// Sums upvotes across all routes the current user has published. Returns 0 on error.
+    /// Counts the Wocketts (votes) on every route the current user has published. 0 when votes can't be read.
     func fetchReceivedWocketts() async -> Int {
         let ids = UserDefaults.standard.stringArray(forKey: publishedKey) ?? []
         guard !ids.isEmpty else { return 0 }
-        var total = 0
-        for idString in ids {
-            let recordID = CKRecord.ID(recordName: idString)
-            if let record = try? await db.record(for: recordID) {
-                total += record["upvotes"] as? Int ?? 0
-            }
-        }
-        return total
+        let tally = await CommunityVoteService.shared.tally(for: ids)
+        return ids.reduce(0) { $0 + tally.count(for: $1) }
     }
 
     // MARK: - Wockett
 
     func wockett(id: CKRecord.ID) async throws {
-        let record  = try await db.record(for: id)
-        let current = record["upvotes"] as? Int ?? 0
-        record["upvotes"] = current + 1
-        _ = try await db.save(record)
+        try await CommunityVoteService.shared.vote(for: id.recordName, type: .route)
         markVoted(for: id)
     }
 
