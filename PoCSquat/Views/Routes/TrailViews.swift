@@ -168,7 +168,7 @@ struct TrailsPanel: View {
         let active = finder.filters != TrailFilters()
         return active
             ? "No trails within 10 miles match these filters."
-            : "No trails within 10 miles. Wockett has trail data for North Carolina so far, with more regions on the way."
+            : "No trails within 10 miles. Download your state in Settings → Trail Regions to see its trails. More states are on the way."
     }
 }
 
