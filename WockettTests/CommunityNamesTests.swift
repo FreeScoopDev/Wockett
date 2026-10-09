@@ -17,6 +17,7 @@ struct CommunityNamesTests {
         var takenError: Error = CKError(.serverRecordChanged)   // what CloudKit says for a held name
         var loseReply = false                        // the save goes through, its answer doesn't
         var lookupMisses = false                     // the creator index hasn't caught up yet
+        var oldest: String?                          // the account's oldest claim, when set
         var claims: [String] = []
         var lookups = 0
         var gates: [CheckedContinuation<Void, Never>] = []
@@ -26,6 +27,7 @@ struct CommunityNamesTests {
         func claimedName() async throws -> String? {
             lookups += 1
             if lookupMisses { return nil }
+            if let oldest { return oldest }
             return owners.first { $0.value == me }.map { $0.key } .flatMap { key in names[key] }
         }
         var names: [String: String] = [:]           // lowercased → as shown
@@ -70,7 +72,14 @@ struct CommunityNamesTests {
         for _ in 0..<200 {
             let name = CommunityNames.random()
             #expect(name.wholeMatch(of: /[A-Z][a-z]+[A-Z][a-z]+[1-9][0-9]/) != nil, "\(name)")
+            if let n = Int(name.suffix(2)) { #expect(CommunityNames.numbers.contains(n), "\(name)") }
         }
+    }
+
+    @Test("No name ends in a number that reads as sexual or as a hate code")
+    func numbersAreClean() {
+        for bad in [14, 18, 28, 69, 88] { #expect(!CommunityNames.numbers.contains(bad), "\(bad)") }
+        #expect(CommunityNames.numbers.count == 85)
     }
 
     @Test("The word lists have no repeats and share no word (no FernFern42)")
@@ -79,7 +88,7 @@ struct CommunityNamesTests {
         #expect(Set(a).count == a.count)
         #expect(Set(n).count == n.count)
         #expect(Set(a).isDisjoint(with: n))
-        #expect(a.count * n.count * 90 == 144_000)
+        #expect(a.count * n.count * CommunityNames.numbers.count == 136_000)
     }
 
     @Test("No word, alone or run together with any other, contains a blocked term")
@@ -92,14 +101,11 @@ struct CommunityNamesTests {
                 let joined = "\(a)\(n)".lowercased()
                 #expect((try? ContentFilter.validate(name: "\(a) \(n)")) != nil, "\(a) \(n)")
                 for term in blocked {
-                    #expect(!joined.contains(term) || CommunityNamesTests.allowed(joined, term), "\(a)\(n) contains \(term)")
+                    #expect(!joined.contains(term), "\(a)\(n) contains \(term)")
                 }
             }
         }
     }
-
-    /// Innocent words that happen to contain a short term ("Glass" has "ass").
-    static func allowed(_ joined: String, _ term: String) -> Bool { false }
 
     @Test("A name's record ignores letter case, so MistyOak42 and mistyoak42 are one name")
     func recordNameIgnoresCase() {
@@ -220,6 +226,8 @@ struct CommunityNamesTests {
         _ = try await CommunityNameService(store: cloud, defaults: d, makeName: names(["SunnyFox42"])).claimedName()
         cloud.me = "_newOwner"                         // switched while Wockett wasn't running: no notification
         let service = CommunityNameService(store: cloud, defaults: d, makeName: names(["QuietLark33"]))
+        await service.refreshDisplayName()
+        #expect(service.displayName != "SunnyFox42", "the old account's name isn't shown either")
         let name = try await service.claimedName()
         #expect(name == "QuietLark33")
         #expect(cloud.owners["quietlark33"] == "_newOwner")
@@ -245,5 +253,18 @@ struct CommunityNamesTests {
         await service.refreshDisplayName()
         #expect(service.displayName == "CalmOwl17")
         #expect(cloud.claims.isEmpty)
+    }
+
+    @Test("Two of my devices that claimed different names settle on the oldest")
+    func devicesSettleOnOldest() async throws {
+        let cloud = FakeCloud()
+        let d = defaults(local: "MistyOak")
+        let service = CommunityNameService(store: cloud, defaults: d, makeName: names([]))
+        cloud.lookupMisses = true
+        _ = try await service.claimedName()                 // this device: MistyOak
+        cloud.oldest = "CalmOwl17"                          // the other device's, claimed first
+        cloud.lookupMisses = false
+        await service.refreshDisplayName()
+        #expect(service.displayName == "CalmOwl17")
     }
 }

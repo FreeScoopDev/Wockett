@@ -45,7 +45,6 @@ final class AchievementFeedService {
 
     init() {}
 
-
     // MARK: - Like tracking (local device)
 
     /// Every post this device marked as liked.

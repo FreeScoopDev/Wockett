@@ -68,15 +68,9 @@ final class CommunityRouteService {
     private let votedKey      = "communityVotedRoutes"
     private let publishedKey  = "wkt_publishedRouteIds"
 
-
     init() {}
 
     // MARK: - Username
-
-    /// The name to show for this user (CommunityNameService). Writes use the
-    /// claimed name instead, so nothing is posted under a name the account
-    /// doesn't hold.
-    var username: String { CommunityNameService.shared.displayName }
 
     // MARK: - Vote tracking (local device)
 

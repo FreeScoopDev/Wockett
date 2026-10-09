@@ -259,7 +259,7 @@ struct CommunityReportTests {
     func nothingAboutReporter() {
         let report = CommunityReport(kind: .route, recordID: CKRecord.ID(recordName: "r"), author: "A", content: "B")
         let text = report.body + report.subject
-        #expect(!text.contains(CommunityRouteService.shared.username))
+        #expect(!text.contains(CommunityNameService.shared.displayName))
         #expect(!text.contains(ChallengeService.shared.deviceID))
     }
 

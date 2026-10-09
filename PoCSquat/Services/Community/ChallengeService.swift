@@ -239,7 +239,6 @@ final class ChallengeService {
         return v
     }
 
-
     // MARK: - Fetch
 
     func fetchActiveChallenges() async throws -> [WalkChallenge] {

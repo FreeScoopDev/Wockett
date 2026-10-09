@@ -32,11 +32,16 @@ enum CommunityNames {
         "Hare", "Hill", "Lark", "Lynx", "Otter", "Owl", "Pebble", "Robin", "Trail", "Wren"
     ]
 
-    /// Adjective + Noun + two digits: 40 × 40 × 90 = 144,000 names.
+    /// Two-digit endings, minus ones that read as sexual or as hate codes
+    /// (14, 18, 28, 88: "SilverWolf88" must never be generated; 69).
+    static let numbers = (10...99).filter { ![14, 18, 28, 69, 88].contains($0) }
+
+    /// Adjective + Noun + two digits: 40 × 40 × 85 = 136,000 names.
     static func random<G: RandomNumberGenerator>(using generator: inout G) -> String {
         let adjective = adjectives.randomElement(using: &generator) ?? "Misty"
         let noun = nouns.randomElement(using: &generator) ?? "Oak"
-        return "\(adjective)\(noun)\(Int.random(in: 10...99, using: &generator))"
+        let number = numbers.randomElement(using: &generator) ?? 42
+        return "\(adjective)\(noun)\(number)"
     }
 
     static func random() -> String {
@@ -80,11 +85,12 @@ final class CloudKitCommunityNameStore: CommunityNameStore {
         let query = CKQuery(recordType: CommunityNames.recordType,
                             predicate: NSPredicate(format: "creatorUserRecordID == %@",
                                                    CKRecord.Reference(recordID: me, action: .none)))
-        // Oldest first, so every device settles on the same name if an account
-        // ever held two.
-        query.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: true)]
-        let (results, _) = try await db.records(matching: query, desiredKeys: ["name"], resultsLimit: 1)
-        return results.lazy.compactMap { try? $0.1.get()["name"] as? String }.first
+        // The oldest, so every device settles on the same name if an account
+        // ever held two. Picked here rather than sorted by CloudKit, which
+        // would need a sortable creation-date index on this type.
+        let (results, _) = try await db.records(matching: query, desiredKeys: ["name"], resultsLimit: 20)
+        return results.compactMap { try? $0.1.get() }
+            .min { ($0.creationDate ?? .distantFuture) < ($1.creationDate ?? .distantFuture) }?["name"] as? String
     }
 
     func claim(_ name: String) async throws {
@@ -173,11 +179,14 @@ final class CommunityNameService {
     /// that say "Posting as".
     func refreshDisplayName() async {
         guard let me = try? await store.currentUser() else { return }
-        if defaults.string(forKey: Self.claimedOwnerKey) == me { return }
+        forgetClaimOfAnotherAccount(me)
+        // Also when this phone has a claim: another of this account's devices
+        // may hold an older one, and every device should show the oldest.
         if let existing = try? await store.claimedName() {
-            remember(existing, owner: me)
+            if defaults.string(forKey: Self.claimedKey) != existing { remember(existing, owner: me) }
             return
         }
+        if defaults.string(forKey: Self.claimedOwnerKey) == me { return }
         let local = displayName
         if let owner = try? await store.owner(of: local), !isMine(owner, me: me) {
             defaults.set(makeName(), forKey: Self.localKey)
@@ -198,6 +207,7 @@ final class CommunityNameService {
 
     private func resolveName() async throws -> String {
         let me = try await store.currentUser()
+        forgetClaimOfAnotherAccount(me)
         if defaults.string(forKey: Self.claimedOwnerKey) == me,
            let claimed = defaults.string(forKey: Self.claimedKey) { return claimed }
         if let existing = try await store.claimedName() {
@@ -224,6 +234,14 @@ final class CommunityNameService {
             }
         }
         throw NameError.noFreeName
+    }
+
+    /// A claim saved by a different iCloud account than the one signed in now
+    /// (switched while Wockett wasn't running) is forgotten, so its name is
+    /// neither shown nor used; the local name, which is that old name too, is
+    /// then checked against its owner like any other.
+    private func forgetClaimOfAnotherAccount(_ me: String) {
+        if let owner = defaults.string(forKey: Self.claimedOwnerKey), owner != me { forgetClaim() }
     }
 
     private func isMine(_ owner: String, me: String) -> Bool {
