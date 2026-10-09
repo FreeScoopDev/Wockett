@@ -845,7 +845,7 @@ class CurationTests(unittest.TestCase):
         btp.build_pack([(src, "osm")], out, "t", "Test", 0.00002, 30.0, built_at="2026-01-01T00:00:00Z")
         meta = dict(sqlite3.connect(out).execute("SELECT key, value FROM meta"))
         self.assertEqual(meta["trail_keys"], "1")
-        self.assertEqual(meta["builder_version"], "1.4.0")
+        self.assertEqual(meta["builder_version"], "1.5.0")
         self.assertTrue(btp.verify_pack(out))
 
 
@@ -921,3 +921,45 @@ class ListingRulesTests(unittest.TestCase):
         ])
         self.assertEqual(sorted(rows), [], "a bridleway with foot=no and no bicycle access is no use here")
         self.assertEqual(stats.skipped_closed, 2)
+
+
+class NameVariantTests(unittest.TestCase):
+    """Builder 1.5.0 (2026-10-09): one trail, one name; access connectors unnamed."""
+
+    def build(self, features):
+        d = tempfile.mkdtemp()
+        src = os.path.join(d, "in.geojsonseq")
+        out = os.path.join(d, "out.wktpack")
+        write_seq(src, features)
+        btp.build_pack([(src, "osm")], out, "t", "Test", 0.00002, 30.0, built_at="2026-01-01T00:00:00Z")
+        conn = sqlite3.connect(out)
+        rows = conn.execute("SELECT source_ref, name, trail_key FROM trails ORDER BY source_ref").fetchall()
+        conn.close()
+        return rows
+
+    def test_name_key(self):
+        k = btp.name_key
+        self.assertEqual({k("Sheltowee Trace"), k("Sheltowee Trace Trail"), k("Sheltowee Trace #100"),
+                          k("sheltowee  trace trail #100"), k("Sheltowee Trace Trail #100:9")}, {"sheltowee trace"})
+        self.assertNotEqual(k("IR-#16-Easy"), k("IR-#27-Easy"))
+        self.assertEqual(k("Nature Trail"), "nature trail", "one word would be left: keep 'Trail'")
+        self.assertNotEqual(k("Trail 7"), k("Trail 8"))
+
+    def test_variants_of_one_trail_share_a_key_and_a_name(self):
+        # Three pieces ~100 m apart, three spellings, one trail.
+        rows = self.build([
+            feature("w1", [[-84.0, 37.000], [-84.0, 37.004]], name="Sheltowee Trace", highway="path"),
+            feature("w2", [[-84.0, 37.005], [-84.0, 37.009]], name="Sheltowee Trace Trail #100", highway="path"),
+            feature("w3", [[-84.0, 37.010], [-84.0, 37.014]], name="Sheltowee Trace", highway="path"),
+        ])
+        self.assertEqual(len({r[2] for r in rows}), 1, rows)
+        self.assertEqual({r[1] for r in rows}, {"Sheltowee Trace"}, "the name most pieces carry")
+
+    def test_access_connector_is_unnamed(self):
+        rows = self.build([
+            feature("w1", [[-84.39, 33.75], [-84.39, 33.752]], name="Beltline Access Line", highway="footway"),
+            feature("w2", [[-84.38, 33.75], [-84.38, 33.76]], name="Atlanta Beltline Eastside Trail", highway="cycleway"),
+        ])
+        names = {r[0]: r[1] for r in rows}
+        self.assertNotIn("Beltline Access Line", names.values())
+        self.assertEqual(names["w2"], "Atlanta Beltline Eastside Trail")

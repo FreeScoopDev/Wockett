@@ -53,7 +53,7 @@ from typing import Any, Iterable, Iterator, Optional, Sequence
 # ---------------------------------------------------------------------------
 
 SCHEMA_VERSION = 1
-BUILDER_VERSION = "1.4.0"
+BUILDER_VERSION = "1.5.0"
 
 # ---------------------------------------------------------------------------
 # Source registry. Attribution lives here and is copied into every pack, so a
@@ -330,6 +330,7 @@ class Stats:
     skipped_unnamed_track: int = 0
     skipped_street_named_track: int = 0
     kept_track_at_trailhead: int = 0
+    unified_names: int = 0
     trail_keys: int = 0
     read: int = 0
     written: int = 0
@@ -400,6 +401,29 @@ GENERIC_NAMES = frozenset({
 _INSTALLATION_NAME = re.compile(r"\b(air force base|afb|naval air station|army airfield|military reservation)\b")
 
 
+# 1.5.0: a connector named for what it reaches. Atlanta's "Beltline Access
+# Line" was 63 ways averaging 92 m, listed in 15 places (2026-10-09 review list).
+_ACCESS_CONNECTOR = re.compile(r"\baccess (line|path|trail|connector|point|spur)$")
+
+
+def name_key(name: str) -> str:
+    """What makes two names one trail's name (builder 1.5.0, 2026-10-09).
+
+    Kentucky's review list showed one trail as "Sheltowee Trace", "Sheltowee
+    Trace Trail", "Sheltowee Trace #100" and "Sheltowee Trace Trail #100".
+    Case and spacing are ignored; a trailing trail number written "#100" is
+    dropped, and then a trailing "Trail"/"Trails" when two words remain. Kept
+    narrow on purpose: "IR-#16-Easy" and "IR-#27-Easy" are two mountain-bike
+    trails, and "Nature Trail" must not become "Nature".
+    """
+    text = " ".join(name.lower().split())
+    text = re.sub(r"\s+#\s*\d+[a-z]?(:\d+)?$", "", text)
+    words = text.split()
+    if len(words) >= 3 and words[-1] in ("trail", "trails"):
+        text = " ".join(words[:-1])
+    return text
+
+
 def is_generic_name(name: Optional[str]) -> bool:
     if not name:
         return False
@@ -407,7 +431,7 @@ def is_generic_name(name: Optional[str]) -> bool:
     # "???" and the like: no letter or digit, nothing to read.
     if not any(ch.isalnum() for ch in text):
         return True
-    return text in GENERIC_NAMES or bool(_INSTALLATION_NAME.search(text))
+    return text in GENERIC_NAMES or bool(_INSTALLATION_NAME.search(text)) or bool(_ACCESS_CONNECTOR.search(text))
 
 
 def normalize_feature(
@@ -1686,7 +1710,7 @@ def assign_trail_keys(rows: list, region: str, stats: Stats) -> None:
     by_name: dict[str, list[int]] = {}
     for i, (t, _) in enumerate(rows):
         if t.name:
-            by_name.setdefault(" ".join(t.name.lower().split()), []).append(i)
+            by_name.setdefault(name_key(t.name), []).append(i)
     for idx in by_name.values():
         parent = {i: i for i in idx}
 
@@ -1712,6 +1736,16 @@ def assign_trail_keys(rows: list, region: str, stats: Stats) -> None:
             for i in members:
                 rows[i][0].trail_key = key
             stats.trail_keys += 1
+            # One trail, one name: the variant most of its pieces carry, the
+            # shortest on a tie ("Sheltowee Trace" over "Sheltowee Trace Trail #100").
+            counts: dict[str, int] = {}
+            for i in members:
+                counts[rows[i][0].name] = counts.get(rows[i][0].name, 0) + 1
+            chosen = min(counts, key=lambda n: (-counts[n], len(n), n))
+            for i in members:
+                if rows[i][0].name != chosen:
+                    rows[i][0].name = chosen
+                    stats.unified_names += 1
 
 
 # --- Which ways are worth listing (builder 1.4.0, 2026-10-08) ---------------
@@ -1895,7 +1929,7 @@ def build_pack(
                 # way is exactly what joins two long pieces of a named trail,
                 # and dropping it first left the Mountains-to-Sea Trail with
                 # 246 of 300 endpoints touching nothing.
-                pool.setdefault(trail.name, []).append((trail, coords))
+                pool.setdefault(name_key(trail.name), []).append((trail, coords))
             else:
                 keep((trail, coords))
 
@@ -2159,6 +2193,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     print(f"  dirt roads         {stats.skipped_unnamed_track:,} unnamed and {stats.skipped_street_named_track:,} street-named dropped, "
           f"{stats.kept_track_at_trailhead:,} kept at a trailhead")
     print(f"  closed to all      {stats.skipped_closed:,} dropped (no walking and no riding)")
+    print(f"  name variants      {stats.unified_names:,} pieces renamed to their trail's main name")
     print(f"  junction merges    {stats.junction_merges:,}")
     print(f"  bridged gaps       {stats.bridged_gaps:,} (same name, facing, under {BRIDGE_MAX_GAP_M:.0f} m)")
     print(f"  named trails       {stats.trail_keys:,} (trail keys)")
