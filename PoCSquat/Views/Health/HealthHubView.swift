@@ -11,6 +11,7 @@ struct HealthHubView: View {
     @State private var selectedCalendarDay: CalendarDay? = nil
     @State private var showMonthCalendar = false
     @State private var pushWalkHistory   = false
+    @State private var pushInsights      = false
 
     var body: some View {
         ZStack {
@@ -36,6 +37,7 @@ struct HealthHubView: View {
                     )
                     GaitHealthSection()
                     HealthFunStatsCard(sessions: historyStore.sessions, todaySteps: stepManager.todaySteps)
+                    insightsCard
                     activityHistoryCard
                 }
                 .padding(.horizontal, WktSpacing.screen)
@@ -54,6 +56,9 @@ struct HealthHubView: View {
         .navigationDestination(isPresented: $pushWalkHistory) {
             WalkHistoryView(store: historyStore)
         }
+        .navigationDestination(isPresented: $pushInsights) {
+            InsightsView()
+        }
         .sheet(item: $selectedCalendarDay) { day in
             DayDetailSheet(day: day, sessions: historyStore.sessions)
         }
@@ -69,6 +74,34 @@ struct HealthHubView: View {
                     sessions: historyStore.sessions, weekOffset: 0)
             }
         }
+    }
+
+    /// Health → Insights: this week's distance and activity count on the card.
+    private var insightsCard: some View {
+        Button { pushInsights = true } label: {
+            HStack(spacing: 12) {
+                WktIconBadge(symbol: .insights, tint: .earthGreen)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Insights")
+                        .font(.wktRowTitle)
+                        .foregroundColor(.earthCream)
+                    let week = InsightsSummary.comparison(historyStore.sessions, period: .week,
+                                                          now: Date(), calendar: .current).current
+                    Text(week.sessions == 0 ? "Weekly and monthly trends"
+                         : "This week: \(InsightsText.distance(week.distanceMeters)) · \(week.sessions) \(week.sessions == 1 ? "activity" : "activities")")
+                        .font(.wktLabel)
+                        .foregroundColor(.earthMuted)
+                }
+                Spacer()
+                Image(wkt: .chevronRight)
+                    .wktIcon(.inline, tint: .earthMuted)
+                    .accessibilityHidden(true)
+            }
+            .wktCard()
+        }
+        .buttonStyle(BounceButtonStyle(scale: 0.97))
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("health.insights")
     }
 
     private var activityHistoryCard: some View {
