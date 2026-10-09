@@ -53,7 +53,7 @@ from typing import Any, Iterable, Iterator, Optional, Sequence
 # ---------------------------------------------------------------------------
 
 SCHEMA_VERSION = 1
-BUILDER_VERSION = "1.3.2"
+BUILDER_VERSION = "1.4.0"
 
 # ---------------------------------------------------------------------------
 # Source registry. Attribution lives here and is copied into every pack, so a
@@ -326,6 +326,10 @@ class Stats:
     junction_merges: int = 0
     bridged_gaps: int = 0
     skipped_short_unnamed: int = 0
+    skipped_closed: int = 0
+    skipped_unnamed_track: int = 0
+    skipped_street_named_track: int = 0
+    kept_track_at_trailhead: int = 0
     trail_keys: int = 0
     read: int = 0
     written: int = 0
@@ -484,7 +488,11 @@ def normalize_feature(
         difficulty=tags.get("sac_scale"),
         dog_access=dog_access,
         dog_access_provenance=provenance,
-        allows_foot=_yes_no(tags.get("foot"), 0 if highway == "cycleway" else 1),
+        # A US cycleway is a shared-use path unless it says otherwise: OSM's
+        # US access defaults allow walking on highway=cycleway. Defaulting to
+        # no marked 2,600 rail trails and greenways in the ten 2026-10 packs
+        # as closed to walkers. A bike-only path says foot=no and keeps it.
+        allows_foot=_yes_no(tags.get("foot"), 1),
         allows_bike=1 if (tags.get("bicycle", "").lower() in _BIKE_OK
                           or highway == "cycleway") else 0,
         allows_horse=1 if (tags.get("horse", "").lower() in _TRUE_ISH
@@ -1706,6 +1714,82 @@ def assign_trail_keys(rows: list, region: str, stats: Stats) -> None:
             stats.trail_keys += 1
 
 
+# --- Which ways are worth listing (builder 1.4.0, 2026-10-08) ---------------
+#
+# Measured over 1,563 towns in the ten published states: 50-77% of a town's
+# Trails list was unnamed paths or dirt roads, and 80% of the long unnamed rows
+# were highway=track: farm, logging and forest roads, much of it on private
+# land that OSM does not mark private. Joe's rules (2026-10-08):
+#   - an unnamed dirt road is left out unless the map says it is open, or it
+#     reaches an official trailhead;
+#   - a dirt road with a street name ("Tranquil Drive Southeast", "Holly") is
+#     left out on the same terms, but one with a trail-like name stays: dirt
+#     roads can be trails;
+#   - a way closed to both walking and riding is left out.
+
+# A trailhead this close to any point of a dirt road makes it a way in.
+TRAILHEAD_REACH_M = 100.0
+_TRAIL_WORDS = re.compile(r"\b(trail|trails|greenway|path|walk|walkway|loop|byway|trace|footpath|bridleway|connector|spur|rail[- ]?trail)\b", re.I)
+
+
+def _says_open(tags: dict[str, str]) -> bool:
+    return any((tags.get(k) or "").strip().lower() in _TRUE_ISH for k in ("foot", "bicycle", "horse", "access"))
+
+
+def load_trailheads(path: str) -> list[tuple[float, float]]:
+    """(lon, lat) of every highway=trailhead point in a geojsonseq export."""
+    points = []
+    for feature in read_features(path):
+        geom = feature.get("geometry") or {}
+        if geom.get("type") == "Point":
+            lon, lat = geom["coordinates"][:2]
+            points.append((lon, lat))
+    return points
+
+
+class _PointGrid:
+    """Points bucketed by ~0.01 degree for 'is any within N metres' lookups."""
+
+    def __init__(self, points: list[tuple[float, float]]):
+        self.cells: dict[tuple[int, int], list[tuple[float, float]]] = {}
+        for pt in points:
+            self.cells.setdefault((int(pt[0] // 0.01), int(pt[1] // 0.01)), []).append(pt)
+
+    def near(self, coords: list[list[float]], reach_m: float) -> bool:
+        for c in coords:
+            cx, cy = int(c[0] // 0.01), int(c[1] // 0.01)
+            for dx in (-1, 0, 1):
+                for dy in (-1, 0, 1):
+                    for pt in self.cells.get((cx + dx, cy + dy), ()):
+                        if haversine_m(c, list(pt)) <= reach_m:
+                            return True
+        return False
+
+
+def curate_ways(rows: list, trailheads: list[tuple[float, float]], stats: Stats) -> list:
+    grid = _PointGrid(trailheads)
+    kept = []
+    for row in rows:
+        t, coords = row
+        tags = json.loads(t.tags_json or "{}")
+        if not t.allows_foot and not t.allows_bike:
+            stats.skipped_closed += 1
+            continue
+        if (tags.get("highway") or "").lower() == "track" and not _says_open(tags):
+            named_like_trail = bool(t.name) and bool(_TRAIL_WORDS.search(t.name))
+            if not named_like_trail:
+                if grid.near(coords, TRAILHEAD_REACH_M):
+                    stats.kept_track_at_trailhead += 1
+                else:
+                    if t.name:
+                        stats.skipped_street_named_track += 1
+                    else:
+                        stats.skipped_unnamed_track += 1
+                    continue
+        kept.append(row)
+    return kept
+
+
 def drop_short_unnamed(rows: list, min_m: float, stats: Stats) -> list:
     kept = []
     for row in rows:
@@ -1731,6 +1815,8 @@ def build_pack(
     roads_path: Optional[str] = None,
     keep_sidewalks: bool = False,
     min_unnamed_length_m: float = MIN_UNNAMED_LENGTH_M,
+    trailheads_path: Optional[str] = None,
+    curate: bool = True,
 ) -> Stats:
     # Joining unnamed ways is a kind of merging; --no-merge-ways turns off both.
     join_unnamed = join_unnamed and merge_ways and not named_only
@@ -1826,6 +1912,8 @@ def build_pack(
 
     if roads_path:
         apply_derived_names(rows, roads_path, stats)
+    if curate:
+        rows = curate_ways(rows, load_trailheads(trailheads_path) if trailheads_path else [], stats)
     # After derived names, so a short path that took a road's name stays.
     rows = drop_short_unnamed(rows, min_unnamed_length_m, stats)
     assign_trail_keys(rows, region, stats)
@@ -2010,6 +2098,9 @@ def main(argv: Optional[list[str]] = None) -> int:
                         help="Named roads from the same extract (osmium export). "
                              "Unnamed paths running alongside one get a derived "
                              "name, e.g. \"Duck Road Path\"")
+    parser.add_argument("--trailheads", metavar="GEOJSONSEQ",
+                        help="highway=trailhead points (osmium geojsonseq); a dirt road "
+                             "within 100 m of one is kept")
     parser.add_argument("--min-unnamed-length", type=float, default=MIN_UNNAMED_LENGTH_M,
                         help="Drop unnamed, non-loop trails shorter than this many metres "
                              f"after joining and derived names (default {MIN_UNNAMED_LENGTH_M:.0f})")
@@ -2045,6 +2136,7 @@ def main(argv: Optional[list[str]] = None) -> int:
                        built_at=args.built_at,
                        join_unnamed=not args.no_join_unnamed,
                        roads_path=args.roads,
+                       trailheads_path=args.trailheads,
                        keep_sidewalks=args.keep_sidewalks,
                        min_unnamed_length_m=args.min_unnamed_length)
     elapsed = time.time() - started
@@ -2064,6 +2156,9 @@ def main(argv: Optional[list[str]] = None) -> int:
     print(f"  skipped unnamed    {stats.skipped_unnamed:,}")
     print(f"  generic names      {stats.generic_names:,} (treated as unnamed)")
     print(f"  short unnamed      {stats.skipped_short_unnamed:,} dropped (under {args.min_unnamed_length:.0f} m)")
+    print(f"  dirt roads         {stats.skipped_unnamed_track:,} unnamed and {stats.skipped_street_named_track:,} street-named dropped, "
+          f"{stats.kept_track_at_trailhead:,} kept at a trailhead")
+    print(f"  closed to all      {stats.skipped_closed:,} dropped (no walking and no riding)")
     print(f"  junction merges    {stats.junction_merges:,}")
     print(f"  bridged gaps       {stats.bridged_gaps:,} (same name, facing, under {BRIDGE_MAX_GAP_M:.0f} m)")
     print(f"  named trails       {stats.trail_keys:,} (trail keys)")

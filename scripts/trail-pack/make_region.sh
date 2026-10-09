@@ -87,10 +87,17 @@ osmium tags-filter -i "$T-trails-clean.osm.pbf" w/access=private,no,military \
 osmium export "$T-trails-public.osm.pbf" -f geojsonseq --add-unique-id=type_id --geometry-types=linestring \
   -o "$T-trails-public.geojsonseq" --overwrite
 
+# Official trailheads (highway=trailhead): a dirt road that reaches one is kept
+# as a way in, even with a street name or none (builder 1.4.0, 2026-10-08).
+osmium tags-filter "$EXTRACT" n/highway=trailhead -o "$T-trailheads.osm.pbf" --overwrite
+osmium export "$T-trailheads.osm.pbf" -f geojsonseq --add-unique-id=type_id --geometry-types=point \
+  -o "$T-trailheads.geojsonseq" --overwrite
+
 if [[ "$BUNDLED" == "True" ]]; then
   python3 tools/build_trail_pack.py \
     --region "$REGION" --region-name "$NAME" \
     --input "$T-trails-public.geojsonseq:osm" \
+    --trailheads "$T-trailheads.geojsonseq" \
     --named-only --built-at "$BUILT_AT" \
     --out "$WORK/packs/$REGION-named.wktpack"
   cp "$WORK/packs/$REGION-named.wktpack" "PoCSquat/Trails/$REGION.wktpack"
@@ -109,6 +116,7 @@ python3 tools/build_trail_pack.py \
   --region "$REGION" --region-name "$NAME" \
   --input "$T-trails-public.geojsonseq:osm" \
   --roads "$T-roads-named.geojsonseq" \
+  --trailheads "$T-trailheads.geojsonseq" \
   --built-at "$BUILT_AT" \
   --out "$WORK/packs/$REGION-full.wktpack"
 

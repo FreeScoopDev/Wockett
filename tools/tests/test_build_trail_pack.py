@@ -326,7 +326,8 @@ class JoinUnnamedTests(unittest.TestCase):
             self.assertLessEqual(json.loads(tags).get("merged_ways", 1), 2)
 
     def test_track_and_path_do_not_join(self):
-        mixed = [north("w1", 35.780, 35.790, highway="track"),
+        # An open track, so the 1.4.0 dirt-road rule keeps it; joining is what is tested.
+        mixed = [north("w1", 35.780, 35.790, highway="track", foot="yes"),
                  north("w2", 35.790, 35.800, highway="path")]
         self.assertEqual(len(self.build(mixed)[1]), 2)
 
@@ -703,7 +704,7 @@ class CurationTests(unittest.TestCase):
             feature("w3", [[-84.35, 33.75], [-84.35, 33.76]], name="WMA Road", highway="track"),
             feature("w4", [[-84.33, 33.75], [-84.33, 33.76]], name="Shortcut", highway="path"),
             feature("w5", [[-84.31, 33.75], [-84.31, 33.76]], name="Logging Road Trail", highway="path"),
-        ])
+        ], curate=False)  # naming only; the 1.4.0 dirt-road rule is tested below
         names = {r[0]: r[1] for r in rows}
         self.assertEqual([names[k] for k in ("w1", "w2", "w3", "w4")], [None] * 4)
         self.assertEqual(names["w5"], "Logging Road Trail", "exact matches only")
@@ -717,7 +718,7 @@ class CurationTests(unittest.TestCase):
             feature("w3", [[-86.3, 30.5], [-86.3, 30.51]], name="Multi-Modal Path", highway="cycleway"),
             feature("w4", [[-86.2, 30.5], [-86.2, 30.51]], name="Afton Mountain Trail", highway="path"),
             feature("w5", [[-86.1, 30.5], [-86.1, 30.51]], name="Trail 7", highway="path"),
-        ])
+        ], curate=False)  # naming only; the 1.4.0 dirt-road rule is tested below
         names = {r[0]: r[1] for r in rows}
         self.assertEqual([names[k] for k in ("w1", "w2", "w3")], [None] * 3)
         self.assertEqual(names["w4"], "Afton Mountain Trail", "'afb' only as a whole word")
@@ -844,9 +845,79 @@ class CurationTests(unittest.TestCase):
         btp.build_pack([(src, "osm")], out, "t", "Test", 0.00002, 30.0, built_at="2026-01-01T00:00:00Z")
         meta = dict(sqlite3.connect(out).execute("SELECT key, value FROM meta"))
         self.assertEqual(meta["trail_keys"], "1")
-        self.assertEqual(meta["builder_version"], "1.3.2")
+        self.assertEqual(meta["builder_version"], "1.4.0")
         self.assertTrue(btp.verify_pack(out))
 
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ListingRulesTests(unittest.TestCase):
+    """Builder 1.4.0 (2026-10-08): which ways are worth listing. Joe's rules."""
+
+    def build(self, features, trailheads=()):
+        d = tempfile.mkdtemp()
+        src = os.path.join(d, "in.geojsonseq")
+        out = os.path.join(d, "out.wktpack")
+        write_seq(src, features)
+        heads = None
+        if trailheads:
+            heads = os.path.join(d, "heads.geojsonseq")
+            write_seq(heads, [{"type": "Feature", "id": f"n{i}",
+                               "geometry": {"type": "Point", "coordinates": list(pt)},
+                               "properties": {"highway": "trailhead"}} for i, pt in enumerate(trailheads)])
+        stats = btp.build_pack([(src, "osm")], out, "t", "Test", 0.00002, 30.0,
+                               built_at="2026-01-01T00:00:00Z", trailheads_path=heads)
+        conn = sqlite3.connect(out)
+        rows = {r[0]: r[1:] for r in conn.execute(
+            "SELECT source_ref, name, allows_foot, allows_bike FROM trails")}
+        conn.close()
+        return stats, rows
+
+    def test_unnamed_dirt_road_is_left_out_unless_open(self):
+        stats, rows = self.build([
+            feature("w1", [[-78.64, 35.78], [-78.64, 35.79]], highway="track"),
+            feature("w2", [[-78.62, 35.78], [-78.62, 35.79]], highway="track", foot="permissive"),
+            feature("w3", [[-78.60, 35.78], [-78.60, 35.79]], highway="path"),
+        ])
+        self.assertEqual(sorted(rows), ["w2", "w3"])
+        self.assertEqual(stats.skipped_unnamed_track, 1)
+
+    def test_street_named_dirt_road_is_left_out_but_a_trail_named_one_stays(self):
+        stats, rows = self.build([
+            feature("w1", [[-78.64, 35.78], [-78.64, 35.79]], name="Tranquil Drive Southeast", highway="track"),
+            feature("w2", [[-78.62, 35.78], [-78.62, 35.79]], name="Holly", highway="track"),
+            feature("w3", [[-78.60, 35.78], [-78.60, 35.79]], name="Bear Creek Trail", highway="track"),
+            feature("w4", [[-78.58, 35.78], [-78.58, 35.79]], name="Holly Way", highway="track"),
+        ])
+        self.assertEqual(sorted(rows), ["w3"], "'Way' is a street word, not a trail word")
+        self.assertEqual(stats.skipped_street_named_track, 3)
+
+    def test_a_dirt_road_that_reaches_a_trailhead_stays(self):
+        # w1 ends ~50 m from the trailhead; w2 is ~1.8 km away from it.
+        stats, rows = self.build([
+            feature("w1", [[-78.64, 35.78], [-78.64, 35.79]], name="Fire Tower Road", highway="track"),
+            feature("w2", [[-78.62, 35.78], [-78.62, 35.79]], highway="track"),
+        ], trailheads=[(-78.6405, 35.7904)])
+        self.assertEqual(sorted(rows), ["w1"])
+        self.assertEqual(stats.kept_track_at_trailhead, 1)
+
+    def test_a_bike_path_is_walkable_unless_it_says_no(self):
+        stats, rows = self.build([
+            feature("w1", [[-78.64, 35.78], [-78.64, 35.79]], name="Rail Trail", highway="cycleway"),
+            feature("w2", [[-78.62, 35.78], [-78.62, 35.79]], name="Church Street Cycle Track",
+                    highway="cycleway", foot="no"),
+        ])
+        self.assertEqual(rows["w1"][1:], (1, 1), "Florence's Rail Trail: walk and ride")
+        self.assertEqual(rows["w2"][1:], (0, 1), "a bike-only path stays, for Ride")
+
+    def test_a_way_closed_to_walking_and_riding_is_left_out(self):
+        stats, rows = self.build([
+            feature("w1", [[-78.64, 35.78], [-78.64, 35.79]], name="Closed Path", highway="path",
+                    foot="no", bicycle="no"),
+            feature("w2", [[-78.62, 35.78], [-78.62, 35.79]], name="Horse Trail", highway="bridleway",
+                    foot="no"),
+        ])
+        self.assertEqual(sorted(rows), [], "a bridleway with foot=no and no bicycle access is no use here")
+        self.assertEqual(stats.skipped_closed, 2)
