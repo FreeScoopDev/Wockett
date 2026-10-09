@@ -65,7 +65,11 @@ struct TrailGuide {
     /// only at or after `minimum`. Nearest wins outright; on a tie (within
     /// `tieMeters`) the earlier point does.
     /// Within this, two points are equally near and the earlier one wins.
-    static let tieMeters = 0.5
+    /// A millimetre: a retraced line's twin points differ by float noise
+    /// (~1e-15 m). Half a metre also caught a recorded walk's way back passing
+    /// within 0.5 m of its way out, and misplaced its checkpoints on about
+    /// one recorded out-and-back in twenty (critic run 3 of #163).
+    static let tieMeters = 0.001
 
     func nearestAlong(to point: CLLocationCoordinate2D, atOrAfter minimum: Double) -> Double {
         guard path.count >= 2 else { return 0 }

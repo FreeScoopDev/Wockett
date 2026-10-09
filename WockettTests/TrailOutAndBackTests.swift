@@ -131,6 +131,7 @@ struct TrailOutAndBackTests {
                                                        from: coords[10], target: .roundTrip(meters: target)))
         let route = plan.navigableRoute(activityMode: .walking)
         let mgr = NavigationSessionManager(route: route)
+        mgr.writesSnapshots = false   // never the real crash snapshot from a unit test
         mgr.applySnapshot(ActiveWalkSnapshot(route: .init(route), startTime: Date().addingTimeInterval(-600),
                                              totalDistanceCovered: along, pausedDuration: 0, isPaused: false,
                                              pauseStartDate: nil, currentWaypointIndex: 1, currentLap: 1,
@@ -181,6 +182,7 @@ struct TrailOutAndBackTests {
         let mgr = try session(at: 600)
         let back = try #require(mgr.headBack())
         let restored = NavigationSessionManager(route: back)
+        restored.writesSnapshots = false
         restored.applySnapshot(ActiveWalkSnapshot(route: .init(back), startTime: Date().addingTimeInterval(-900),
                                                   totalDistanceCovered: 700, pausedDuration: 0, isPaused: false,
                                                   pauseStartDate: nil, currentWaypointIndex: 1, currentLap: 1,
@@ -194,6 +196,7 @@ struct TrailOutAndBackTests {
         let loop = try #require(TrailWalkPlanner.plan(along: square, isLoop: true, name: "Loop", from: square[0]))
         let route = loop.navigableRoute(activityMode: .walking)
         let mgr = NavigationSessionManager(route: route)
+        mgr.writesSnapshots = false
         mgr.applySnapshot(ActiveWalkSnapshot(route: .init(route), startTime: Date().addingTimeInterval(-600),
                                              totalDistanceCovered: 800, pausedDuration: 0, isPaused: false,
                                              pauseStartDate: nil, currentWaypointIndex: 1, currentLap: 1,
@@ -230,6 +233,25 @@ struct TrailOutAndBackTests {
         #expect(walk == .roundTrip(meters: 30 * 60 * 1.3), "no walking pace stored: the typical 1.3 m/s")
         let run = TrailWalkOption.lastChosenTarget(reach: 20_000, isLoop: false, activityMode: .running, defaults: defaults)
         #expect(run == .roundTrip(meters: 30 * 60 * 3.0))
+    }
+
+    @Test("A recorded out-and-back whose way back runs 0.3 m beside its way out keeps its checkpoints on the way back")
+    func recordedOutAndBackCheckpoints() throws {
+        // 1,500 m out with a point every 5 m, then back 0.3 m to the side,
+        // as a recording comes home. Checkpoints over the whole 3 km: 800,
+        // 1,600, 2,400, and the end. A wide tie (0.5 m) put 1,600 at 1,400 on
+        // the way out (critic run 3 of #163).
+        let step = 5.0 / (111_320 * cos(35.78 * .pi / 180))
+        let out = (0...300).map { CLLocationCoordinate2D(latitude: 35.78, longitude: -78.64 + Double($0) * step) }
+        let back = out.reversed().dropFirst().map {
+            CLLocationCoordinate2D(latitude: $0.latitude + 0.3 / 111_320, longitude: $0.longitude)
+        }
+        let route = NavigableRoute(name: "Recorded", waypoints: out + back, lapCount: 1, isLoop: false,
+                                   totalDistance: 3_000).followingRecordedLine()
+        #expect(route.pathIsRecording)
+        let progress = try #require(TrailProgress(route: route))
+        #expect(progress.checkpointAlong.count >= 4)
+        #expect(abs(progress.checkpointAlong[2] - 1_600) < 5, "got \(progress.checkpointAlong)")
     }
 
     @Test("Short loops start on the full loop; long loops on the usual round trip")

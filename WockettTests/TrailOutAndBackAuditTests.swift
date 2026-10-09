@@ -26,6 +26,7 @@ struct TrailOutAndBackAuditTests {
                                                        from: coords[10], target: .roundTrip(meters: 2_000)))
         let route = plan.navigableRoute(activityMode: .walking)
         let mgr = NavigationSessionManager(route: route)
+        mgr.writesSnapshots = false   // never the real crash snapshot from a unit test
         mgr.applySnapshot(ActiveWalkSnapshot(route: .init(route), startTime: Date().addingTimeInterval(-600),
                                              totalDistanceCovered: along, pausedDuration: 0, isPaused: false,
                                              pauseStartDate: nil, currentWaypointIndex: index, currentLap: 1,
