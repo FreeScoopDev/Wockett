@@ -63,6 +63,7 @@ enum WktSymbol {
 
     // Community
     case records            // trophy
+    case insights           // chart.bar.xaxis (Health → Insights)
     case badges             // medal
     case calendar           // calendar
     case pets               // pawprint
@@ -203,6 +204,7 @@ enum WktSymbol {
         case .calories:       return "flame"
         case .night:          return "moon"
         case .records:        return "trophy"
+        case .insights:       return "chart.bar.xaxis"
         case .badges:         return "medal"
         case .calendar:       return "calendar"
         case .pets:           return "pawprint"
