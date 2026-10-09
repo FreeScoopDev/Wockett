@@ -14,22 +14,29 @@ struct CommunityVotesTests {
         var userLookups = 0
         var saved: [(recordName: String, target: String, type: VoteTarget)] = []
         var saveError: Error?
-        var stored: [(target: String, recordName: String)] = []
+        var stored: [StoredVote] = []
+        var userError: Error?
         var readError: Error?
 
-        func currentUserRecordName() async throws -> String { userLookups += 1; return user }
+        func currentUserRecordName() async throws -> String {
+            userLookups += 1
+            if let userError { throw userError }
+            return user
+        }
         func saveVote(recordName: String, target: String, type: VoteTarget) async throws {
             if let saveError { throw saveError }
             saved.append((recordName, target, type))
         }
-        func votes(for targets: [String]) async throws -> [(target: String, recordName: String)] {
+        func votes(for targets: [String]) async throws -> [StoredVote] {
             if let readError { throw readError }
             return stored.filter { targets.contains($0.target) }
         }
     }
 
-    private func vote(_ target: String, by voter: String) -> (target: String, recordName: String) {
-        (target, CommunityVotes.recordName(target: target, voter: voter))
+    /// A vote as CloudKit returns it: created by the voter it names.
+    private func vote(_ target: String, by voter: String, creator: String? = nil) -> StoredVote {
+        StoredVote(target: target, recordName: CommunityVotes.recordName(target: target, voter: voter),
+                   creator: creator ?? voter)
     }
 
     // MARK: Naming and counting
@@ -49,13 +56,42 @@ struct CommunityVotesTests {
             vote("a", by: "_me"), vote("a", by: "_x"), vote("a", by: "_y"),
             vote("b", by: "_x"),
             vote("a", by: "_x"),                       // the same vote seen twice
-            ("c", "vote.a._z"),                        // names another item: not a vote for c
-            ("c", "something-else"),
+            StoredVote(target: "c", recordName: "vote.a._z", creator: "_z"),     // names another item
+            StoredVote(target: "c", recordName: "something-else", creator: "_z"),
         ], me: "_me")
         #expect(t.count(for: "a") == 3)
         #expect(t.count(for: "b") == 1)
         #expect(t.count(for: "c") == 0)
         #expect(t.mine == ["a"])
+    }
+
+    @Test("A vote counts only when its creator is the voter it names")
+    func forgedVotesIgnored() {
+        let t = CommunityVotes.tally([
+            vote("a", by: "_x"),                             // honest
+            vote("a", by: "_fake1", creator: "_attacker"),   // made-up name
+            StoredVote(target: "a", recordName: "vote.a._fake2", creator: nil),   // creator unknown
+        ], me: "_me")
+        #expect(t.count(for: "a") == 1)
+    }
+
+    @Test("My own vote, which CloudKit returns with the default-owner creator, counts and is mine")
+    func ownVoteReadBack() {
+        let t = CommunityVotes.tally([vote("a", by: "_me", creator: CKCurrentUserDefaultName),
+                                      vote("a", by: "_x", creator: CKCurrentUserDefaultName)], me: "_me")
+        #expect(t.count(for: "a") == 1, "default owner only stands in for me")
+        #expect(t.mine == ["a"])
+    }
+
+    @Test("Signed out: counts still show, and nothing is marked mine")
+    func signedOutTally() async {
+        let store = FakeStore()
+        store.userError = CKError(.notAuthenticated)
+        store.stored = [vote("r1", by: "_x"), vote("r1", by: "_y")]
+        let t = await CommunityVoteService(store: store).tally(for: ["r1"])
+        #expect(t.counts == ["r1": 2])
+        #expect(t.mine.isEmpty)
+        #expect(CommunityVotes.tally([vote("r1", by: "_x")], me: nil).mine.isEmpty)
     }
 
     @Test("Only CloudKit's 'already exists' answer means already voted")
@@ -75,6 +111,7 @@ struct CommunityVotesTests {
         try await service.vote(for: "post-2", type: .post)
         #expect(store.saved.map(\.recordName) == ["vote.route-1._me", "vote.post-2._me"])
         #expect(store.saved.map(\.type) == [.route, .post])
+        #expect(store.saved.map(\.target) == ["route-1", "post-2"], "the field the vote query matches on")
         #expect(store.userLookups == 1, "the user is looked up once, then remembered")
     }
 
@@ -129,9 +166,9 @@ struct CommunityVotesTests {
         final class SlowStore: CommunityVoteStore {
             func currentUserRecordName() async throws -> String { "_me" }
             func saveVote(recordName: String, target: String, type: VoteTarget) async throws {}
-            func votes(for targets: [String]) async throws -> [(target: String, recordName: String)] {
+            func votes(for targets: [String]) async throws -> [StoredVote] {
                 try await Task.sleep(for: .seconds(30))
-                return [("r", "vote.r._x")]
+                return []
             }
         }
         let started = ContinuousClock.now
@@ -171,6 +208,16 @@ struct CommunityVotesTests {
 
     // MARK: Hub like and route Wockett, through the code the screens call
 
+    /// Marks kept in memory, never in the app's settings.
+    private final class MemoryMarks {
+        var ids = Set<String>()
+        var marks: VoteMarks {
+            VoteMarks(has: { [unowned self] in ids.contains($0.recordName) },
+                      mark: { [unowned self] in ids.insert($0.recordName) },
+                      unmark: { [unowned self] in ids.remove($0.recordName) })
+        }
+    }
+
     private func post(_ name: String) throws -> AchievementPost {
         let record = CKRecord(recordType: "WocketAchievement", recordID: CKRecord.ID(recordName: "\(name)-\(UUID().uuidString)"))
         record["badgeName"] = "Trailblazer" as CKRecordValue
@@ -189,36 +236,39 @@ struct CommunityVotesTests {
     @Test("A hub like that fails is taken back: count, mark and a message")
     func hubUndoesFailedLike() async throws {
         let p = try post("post-undo")
-        defer { AchievementFeedService.shared.unmarkLiked(id: p.id) }
+        let marks = MemoryMarks()
         let model = CommunityHubModel()
+        model.likeMarks = marks.marks
         model.posts = [p]
         model.saveLike = { _ in throw CKError(.networkUnavailable) }
         let save = model.markLiked(p)
         #expect(model.posts[0].likes == 1, "shows at once")
         await save?.value
         #expect(model.posts[0].likes == 0)
-        #expect(!AchievementFeedService.shared.hasLiked(id: p.id))
+        #expect(!marks.ids.contains(p.id.recordName))
         #expect(model.likeError == "Couldn't save your like. Check your connection and try again.")
     }
 
     @Test("A hub like that saves stays")
     func hubKeepsSavedLike() async throws {
         let p = try post("post-keep")
-        defer { AchievementFeedService.shared.unmarkLiked(id: p.id) }
+        let marks = MemoryMarks()
         let model = CommunityHubModel()
+        model.likeMarks = marks.marks
         model.posts = [p]
         model.saveLike = { _ in }
         await model.markLiked(p)?.value
         #expect(model.posts[0].likes == 1)
-        #expect(AchievementFeedService.shared.hasLiked(id: p.id))
+        #expect(marks.ids.contains(p.id.recordName))
         #expect(model.likeError == nil)
     }
 
     @Test("A Wockett that fails is taken back from its route, wherever it moved")
     func wockettUndone() async throws {
         let a = try route("route-a"), b = try route("route-b")
-        defer { CommunityRouteService.shared.unmarkVoted(for: b.id) }
+        let marks = MemoryMarks()
         let model = CommunityRoutesModel()
+        model.wockettMarks = marks.marks
         model.routes = [a, b]
         var release: CheckedContinuation<Void, Never>?
         model.saveWockett = { _ in
@@ -234,20 +284,21 @@ struct CommunityVotesTests {
         release.resume()
         await save?.value
         #expect(model.routes.map(\.wocketts) == [0])
-        #expect(!CommunityRouteService.shared.hasVoted(for: b.id))
+        #expect(!marks.ids.contains(b.id.recordName))
         #expect(model.wocketError == "Couldn't save your Wockett. Check your connection and try again.")
     }
 
     @Test("A Wockett that saves stays")
     func wockettKept() async throws {
         let r = try route("route-keep")
-        defer { CommunityRouteService.shared.unmarkVoted(for: r.id) }
+        let marks = MemoryMarks()
         let model = CommunityRoutesModel()
+        model.wockettMarks = marks.marks
         model.routes = [r]
         model.saveWockett = { _ in }
         await model.wockett(r.id)?.value
         #expect(model.routes[0].wocketts == 1)
-        #expect(CommunityRouteService.shared.hasVoted(for: r.id))
+        #expect(marks.ids.contains(r.id.recordName))
         #expect(model.wocketError == nil)
     }
 }

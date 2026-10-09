@@ -36,6 +36,14 @@ struct VoteTally: Equatable {
     func count(for target: String) -> Int { counts[target] ?? 0 }
 }
 
+/// One vote record as read back: the item it names, its record name, and the
+/// iCloud user record that created it.
+struct StoredVote: Equatable {
+    let target: String
+    let recordName: String
+    let creator: String?
+}
+
 enum CommunityVotes {
     static let recordType = "CommunityVote"
 
@@ -54,14 +62,17 @@ enum CommunityVotes {
         return voter.isEmpty ? nil : voter
     }
 
-    /// Counts votes per item. Each (item, voter) pair counts once, however
-    /// many times it appears; a vote whose name doesn't match its item is not
-    /// counted, so a record can't vote for an item it doesn't name.
-    static func tally(_ votes: [(target: String, recordName: String)], me: String?) -> VoteTally {
+    /// Counts votes per item. A vote counts only when the iCloud user who
+    /// created it is the voter its name says (CloudKit names your own records'
+    /// creator `CKCurrentUserDefaultName`), so a client can't add votes under
+    /// made-up names; each (item, voter) pair counts once; and a vote whose
+    /// name doesn't match its item is not counted.
+    static func tally(_ votes: [StoredVote], me: String?) -> VoteTally {
         var seen = Set<String>()
         var tally = VoteTally()
         for vote in votes {
             guard let voter = voter(fromRecordName: vote.recordName, target: vote.target),
+                  vote.creator == voter || (vote.creator == CKCurrentUserDefaultName && voter == me),
                   seen.insert("\(vote.target)\u{0}\(voter)").inserted else { continue }
             tally.counts[vote.target, default: 0] += 1
             if voter == me { tally.mine.insert(vote.target) }
@@ -86,6 +97,27 @@ enum CommunityVotes {
 }
 
 // MARK: - On screen
+
+/// Where this device remembers what it voted for. A seam: tests keep marks in
+/// memory, because the real lists are app settings other code reads (the
+/// "Wockett Giver" badge counts the voted-routes list), and a test writing
+/// them races every test that reads them.
+struct VoteMarks {
+    var has: (CKRecord.ID) -> Bool
+    var mark: (CKRecord.ID) -> Void
+    var unmark: (CKRecord.ID) -> Void
+
+    static var likes: VoteMarks {
+        VoteMarks(has: { AchievementFeedService.shared.hasLiked(id: $0) },
+                  mark: { AchievementFeedService.shared.markLiked(id: $0) },
+                  unmark: { AchievementFeedService.shared.unmarkLiked(id: $0) })
+    }
+    static var wocketts: VoteMarks {
+        VoteMarks(has: { CommunityRouteService.shared.hasVoted(for: $0) },
+                  mark: { CommunityRouteService.shared.markVoted(for: $0) },
+                  unmark: { CommunityRouteService.shared.unmarkVoted(for: $0) })
+    }
+}
 
 /// A like or Wockett shows at once and is saved behind it. If saving fails,
 /// it is taken back from the item with this id, wherever that item is now,
@@ -133,7 +165,7 @@ protocol CommunityVoteStore: AnyObject {
     /// Creates the vote record; throws CloudKit's error when it exists.
     func saveVote(recordName: String, target: String, type: VoteTarget) async throws
     /// Every vote naming one of `targets`, all pages.
-    func votes(for targets: [String]) async throws -> [(target: String, recordName: String)]
+    func votes(for targets: [String]) async throws -> [StoredVote]
 }
 
 final class CloudKitCommunityVoteStore: CommunityVoteStore {
@@ -151,15 +183,16 @@ final class CloudKitCommunityVoteStore: CommunityVoteStore {
         _ = try await db.save(record)
     }
 
-    func votes(for targets: [String]) async throws -> [(target: String, recordName: String)] {
+    func votes(for targets: [String]) async throws -> [StoredVote] {
         guard !targets.isEmpty else { return [] }
         let query = CKQuery(recordType: CommunityVotes.recordType,
                             predicate: NSPredicate(format: "targetRecordName IN %@", targets))
-        var out: [(target: String, recordName: String)] = []
+        var out: [StoredVote] = []
         func collect(_ results: [(CKRecord.ID, Result<CKRecord, Error>)]) {
             for (id, result) in results {
                 if let record = try? result.get(), let target = record["targetRecordName"] as? String {
-                    out.append((target, id.recordName))
+                    out.append(StoredVote(target: target, recordName: id.recordName,
+                                          creator: record.creatorUserRecordID?.recordName))
                 }
             }
         }
@@ -222,9 +255,9 @@ final class CommunityVoteService {
         guard !targets.isEmpty else { return VoteTally() }
         let store = self.store
         let timeout = tallyTimeout
-        let votes: [(target: String, recordName: String)]?
+        let votes: [StoredVote]?
         do {
-            votes = try await withThrowingTaskGroup(of: [(target: String, recordName: String)]?.self) { group in
+            votes = try await withThrowingTaskGroup(of: [StoredVote]?.self) { group in
                 group.addTask { try await store.votes(for: targets) }
                 group.addTask { try await Task.sleep(for: timeout); return nil }
                 let first = try await group.next() ?? nil

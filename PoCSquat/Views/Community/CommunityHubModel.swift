@@ -31,6 +31,8 @@ final class CommunityHubModel {
 
     /// Saves a like. A seam for tests; the app saves a CommunityVote.
     var saveLike: (CKRecord.ID) async throws -> Void = { try await AchievementFeedService.shared.like(id: $0) }
+    /// Where liked posts are remembered (a seam for tests).
+    var likeMarks = VoteMarks.likes
 
     /// Where reports and blocks are remembered (a seam for tests).
     var moderation = CommunityModerationStore.shared
@@ -114,16 +116,15 @@ final class CommunityHubModel {
     /// and reported in `likeError`. Returns the save, for tests to await.
     @discardableResult
     func markLiked(_ post: AchievementPost) -> Task<Void, Never>? {
-        guard !AchievementFeedService.shared.hasLiked(id: post.id),
-              posts.contains(where: { $0.id == post.id }) else { return nil }
+        guard !likeMarks.has(post.id), posts.contains(where: { $0.id == post.id }) else { return nil }
         return OptimisticVote.apply(
             id: post.id,
             change: { [weak self] id, delta in
                 guard let self else { return }
                 OptimisticVote.adjust(&self.posts, id: id, by: delta, idPath: \.id, count: \.likes)
             },
-            mark: { AchievementFeedService.shared.markLiked(id: $0) },
-            unmark: { AchievementFeedService.shared.unmarkLiked(id: $0) },
+            mark: likeMarks.mark,
+            unmark: likeMarks.unmark,
             save: saveLike,
             failed: { [weak self] in self?.likeError = CommunityVotes.failureMessage($0, noun: "like") })
     }

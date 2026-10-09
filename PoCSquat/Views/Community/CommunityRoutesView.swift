@@ -14,14 +14,15 @@ final class CommunityRoutesModel {
     var wocketError: String?
     /// Saves a Wockett. A seam for tests; the app saves a CommunityVote.
     var saveWockett: (CKRecord.ID) async throws -> Void = { try await CommunityRouteService.shared.wockett(id: $0) }
+    /// Where Wocketted routes are remembered (a seam for tests).
+    var wockettMarks = VoteMarks.wocketts
 
     /// Gives `id` a Wockett at once and saves it; a failed save is taken back
     /// by id and reported in `wocketError`. One place for both route screens.
     /// Returns the save, for tests to await.
     @discardableResult
     func wockett(_ id: CKRecord.ID) -> Task<Void, Never>? {
-        guard !CommunityRouteService.shared.hasVoted(for: id),
-              routes.contains(where: { $0.id == id }) else { return nil }
+        guard !wockettMarks.has(id), routes.contains(where: { $0.id == id }) else { return nil }
         wocketError = nil
         return OptimisticVote.apply(
             id: id,
@@ -29,8 +30,8 @@ final class CommunityRoutesModel {
                 guard let self else { return }
                 OptimisticVote.adjust(&self.routes, id: id, by: delta, idPath: \.id, count: \.wocketts)
             },
-            mark: { CommunityRouteService.shared.markVoted(for: $0) },
-            unmark: { CommunityRouteService.shared.unmarkVoted(for: $0) },
+            mark: wockettMarks.mark,
+            unmark: wockettMarks.unmark,
             save: saveWockett,
             failed: { [weak self] in self?.wocketError = CommunityVotes.failureMessage($0, noun: "Wockett") })
     }
