@@ -39,7 +39,7 @@ struct AchievementPost: Identifiable {
 final class AchievementFeedService {
     static let shared = AchievementFeedService()
 
-    private let db         = CKContainer(identifier: "iCloud.Scoops.PoCSquat").publicCloudDatabase
+    private let db         = CKContainer(identifier: WockettCloud.containerID).publicCloudDatabase
     private let recordType = "WocketAchievement"
     private let likedKey   = "achievementLikedIds"
 

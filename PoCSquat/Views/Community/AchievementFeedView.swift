@@ -1,33 +1,47 @@
 import SwiftUI
 import CloudKit
 
+// MARK: - Feed model
+
+/// The feed's posts and its likes: the same like path as the Community hub
+/// (PostLiking), so both are covered by one set of tests.
+@MainActor
+@Observable
+final class AchievementFeedModel: PostLiking {
+    var posts: [AchievementPost] = []
+    var likeError: String?
+    /// Saves a like. A seam for tests; the app saves a CommunityVote.
+    var saveLike: (CKRecord.ID) async throws -> Void = { try await AchievementFeedService.shared.like(id: $0) }
+    /// Where liked posts are remembered (a seam for tests).
+    var likeMarks = VoteMarks.likes
+}
+
 // MARK: - Achievement Feed Content View (push-safe — no NavigationStack, no Done button)
 
 struct AchievementFeedContentView: View {
-    @State private var posts:     [AchievementPost] = []
+    @State private var feed = AchievementFeedModel()
     @State private var isLoading  = false
     @State private var loadError: String?            = nil
-    @State private var likeError: String?
 
     var body: some View {
         ZStack {
             Color.earthBg.ignoresSafeArea()
 
-            if isLoading && posts.isEmpty {
+            if isLoading && feed.posts.isEmpty {
                 ProgressView("Loading achievements…")
                     .foregroundColor(.earthMuted)
-            } else if let error = loadError, posts.isEmpty {
+            } else if let error = loadError, feed.posts.isEmpty {
                 errorState(error)
-            } else if posts.isEmpty {
+            } else if feed.posts.isEmpty {
                 emptyState
             } else {
                 ScrollView {
                     LazyVStack(spacing: WktSpacing.betweenCards) {
-                        ForEach(posts) { post in
+                        ForEach(feed.posts) { post in
                             AchievementPostCard(post: post,
-                                                isLiked: AchievementFeedService.shared.hasLiked(id: post.id),
-                                                onLike: { like(post.id) },
-                                                onHide: { posts.removeAll { $0.id == post.id } })
+                                                isLiked: feed.likeMarks.has(post.id),
+                                                onLike: { feed.like(post.id) },
+                                                onHide: { feed.posts.removeAll { $0.id == post.id } })
                         }
                     }
                     .padding(.horizontal, WktSpacing.screen)
@@ -52,11 +66,7 @@ struct AchievementFeedContentView: View {
             }
         }
         .task { await load() }
-        .alert("Like not saved", isPresented: Binding(get: { likeError != nil }, set: { if !$0 { likeError = nil } })) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text(likeError ?? "")
-        }
+        .likeErrorAlert(Bindable(feed).likeError)
     }
 
     private var emptyState: some View {
@@ -72,24 +82,11 @@ struct AchievementFeedContentView: View {
         }
     }
 
-    /// Likes the post at once and saves it; a failed save is taken back from
-    /// the post with this id, wherever it is in the list by then.
-    private func like(_ id: CKRecord.ID) {
-        guard !AchievementFeedService.shared.hasLiked(id: id) else { return }
-        OptimisticVote.apply(
-            id: id,
-            change: { id, delta in OptimisticVote.adjust(&posts, id: id, by: delta, idPath: \.id, count: \.likes) },
-            mark: { AchievementFeedService.shared.markLiked(id: $0) },
-            unmark: { AchievementFeedService.shared.unmarkLiked(id: $0) },
-            save: { try await AchievementFeedService.shared.like(id: $0) },
-            failed: { likeError = CommunityVotes.failureMessage($0, noun: "like") })
-    }
-
     private func load() async {
         isLoading  = true
         loadError  = nil
         do {
-            posts = try await AchievementFeedService.shared.fetchPosts()
+            feed.posts = try await AchievementFeedService.shared.fetchPosts()
         } catch let ck as CKError {
             switch ck.code {
             case .notAuthenticated:

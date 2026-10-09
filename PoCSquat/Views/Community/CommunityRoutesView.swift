@@ -10,7 +10,8 @@ final class CommunityRoutesModel {
     var loadError: String? = nil
     private(set) var didLoad = false
 
-    /// Set when a Wockett failed to save; the route screens show it.
+    /// Set when a Wockett failed to save. Both route screens show it, so each
+    /// clears it when it appears: a message is about a tap on that screen.
     var wocketError: String?
     /// Saves a Wockett. A seam for tests; the app saves a CommunityVote.
     var saveWockett: (CKRecord.ID) async throws -> Void = { try await CommunityRouteService.shared.wockett(id: $0) }
@@ -22,18 +23,10 @@ final class CommunityRoutesModel {
     /// Returns the save, for tests to await.
     @discardableResult
     func wockett(_ id: CKRecord.ID) -> Task<Void, Never>? {
-        guard !wockettMarks.has(id), routes.contains(where: { $0.id == id }) else { return nil }
         wocketError = nil
-        return OptimisticVote.apply(
-            id: id,
-            change: { [weak self] id, delta in
-                guard let self else { return }
-                OptimisticVote.adjust(&self.routes, id: id, by: delta, idPath: \.id, count: \.wocketts)
-            },
-            mark: wockettMarks.mark,
-            unmark: wockettMarks.unmark,
-            save: saveWockett,
-            failed: { [weak self] in self?.wocketError = CommunityVotes.failureMessage($0, noun: "Wockett") })
+        return OptimisticVote.vote(id, on: self, list: \.routes, idPath: \.id, count: \.wocketts,
+                                   marks: wockettMarks, save: saveWockett,
+                                   failed: { [weak self] in self?.wocketError = CommunityVotes.failureMessage($0, noun: "Wockett") })
     }
 
     func load(force: Bool = false) async {
@@ -99,6 +92,7 @@ struct CommunityRoutesView: View {
         .navigationTitle("Community Routes")
         .navigationBarTitleDisplayMode(.inline)
         .task { await model.load() }
+        .onAppear { model.wocketError = nil }   // the other route screen's message isn't about a tap here
         .alert("Session Already Active", isPresented: $showActiveSessionAlert) {
             Button("OK", role: .cancel) {}
         } message: {

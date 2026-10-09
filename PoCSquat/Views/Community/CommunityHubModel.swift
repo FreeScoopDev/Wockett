@@ -14,7 +14,7 @@ import Observation
 
 @MainActor
 @Observable
-final class CommunityHubModel {
+final class CommunityHubModel: PostLiking {
     var challenges: [WalkChallenge] = []
     var yourChallenge: WalkChallenge?
     private(set) var yourValue = 0
@@ -112,20 +112,7 @@ final class CommunityHubModel {
         }
     }
 
-    /// Likes `post` at once and saves it; a failed save is taken back by id
-    /// and reported in `likeError`. Returns the save, for tests to await.
+    /// Likes `post` (PostLiking.like). Returns the save, for tests to await.
     @discardableResult
-    func markLiked(_ post: AchievementPost) -> Task<Void, Never>? {
-        guard !likeMarks.has(post.id), posts.contains(where: { $0.id == post.id }) else { return nil }
-        return OptimisticVote.apply(
-            id: post.id,
-            change: { [weak self] id, delta in
-                guard let self else { return }
-                OptimisticVote.adjust(&self.posts, id: id, by: delta, idPath: \.id, count: \.likes)
-            },
-            mark: likeMarks.mark,
-            unmark: likeMarks.unmark,
-            save: saveLike,
-            failed: { [weak self] in self?.likeError = CommunityVotes.failureMessage($0, noun: "like") })
-    }
+    func markLiked(_ post: AchievementPost) -> Task<Void, Never>? { like(post.id) }
 }

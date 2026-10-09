@@ -1,6 +1,7 @@
 import CloudKit
 import Foundation
 import os
+import SwiftUI
 
 // MARK: - Community votes
 //
@@ -63,19 +64,22 @@ enum CommunityVotes {
     }
 
     /// Counts votes per item. A vote counts only when the iCloud user who
-    /// created it is the voter its name says (CloudKit names your own records'
-    /// creator `CKCurrentUserDefaultName`), so a client can't add votes under
-    /// made-up names; each (item, voter) pair counts once; and a vote whose
-    /// name doesn't match its item is not counted.
+    /// created it is the voter its name says, so a client can't add votes
+    /// under made-up names. CloudKit gives your own records the creator
+    /// `CKCurrentUserDefaultName`: those count as yours, checked against your
+    /// name when it is known (a failed lookup must not drop your own votes).
+    /// Each (item, voter) pair counts once; a vote whose name doesn't match
+    /// its item is not counted.
     static func tally(_ votes: [StoredVote], me: String?) -> VoteTally {
         var seen = Set<String>()
         var tally = VoteTally()
         for vote in votes {
             guard let voter = voter(fromRecordName: vote.recordName, target: vote.target),
-                  vote.creator == voter || (vote.creator == CKCurrentUserDefaultName && voter == me),
+                  vote.creator == voter
+                    || (vote.creator == CKCurrentUserDefaultName && (me == nil || voter == me)),
                   seen.insert("\(vote.target)\u{0}\(voter)").inserted else { continue }
             tally.counts[vote.target, default: 0] += 1
-            if voter == me { tally.mine.insert(vote.target) }
+            if voter == me || vote.creator == CKCurrentUserDefaultName { tally.mine.insert(vote.target) }
         }
         return tally
     }
@@ -119,39 +123,97 @@ struct VoteMarks {
     }
 }
 
-/// A like or Wockett shows at once and is saved behind it. If saving fails,
-/// it is taken back from the item with this id, wherever that item is now,
-/// and never below 0: the list may have been refreshed or had a row removed
-/// while the save was in flight, so its position can't be trusted (critic,
-/// 2026-10-09), and a refreshed count never included the vote at all.
+/// A like or Wockett shows at once and is saved behind it. If saving fails it
+/// is taken back, but only from the item with this id, and only if the item
+/// still shows it: a refresh mid-save replaces the count with the server's,
+/// which never included the vote, and taking one off that would remove
+/// someone else's (critic, 2026-10-09). One function for every screen.
+/// Whether a `withDeadline` race has been decided.
+@MainActor
+private final class DeadlineFlag { var done = false }
+
 @MainActor
 enum OptimisticVote {
     @discardableResult
-    static func apply(id: CKRecord.ID,
-                      change: @escaping (CKRecord.ID, Int) -> Void,
-                      mark: @escaping (CKRecord.ID) -> Void,
-                      unmark: @escaping (CKRecord.ID) -> Void,
-                      save: @escaping (CKRecord.ID) async throws -> Void,
-                      failed: @escaping (Error) -> Void) -> Task<Void, Never> {
-        change(id, 1)
-        mark(id)
-        return Task {
+    static func vote<Owner: AnyObject, Item>(
+        _ id: CKRecord.ID, on owner: Owner,
+        list: ReferenceWritableKeyPath<Owner, [Item]>, idPath: KeyPath<Item, CKRecord.ID>,
+        count: WritableKeyPath<Item, Int>, marks: VoteMarks,
+        save: @escaping (CKRecord.ID) async throws -> Void,
+        failed: @escaping (Error) -> Void
+    ) -> Task<Void, Never>? {
+        guard !marks.has(id),
+              let i = owner[keyPath: list].firstIndex(where: { $0[keyPath: idPath] == id }) else { return nil }
+        owner[keyPath: list][i][keyPath: count] += 1
+        let shown = owner[keyPath: list][i][keyPath: count]
+        marks.mark(id)
+        return Task { [weak owner] in
             do {
                 try await save(id)
             } catch {
-                unmark(id)
-                change(id, -1)
+                marks.unmark(id)
+                if let owner,
+                   let j = owner[keyPath: list].firstIndex(where: { $0[keyPath: idPath] == id }),
+                   owner[keyPath: list][j][keyPath: count] == shown {
+                    owner[keyPath: list][j][keyPath: count] = max(0, shown - 1)
+                }
                 failed(error)
             }
         }
     }
 
-    /// Adds `delta` to the count of the item with `id`, if it is still listed,
-    /// keeping the count at 0 or more.
-    static func adjust<Item>(_ items: inout [Item], id: CKRecord.ID, by delta: Int,
-                             idPath: KeyPath<Item, CKRecord.ID>, count: WritableKeyPath<Item, Int>) {
-        guard let i = items.firstIndex(where: { $0[keyPath: idPath] == id }) else { return }
-        items[i][keyPath: count] = max(0, items[i][keyPath: count] + delta)
+    /// Runs `work`, giving up after `deadline` without waiting for it to
+    /// stop: a task group would wait for a cancelled CloudKit query to return,
+    /// and nothing says CloudKit stops early when cancelled.
+    static func withDeadline<T>(_ deadline: Duration,
+                                _ work: @escaping @MainActor () async throws -> T) async throws -> T? {
+        let once = DeadlineFlag()
+        return try await withCheckedThrowingContinuation { (cont: CheckedContinuation<T?, Error>) in
+            let worker = Task { @MainActor in
+                do {
+                    let value = try await work()
+                    if !once.done { once.done = true; cont.resume(returning: value) }
+                } catch {
+                    if !once.done { once.done = true; cont.resume(throwing: error) }
+                }
+            }
+            Task { @MainActor in
+                try? await Task.sleep(for: deadline)
+                if !once.done { once.done = true; worker.cancel(); cont.resume(returning: nil) }
+            }
+        }
+    }
+}
+
+extension View {
+    /// The one "Like not saved" alert, shown while `error` is set.
+    func likeErrorAlert(_ error: Binding<String?>) -> some View {
+        alert("Like not saved", isPresented: Binding(get: { error.wrappedValue != nil },
+                                                     set: { if !$0 { error.wrappedValue = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(error.wrappedValue ?? "")
+        }
+    }
+}
+
+/// A list of achievement posts that can be liked: the community feed and the
+/// hub share this one like path.
+@MainActor
+protocol PostLiking: AnyObject {
+    var posts: [AchievementPost] { get set }
+    var likeError: String? { get set }
+    var saveLike: (CKRecord.ID) async throws -> Void { get }
+    var likeMarks: VoteMarks { get }
+}
+
+extension PostLiking {
+    /// Likes the post at once and saves it; see OptimisticVote.vote.
+    @discardableResult
+    func like(_ id: CKRecord.ID) -> Task<Void, Never>? {
+        OptimisticVote.vote(id, on: self, list: \.posts, idPath: \.id, count: \.likes,
+                            marks: likeMarks, save: saveLike,
+                            failed: { [weak self] in self?.likeError = CommunityVotes.failureMessage($0, noun: "like") })
     }
 }
 
@@ -184,7 +246,16 @@ final class CloudKitCommunityVoteStore: CommunityVoteStore {
     }
 
     func votes(for targets: [String]) async throws -> [StoredVote] {
-        guard !targets.isEmpty else { return [] }
+        // At most 100 items per query: "Wocketts received" asks about every
+        // route the user ever published, a list that only grows.
+        var all: [StoredVote] = []
+        for start in stride(from: 0, to: targets.count, by: 100) {
+            all += try await votes(inChunk: Array(targets[start..<min(start + 100, targets.count)]))
+        }
+        return all
+    }
+
+    private func votes(inChunk targets: [String]) async throws -> [StoredVote] {
         let query = CKQuery(recordType: CommunityVotes.recordType,
                             predicate: NSPredicate(format: "targetRecordName IN %@", targets))
         var out: [StoredVote] = []
@@ -200,6 +271,7 @@ final class CloudKitCommunityVoteStore: CommunityVoteStore {
                                                      resultsLimit: CKQueryOperation.maximumResults)
         collect(results)
         while let next = cursor {
+            try Task.checkCancellation()
             (results, cursor) = try await db.records(continuingMatchFrom: next, desiredKeys: ["targetRecordName"],
                                                      resultsLimit: CKQueryOperation.maximumResults)
             collect(results)
@@ -253,25 +325,19 @@ final class CommunityVoteService {
     /// count is 0, so the feed or list still shows.
     func tally(for targets: [String]) async -> VoteTally {
         guard !targets.isEmpty else { return VoteTally() }
-        let store = self.store
-        let timeout = tallyTimeout
-        let votes: [StoredVote]?
         do {
-            votes = try await withThrowingTaskGroup(of: [StoredVote]?.self) { group in
-                group.addTask { try await store.votes(for: targets) }
-                group.addTask { try await Task.sleep(for: timeout); return nil }
-                let first = try await group.next() ?? nil
-                group.cancelAll()
-                return first
+            let result = try await OptimisticVote.withDeadline(tallyTimeout) { [store] in
+                let votes = try await store.votes(for: targets)
+                return CommunityVotes.tally(votes, me: try? await self.me())
             }
+            guard let result else {
+                log.error("Vote counts timed out; showing 0s")
+                return VoteTally()
+            }
+            return result
         } catch {
             log.error("Vote counts unavailable: \(error.localizedDescription, privacy: .public)")
             return VoteTally()
         }
-        guard let votes else {
-            log.error("Vote counts timed out; showing 0s")
-            return VoteTally()
-        }
-        return CommunityVotes.tally(votes, me: try? await me())
     }
 }

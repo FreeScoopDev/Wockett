@@ -63,7 +63,7 @@ struct SharedRoute: Identifiable {
 final class CommunityRouteService {
     static let shared = CommunityRouteService()
 
-    private let db         = CKContainer(identifier: "iCloud.Scoops.PoCSquat").publicCloudDatabase
+    private let db         = CKContainer(identifier: WockettCloud.containerID).publicCloudDatabase
     private let recordType = "SharedRoute"
     private let votedKey      = "communityVotedRoutes"
     private let usernameKey   = "communityUsername"

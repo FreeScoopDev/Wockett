@@ -83,6 +83,14 @@ struct CommunityVotesTests {
         #expect(t.mine == ["a"])
     }
 
+    @Test("My own votes still count, and are mine, when my user lookup failed")
+    func ownVotesWithoutMe() {
+        let t = CommunityVotes.tally([vote("a", by: "_me", creator: CKCurrentUserDefaultName),
+                                      vote("a", by: "_x")], me: nil)
+        #expect(t.count(for: "a") == 2)
+        #expect(t.mine == ["a"])
+    }
+
     @Test("Signed out: counts still show, and nothing is marked mine")
     func signedOutTally() async {
         let store = FakeStore()
@@ -161,18 +169,21 @@ struct CommunityVotesTests {
         #expect(store.saved.map(\.recordName) == ["vote.r._me", "vote.r._someoneElse"])
     }
 
-    @Test("Counts that take too long give up, so the feed still shows")
+    @Test("Counts that take too long give up, even when the query ignores cancellation")
     func tallyTimesOut() async {
-        final class SlowStore: CommunityVoteStore {
+        /// Like a CloudKit call that doesn't stop when cancelled: answers after 30 s, whatever happens.
+        final class StubbornStore: CommunityVoteStore {
             func currentUserRecordName() async throws -> String { "_me" }
             func saveVote(recordName: String, target: String, type: VoteTarget) async throws {}
             func votes(for targets: [String]) async throws -> [StoredVote] {
-                try await Task.sleep(for: .seconds(30))
+                await withCheckedContinuation { cont in
+                    DispatchQueue.global().asyncAfter(deadline: .now() + 30) { cont.resume() }
+                }
                 return []
             }
         }
         let started = ContinuousClock.now
-        let t = await CommunityVoteService(store: SlowStore(), tallyTimeout: .milliseconds(200)).tally(for: ["r"])
+        let t = await CommunityVoteService(store: StubbornStore(), tallyTimeout: .milliseconds(200)).tally(for: ["r"])
         #expect(t == VoteTally())
         #expect(ContinuousClock.now - started < .seconds(5))
     }
@@ -182,28 +193,6 @@ struct CommunityVotesTests {
         #expect(CommunityVotes.failureMessage(CKError(.notAuthenticated), noun: "like").contains("Sign in to iCloud"))
         #expect(CommunityVotes.failureMessage(CKError(.networkUnavailable), noun: "Wockett")
                 == "Couldn't save your Wockett. Check your connection and try again.")
-    }
-
-    // MARK: Taking a vote back
-
-    private struct Row { let id: CKRecord.ID; var count: Int }
-    private func rid(_ s: String) -> CKRecord.ID { CKRecord.ID(recordName: s) }
-
-    @Test("Taking a vote back finds the item by id, even after the list changed")
-    func adjustById() {
-        var rows = [Row(id: rid("a"), count: 3), Row(id: rid("b"), count: 5), Row(id: rid("c"), count: 1)]
-        rows.remove(at: 0)                                  // a row above was hidden mid-save
-        OptimisticVote.adjust(&rows, id: rid("b"), by: -1, idPath: \.id, count: \.count)
-        #expect(rows.map(\.count) == [4, 1], "b taken back, c untouched")
-        OptimisticVote.adjust(&rows, id: rid("gone"), by: -1, idPath: \.id, count: \.count)
-        #expect(rows.map(\.count) == [4, 1], "an item no longer listed is left alone, nothing traps")
-    }
-
-    @Test("A count never goes below 0 (a refresh never included the failed vote)")
-    func adjustClamps() {
-        var rows = [Row(id: rid("a"), count: 0)]
-        OptimisticVote.adjust(&rows, id: rid("a"), by: -1, idPath: \.id, count: \.count)
-        #expect(rows[0].count == 0)
     }
 
     // MARK: Hub like and route Wockett, through the code the screens call
@@ -300,5 +289,46 @@ struct CommunityVotesTests {
         #expect(model.routes[0].wocketts == 1)
         #expect(marks.ids.contains(r.id.recordName))
         #expect(model.wocketError == nil)
+    }
+
+    @Test("The feed's likes go the same way: shown at once, taken back by id on failure")
+    func feedUndoesFailedLike() async throws {
+        let a = try post("post-a"), b = try post("post-b")
+        let marks = MemoryMarks()
+        let feed = AchievementFeedModel()
+        feed.likeMarks = marks.marks
+        feed.posts = [a, b]
+        feed.saveLike = { _ in throw CKError(.networkUnavailable) }
+        let save = feed.like(b.id)
+        #expect(feed.posts.map(\.likes) == [0, 1])
+        await save?.value
+        #expect(feed.posts.map(\.likes) == [0, 0], "b taken back, a untouched")
+        #expect(marks.ids.isEmpty)
+        #expect(feed.likeError != nil)
+    }
+
+    @Test("A failed Wockett leaves a refreshed count alone: the server's count never had it")
+    func failedVoteAfterRefresh() async throws {
+        let r = try route("route-refresh")
+        let marks = MemoryMarks()
+        let model = CommunityRoutesModel()
+        model.wockettMarks = marks.marks
+        model.routes = [r]
+        var release: CheckedContinuation<Void, Never>?
+        model.saveWockett = { _ in
+            await withCheckedContinuation { release = $0 }
+            throw CKError(.networkUnavailable)
+        }
+        let save = model.wockett(r.id)
+        #expect(model.routes[0].wocketts == 1)
+        var fresh = r
+        fresh.wocketts = 3                                 // a refresh landed: the server's count
+        model.routes = [fresh]
+        for _ in 0..<10_000 where release == nil { await Task.yield() }
+        guard let release else { Issue.record("the save was never started"); return }
+        release.resume()
+        await save?.value
+        #expect(model.routes[0].wocketts == 3, "nobody else's Wockett taken off")
+        #expect(model.wocketError != nil)
     }
 }

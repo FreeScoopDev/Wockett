@@ -67,11 +67,7 @@ struct CommunityHubView: View {
         .accessibilityIdentifier("community.root")
         .navigationTitle("Community")
         .navigationBarTitleDisplayMode(.large)
-        .alert("Like not saved", isPresented: Binding(get: { model.likeError != nil }, set: { if !$0 { model.likeError = nil } })) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text(model.likeError ?? "")
-        }
+        .likeErrorAlert($model.likeError)
         .communityReporting($hubReport) { report in
             model.hide(report.recordID)
             communityRoutesModel.routes.removeAll { $0.id == report.recordID }
