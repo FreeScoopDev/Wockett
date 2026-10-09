@@ -116,6 +116,16 @@ Fixing it: remove the unwrap. Do not add a `swiftlint:disable` comment — an
 annotation is precisely the thing two SwiftLint runs may honour differently,
 and it was the wrong first guess here.
 
+## GitHub Actions — `.github/workflows/critic-verdict.yml`
+
+Added 2026-10-09. Fails a major PR (a `feat/` branch, or more than
+`criticMinLines` changed lines of Swift outside `WockettTests` and
+`WockettUITests`, from `.claude/app.json`) whose description records no critic
+verdict, or a BLOCK one. The shared PROCESS.md makes the critic a step on every
+major change; this checks the step happened, not that the review was good. A
+workflow of its own because it re-runs when the description is edited. Not
+required until it has posted on a PR.
+
 ## GitHub Actions — `.github/workflows/tests.yml`
 
 Added 2026-09-28. Runs the two test targets as **two parallel jobs** on

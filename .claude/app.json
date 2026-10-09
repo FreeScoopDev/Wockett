@@ -17,6 +17,7 @@
     "Language-consistency guard",
     "SwiftLint"
   ],
+  "criticMinLines": 40,
   "reviewFocus": [
     "Colors, fonts and icons go through DesignSystem.swift and WktSymbol / .wktIcon(); no hardcoded systemName strings or hand-copied colour literals.",
     "Activity-appropriate language: a run says run, a ride says ride. Any hardcoded 'Walk' on a surface that can show another activity is a bug (ActivityMode).",
