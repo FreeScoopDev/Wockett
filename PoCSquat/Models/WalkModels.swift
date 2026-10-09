@@ -603,6 +603,10 @@ struct NavigableRoute: Identifiable, Hashable {
     /// its detail screen: on arrival the session offers the trail walk
     /// (`NavigationSessionManager.beginTrailWalk`).
     var approach: TrailApproach? = nil
+    /// Out and back on a trail: how far along `path` to turn round. The
+    /// session says so there (`NavigationSessionManager`), and "Head back
+    /// now" ends the out leg early. Nil for every other route.
+    var turnaroundMeters: Double? = nil
 
     /// What the line is called in off-line guidance: a trail, or the route
     /// someone recorded.

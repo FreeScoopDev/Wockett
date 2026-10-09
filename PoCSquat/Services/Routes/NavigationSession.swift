@@ -153,6 +153,11 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
     /// Called once when a guided walk reaches its end (`finish()`).
     var onCompleted: (() -> Void)?
 
+    // Out and back (2026-10-09): the route carries `turnaroundMeters`; the
+    // session says when to turn, and "Head back now" ends the out leg early.
+    /// The turnaround has been reached or passed (said once).
+    private(set) var hasPassedTurnaround = false
+
     // Heading to a trail (2026-09-26): the route carries `approach`, and
     // within `TrailWalkPlanner.startRadiusMeters` of the trail the session
     // offers the trail walk instead of finishing at the access point.
@@ -288,6 +293,10 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
             let fallback = progress.checkpointAlong.indices.contains(lastPassed) ? progress.checkpointAlong[lastPassed] : 0
             progress.resume(at: snapshot.trailAlong ?? fallback, since: snapshot.checkpointDate)
             trailProgress = progress
+            // Restored past the turnaround: it was said already.
+            if Self.hasReachedTurnaround(along: progress.along, turnaround: route.turnaroundMeters) {
+                hasPassedTurnaround = true
+            }
         }
     }
 
@@ -793,6 +802,7 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
         // from the ground path, and "to next" follows the trail's bends.
         if trailProgress != nil {
             advanceAlongTrail()
+            checkTurnaround()
             return
         }
         guard let next = nextWaypoint else { return }
@@ -862,6 +872,75 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
         writeSnapshot()
     }
 
+    // MARK: Out and back
+
+    /// How close to the turnaround counts as there: trail data can sit tens of
+    /// metres from the path on the ground, and progress is a best guess.
+    nonisolated static let turnaroundSlack = 15.0
+
+    /// Whether `along` (distance walked on the route's line) is at or past
+    /// the turnaround. One rule for saying it on the walk and for a walk
+    /// restored after it.
+    nonisolated static func hasReachedTurnaround(along: Double?, turnaround: Double?) -> Bool {
+        guard let along, let turnaround else { return false }
+        return along >= turnaround - turnaroundSlack
+    }
+
+    /// Internal, not private, so tests can walk a route past its turnaround.
+    func checkTurnaround() {
+        guard !hasPassedTurnaround, let along = trailProgress?.along,
+              Self.hasReachedTurnaround(along: along, turnaround: route.turnaroundMeters) else { return }
+        hasPassedTurnaround = true
+        let back = distanceText(max(0, (trailProgress?.guide.length ?? 0) - along))
+        fireBackgroundNotification(title: "Turn around here", body: "\(back) back to the start of \(route.name).")
+        WalkAudioCueService.shared.announce("Turn around here. \(back) back to the start.")
+        writeSnapshot()
+    }
+
+    /// "Head back now" is offered only on the way out of an out-and-back
+    /// trail walk: some distance walked, the turnaround not reached. The
+    /// return leg has no turnaround, so it never offers it again, restored or
+    /// not (critic review of #163: offered on the way back, it led away from
+    /// the start). Full loops and recorded routes have none either.
+    var canHeadBack: Bool {
+        guard !isCompleted, route.approach == nil, route.path != nil,
+              let turn = route.turnaroundMeters,
+              let along = trailProgress?.along, along >= 50 else { return false }
+        return along < turn - Self.turnaroundSlack
+    }
+
+    /// Ends the way out where the person is: the rest of the walk becomes the
+    /// trail back to where it started. One session throughout, as when a walk
+    /// to a trail becomes the trail walk (`beginTrailWalk`). Returns the new
+    /// route, or nil when there is no way out to cut short.
+    @discardableResult
+    func headBack() -> NavigableRoute? {
+        guard canHeadBack, let progress = trailProgress, let along = progress.along,
+              let path = route.path else { return nil }
+        let back = Array(TrailWalkPlanner.prefix(of: path, meters: along).reversed())
+        guard back.count >= 2 else { return nil }
+        let length = TrailWalkPlanner.length(back)
+        // One trail walk, out and back: the route's distance is the whole
+        // walk (what was walked out, and the way back), so the progress bar,
+        // the 20/40/60/80% markers and the Live Activity carry on from where
+        // they were rather than starting a second walk.
+        let next = NavigableRoute(name: route.name,
+                                  waypoints: TrailWalkPlanner.checkpoints(along: back, isLoop: false, length: length),
+                                  lapCount: 1, isLoop: false, totalDistance: along + length,
+                                  isCustomRoute: route.isCustomRoute, isCommunityRoute: route.isCommunityRoute,
+                                  activityMode: route.activityMode, customRouteId: route.customRouteId,
+                                  path: back, pathIsRecording: route.pathIsRecording)
+        route = next
+        trailProgress = TrailProgress(route: next)
+        currentWaypointIndex = 1
+        currentLap = 1
+        hasPassedTurnaround = true
+        WalkAudioCueService.shared.announce("Heading back. \(distanceText(length)) to the start.")
+        onRouteChanged?(next)
+        writeSnapshot()
+        return next
+    }
+
     // MARK: Heading to a trail
 
     private func checkTrailArrival(_ approach: TrailApproach, at location: CLLocation) {
@@ -890,8 +969,9 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
     func beginTrailWalk() -> NavigableRoute? {
         guard let approach = route.approach else { return nil }
         let here = lastLocation?.coordinate
-        guard let plan = here.flatMap(approach.arrivalPlan(at:))
-                ?? trailArrivalLocation.flatMap(approach.arrivalPlan(at:)) else { return nil }
+        let mode = route.activityMode
+        guard let plan = here.flatMap({ approach.arrivalPlan(at: $0, activityMode: mode) })
+                ?? trailArrivalLocation.flatMap({ approach.arrivalPlan(at: $0, activityMode: mode) }) else { return nil }
         let next = plan.navigableRoute(activityMode: route.activityMode)
         route = next
         trailProgress = TrailProgress(route: next)

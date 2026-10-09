@@ -73,6 +73,7 @@ struct ActiveSessionView: View {
     /// "Not now" on the arrived-at-the-trail banner. The offer stays in the
     /// pulled-up panel.
     @State private var trailArrivalDismissed  = false
+    @State private var confirmHeadBack        = false
 
     private enum FinishChoice { case save, saveWithRoute, discard }
 
@@ -293,6 +294,12 @@ struct ActiveSessionView: View {
             if let phone = ownerUpdateRecipient {
                 MessageComposeSheet(recipients: [phone], body: ownerUpdateBody)
             }
+        }
+        .confirmationDialog("Head back to the start?", isPresented: $confirmHeadBack, titleVisibility: .visible) {
+            Button("Head back now") { headBack() }
+            Button("Keep going", role: .cancel) {}
+        } message: {
+            Text("The rest of your \(route.activityMode.noun) follows \(route.name) back to where you started.")
         }
         .confirmationDialog("Send update to owner", isPresented: .init(
             get: { ownerUpdatePickerPets.count > 1 && !showOwnerUpdateSheet && !ownerUpdatePickerPets.isEmpty },
@@ -614,6 +621,13 @@ struct ActiveSessionView: View {
                 SessionStatTile(value: session.paceText, label: session.paceLabel, prominent: true)
             }
             if isGuided { routeProgress }
+            if session.canHeadBack {
+                HStack {
+                    Spacer()
+                    WktPillButton(title: "Head back now", tint: .earthGreen) { confirmHeadBack = true }
+                        .accessibilityIdentifier("session.headBack")
+                }
+            }
         }
         .padding(.horizontal, 18)
         .padding(.top, 10)
@@ -623,6 +637,10 @@ struct ActiveSessionView: View {
     private var expandedDetails: some View {
         VStack(alignment: .leading, spacing: 14) {
             if isGuided { routeProgress }
+            if session.canHeadBack {
+                WktSecondaryButton(title: "Head back now", symbol: .undo) { confirmHeadBack = true }
+                    .accessibilityIdentifier("session.headBackExpanded")
+            }
             if let approach = route.approach, session.arrivedAtTrail {
                 WktPrimaryButton(title: "Start the \(approach.trailName) \(route.activityMode.noun)",
                                  symbol: .routeTrail, action: startTrailFromApproach)
@@ -792,6 +810,33 @@ struct ActiveSessionView: View {
     }
 
     // MARK: - Heading to a trail
+
+    /// "Head back now": the rest of the walk becomes the trail back to where
+    /// it started (`NavigationSessionManager.headBack`). Same session; the
+    /// Live Activity is restarted for the new route and given the walk's
+    /// numbers at once, as when a trail starts from the way there, or it
+    /// would show zeros until the next fix (critic review of #163).
+    private func headBack() {
+        guard let next = session.headBack() else { return }
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        let cap = session
+        Task {
+            await WalkLiveActivityManager.shared.start(
+                routeName: next.name,
+                totalDistanceMeters: cap.liveActivityTotalMeters,
+                activityMode: next.activityMode.rawValue,
+                startDate: cap.startTime
+            )
+            await WalkLiveActivityManager.shared.update(
+                distanceCovered: cap.totalDistanceCovered,
+                elapsedSeconds: Int(cap.elapsedTime),
+                isPaused: cap.isPaused,
+                paceSecsPerKm: nil,
+                pausedDuration: cap.totalPausedDuration,
+                pauseTime: cap.isPaused ? Date() : nil
+            )
+        }
+    }
 
     /// The person reached the trail they were heading for and wants to walk
     /// it: the same session carries on along the trail
