@@ -4,5 +4,10 @@
   "sc": {"name": "South Carolina", "geofabrik": "north-america/us/south-carolina", "bundled": false, "probe": {"lat": 34.0007, "lon": -81.0348, "place": "Columbia"}},
   "va": {"name": "Virginia",       "geofabrik": "north-america/us/virginia",       "bundled": false, "probe": {"lat": 37.5407, "lon": -77.4360, "place": "Richmond"}},
   "tn": {"name": "Tennessee",      "geofabrik": "north-america/us/tennessee",      "bundled": false, "probe": {"lat": 36.1627, "lon": -86.7816, "place": "Nashville"}},
-  "ga": {"name": "Georgia",        "geofabrik": "north-america/us/georgia",        "bundled": false, "probe": {"lat": 33.7490, "lon": -84.3880, "place": "Atlanta"}}
+  "ga": {"name": "Georgia",        "geofabrik": "north-america/us/georgia",        "bundled": false, "probe": {"lat": 33.7490, "lon": -84.3880, "place": "Atlanta"}},
+  "fl": {"name": "Florida",        "geofabrik": "north-america/us/florida",        "bundled": false, "probe": {"lat": 28.5383, "lon": -81.3792, "place": "Orlando"}},
+  "al": {"name": "Alabama",        "geofabrik": "north-america/us/alabama",        "bundled": false, "probe": {"lat": 33.5186, "lon": -86.8104, "place": "Birmingham"}},
+  "ky": {"name": "Kentucky",       "geofabrik": "north-america/us/kentucky",       "bundled": false, "probe": {"lat": 38.2527, "lon": -85.7585, "place": "Louisville"}},
+  "wv": {"name": "West Virginia",  "geofabrik": "north-america/us/west-virginia",  "bundled": false, "probe": {"lat": 38.3498, "lon": -81.6326, "place": "Charleston"}},
+  "md": {"name": "Maryland",       "geofabrik": "north-america/us/maryland",       "bundled": false, "probe": {"lat": 39.2904, "lon": -76.6122, "place": "Baltimore"}}
 }
