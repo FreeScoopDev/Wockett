@@ -621,7 +621,7 @@ struct ActiveSessionView: View {
                 SessionStatTile(value: session.paceText, label: session.paceLabel, prominent: true)
             }
             if isGuided { routeProgress }
-            if session.canHeadBack, route.turnaroundMeters != nil {
+            if session.canHeadBack {
                 HStack {
                     Spacer()
                     WktPillButton(title: "Head back now", tint: .earthGreen) { confirmHeadBack = true }
@@ -811,14 +811,11 @@ struct ActiveSessionView: View {
 
     // MARK: - Heading to a trail
 
-    /// The person reached the trail they were heading for and wants to walk
-    /// it: the same session carries on along the trail
-    /// (`NavigationSessionManager.beginTrailWalk`). `onChange(of: route.id)`
-    /// redraws the map; the Live Activity is restarted because its route name
-    /// is fixed when it starts.
     /// "Head back now": the rest of the walk becomes the trail back to where
-    /// it started (`NavigationSessionManager.headBack`). Same session, same
-    /// Live Activity restart as starting a trail from the way there.
+    /// it started (`NavigationSessionManager.headBack`). Same session; the
+    /// Live Activity is restarted for the new route and given the walk's
+    /// numbers at once, as when a trail starts from the way there, or it
+    /// would show zeros until the next fix (critic review of #163).
     private func headBack() {
         guard let next = session.headBack() else { return }
         UINotificationFeedbackGenerator().notificationOccurred(.success)
@@ -830,9 +827,22 @@ struct ActiveSessionView: View {
                 activityMode: next.activityMode.rawValue,
                 startDate: cap.startTime
             )
+            await WalkLiveActivityManager.shared.update(
+                distanceCovered: cap.totalDistanceCovered,
+                elapsedSeconds: Int(cap.elapsedTime),
+                isPaused: cap.isPaused,
+                paceSecsPerKm: nil,
+                pausedDuration: cap.totalPausedDuration,
+                pauseTime: cap.isPaused ? Date() : nil
+            )
         }
     }
 
+    /// The person reached the trail they were heading for and wants to walk
+    /// it: the same session carries on along the trail
+    /// (`NavigationSessionManager.beginTrailWalk`). `onChange(of: route.id)`
+    /// redraws the map; the Live Activity is restarted because its route name
+    /// is fixed when it starts.
     private func startTrailFromApproach() {
         guard let next = session.beginTrailWalk() else { return }
         trailArrivalDismissed = false

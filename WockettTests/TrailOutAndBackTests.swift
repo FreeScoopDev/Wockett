@@ -156,23 +156,94 @@ struct TrailOutAndBackTests {
         #expect(mgr.canHeadBack)
     }
 
-    @Test("Restored at the turnaround, it is already passed, and Head back is no longer offered")
-    func atTurnaround() throws {
+    @Test("Restored at the turnaround, it is already passed (no second cue), and Head back is not offered")
+    func restoredAtTurnaround() throws {
         let mgr = try session(at: 995)
-        mgr.checkTurnaround()
-        #expect(mgr.hasPassedTurnaround)
+        #expect(mgr.hasPassedTurnaround, "set by the restore itself, before any fix")
         #expect(!mgr.canHeadBack, "already on the way back")
+        #expect(!(try session(at: 900)).hasPassedTurnaround)
     }
 
-    @Test("Head back now: the rest of the walk is the trail back to the start")
+    @Test("Head back now: the rest of the walk is the trail back to the start, one walk throughout")
     func headBack() throws {
         let mgr = try session(at: 600)
         let start = line(51)[10]
         let back = try #require(mgr.headBack())
-        #expect(abs(back.totalDistance - 600) < 3)
+        #expect(abs(TrailWalkPlanner.length(back.path ?? []) - 600) < 3, "the way back is what was walked out")
+        #expect(abs(back.totalDistance - 1_200) < 3, "the route is the whole walk: 600 out, 600 back")
         #expect(close(back.path?.last, start), "ends where the walk began")
         #expect(back.turnaroundMeters == nil && !back.isLoop)
-        #expect(mgr.route.id == back.id && mgr.legStartDistance == 600)
-        #expect(!mgr.canHeadBack, "the new route has no way out left to cut short")
+        #expect(mgr.route.id == back.id && mgr.legStartDistance == 0, "the 20-80% markers keep counting the whole walk")
     }
+
+    @Test("On the way back, Head back is never offered again, live or restored")
+    func noHeadBackOnTheWayBack() throws {
+        let mgr = try session(at: 600)
+        let back = try #require(mgr.headBack())
+        let restored = NavigationSessionManager(route: back)
+        restored.applySnapshot(ActiveWalkSnapshot(route: .init(back), startTime: Date().addingTimeInterval(-900),
+                                                  totalDistanceCovered: 700, pausedDuration: 0, isPaused: false,
+                                                  pauseStartDate: nil, currentWaypointIndex: 1, currentLap: 1,
+                                                  triggeredCheckpoints: [], splitTimes: [], liveSteps: 0,
+                                                  checkpointDate: Date(), trailAlong: 100))
+        #expect(!restored.canHeadBack, "100 m into the way back: offering it again would lead away from the start")
+    }
+
+    @Test("Head back is only for out-and-back walks: not a full loop, not a recorded route")
+    func headBackOnlyOutAndBack() throws {
+        let loop = try #require(TrailWalkPlanner.plan(along: square, isLoop: true, name: "Loop", from: square[0]))
+        let route = loop.navigableRoute(activityMode: .walking)
+        let mgr = NavigationSessionManager(route: route)
+        mgr.applySnapshot(ActiveWalkSnapshot(route: .init(route), startTime: Date().addingTimeInterval(-600),
+                                             totalDistanceCovered: 800, pausedDuration: 0, isPaused: false,
+                                             pauseStartDate: nil, currentWaypointIndex: 1, currentLap: 1,
+                                             triggeredCheckpoints: [], splitTimes: [], liveSteps: 0,
+                                             checkpointDate: Date(), trailAlong: 800))
+        #expect(!mgr.canHeadBack)
+    }
+
+    @Test("On a 3 km round trip, each checkpoint sits where it is on the walk, not at its twin on the way out")
+    func checkpointsOnTheRightLeg() throws {
+        let coords = line(51)
+        let plan = try #require(TrailWalkPlanner.plan(along: coords, isLoop: false, name: "G",
+                                                       from: coords[10], target: .roundTrip(meters: 3_000)))
+        let progress = try #require(TrailProgress(route: plan.navigableRoute(activityMode: .walking)))
+        var travelled = 0.0, expected: [Double] = []
+        var next = 0
+        for (a, b) in zip(plan.path, plan.path.dropFirst()) {
+            while next < plan.waypoints.count,
+                  TrailWalkPlanner.meters(a, plan.waypoints[next]) + TrailWalkPlanner.meters(plan.waypoints[next], b)
+                    <= TrailWalkPlanner.meters(a, b) + 0.5 {
+                expected.append(travelled + TrailWalkPlanner.meters(a, plan.waypoints[next]))
+                next += 1
+            }
+            travelled += TrailWalkPlanner.meters(a, b)
+        }
+        #expect(progress.checkpointAlong.count == plan.waypoints.count)
+        for (got, want) in zip(progress.checkpointAlong, expected) {
+            #expect(abs(got - want) < 5, "checkpoint at \(got) m, expected \(want) m")
+        }
+    }
+
+    @Test("Short loops start on the full loop; long loops on the usual round trip")
+    func loopDefaults() {
+        let park = TrailWalkOption.options(reach: 1_200, isLoop: true, byTime: false, usesMiles: true, metersPerSecond: 1.3)
+        #expect(TrailWalkOption.defaultChoice(in: park)?.id == "whole", "a 1.5 mi park loop is walked round, as before")
+        let mid = TrailWalkOption.options(reach: 2_500, isLoop: true, byTime: false, usesMiles: true, metersPerSecond: 1.3)
+        #expect(TrailWalkOption.defaultChoice(in: mid)?.id == "whole", "a 3.1 mi loop too")
+        let big = TrailWalkOption.options(reach: 8_000, isLoop: true, byTime: false, usesMiles: true, metersPerSecond: 1.3)
+        #expect(TrailWalkOption.defaultChoice(in: big)?.id == "d2mi", "a 10 mi loop starts on 2 mi out and back")
+    }
+
+    @Test("End and back says it goes to the trail's end")
+    func endAndBackCaption() throws {
+        let coords = line(51)
+        let whole = try #require(TrailWalkOption.options(reach: TrailWalkPlanner.length(Array(coords[10...])), isLoop: false,
+                                                         byTime: false, usesMiles: true, metersPerSecond: 1.3).last)
+        let plan = try #require(TrailWalkPlanner.plan(along: coords, isLoop: false, name: "G", from: coords[10],
+                                                       target: whole.target))
+        #expect(plan.turnsAtTrailEnd)
+        #expect(TrailText.startCaption(for: plan).hasPrefix("To the trail's end and back"))
+    }
+
 }

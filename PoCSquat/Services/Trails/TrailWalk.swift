@@ -151,7 +151,7 @@ enum TrailWalkPlanner {
                                      waypoints: checkpoints(along: roundTrip, isLoop: false, length: total),
                                      isLoop: false, distanceMeters: total)
             plan.turnaroundMeters = length(outPath)
-            plan.turnsAtTrailEnd = !isLoop && meters / 2 > distance + 1
+            plan.turnsAtTrailEnd = !isLoop && out >= distance - 1
             return plan
         }
 

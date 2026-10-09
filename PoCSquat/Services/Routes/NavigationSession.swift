@@ -897,14 +897,16 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
         writeSnapshot()
     }
 
-    /// "Head back now" is offered on a trail walk that has gone somewhere and
-    /// is still heading out: before an out-and-back's turnaround, or anywhere
-    /// along a walk to the end of a line or round a loop.
+    /// "Head back now" is offered only on the way out of an out-and-back
+    /// trail walk: some distance walked, the turnaround not reached. The
+    /// return leg has no turnaround, so it never offers it again, restored or
+    /// not (critic review of #163: offered on the way back, it led away from
+    /// the start). Full loops and recorded routes have none either.
     var canHeadBack: Bool {
         guard !isCompleted, route.approach == nil, route.path != nil,
+              let turn = route.turnaroundMeters,
               let along = trailProgress?.along, along >= 50 else { return false }
-        if let turn = route.turnaroundMeters { return along < turn - Self.turnaroundSlack }
-        return true
+        return along < turn - Self.turnaroundSlack
     }
 
     /// Ends the way out where the person is: the rest of the walk becomes the
@@ -918,9 +920,13 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
         let back = Array(TrailWalkPlanner.prefix(of: path, meters: along).reversed())
         guard back.count >= 2 else { return nil }
         let length = TrailWalkPlanner.length(back)
+        // One trail walk, out and back: the route's distance is the whole
+        // walk (what was walked out, and the way back), so the progress bar,
+        // the 20/40/60/80% markers and the Live Activity carry on from where
+        // they were rather than starting a second walk.
         let next = NavigableRoute(name: route.name,
                                   waypoints: TrailWalkPlanner.checkpoints(along: back, isLoop: false, length: length),
-                                  lapCount: 1, isLoop: false, totalDistance: length,
+                                  lapCount: 1, isLoop: false, totalDistance: along + length,
                                   isCustomRoute: route.isCustomRoute, isCommunityRoute: route.isCommunityRoute,
                                   activityMode: route.activityMode, customRouteId: route.customRouteId,
                                   path: back, pathIsRecording: route.pathIsRecording)
@@ -928,9 +934,6 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
         trailProgress = TrailProgress(route: next)
         currentWaypointIndex = 1
         currentLap = 1
-        triggeredCheckpoints = []
-        splitTimes.removeAll { $0.label.hasSuffix("%") }
-        legStartDistance = totalDistanceCovered
         hasPassedTurnaround = true
         WalkAudioCueService.shared.announce("Heading back. \(distanceText(length)) to the start.")
         onRouteChanged?(next)
