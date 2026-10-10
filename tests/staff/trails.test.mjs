@@ -7,7 +7,7 @@ import {
   BLURB_LIMIT, DAY, ACTIVITY_KINDS, groupReports, queue, isTrailKey,
 } from '../../docs/staff/logic.js';
 import { featureTrail, unfeatureTrail, dismissNominations } from '../../docs/staff/actions.js';
-import { plain } from '../../docs/staff/ck.js';
+import { plain, onePerNominator, pagedQuery } from '../../docs/staff/ck.js';
 
 const NOW = 1_800_000_000_000;
 const trail = { trailKey: 'nc:w1', trailName: 'Lake Loop', region: 'nc', latitude: 35.78, longitude: -78.64, lengthMeters: 2400 };
@@ -166,7 +166,8 @@ test('one crafted nomination can\'t rename or move a trail; disagreement is flag
 });
 
 test('a tie keeps the description that came first, and the region comes from the key', () => {
-  const [g] = groupNominations([nom('nc:w1', 100, { region: 'zz' }), nom('nc:w1', 200, { trailName: 'Late Name', latitude: 36 })]);
+  // Newest first, as the query returns them: without the tie-break the later one would win.
+  const [g] = groupNominations([nom('nc:w1', 200, { trailName: 'Late Name', latitude: 36 }), nom('nc:w1', 100, { region: 'zz' })]);
   assert.equal(g.trail.trailName, 'Lake Loop');
   assert.equal(g.trail.region, 'nc');
 });
@@ -198,4 +199,31 @@ test('featuring again keeps the trail as first featured; only the note and the e
   assert.equal(fields.latitude, 35.78);
   assert.equal(fields.blurb, 'New note');
   assert.deepEqual(fields.until, { value: NOW, type: 'TIMESTAMP' }, 'the end kept');
+});
+
+// MARK: Third round (critic run 2)
+
+const raw = (who, key, created) => ({
+  recordName: `n.${who}.${key}.${created}`, recordType: 'TrailNomination',
+  created: { timestamp: created, userRecordName: who }, fields: { trailKey: { value: key } },
+});
+
+test('one nomination per person per trail, the newest, however many records they make', () => {
+  const kept = onePerNominator([raw('_a', 'nc:w1', 300), raw('_a', 'nc:w1', 200), raw('_a', 'nc:w1', 100), raw('_b', 'nc:w1', 150), raw('_a', 'nc:w2', 50)]);
+  assert.deepEqual(kept.map((r) => r.created.timestamp), [300, 150, 50]);
+});
+
+test('the query collapses nominations before the page sees them, and drops who made them', async () => {
+  const db = { async performQuery() { return { records: [raw('_a', 'nc:w1', 3), raw('_a', 'nc:w1', 2)], moreComing: false }; } };
+  const { records } = await pagedQuery(db, { recordType: 'TrailNomination' });
+  assert.equal(records.length, 1);
+  assert.equal(records[0].creator, undefined);
+  const other = await pagedQuery(db, { recordType: 'CommunityReport' });
+  assert.equal(other.records.length, 2, 'only nominations are collapsed');
+});
+
+test('every description is listed with its count, so a moved point shows even with one name', () => {
+  const [g] = groupNominations([nom('nc:w1', 1), nom('nc:w1', 2), nom('nc:w1', 3, { latitude: 36.5 })]);
+  assert.equal(g.disagree, true);
+  assert.deepEqual(g.variants.map((v) => [v.trail.trailName, v.trail.latitude, v.count]), [['Lake Loop', 35.78, 2], ['Lake Loop', 36.5, 1]]);
 });

@@ -81,16 +81,37 @@ export function buildQuery(recordType, { equals, sinceMs } = {}) {
   return { recordType, filterBy, sortBy: [{ systemFieldName: 'createdTimestamp', ascending: false }] };
 }
 
+/**
+ * One nomination per person per trail, the newest (records arrive newest
+ * first). The app names a nomination so CloudKit refuses a second, but any
+ * client can create records under other names: without this, one account
+ * could outvote everyone. Done here, on the raw records, because the
+ * nominator never leaves this file (`plain` drops it).
+ */
+export function onePerNominator(records) {
+  const seen = new Set();
+  return records.filter((r) => {
+    const who = r.created?.userRecordName;
+    const key = r.fields?.trailKey?.value;
+    if (!who || !key) return true;
+    const id = `${who}\n${key}`;
+    if (seen.has(id)) return false;
+    seen.add(id);
+    return true;
+  });
+}
+
 /** Every page of a query, up to `max` records. `more` says some were left out. */
 export async function pagedQuery(db, query, { max = 1000, pageSize = 200 } = {}) {
-  const out = [];
+  const raw = [];
   let response = check(await db.performQuery(query, { resultsLimit: Math.min(pageSize, max) }));
-  out.push(...response.records.map(plain));
-  while (hasMorePages(response) && out.length < max) {
+  raw.push(...response.records);
+  while (hasMorePages(response) && raw.length < max) {
     response = check(await db.performQuery(response));
-    out.push(...response.records.map(plain));
+    raw.push(...response.records);
   }
-  return { records: out.slice(0, max), more: hasMorePages(response) || out.length > max };
+  const kept = query.recordType === 'TrailNomination' ? onePerNominator(raw) : raw;
+  return { records: kept.slice(0, max).map(plain), more: hasMorePages(response) || raw.length > max };
 }
 
 /**

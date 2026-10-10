@@ -500,7 +500,9 @@ async function renderNominations(seq) {
   ]);
   if (!current(seq)) return;
   // Only features still in force: an ended one isn't "featured now".
-  const featuredKeys = new Set(featuredRows(featured.records, Date.now()).filter((f) => !f.ended).map((f) => f.trail.trailKey));
+  const featuredRowsNow = featuredRows(featured.records, Date.now());
+  const featuredKeys = new Set(featuredRowsNow.filter((f) => !f.ended).map((f) => f.trail.trailKey));
+  const featuredByKey = new Map(featuredRowsNow.map((f) => [f.trail.trailKey, f]));
   const groups = nominationQueue(groupNominations(nominations.records, actions.records), nominationOrder, trailsActedOn);
   const order = el('select', { 'aria-label': 'Order', onchange: (e) => { nominationOrder = e.target.value; render(); } },
     el('option', { value: 'most', selected: nominationOrder === 'most' }, 'Most nominated first'),
@@ -513,11 +515,15 @@ async function renderNominations(seq) {
         el('div', { class: 'small muted' }, trailLine(g.trail)),
         el('div', { class: 'small muted' }, `${g.newCount} nomination${g.newCount === 1 ? '' : 's'}, latest ${ago(g.latestAt)}`),
         g.disagree ? el('div', { class: 'status error' },
-          `Nominations disagree on the name or place: ${g.names.join(' / ')}. Shown as most describe it; check the map before featuring.`) : null,
+          el('div', {}, 'Nominations disagree on the name or place. Shown as most describe it; check each on the map before featuring:'),
+          el('ul', { class: 'notes' }, g.variants.map((v) => el('li', {},
+            `${v.trail.trailName} (${v.count}) `, mapsAnchor(v.trail))))) : null,
+        el('div', { class: 'small muted' }, `Trail key ${g.trailKey}`),
         g.notes.length ? el('ul', { class: 'notes' }, g.notes.slice(0, 10).map((n) => el('li', {}, `“${n.note}” `, el('span', { class: 'muted small' }, ago(n.at))))) : null,
         mapsAnchor(g.trail),
         el('div', { class: 'actions' },
-          el('button', { class: 'btn primary', onclick: () => confirmFeature(g.trail) }, featuredKeys.has(g.trailKey) ? 'Feature again' : 'Feature'),
+          el('button', { class: 'btn primary', onclick: () => confirmFeature(g.trail, featuredByKey.get(g.trailKey) ?? null) },
+            featuredKeys.has(g.trailKey) ? 'Feature again' : 'Feature'),
           el('button', { class: 'btn', onclick: () => confirmDismissNominations(g) }, 'Dismiss')));
     } catch (error) {
       console.error(error);
@@ -540,8 +546,12 @@ function confirmFeature(trail, current = null) {
       current.until === null ? 'Keep: until I unfeature it' : `Keep: until ${new Date(current.until).toLocaleDateString()}`)
     : null;
   const form = el('form', { method: 'dialog' },
-    el('h2', { class: 'title', id: 'dialog-title' }, `Feature “${trail.trailName}”?`),
+    // A trail featured before keeps the name and place first featured (only
+    // the note and the end change), so the dialog names that one.
+    el('h2', { class: 'title', id: 'dialog-title' }, `Feature “${current?.trail.trailName ?? trail.trailName}”?`),
     el('p', {}, 'It shows under Featured near you for everyone within 10 miles, with your note.'),
+    current ? el('p', { class: 'small muted' },
+      `Keeps the name and place first featured: ${current.trail.trailName}. To change them, unfeature it first.`) : null,
     el('label', {}, 'Your note (shown in the app) ', el('textarea', { name: 'blurb', maxlength: BLURB_LIMIT, required: true }, current?.blurb ?? '')),
     el('label', {}, 'For ', el('select', { name: 'length', 'aria-label': 'For' },
       keep, Object.entries(FEATURE_LENGTHS).map(([value, l]) => el('option', { value, selected: !keep && value === '90d' }, l.label)))),

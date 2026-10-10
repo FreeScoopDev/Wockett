@@ -585,7 +585,15 @@ export function groupNominations(nominations, actions = []) {
   return [...groups.values()].map(({ votes, ...rest }) => {
     // Most nominations first; on a tie, the description that came first.
     const ranked = [...votes.values()].sort((a, b) => b.count - a.count || a.first - b.first);
-    return { ...rest, trail: ranked[0].trail, names: [...new Set(ranked.map((v) => v.trail.trailName))], disagree: ranked.length > 1 };
+    return {
+      ...rest,
+      trail: ranked[0].trail,
+      names: [...new Set(ranked.map((v) => v.trail.trailName))],
+      // Every description given, with how many gave it, so a moved point
+      // shows even when the names agree.
+      variants: ranked.map((v) => ({ trail: v.trail, count: v.count })),
+      disagree: ranked.length > 1,
+    };
   }).map((g) => {
     const action = last.get(g.trailKey) ?? null;
     const fresh = action ? g.nominations.filter((n) => n.created > action.created) : g.nominations;
