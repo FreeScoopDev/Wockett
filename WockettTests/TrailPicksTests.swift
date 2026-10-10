@@ -169,7 +169,7 @@ struct TrailPicksTests {
         #expect(FeaturedTrails.match(row, in: [feature("nc:w1", "N", until: nil)], at: now) != nil)
     }
 
-    @Test("Featured rows keep the list's order and leave the list itself alone")
+    @Test("Featured rows keep the list's order")
     func featuredItems() {
         let a = item("A Trail", [section(1, "A Trail", key: "nc:w1")])
         let b = item("B Trail", [section(2, "B Trail", key: "nc:w2")])
@@ -177,7 +177,30 @@ struct TrailPicksTests {
         let list = [a, b, c]
         let picks = FeaturedTrails.featuredItems(list, in: [feature("nc:w3", "C"), feature("nc:w1", "A")], at: now)
         #expect(picks.map(\.item.id) == [a.id, c.id])
-        #expect(list.count == 3)
+        // That "Trails near you" keeps every row is held by the view, which
+        // lists finder.items as they are; nothing here could show it.
+    }
+
+    @Test("With sections listed separately, a featured trail shows once, at its nearest piece")
+    func featuredOnce() {
+        let rows = (1...3).map { i in TrailListItem(id: "s\(i)", name: "Neuse River Trail",
+                                                    sections: [section(Int64(i), "Neuse River Trail", key: "nc:w1")],
+                                                    distanceMeters: Double(i) * 100) }
+        let picks = FeaturedTrails.featuredItems(rows, in: [feature("nc:w1", "Neuse River Trail")], at: now)
+        #expect(picks.map(\.item.id) == ["s1"])
+    }
+
+    @Test("A one-section row and the grouped row describe the trail the same way")
+    func wholeTrailReference() throws {
+        let a = section(1, "Neuse River Trail", key: "nc:w1", at: 35.70, length: 300)
+        let b = section(2, "Neuse River Trail", key: "nc:w1", at: 35.80, length: 2_000)
+        let whole: (String) -> [TrailFeature] = { $0 == "nc:w1" ? [a, b] : [] }
+        let grouped = try #require(TrailRef(item: item("Neuse River Trail", [a, b]), wholeTrail: whole))
+        let oneSection = try #require(TrailRef(item: item("Neuse River Trail", [a]), wholeTrail: whole))
+        #expect(oneSection == grouped)
+        #expect(oneSection.lengthMeters == 2_300)
+        #expect(TrailRef.canNominate(item("Neuse River Trail", [a])))
+        #expect(!TrailRef.canNominate(item("Footpath", [section(3, nil, key: nil)])))
     }
 
     @Test("A FeaturedTrail record reads with its blurb and end")
@@ -201,8 +224,11 @@ struct TrailPicksTests {
         var list: [FeaturedTrail] = []
         var error: Error?
         var calls = 0
+        var holds = false
+        var gate: CheckedContinuation<Void, Never>?
         func featured() async throws -> [FeaturedTrail] {
             calls += 1
+            if holds { await withCheckedContinuation { gate = $0 } }
             await Task.yield()
             if let error { throw error }
             return list
@@ -240,5 +266,42 @@ struct TrailPicksTests {
         await service.refreshIfStale()
         #expect(fake.calls == 2)
         #expect(service.list == [feature("nc:w1", "A")])
+    }
+
+    /// Yields until `condition` holds, for up to 30 s of wall time.
+    private func waitUntil(_ condition: () -> Bool) async {
+        let end = Date().addingTimeInterval(30)
+        while !condition(), Date() < end { await Task.yield() }
+    }
+
+    @Test("The list waits no longer than the deadline; a slow fetch still lands for next time")
+    func deadline() async {
+        let fake = FakeFeatured()
+        fake.holds = true
+        fake.list = [feature("nc:w1", "A")]
+        var waited: Duration?
+        let service = FeaturedTrailService(store: fake, defaults: defaults(), now: { now }, sleep: { waited = $0 })
+        await service.refreshIfStale()
+        #expect(waited == .seconds(3))
+        #expect(service.list.isEmpty, "this time the list went ahead without it")
+        await waitUntil { fake.gate != nil }
+        fake.gate?.resume()
+        await waitUntil { !service.list.isEmpty }
+        #expect(service.list == fake.list)
+    }
+
+    @Test("After a failed fetch, the next try waits a minute, not half an hour")
+    func retryAfterFailure() async {
+        let fake = FakeFeatured()
+        fake.error = CKError(.networkUnavailable)
+        let clock = Clock(now)
+        let service = FeaturedTrailService(store: fake, defaults: defaults(), now: { clock.now }, sleep: Self.neverFires)
+        await service.refreshIfStale()
+        clock.now = now.addingTimeInterval(59)
+        await service.refreshIfStale()
+        #expect(fake.calls == 1)
+        clock.now = now.addingTimeInterval(60)
+        await service.refreshIfStale()
+        #expect(fake.calls == 2)
     }
 }

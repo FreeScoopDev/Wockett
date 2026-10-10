@@ -126,6 +126,32 @@ private struct WktButtonLabel: View {
     }
 }
 
+/// The answer at the end of a sheet's task ("Thanks. We'll review it."): a
+/// badge, a title, what happens next, and Done. One look in every sheet.
+struct WktResultView: View {
+    let symbol: WktSymbol
+    var tint: Color = .earthGreen
+    let title: String
+    let detail: String
+    let onDone: () -> Void
+
+    var body: some View {
+        VStack(spacing: 16) {
+            WktIconBadge(symbol: symbol, tint: tint, size: 64)
+            Text(title)
+                .font(.wktCardTitle).foregroundColor(.earthCream)
+                .multilineTextAlignment(.center)
+            Text(detail)
+                .font(.wktBodyText).foregroundColor(.earthMuted)
+                .multilineTextAlignment(.center)
+            Spacer()
+            WktPrimaryButton(title: "Done", action: onDone)
+        }
+        .padding(.horizontal, WktSpacing.screen)
+        .padding(.vertical, 24)
+    }
+}
+
 /// A small action inside a row ("Join", "Start"): a 30 pt `earthRaised`
 /// capsule with green text. The tap target reaches 44 pt; the capsule does not.
 struct WktPillButton: View {

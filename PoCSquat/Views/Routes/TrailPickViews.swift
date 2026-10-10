@@ -2,14 +2,22 @@ import SwiftUI
 
 // MARK: - Nominate
 
-/// "Nominate this trail" on a named trail's detail screen.
+/// "Nominate this trail" on a named trail's detail screen. The trail is
+/// worked out on tap, from every piece of it, not on every render.
 struct TrailNominateButton: View {
-    let trail: TrailRef
-    @State private var showing = false
+    let item: TrailListItem
+    var library: TrailPackLibrary = .shared
+    @State private var trail: TrailRef?
 
     var body: some View {
         Button {
-            showing = true
+            let library = library
+            trail = TrailRef(item: item) { key in
+                // The key starts with the region ("nc:w123"), naming the pack it came from.
+                guard let region = key.split(separator: ":").first,
+                      let source = library.source(for: String(region)) else { return [] }
+                return (try? source.trails(key: key)) ?? []
+            }
         } label: {
             Label {
                 Text("Nominate this trail")
@@ -22,7 +30,7 @@ struct TrailNominateButton: View {
         }
         .accessibilityHint("Tell the Wockett team this trail is worth featuring")
         .accessibilityIdentifier("routes.nominateTrail")
-        .sheet(isPresented: $showing) {
+        .sheet(item: $trail) { trail in
             TrailNominationSheet(trail: trail)
         }
     }
@@ -83,6 +91,7 @@ struct TrailNominationSheet: View {
                     .foregroundColor(.earthCream)
                 WktSectionHeader(title: "What makes it great?")
                 TextField("Optional", text: $note, axis: .vertical)
+                    .accessibilityLabel("What makes it great?")
                     .lineLimit(3...6)
                     .font(.wktBodyText)
                     .foregroundColor(.earthCream)
@@ -101,19 +110,8 @@ struct TrailNominationSheet: View {
     }
 
     private func answer(_ symbol: WktSymbol, _ title: String, _ detail: String) -> some View {
-        VStack(spacing: 16) {
-            WktIconBadge(symbol: symbol, tint: symbol == .warning ? .earthOrange : .earthGreen, size: 64)
-            Text(title)
-                .font(.wktCardTitle).foregroundColor(.earthCream)
-                .multilineTextAlignment(.center)
-            Text(detail)
-                .font(.wktBodyText).foregroundColor(.earthMuted)
-                .multilineTextAlignment(.center)
-            Spacer()
-            WktPrimaryButton(title: "Done") { dismiss() }
-        }
-        .padding(.horizontal, WktSpacing.screen)
-        .padding(.vertical, 24)
+        WktResultView(symbol: symbol, tint: symbol == .warning ? .earthOrange : .earthGreen,
+                      title: title, detail: detail) { dismiss() }
     }
 
     private func send() {

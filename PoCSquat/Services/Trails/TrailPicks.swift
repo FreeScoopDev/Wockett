@@ -17,7 +17,8 @@ import OSLog
 // stored: the point is the trail's.
 
 /// Which trail a nomination or a feature is about.
-struct TrailRef: Codable, Equatable {
+struct TrailRef: Codable, Equatable, Identifiable {
+    var id: String { trailKey }
     let trailKey: String
     let trailName: String
     let region: String
@@ -25,15 +26,26 @@ struct TrailRef: Codable, Equatable {
     let longitude: Double
     let lengthMeters: Double
 
-    /// A named trail with a key; nil for unnamed paths and packs without keys.
-    init?(item: TrailListItem) {
-        guard item.hasName,
+    /// Whether `item` can be nominated: a named trail with a key. Cheap: no
+    /// geometry is decoded, so a screen can ask on every render.
+    static func canNominate(_ item: TrailListItem) -> Bool {
+        item.hasName && item.sections.contains { $0.trailKey != nil }
+    }
+
+    /// The whole trail `item` belongs to, however the list showed it: every
+    /// piece with its key (`wholeTrail`), so a row of one section and the
+    /// grouped row describe the trail the same way. Nil for unnamed paths and
+    /// packs without keys.
+    init?(item: TrailListItem, wholeTrail: (String) -> [TrailFeature] = { _ in [] }) {
+        guard Self.canNominate(item),
               let key = item.sections.lazy.compactMap(\.trailKey).first,
-              let region = key.split(separator: ":").first.map(String.init),
-              let longest = item.sections.max(by: { $0.lengthMeters < $1.lengthMeters }),
+              let region = key.split(separator: ":").first.map(String.init) else { return nil }
+        let whole = wholeTrail(key)
+        let sections = whole.isEmpty ? item.sections : whole
+        guard let longest = sections.max(by: { $0.lengthMeters < $1.lengthMeters }),
               let point = longest.coordinates.first else { return nil }
-        self.init(trailKey: key, trailName: item.name, region: region,
-                  latitude: point.latitude, longitude: point.longitude, lengthMeters: item.lengthMeters)
+        self.init(trailKey: key, trailName: item.name, region: region, latitude: point.latitude,
+                  longitude: point.longitude, lengthMeters: sections.reduce(0) { $0 + $1.lengthMeters })
     }
 
     init(trailKey: String, trailName: String, region: String, latitude: Double, longitude: Double, lengthMeters: Double) {
@@ -199,9 +211,26 @@ enum FeaturedTrails {
         return nil
     }
 
-    /// The featured items among `items`, in list order.
+    /// The featured items among `items`, in list order, each feature once:
+    /// with sections listed separately every piece of a featured trail
+    /// matches, and only the first (nearest) is shown. The active list and
+    /// its names are worked out once, not per row, and geometry is decoded
+    /// only for a row whose name a feature shares.
     static func featuredItems(_ items: [TrailListItem], in list: [FeaturedTrail], at now: Date) -> [(item: TrailListItem, feature: FeaturedTrail)] {
-        items.compactMap { item in match(item, in: list, at: now).map { (item, $0) } }
+        let active = list.filter { $0.isActive(at: now) }
+        guard !active.isEmpty else { return [] }
+        let names = Set(active.map { normalized($0.trail.trailName) })
+        let keys = Set(active.map(\.trail.trailKey))
+        var shown = Set<String>()
+        var out: [(item: TrailListItem, feature: FeaturedTrail)] = []
+        for item in items where item.hasName {
+            let hasKey = item.sections.contains { $0.trailKey.map(keys.contains) ?? false }
+            guard hasKey || names.contains(normalized(item.name)),
+                  let feature = match(item, in: active, at: now),
+                  shown.insert(feature.trail.trailKey).inserted else { continue }
+            out.append((item, feature))
+        }
+        return out
     }
 
     private static func normalized(_ name: String) -> String {
