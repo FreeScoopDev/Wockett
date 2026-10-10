@@ -138,13 +138,30 @@ export function connect({ CloudKit, containerIdentifier, apiToken, environment }
 
     fetch: (recordNames) => fetchExisting(db, recordNames),
 
-    /** Creates one record with `fields` (plain values). */
-    /** Creates one record named `recordName`; fails if it exists. */
+    /**
+     * Creates one record named `recordName`. With no change tag, CloudKit
+     * treats the save as a create (unverified against a live container).
+     */
     async createNamed(recordType, recordName, fields) {
       const response = check(await db.saveRecords([{ recordType, recordName, fields: ckFields(fields) }]));
       return plain(response.records[0]);
     },
 
+    /**
+     * Replaces `recordName` in one step: CloudKit's forceReplace ignores the
+     * change tag and keeps none of the old record's fields that aren't sent.
+     * Atomic, so the record is never briefly missing. (The batch API's name
+     * is from Apple's docs; unverified against a live container. If it
+     * fails, the old record is untouched.)
+     */
+    async replaceNamed(recordType, recordName, fields) {
+      const response = check(await db.newRecordsBatch()
+        .forceReplace({ recordType, recordName, fields: ckFields(fields) })
+        .commit());
+      return plain(response.records[0]);
+    },
+
+    /** Creates one record with `fields` (plain values). */
     async create(recordType, fields) {
       const response = check(await db.saveRecords([{ recordType, fields: ckFields(fields) }]));
       return plain(response.records[0]);

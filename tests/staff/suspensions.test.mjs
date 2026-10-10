@@ -7,16 +7,20 @@ import {
   canSuspend,
 } from '../../docs/staff/logic.js';
 import { suspendAccount, liftSuspension, itemsOf } from '../../docs/staff/actions.js';
-import { plain, ckFields } from '../../docs/staff/ck.js';
+import { plain, ckFields, connect } from '../../docs/staff/ck.js';
 
 const NOW = 1_800_000_000_000;
 
 /** A store that records calls in order. `items` answers authorName queries by record type. */
-function fakeStore({ items = {}, failCreateNamed = 0, failDeletes = 0, existing = null, failDeleteOf = null } = {}) {
+function fakeStore({ items = {}, failCreateNamed = 0, failDeletes = 0, existing = null, failDeleteOf = null, failReplace = false } = {}) {
   const calls = [];
   let deletesToFail = failDeletes;
   let namedToFail = failCreateNamed;
   return {
+    async replaceNamed(recordType, recordName, fields) {
+      calls.push(['replaceNamed', recordType, recordName, fields]);
+      if (failReplace) throw { ckErrorCode: 'NETWORK_ERROR' };
+    },
     calls,
     async create(recordType, fields) { calls.push(['create', recordType, fields]); return { recordName: `act${calls.length}`, recordType, created: 1, fields }; },
     async fetch(names) {
@@ -148,23 +152,39 @@ test('the creator is kept for community items, never for reports or actions', ()
   assert.equal(plain(raw('Suspension')).creator, undefined);
 });
 
-test('going permanent replaces the record, so no old end date survives', async () => {
+test('going permanent replaces the record in one step, so no old end date survives', async () => {
   const existing = { recordName: 'suspension._bad', recordType: 'Suspension', created: 1, fields: { accountRecordName: '_bad', until: NOW + DAY } };
   const store = fakeStore({ existing });
   await suspendAccount(store, { account: '_bad', length: 'permanent', reason: 'spam', now: NOW });
-  assert.deepEqual(store.calls.map((c) => c[0]), ['create', 'fetch', 'delete', 'createNamed']);
-  assert.deepEqual(store.calls[2][1], ['suspension._bad']);
-  assert.deepEqual(store.calls[3][3], { accountRecordName: '_bad' }, 'no until: permanent');
+  assert.deepEqual(store.calls.map((c) => c[0]), ['create', 'fetch', 'replaceNamed']);
+  assert.deepEqual(store.calls[2].slice(1), ['Suspension', 'suspension._bad', { accountRecordName: '_bad' }], 'no until: permanent');
 });
 
-test('if the new suspension can\'t be made, the old one is put back and the action taken back', async () => {
+test('a failed replace leaves the old suspension standing and takes the action back', async () => {
   const existing = { recordName: 'suspension._bad', recordType: 'Suspension', created: 1, fields: { accountRecordName: '_bad', until: NOW + DAY } };
-  const store = fakeStore({ existing, failCreateNamed: 1 });
-  await assert.rejects(suspendAccount(store, { account: '_bad', length: '30d', reason: 'spam', now: NOW }));
-  const named = store.calls.filter((c) => c[0] === 'createNamed');
-  assert.equal(named.length, 2);
-  assert.deepEqual(named[1][3], { accountRecordName: '_bad', until: { value: NOW + DAY, type: 'TIMESTAMP' } }, 'the old end restored');
-  assert.deepEqual(store.calls.at(-1), ['delete', ['act1']]);
+  const store = fakeStore({ existing, failReplace: true });
+  await assert.rejects(suspendAccount(store, { account: '_bad', length: '30d', reason: 'spam', now: NOW }), { ckErrorCode: 'NETWORK_ERROR' });
+  assert.deepEqual(store.calls.map((c) => c[0]), ['create', 'fetch', 'replaceNamed', 'delete']);
+  assert.deepEqual(store.calls[3][1], ['act1'], 'only the action is deleted, never the suspension');
+});
+
+test('the adapter replaces with CloudKit\'s forceReplace, typed fields and all', async () => {
+  const ops = [];
+  const db = {
+    newRecordsBatch() {
+      const batch = {
+        forceReplace(record) { ops.push(['forceReplace', record]); return batch; },
+        async commit() { ops.push(['commit']); return { records: [{ ...ops[0][1], created: { timestamp: 1 } }] }; },
+      };
+      return batch;
+    },
+  };
+  const CloudKit = { configure() {}, getDefaultContainer() { return { publicCloudDatabase: db }; } };
+  const store = connect({ CloudKit, containerIdentifier: 'c', apiToken: 't', environment: 'development' });
+  await store.replaceNamed('Suspension', 'suspension._a', { accountRecordName: '_a', until: { value: 5, type: 'TIMESTAMP' } });
+  assert.deepEqual(ops.map((o) => o[0]), ['forceReplace', 'commit']);
+  assert.deepEqual(ops[0][1], { recordType: 'Suspension', recordName: 'suspension._a',
+    fields: { accountRecordName: { value: '_a' }, until: { value: 5, type: 'TIMESTAMP' } } });
 });
 
 test('your own account, or CloudKit\'s own-records placeholder, can\'t be suspended', async () => {

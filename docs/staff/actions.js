@@ -57,25 +57,17 @@ export async function dismissItem(store, { target, type, note = '', reportCount 
 export const OWNED_TYPES = ['post', 'route', 'challenge'];
 
 /**
- * Puts a fresh Suspension record in place. An existing one is deleted and
- * re-created rather than saved over, so no field of the old one (an end date
- * when going permanent) can survive. If the new one can't be created, the
- * old one is put back, then the error thrown.
+ * Puts the Suspension record in place. An existing one is replaced in one
+ * step (forceReplace), so no field of the old one (an end date when going
+ * permanent) survives, and the account is never briefly unsuspended; if the
+ * replace fails, the old one stands as it was. A new one is created.
  */
 export async function replaceSuspension(store, account, until) {
   const recordName = suspensionRecordName(account);
-  const old = (await store.fetch([recordName])).get(recordName) ?? null;
-  if (old) await store.delete([recordName]);
-  try {
-    await store.createNamed('Suspension', recordName, suspensionFields(account, until));
-  } catch (error) {
-    if (old) {
-      try {
-        await store.createNamed('Suspension', recordName, suspensionFields(account, old.fields.until ?? null));
-      } catch { /* the error below is what matters */ }
-    }
-    throw error;
-  }
+  const fields = suspensionFields(account, until);
+  const exists = (await store.fetch([recordName])).has(recordName);
+  if (exists) await store.replaceNamed('Suspension', recordName, fields);
+  else await store.createNamed('Suspension', recordName, fields);
 }
 
 /**
