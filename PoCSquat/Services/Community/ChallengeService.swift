@@ -244,8 +244,6 @@ final class ChallengeService {
         return v
     }
 
-    var username: String { CommunityRouteService.shared.username }
-
     // MARK: - Fetch
 
     func fetchActiveChallenges() async throws -> [WalkChallenge] {
@@ -295,7 +293,7 @@ final class ChallengeService {
         record["goalType"]   = goalType.rawValue
         record["startDate"]  = start
         record["endDate"]    = end
-        record["authorName"] = username
+        record["authorName"] = try await CommunityNameService.shared.claimedName()
         if let filter = activityFilter { record["activityFilter"] = filter }
         switch goalType {
         case .steps:
@@ -326,7 +324,7 @@ final class ChallengeService {
         } else {
             let record                    = CKRecord(recordType: entryType)
             record["challengeRecordName"] = key
-            record["displayName"]         = username
+            record["displayName"]         = try await CommunityNameService.shared.claimedName()
             record["steps"]               = steps
             record["deviceID"]            = deviceID
             let saved = try await db.save(record)

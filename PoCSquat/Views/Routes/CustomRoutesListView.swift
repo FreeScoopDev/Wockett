@@ -284,8 +284,10 @@ struct CustomRouteDetailView: View {
                                 Text("Share to Community")
                                     .font(.wktSection).foregroundColor(.earthCream)
                                     .accessibilityAddTraits(.isHeader)
-                                Text("Posting as \(CommunityRouteService.shared.username)")
+                                Text("Posting as \(CommunityNameService.shared.displayName)")
                                     .font(.wktLabel).foregroundColor(.earthMuted)
+                                    // The name a share would really go out under, checked without claiming.
+                                    .task { await CommunityNameService.shared.refreshDisplayName() }
                             }
                             Button {
                                 guard shareState == .idle else { return }

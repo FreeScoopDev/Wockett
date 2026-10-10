@@ -50,8 +50,6 @@ final class AchievementFeedService {
 
     init() {}
 
-    var username: String { CommunityRouteService.shared.username }
-
     // MARK: - Like tracking (local device)
 
     /// Every post this device marked as liked.
@@ -104,7 +102,7 @@ final class AchievementFeedService {
         let record = CKRecord(recordType: recordType)
         record["badgeName"]  = badgeName
         record["badgeEmoji"] = badgeEmoji
-        record["authorName"] = username
+        record["authorName"] = try await CommunityNameService.shared.claimedName()
         record["message"]    = message.trimmingCharacters(in: .whitespacesAndNewlines)
         record["likes"]      = 0
         _ = try await db.save(record)
