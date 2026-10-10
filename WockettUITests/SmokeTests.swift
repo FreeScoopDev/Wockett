@@ -309,7 +309,10 @@ final class SmokeTests: XCTestCase {
         firstCard.tap()
 
         XCTAssertTrue(el("routes.trailDetail").waitForExistence(timeout: 10))
-        XCTAssertTrue(app.buttons["routes.trailDirections"].exists)
+        // Waited for, like every other step: the detail's directions section
+        // can land a moment after the detail itself, and a bare `exists`
+        // failed on CI with no change to the screen (main 0ce9854, 2026-10-10).
+        XCTAssertTrue(app.buttons["routes.trailDirections"].waitForExistence(timeout: 10))
         app.buttons["routes.trailBack"].tap()
         XCTAssertTrue(firstCard.waitForExistence(timeout: 10))
     }
