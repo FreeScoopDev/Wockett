@@ -216,17 +216,25 @@ final class CloudKitCommunityReportStore: CommunityReportStore {
 @MainActor
 enum CommunityReportSubmission {
     /// How long the sheet waits before offering the email instead. A save
-    /// that lands after this still counts; the dashboard shows both.
+    /// already sent when this passes may still land; the dashboard then
+    /// shows the report and the email both. One not yet started is dropped.
     static let deadline: Duration = .seconds(15)
 
+    /// `knownReporter` is the ID saved earlier (`MyAccount`), used when the
+    /// lookup fails, so a slow or failed lookup doesn't skip the
+    /// one-report-per-person rule.
     static func submit(_ report: CommunityReport,
                        store: CommunityReportStore,
+                       knownReporter: @escaping () -> String? = { MyAccount.recordName },
                        deadline: Duration = deadline,
                        sleep: @escaping OptimisticVote.Sleep = { try await Task.sleep(for: $0) }) async -> CommunityReports.Outcome {
         do {
             let saved: Bool? = try await OptimisticVote.withDeadline(deadline, sleep: sleep) {
                 // Unknown reporter: still try, and CloudKit says why it can't.
-                let reporter = try? await store.currentUserRecordName()
+                let reporter = (try? await store.currentUserRecordName()) ?? knownReporter()
+                // Past the deadline the sheet has offered the email: don't
+                // also start a save that would land as a second report.
+                try Task.checkCancellation()
                 try await store.save(CommunityReports.record(for: report, reporter: reporter))
                 return true
             }
@@ -286,34 +294,54 @@ struct CommunityReportFlow: Equatable {
 
 // MARK: - Hiding
 
+/// Hiding a reported item happens in two steps, so it survives the app being
+/// killed while the reporter is in Mail: remembered as soon as a send was
+/// tried (`stepped`), removed from the screen once the sheet has closed
+/// (`closed`), because removing it sooner takes the sheet's card with it.
 enum CommunityReportHandoff {
-    /// Hides `report`'s item: remembered, so it stays hidden after a relaunch,
-    /// then removed from the screen.
-    static func hide(_ report: CommunityReport, store: CommunityModerationStore = .shared,
-                     onHide: (CommunityReport) -> Void) {
-        store.report(report.recordID)
-        onHide(report)
+    /// The sheet moved on. Once closing it would hide the item, remember the
+    /// item as reported, so a relaunch keeps it hidden.
+    static func stepped(_ report: CommunityReport, hides: Bool, store: CommunityModerationStore = .shared) {
+        if hides { store.report(report.recordID) }
+    }
+
+    /// The sheet closed: remove the item from the screen if a send was tried,
+    /// once. `closing` is what the sheet last said; cleared here.
+    static func closed(_ closing: inout (report: CommunityReport, hide: Bool)?,
+                       onHide: (CommunityReport) -> Void) {
+        guard let last = closing else { return }
+        closing = nil
+        if last.hide { onHide(last.report) }
     }
 }
 
 // MARK: - Views
 
-/// The Report item in a community context menu: one look everywhere.
+/// The Report item in a community context menu: one look everywhere, and
+/// nothing at all on your own content (reporting it would only hide it from
+/// you for good, and put it in the moderation queue).
 struct CommunityReportButton: View {
     let title: String
+    let author: CommunityAuthor
+    var store: CommunityModerationStore = .shared
     let action: () -> Void
 
-    init(_ title: String, action: @escaping () -> Void) {
+    init(_ title: String, author: CommunityAuthor, store: CommunityModerationStore = .shared,
+         action: @escaping () -> Void) {
         self.title = title
+        self.author = author
+        self.store = store
         self.action = action
     }
 
     var body: some View {
-        Button(role: .destructive, action: action) {
-            Label {
-                Text(title)
-            } icon: {
-                Image(wkt: .flagReport).wktIcon(.inline, tint: .red)
+        if store.canReport(author) {
+            Button(role: .destructive, action: action) {
+                Label {
+                    Text(title)
+                } icon: {
+                    Image(wkt: .flagReport).wktIcon(.inline, tint: .red)
+                }
             }
         }
     }
@@ -363,11 +391,12 @@ private struct CommunityReportModifier: ViewModifier {
     func body(content: Content) -> some View {
         content
             .sheet(item: $request, onDismiss: {
-                guard let closing else { return }
-                self.closing = nil
-                if closing.hide { CommunityReportHandoff.hide(closing.report, onHide: onHide) }
+                CommunityReportHandoff.closed(&closing, onHide: onHide)
             }, content: { report in
-                CommunityReportSheet(report: report) { sent, hide in closing = (sent, hide) }
+                CommunityReportSheet(report: report) { sent, hide in
+                    closing = (sent, hide)
+                    CommunityReportHandoff.stepped(sent, hides: hide)
+                }
             })
     }
 }

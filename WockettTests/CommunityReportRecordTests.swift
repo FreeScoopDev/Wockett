@@ -22,9 +22,18 @@ struct CommunityReportRecordTests {
         var user: Result<String, Error> = .success("_reporter1")
         var saveError: Error?
         var hangs = false
+        /// The lookup takes a moment (and ignores cancellation, like CloudKit).
+        var userDelay = false
         var saved: [CKRecord] = []
 
-        func currentUserRecordName() async throws -> String { try user.get() }
+        func currentUserRecordName() async throws -> String {
+            if userDelay {
+                await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { c.resume() }
+                }
+            }
+            return try user.get()
+        }
 
         func save(_ record: CKRecord) async throws {
             if hangs { try await Task.sleep(for: .seconds(600)) }
@@ -54,6 +63,20 @@ struct CommunityReportRecordTests {
         (CommunityReport.Kind.route, "route"), (.post, "post"), (.challenge, "challenge")])
     func targetTypes(kind: CommunityReport.Kind, expected: String) {
         #expect(CommunityReports.record(for: report(kind), reporter: nil)["targetType"] as? String == expected)
+    }
+
+    @Test("The record holds the reason chosen", arguments: CommunityReportReason.allCases)
+    func recordReason(reason: CommunityReportReason) {
+        var r = report()
+        r.reason = reason
+        #expect(CommunityReports.record(for: r, reporter: nil)["reason"] as? String == reason.rawValue)
+    }
+
+    @Test("A report with no reason is filed as other")
+    func noReasonIsOther() {
+        var r = report()
+        r.reason = nil
+        #expect(CommunityReports.record(for: r, reporter: nil)["reason"] as? String == "other")
     }
 
     @Test("Reason raw values are the ones the dashboard knows")
@@ -138,8 +161,17 @@ struct CommunityReportRecordTests {
     func submitWithoutReporter() async throws {
         let store = FakeStore()
         store.user = .failure(CKError(.networkFailure))
-        #expect(await CommunityReportSubmission.submit(report(), store: store) == .sent)
+        #expect(await CommunityReportSubmission.submit(report(), store: store, knownReporter: { nil }) == .sent)
         #expect(store.saved.count == 1)
+    }
+
+    @Test("When the lookup fails, the saved ID keeps one report per person")
+    func submitUsesKnownReporter() async throws {
+        let store = FakeStore()
+        store.user = .failure(CKError(.networkFailure))
+        #expect(await CommunityReportSubmission.submit(report(), store: store, knownReporter: { "_saved" }) == .sent)
+        let saved = try #require(store.saved.first)
+        #expect(saved.recordID.recordName == CommunityReports.recordName(target: "post-9", reporter: "_saved"))
     }
 
     @Test("A save that doesn't answer by the deadline is failed")
@@ -151,6 +183,25 @@ struct CommunityReportRecordTests {
         #expect(outcome == .failed)
     }
 
+    @Test("By default the sheet waits 15 seconds before offering the email")
+    func defaultDeadline() async {
+        let store = FakeStore()
+        store.hangs = true
+        var waited: Duration?
+        _ = await CommunityReportSubmission.submit(report(), store: store, sleep: { waited = $0 })
+        #expect(waited == .seconds(15))
+    }
+
+    @Test("Past the deadline, a save not yet started is dropped")
+    func noSaveAfterDeadline() async {
+        let store = FakeStore()
+        store.userDelay = true
+        let outcome = await CommunityReportSubmission.submit(report(), store: store, sleep: { _ in })
+        #expect(outcome == .failed)
+        try? await Task.sleep(for: .milliseconds(300))
+        #expect(store.saved.isEmpty, "the email was offered; a late record would be a second report")
+    }
+
     // MARK: Flow
 
     @Test("Cancelling before Send hides nothing")
@@ -160,16 +211,20 @@ struct CommunityReportRecordTests {
         #expect(flow.canClose)
     }
 
-    @Test("Mid-send the sheet can't close; any answer then hides the item", arguments: [
-        CommunityReports.Outcome.sent, .alreadyReported, .failed])
-    func sendThenHide(outcome: CommunityReports.Outcome) {
+    @Test("Mid-send the sheet can't close; each answer shows its own screen and hides the item", arguments: [
+        (CommunityReports.Outcome.sent, CommunityReportFlow.Phase.sent),
+        (.alreadyReported, .alreadyReported), (.failed, .failed)])
+    func sendThenHide(outcome: CommunityReports.Outcome, expected: CommunityReportFlow.Phase) {
         var flow = CommunityReportFlow()
         flow.send()
         #expect(!flow.canClose)
         #expect(!flow.hidesOnClose)
         flow.finished(outcome)
+        #expect(flow.phase == expected)
         #expect(flow.canClose)
         #expect(flow.hidesOnClose)
+        flow.send()
+        #expect(flow.phase == expected, "Send again does nothing once answered")
     }
 
     @Test("A failed save offers the email; with no mail app, the address and Copy Report")
@@ -186,6 +241,7 @@ struct CommunityReportRecordTests {
         taken.finished(.failed)
         taken.mailOpened(true)
         #expect(taken.phase == .emailed)
+        #expect(taken.hidesOnClose)
     }
 
     @Test("A sent report never turns into an email")
@@ -202,7 +258,9 @@ struct CommunityReportRecordTests {
 
     @Test("The fallback email carries the reason and the note")
     func emailHasReason() {
-        let body = report().body
+        var r = report()
+        r.note = "  Rude \n"
+        let body = r.body
         #expect(body.contains("Reason: Offensive"))
         #expect(body.hasSuffix("Why I'm reporting it (optional):\nRude"))
     }
