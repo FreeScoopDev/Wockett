@@ -196,7 +196,7 @@ private struct AchievementPostCard: View {
         .wktCard()
         .contextMenu {
             if let onHide {
-                CommunityReportButton("Report Post") { report = CommunityReport(post: post) }
+                CommunityReportButton("Report Post", author: post.author) { report = CommunityReport(post: post) }
                 CommunityBlockButton(author: post.author, onHide: onHide)
             }
         }

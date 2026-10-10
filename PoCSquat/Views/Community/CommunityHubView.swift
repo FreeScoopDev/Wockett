@@ -182,7 +182,7 @@ struct CommunityHubView: View {
                         }
                         .contentShape(Rectangle())
                         .contextMenu {
-                            CommunityReportButton("Report Challenge") { hubReport = CommunityReport(challenge: challenge) }
+                            CommunityReportButton("Report Challenge", author: challenge.author) { hubReport = CommunityReport(challenge: challenge) }
                         }
                     }
                 } else if model.didLoad {
@@ -422,7 +422,7 @@ struct CommunityHubView: View {
         }
         .padding(.vertical, 8)
         .contentShape(Rectangle())
-        .contextMenu { CommunityReportButton("Report Post") { hubReport = CommunityReport(post: post) } }
+        .contextMenu { CommunityReportButton("Report Post", author: post.author) { hubReport = CommunityReport(post: post) } }
     }
 
     // MARK: - Community routes
@@ -494,7 +494,7 @@ struct CommunityHubView: View {
         .buttonStyle(BounceButtonStyle(scale: 0.97))
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(route.name), number \(rank), \(route.wocketts) wocketts, \(detail)")
-        .contextMenu { CommunityReportButton("Report Route") { hubReport = CommunityReport(route: route) } }
+        .contextMenu { CommunityReportButton("Report Route", author: route.author) { hubReport = CommunityReport(route: route) } }
     }
 
     // MARK: - Trails
