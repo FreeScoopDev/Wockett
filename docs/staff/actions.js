@@ -154,17 +154,29 @@ export async function liftSuspension(store, { account, note = '' }) {
  * step if the trail is already featured. If that fails, the action is taken
  * back.
  */
-export async function featureTrail(store, { trail, blurb, length, now = Date.now() }) {
-  const until = featureUntil(length, now);
-  const fields = featuredFields(trail, blurb, until);
+export async function featureTrail(store, { trail, blurb, length, keepUntil, now = Date.now() }) {
+  // `keepUntil` (a time, or null for no end) keeps the current end when only the note changes.
+  const until = keepUntil !== undefined ? keepUntil : featureUntil(length, now);
   const recordName = featuredRecordName(trail.trailKey);
+  const existing = (await store.fetch([recordName])).get(recordName) ?? null;
+  // Featuring again keeps the trail as first featured: the name and point the
+  // app matches by stay the ones Joe checked, whatever later nominations say.
+  // Only the note and the end change.
+  const shown = existing ? {
+    trailKey: trail.trailKey,
+    trailName: existing.fields.trailName ?? trail.trailName,
+    region: existing.fields.region ?? trail.region,
+    latitude: existing.fields.latitude ?? trail.latitude,
+    longitude: existing.fields.longitude ?? trail.longitude,
+    lengthMeters: existing.fields.lengthMeters ?? trail.lengthMeters,
+  } : trail;
+  const fields = featuredFields(shown, blurb, until);
   const written = await store.create('ModerationAction', actionFields({
     target: trail.trailKey, type: 'trail', action: 'featured', note: fields.blurb,
-    snapshot: JSON.stringify({ trail, blurb: fields.blurb, length, until }),
+    snapshot: JSON.stringify({ trail: shown, blurb: fields.blurb, length: keepUntil !== undefined ? 'kept' : length, until }),
   }));
   try {
-    const exists = (await store.fetch([recordName])).has(recordName);
-    if (exists) await store.replaceNamed('FeaturedTrail', recordName, fields);
+    if (existing) await store.replaceNamed('FeaturedTrail', recordName, fields);
     else await store.createNamed('FeaturedTrail', recordName, fields);
   } catch (error) {
     try { await store.delete([written.recordName]); } catch { /* the error below is what matters */ }

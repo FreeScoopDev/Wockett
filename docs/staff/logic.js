@@ -62,7 +62,9 @@ export function groupReports(reports, actions = []) {
   const lastAction = new Map();
   for (const a of actions) {
     const t = a.fields.targetRecordName;
-    if (!t) continue;
+    // Only actions on community items close reports: a trail or account
+    // action under the same name must not (a nominator picks the trail key).
+    if (!t || NON_ITEM_TARGETS.includes(a.fields.targetType)) continue;
     const prev = lastAction.get(t);
     if (!prev || a.created > prev.created) lastAction.set(t, a);
   }
@@ -139,6 +141,9 @@ export function reopenFailedRemovals(groups, live) {
     ? { ...g, open: true, removalFailed: true }
     : g));
 }
+
+/** Action targets that aren't community items, so never close reports. */
+export const NON_ITEM_TARGETS = ['trail', 'account'];
 
 /**
  * Open groups, newest report first, or most reported first (ties: newest).
@@ -520,12 +525,12 @@ export function suspensionRows(suspensions, actions, now) {
 
 // MARK: - Trail nominations and featured trails
 
-/** The latest action per target, by `targetRecordName`. */
+/** The latest trail action per trail key. Only `targetType` "trail" counts. */
 function latestActions(actions) {
   const last = new Map();
   for (const a of actions) {
     const t = a.fields.targetRecordName;
-    if (!t) continue;
+    if (!t || a.fields.targetType !== 'trail') continue;
     const prev = last.get(t);
     if (!prev || a.created > prev.created) last.set(t, a);
   }
@@ -533,30 +538,55 @@ function latestActions(actions) {
 }
 
 /**
- * Nominations grouped by trail (`trailKey`), with the trail as the newest
- * nomination describes it. A trail is open while it has a nomination newer
- * than its latest action; count, notes and order use only those.
+ * A trail key as the pack builder makes it: a two-letter region, a colon,
+ * then the source ref. Nominations are written by any iCloud user, so
+ * anything else is ignored.
+ */
+export function isTrailKey(key) {
+  return typeof key === 'string' && /^[a-z]{2}:[A-Za-z0-9/_.:-]{1,80}$/.test(key);
+}
+
+/** A nomination's trail, or null when its key, name or point isn't usable. */
+function trailOf(n) {
+  const f = n.fields;
+  if (!isTrailKey(f.trailKey) || typeof f.trailName !== 'string' || !f.trailName.trim()) return null;
+  if (!mapsLink(f.latitude, f.longitude, f.trailName)) return null;
+  return { trailKey: f.trailKey, trailName: f.trailName.trim(), region: f.trailKey.slice(0, 2),
+           latitude: f.latitude, longitude: f.longitude, lengthMeters: Number.isFinite(f.lengthMeters) ? f.lengthMeters : 0 };
+}
+
+/**
+ * Nominations grouped by trail (`trailKey`). The trail is described as most
+ * nominations describe it (name, and point to ~100 m), not by the newest:
+ * one crafted nomination can't rename or move it. `names` lists every name
+ * used, and `disagree` says they differ. A trail is open while it has a
+ * nomination newer than its latest trail action; count, notes and order use
+ * only those.
  */
 export function groupNominations(nominations, actions = []) {
   const last = latestActions(actions);
   const groups = new Map();
   for (const n of nominations) {
-    const key = n.fields.trailKey;
-    if (!key) continue;
-    let g = groups.get(key);
+    const trail = trailOf(n);
+    if (!trail) continue;
+    let g = groups.get(trail.trailKey);
     if (!g) {
-      g = { trailKey: key, nominations: [], latestAt: n.created, trail: null };
-      groups.set(key, g);
+      g = { trailKey: trail.trailKey, nominations: [], latestAt: n.created, votes: new Map() };
+      groups.set(trail.trailKey, g);
     }
     g.nominations.push(n);
-    if (!g.trail || n.created >= g.latestAt) {
-      g.latestAt = Math.max(g.latestAt, n.created);
-      const f = n.fields;
-      g.trail = { trailKey: key, trailName: f.trailName ?? key, region: f.region ?? '', latitude: f.latitude,
-                  longitude: f.longitude, lengthMeters: f.lengthMeters ?? 0 };
-    }
+    g.latestAt = Math.max(g.latestAt, n.created);
+    const id = `${trail.trailName.toLowerCase()}|${trail.latitude.toFixed(3)}|${trail.longitude.toFixed(3)}`;
+    const v = g.votes.get(id) ?? { trail, count: 0, first: n.created };
+    v.count += 1;
+    v.first = Math.min(v.first, n.created);
+    g.votes.set(id, v);
   }
-  return [...groups.values()].map((g) => {
+  return [...groups.values()].map(({ votes, ...rest }) => {
+    // Most nominations first; on a tie, the description that came first.
+    const ranked = [...votes.values()].sort((a, b) => b.count - a.count || a.first - b.first);
+    return { ...rest, trail: ranked[0].trail, names: [...new Set(ranked.map((v) => v.trail.trailName))], disagree: ranked.length > 1 };
+  }).map((g) => {
     const action = last.get(g.trailKey) ?? null;
     const fresh = action ? g.nominations.filter((n) => n.created > action.created) : g.nominations;
     const notes = fresh
@@ -600,6 +630,10 @@ export function featuredRecordName(trailKey) {
 export function featuredFields(trail, blurb, until) {
   const text = String(blurb ?? '').trim().slice(0, BLURB_LIMIT);
   if (!text) throw new Error('A featured trail needs a note.');
+  if (!isTrailKey(trail?.trailKey) || !String(trail.trailName ?? '').trim()
+      || !mapsLink(trail.latitude, trail.longitude, trail.trailName)) {
+    throw new Error('This trail has no usable name or location, so phones couldn\'t show it.');
+  }
   const fields = {
     trailKey: trail.trailKey,
     trailName: trail.trailName,

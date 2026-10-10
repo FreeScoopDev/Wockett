@@ -499,7 +499,8 @@ async function renderNominations(seq) {
     store.query('FeaturedTrail', { max: 1000 }),
   ]);
   if (!current(seq)) return;
-  const featuredKeys = new Set(featured.records.map((r) => r.fields.trailKey));
+  // Only features still in force: an ended one isn't "featured now".
+  const featuredKeys = new Set(featuredRows(featured.records, Date.now()).filter((f) => !f.ended).map((f) => f.trail.trailKey));
   const groups = nominationQueue(groupNominations(nominations.records, actions.records), nominationOrder, trailsActedOn);
   const order = el('select', { 'aria-label': 'Order', onchange: (e) => { nominationOrder = e.target.value; render(); } },
     el('option', { value: 'most', selected: nominationOrder === 'most' }, 'Most nominated first'),
@@ -511,6 +512,8 @@ async function renderNominations(seq) {
         el('div', { class: 'title' }, g.trail.trailName),
         el('div', { class: 'small muted' }, trailLine(g.trail)),
         el('div', { class: 'small muted' }, `${g.newCount} nomination${g.newCount === 1 ? '' : 's'}, latest ${ago(g.latestAt)}`),
+        g.disagree ? el('div', { class: 'status error' },
+          `Nominations disagree on the name or place: ${g.names.join(' / ')}. Shown as most describe it; check the map before featuring.`) : null,
         g.notes.length ? el('ul', { class: 'notes' }, g.notes.slice(0, 10).map((n) => el('li', {}, `“${n.note}” `, el('span', { class: 'muted small' }, ago(n.at))))) : null,
         mapsAnchor(g.trail),
         el('div', { class: 'actions' },
@@ -526,16 +529,22 @@ async function renderNominations(seq) {
     el('div', { class: 'grow title' }, groups.length ? `${groups.length} trail${groups.length === 1 ? '' : 's'} nominated` : 'No open nominations'),
     order, el('button', { class: 'btn', onclick: render }, 'Refresh')),
   ...cards,
-  groups.length ? null : el('p', { class: 'muted' }, 'When someone taps Nominate this trail in the app, it shows up here.'));
+  groups.length ? null : el('p', { class: 'muted' }, 'When someone taps Nominate this trail in the app, it shows up here.'),
+  nominations.more ? el('p', { class: 'muted small' }, 'Showing the newest 2,000 nominations.') : null);
 }
 
-function confirmFeature(trail) {
+/** `current`: the feature being changed, so its note and end start filled in. */
+function confirmFeature(trail, current = null) {
+  const keep = current && !current.ended
+    ? el('option', { value: 'keep', selected: true },
+      current.until === null ? 'Keep: until I unfeature it' : `Keep: until ${new Date(current.until).toLocaleDateString()}`)
+    : null;
   const form = el('form', { method: 'dialog' },
     el('h2', { class: 'title', id: 'dialog-title' }, `Feature “${trail.trailName}”?`),
     el('p', {}, 'It shows under Featured near you for everyone within 10 miles, with your note.'),
-    el('label', {}, 'Your note (shown in the app) ', el('textarea', { name: 'blurb', maxlength: BLURB_LIMIT, required: true })),
+    el('label', {}, 'Your note (shown in the app) ', el('textarea', { name: 'blurb', maxlength: BLURB_LIMIT, required: true }, current?.blurb ?? '')),
     el('label', {}, 'For ', el('select', { name: 'length', 'aria-label': 'For' },
-      Object.entries(FEATURE_LENGTHS).map(([value, l]) => el('option', { value, selected: value === '90d' }, l.label)))),
+      keep, Object.entries(FEATURE_LENGTHS).map(([value, l]) => el('option', { value, selected: !keep && value === '90d' }, l.label)))),
     el('div', { class: 'actions' },
       el('button', { class: 'btn', value: 'cancel', formnovalidate: true }, 'Cancel'),
       el('button', { class: 'btn primary', value: 'feature' }, 'Feature')));
@@ -544,7 +553,10 @@ function confirmFeature(trail) {
     event.preventDefault();
     for (const b of form.querySelectorAll('button')) b.disabled = true;
     try {
-      const out = await featureTrail(store, { trail, blurb: form.elements.blurb.value, length: form.elements.length.value });
+      const length = form.elements.length.value;
+      const out = await featureTrail(store, length === 'keep'
+        ? { trail, blurb: form.elements.blurb.value, keepUntil: current.until }
+        : { trail, blurb: form.elements.blurb.value, length });
       trailsActedOn.set(trail.trailKey, Date.now());
       dialog.close();
       say(`Featured “${trail.trailName}” ${out.until === null ? 'until you unfeature it' : `until ${new Date(out.until).toLocaleDateString()}`}.`);
@@ -588,8 +600,12 @@ function confirmDismissNominations(group) {
 async function renderFeatured(seq) {
   show(el('p', { class: 'muted' }, 'Loading featured trails…'));
   const { records } = await store.query('FeaturedTrail', { max: 1000 });
+  const now = Date.now();
   if (!current(seq)) return;
-  const rows = featuredRows(records, Date.now()).map((f) => el('article', { class: `card${f.ended ? ' gone' : ''}` },
+  // Unfeatured this session: kept out while CloudKit's index catches up.
+  const shownRows = featuredRows(records, now).filter((f) => !(trailsActedOn.has(`unfeatured:${f.trail.trailKey}`)
+    && f.created <= trailsActedOn.get(`unfeatured:${f.trail.trailKey}`)));
+  const rows = shownRows.map((f) => el('article', { class: `card${f.ended ? ' gone' : ''}` },
     el('div', {}, el('span', { class: 'chip' }, f.ended ? 'Ended' : 'Featured')),
     el('div', { class: 'title' }, f.trail.trailName),
     el('div', { class: 'small muted' }, trailLine(f.trail)),
@@ -598,7 +614,7 @@ async function renderFeatured(seq) {
       ` · since ${ago(f.created)}`),
     mapsAnchor(f.trail),
     el('div', { class: 'actions' },
-      el('button', { class: 'btn', onclick: () => confirmFeature(f.trail) }, 'Change note or length'),
+      el('button', { class: 'btn', onclick: () => confirmFeature(f.trail, f) }, 'Change note or length'),
       el('button', { class: 'btn', onclick: () => confirmUnfeature(f) }, f.ended ? 'Clear' : 'Unfeature'))));
   show(el('div', { class: 'toolbar' },
     el('div', { class: 'grow title' }, rows.length ? `${rows.length} featured` : 'No featured trails'),
@@ -620,6 +636,7 @@ function confirmUnfeature(f) {
     for (const b of form.querySelectorAll('button')) b.disabled = true;
     try {
       await unfeatureTrail(store, { trail: f.trail });
+      trailsActedOn.set(`unfeatured:${f.trail.trailKey}`, Date.now());
       dialog.close();
       say(`Unfeatured “${f.trail.trailName}”.`);
       setTimeout(() => render(), 600);
@@ -765,14 +782,16 @@ async function renderHistory(seq) {
     if (f.snapshot) {
       let pretty = f.snapshot;
       try { pretty = JSON.stringify(JSON.parse(f.snapshot), null, 2); } catch { /* keep the raw text */ }
-      snapshot = el('details', {}, el('summary', {}, f.action === 'suspended' ? 'Details' : 'What was removed'), el('pre', {}, pretty));
+      snapshot = el('details', {}, el('summary', {}, f.action === 'removed' ? 'What was removed' : 'Details'), el('pre', {}, pretty));
     }
     return el('article', { class: 'card' },
       el('div', {}, el('span', { class: 'chip' }, (Object.hasOwn(TYPES, f.targetType ?? '') ? TYPES[f.targetType].label : (f.targetType === 'account' ? 'Account' : f.targetType === 'trail' ? 'Trail' : (f.targetType || 'Item')))),
         el('span', { class: `chip${['removed', 'suspended'].includes(f.action) ? ' warn' : ''}` }, (Object.hasOwn(ACTION_LABELS, f.action ?? '') ? ACTION_LABELS[f.action] : 'Action'))),
       f.action === 'suspended' ? el('div', {}, suspensionSummary(f.snapshot)) : null,
       f.targetType === 'trail' ? el('div', {}, trailSummary(f.snapshot)) : null,
-      el('div', {}, f.reason ? reasonLabel(f.reason) : 'No reason', f.reportCount ? ` · ${f.reportCount} report${f.reportCount === 1 ? '' : 's'}` : ''),
+      f.targetType === 'trail'
+        ? (f.reportCount ? el('div', {}, `${f.reportCount} nomination${f.reportCount === 1 ? '' : 's'}`) : null)
+        : el('div', {}, f.reason ? reasonLabel(f.reason) : 'No reason', f.reportCount ? ` · ${f.reportCount} report${f.reportCount === 1 ? '' : 's'}` : ''),
       f.note ? el('div', {}, `“${f.note}”`) : null,
       el('div', { class: 'small muted' }, `${new Date(a.created).toLocaleString()} · ${f.targetRecordName}`),
       snapshot);

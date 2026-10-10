@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   groupNominations, nominationQueue, featureUntil, featuredRecordName, featuredFields, mapsLink, featuredRows,
-  BLURB_LIMIT, DAY, ACTIVITY_KINDS,
+  BLURB_LIMIT, DAY, ACTIVITY_KINDS, groupReports, queue, isTrailKey,
 } from '../../docs/staff/logic.js';
 import { featureTrail, unfeatureTrail, dismissNominations } from '../../docs/staff/actions.js';
 import { plain } from '../../docs/staff/ck.js';
@@ -15,14 +15,14 @@ const nom = (key, created, fields = {}) => ({
   recordName: `nomination.${key}.${created}`, recordType: 'TrailNomination', created,
   fields: { trailKey: key, trailName: 'Lake Loop', region: 'nc', latitude: 35.78, longitude: -78.64, lengthMeters: 2400, ...fields },
 });
-const act = (key, created, action = 'dismissed') => ({ created, fields: { targetRecordName: key, action } });
+const act = (key, created, action = 'dismissed', targetType = 'trail') => ({ created, fields: { targetRecordName: key, action, targetType } });
 
 function fakeStore({ exists = false, failSave = false, failDelete = false } = {}) {
   const calls = [];
   return {
     calls,
     async create(recordType, fields) { calls.push(['create', recordType, fields]); return { recordName: 'act1', recordType, created: 1, fields }; },
-    async fetch(names) { calls.push(['fetch', names]); return new Map(exists ? [[names[0], {}]] : []); },
+    async fetch(names) { calls.push(['fetch', names]); return new Map(exists ? [[names[0], { fields: exists === true ? {} : exists }]] : []); },
     async createNamed(recordType, recordName, fields) { calls.push(['createNamed', recordType, recordName, fields]); if (failSave) throw { ckErrorCode: 'ACCESS_DENIED' }; },
     async replaceNamed(recordType, recordName, fields) { calls.push(['replaceNamed', recordType, recordName, fields]); if (failSave) throw { ckErrorCode: 'ACCESS_DENIED' }; },
     async delete(names) {
@@ -52,12 +52,12 @@ test('a trail acted on stays closed until nominated again', () => {
 
 test('the queue ranks by nominations since the last action, or by newest', () => {
   const groups = groupNominations([
-    nom('busy', 10), nom('busy', 11), nom('busy', 12), nom('busy', 500), nom('new', 300), nom('new', 301),
-  ], [act('busy', 100)]);
-  assert.deepEqual(nominationQueue(groups, 'most').map((g) => g.trailKey), ['new', 'busy']);
-  assert.deepEqual(nominationQueue(groups, 'newest').map((g) => g.trailKey), ['busy', 'new']);
-  assert.deepEqual(nominationQueue(groups, 'most', new Map([['new', 400]])).map((g) => g.trailKey), ['busy']);
-  assert.deepEqual(nominationQueue(groups, 'most', new Map([['new', 250]])).map((g) => g.trailKey), ['new', 'busy'],
+    nom('nc:busy', 10), nom('nc:busy', 11), nom('nc:busy', 12), nom('nc:busy', 500), nom('nc:new', 300), nom('nc:new', 301),
+  ], [act('nc:busy', 100)]);
+  assert.deepEqual(nominationQueue(groups, 'most').map((g) => g.trailKey), ['nc:new', 'nc:busy']);
+  assert.deepEqual(nominationQueue(groups, 'newest').map((g) => g.trailKey), ['nc:busy', 'nc:new']);
+  assert.deepEqual(nominationQueue(groups, 'most', new Map([['nc:new', 400]])).map((g) => g.trailKey), ['nc:busy']);
+  assert.deepEqual(nominationQueue(groups, 'most', new Map([['nc:new', 250]])).map((g) => g.trailKey), ['nc:new', 'nc:busy'],
     'nominated again after it was acted on: back in the queue');
 });
 
@@ -88,13 +88,14 @@ test('the featured record holds the trail, the note (capped, required) and a typ
 test('Feature writes the action first, then creates or replaces the record; a failure takes the action back', async () => {
   const fresh = fakeStore();
   await featureTrail(fresh, { trail, blurb: 'Shady', length: '30d', now: NOW });
-  assert.deepEqual(fresh.calls.map((c) => c[0]), ['create', 'fetch', 'createNamed']);
-  assert.equal(fresh.calls[0][2].action, 'featured');
-  assert.equal(fresh.calls[0][2].targetType, 'trail');
-  assert.equal(fresh.calls[0][2].targetRecordName, 'nc:w1');
+  // Reading the current feature first is fine: History is still written before the record.
+  assert.deepEqual(fresh.calls.map((c) => c[0]), ['fetch', 'create', 'createNamed']);
+  assert.equal(fresh.calls[1][2].action, 'featured');
+  assert.equal(fresh.calls[1][2].targetType, 'trail');
+  assert.equal(fresh.calls[1][2].targetRecordName, 'nc:w1');
   const again = fakeStore({ exists: true });
   await featureTrail(again, { trail, blurb: 'Shadier', length: 'open', now: NOW });
-  assert.deepEqual(again.calls.map((c) => c[0]), ['create', 'fetch', 'replaceNamed']);
+  assert.deepEqual(again.calls.map((c) => c[0]), ['fetch', 'create', 'replaceNamed']);
   assert.ok(!('until' in again.calls[2][3]), 'open-ended drops the old end');
   const failing = fakeStore({ failSave: true });
   await assert.rejects(featureTrail(failing, { trail, blurb: 'x', length: '30d', now: NOW }));
@@ -139,4 +140,62 @@ test('Activity counts nominations', () => {
 test('who nominated a trail never reaches the page', () => {
   const raw = { recordName: 'n', recordType: 'TrailNomination', created: { timestamp: 1, userRecordName: '_who' }, fields: {} };
   assert.equal(plain(raw).creator, undefined);
+});
+
+// MARK: Second round (critic run 1)
+
+test('a trail action never closes reports on an item with the same name, and the reverse', () => {
+  const report = { recordName: 'r', recordType: 'CommunityReport', created: 100, fields: { targetRecordName: 'route-1', targetType: 'route', reason: 'spam' } };
+  const trailAction = act('route-1', 200, 'dismissed', 'trail');
+  assert.equal(queue(groupReports([report], [trailAction])).length, 1, 'the route stays reported');
+  const accountAction = act('route-1', 200, 'suspended', 'account');
+  assert.equal(queue(groupReports([report], [accountAction])).length, 1);
+  const itemAction = { created: 200, fields: { targetRecordName: 'nc:w1', action: 'removed', targetType: 'route' } };
+  assert.equal(nominationQueue(groupNominations([nom('nc:w1', 100)], [itemAction])).length, 1, 'the trail stays nominated');
+});
+
+test('one crafted nomination can\'t rename or move a trail; disagreement is flagged', () => {
+  const honest = [nom('nc:w1', 100), nom('nc:w1', 101), nom('nc:w1', 102)];
+  const outlier = nom('nc:w1', 999, { trailName: 'Totally Different', latitude: 10, longitude: 10 });
+  const [g] = groupNominations([...honest, outlier]);
+  assert.equal(g.trail.trailName, 'Lake Loop');
+  assert.equal(g.trail.latitude, 35.78);
+  assert.equal(g.disagree, true);
+  assert.deepEqual(g.names, ['Lake Loop', 'Totally Different']);
+  assert.equal(groupNominations(honest)[0].disagree, false);
+});
+
+test('a tie keeps the description that came first, and the region comes from the key', () => {
+  const [g] = groupNominations([nom('nc:w1', 100, { region: 'zz' }), nom('nc:w1', 200, { trailName: 'Late Name', latitude: 36 })]);
+  assert.equal(g.trail.trailName, 'Lake Loop');
+  assert.equal(g.trail.region, 'nc');
+});
+
+test('nominations with an impossible key, no name or no point are ignored', () => {
+  assert.ok(isTrailKey('nc:w123'));
+  assert.ok(!isTrailKey('route-1'));
+  assert.ok(!isTrailKey('NC:w1'));
+  assert.ok(!isTrailKey('nc:' + 'x'.repeat(81)));
+  const groups = groupNominations([
+    nom('route-1', 1), nom('nc:w2', 2, { trailName: '  ' }), nom('nc:w3', 3, { latitude: undefined }), nom('nc:w4', 4, { longitude: 500 }),
+  ]);
+  assert.equal(groups.length, 0);
+});
+
+test('a trail with no usable point or name can\'t be featured', () => {
+  assert.throws(() => featuredFields({ trailKey: 'nc:w9', trailName: 'X' }, 'note', null));
+  assert.throws(() => featuredFields({ ...trail, trailName: ' ' }, 'note', null));
+  assert.throws(() => featuredFields({ ...trail, trailKey: 'route-1' }, 'note', null));
+});
+
+test('featuring again keeps the trail as first featured; only the note and the end change', async () => {
+  const existing = { trailKey: 'nc:w1', trailName: 'Lake Loop', region: 'nc', latitude: 35.78, longitude: -78.64, lengthMeters: 2400, until: NOW };
+  const store = fakeStore({ exists: existing });
+  const later = { ...trail, trailName: 'Renamed By Someone', latitude: 10, longitude: 10 };
+  await featureTrail(store, { trail: later, blurb: 'New note', keepUntil: NOW });
+  const fields = store.calls.find((c) => c[0] === 'replaceNamed')[3];
+  assert.equal(fields.trailName, 'Lake Loop');
+  assert.equal(fields.latitude, 35.78);
+  assert.equal(fields.blurb, 'New note');
+  assert.deepEqual(fields.until, { value: NOW, type: 'TIMESTAMP' }, 'the end kept');
 });
