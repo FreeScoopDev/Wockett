@@ -153,4 +153,19 @@ struct InsightsTests {
         #expect(totals[1].distanceMeters == 1_500 && totals[1].sessions == 2)
         #expect(totals[0].estimatedSteps == Int(3_000 / 0.762))
     }
+
+    @Test("VoiceOver reads each bar's date and distance, and which bar is now")
+    func barWords() {
+        let us = Locale(identifier: "en_US")
+        #expect(InsightsText.barLabel(start: date(2026, 10, 15, hour: 0), unit: .day, calendar: calendar, locale: us)
+                == "Thursday, October 15")
+        #expect(InsightsText.barLabel(start: date(2026, 10, 11, hour: 0), unit: .weekOfYear, calendar: calendar, locale: us)
+                == "Week of October 11")
+        #expect(InsightsText.barLabel(start: date(2026, 10, 1, hour: 0), unit: .month, calendar: calendar, locale: us)
+                == "October 2026")
+        let today = InsightsText.barValue(meters: 1_609.344, unit: .day, isCurrent: true)
+        #expect(today.hasSuffix(", today") && today.count > ", today".count)
+        #expect(InsightsText.barValue(meters: 1_609.344, unit: .weekOfYear, isCurrent: true).hasSuffix(", this week"))
+        #expect(!InsightsText.barValue(meters: 1_609.344, unit: .month, isCurrent: false).contains(","))
+    }
 }

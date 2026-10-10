@@ -93,6 +93,9 @@ struct InsightsView: View {
                     y: .value("Distance", InsightsText.chartValue(b.distanceMeters)))
             .foregroundStyle(calendar.isDate(b.start, inSameDayAs: now) ? Color.earthGreen : Color.earthGreen.opacity(0.55))
             .cornerRadius(3)
+            .accessibilityLabel(InsightsText.barLabel(start: b.start, unit: .day, calendar: calendar))
+            .accessibilityValue(InsightsText.barValue(meters: b.distanceMeters, unit: .day,
+                                                      isCurrent: calendar.isDate(b.start, inSameDayAs: now)))
         }
         .chartXAxis {
             AxisMarks(values: .stride(by: .day, count: period == .week ? 1 : 7)) { _ in
@@ -104,6 +107,10 @@ struct InsightsView: View {
         .chartYAxis { InsightsText.yAxis }
         .frame(height: 140)
         .wktCard()
+        // A container, so VoiceOver can still move bar by bar: a label on the
+        // card alone read the chart as one element with no numbers in it
+        // (release check for 1.15).
+        .accessibilityElement(children: .contain)
         .accessibilityLabel("Distance by day this \(period.noun)")
     }
 
@@ -128,6 +135,11 @@ struct InsightsView: View {
                     y: .value("Distance", InsightsText.chartValue(b.distanceMeters)))
             .foregroundStyle(b == buckets.last ? Color.earthGreen : Color.earthGreen.opacity(0.55))
             .cornerRadius(3)
+            .accessibilityLabel(InsightsText.barLabel(start: b.start, unit: period == .week ? .weekOfYear : .month,
+                                                      calendar: calendar))
+            .accessibilityValue(InsightsText.barValue(meters: b.distanceMeters,
+                                                      unit: period == .week ? .weekOfYear : .month,
+                                                      isCurrent: b == buckets.last))
         }
         .chartXAxis {
             AxisMarks(values: .stride(by: period == .week ? .weekOfYear : .month, count: period == .week ? 2 : 1)) { _ in
@@ -139,6 +151,7 @@ struct InsightsView: View {
         .chartYAxis { InsightsText.yAxis }
         .frame(height: 140)
         .wktCard()
+        .accessibilityElement(children: .contain)
         .accessibilityLabel(period == .week ? "Distance per week, last 8 weeks" : "Distance per month, last 6 months")
     }
 
@@ -268,6 +281,29 @@ enum InsightsText {
         let percent = Int((abs(change) * 100).rounded())
         if percent == 0 { return "Same as last \(period.noun)" }
         return "\(change > 0 ? "Up" : "Down") \(percent)% vs last \(period.noun)"
+    }
+
+    /// What VoiceOver says for one bar: "Thursday, October 15", "Week of
+    /// October 11", "October 2026". The axis shows a letter or a short date,
+    /// and colour alone marks the current bar, so the words carry both.
+    static func barLabel(start: Date, unit: Calendar.Component, calendar: Calendar,
+                         locale: Locale = .current) -> String {
+        var style = Date.FormatStyle(locale: locale, calendar: calendar, timeZone: calendar.timeZone)
+        switch unit {
+        case .day:
+            style = style.weekday(.wide).month(.wide).day()
+            return start.formatted(style)
+        case .weekOfYear:
+            return "Week of " + start.formatted(style.month(.wide).day())
+        default:
+            return start.formatted(style.month(.wide).year())
+        }
+    }
+
+    /// "1.2 mi, today"; "0 mi" for a day with nothing.
+    static func barValue(meters: Double, unit: Calendar.Component, isCurrent: Bool) -> String {
+        let current = unit == .day ? "today" : unit == .weekOfYear ? "this week" : "this month"
+        return distance(meters) + (isCurrent ? ", \(current)" : "")
     }
 
     static func versus(_ previous: Int, _ period: InsightsPeriod) -> String {
