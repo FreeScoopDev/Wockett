@@ -181,7 +181,7 @@ struct CommunityRouteCard: View {
         .wktCard()
         .contextMenu {
             if let onHide {
-                CommunityReportButton("Report Route") { report = CommunityReport(route: route) }
+                CommunityReportButton("Report Route", author: route.author) { report = CommunityReport(route: route) }
                 CommunityBlockButton(author: route.author, onHide: onHide)
             }
         }

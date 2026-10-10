@@ -165,6 +165,11 @@ final class CommunityModerationStore {
         stored(forKey: reportedKey).contains(id.recordName)
     }
 
+    /// Report is offered on everyone's content but your own.
+    func canReport(_ author: CommunityAuthor) -> Bool {
+        !isMine(author)
+    }
+
     func report(_ id: CKRecord.ID) {
         append(id.recordName, toKey: reportedKey)
     }

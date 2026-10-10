@@ -232,7 +232,7 @@ private struct ChallengeCard: View {
         .accessibilityAddTraits(.isButton)
         .contextMenu {
             if let onHide {
-                CommunityReportButton("Report Challenge") { report = CommunityReport(challenge: challenge) }
+                CommunityReportButton("Report Challenge", author: challenge.author) { report = CommunityReport(challenge: challenge) }
                 CommunityBlockButton(author: challenge.author, onHide: onHide)
             }
         }

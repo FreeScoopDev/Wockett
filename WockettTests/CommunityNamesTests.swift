@@ -20,12 +20,16 @@ struct CommunityNamesTests {
         var oldest: String?                          // the account's oldest claim, when set
         var claims: [String] = []
         var lookups = 0
+        var userLookups = 0
         var gates: [CheckedContinuation<Void, Never>] = []
         var holdClaims = false
         var duringLookup: (() -> Void)?              // runs while the lookup is in flight
         var ownerAsRealID = false                    // report my records by my real ID, not the default owner
 
-        func currentUser() async throws -> String { me }
+        func currentUser() async throws -> String {
+            userLookups += 1
+            return me
+        }
         func claimedName() async throws -> String? {
             lookups += 1
             duringLookup?()
@@ -163,22 +167,37 @@ struct CommunityNamesTests {
         #expect(try await service.claimedName() == "MistyOak")
     }
 
-    @Test("Two writes at once share one claim", .timeLimit(.minutes(1)))
+    @Test("Two writes at once share one claim")
     func concurrentWritesShareClaim() async throws {
         let cloud = FakeCloud()
         cloud.holdClaims = true
         let service = CommunityNameService(store: cloud, defaults: defaults(local: "MistyOak"), makeName: names(["SunnyFox42"]))
-        async let first = service.claimedName()
-        async let second = service.claimedName()
-        // Let both writes reach the store, then release whatever is waiting.
-        for _ in 0..<10_000 { await Task.yield() }
+        // Waits are for a condition, capped in main-actor turns, never a fixed
+        // count or a time limit: on a busy runner 10,000 fixed yields outlasted
+        // a 1-minute limit, which also counts time queued for the main actor.
+        let first = Task { try await service.claimedName() }
+        for _ in 0..<10_000 where cloud.gates.isEmpty { await Task.yield() }
+        try #require(cloud.gates.count == 1, "the first write is held at the store")
+        // All of this runs on the main actor, so once the second write has
+        // started it has already joined the claim in flight (or, if claims
+        // weren't shared, started one of its own).
+        let secondStarted = Flag()
+        let second = Task {
+            secondStarted.value = true
+            return try await service.claimedName()
+        }
+        for _ in 0..<10_000 where !secondStarted.value { await Task.yield() }
+        try #require(secondStarted.value, "the second write started")
         cloud.holdClaims = false
         cloud.gates.forEach { $0.resume() }
         cloud.gates.removeAll()
-        let (a, b) = try await (first, second)
+        let (a, b) = try await (first.value, second.value)
         #expect(a == b)
         #expect(cloud.claims == ["MistyOak"])
+        #expect(cloud.userLookups == 1, "one claim ran, not one per write")
     }
+
+    private final class Flag { var value = false }
 
     @Test("After 10 taken names it gives up, remembers nothing, and the write doesn't happen")
     func givesUp() async {

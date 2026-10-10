@@ -1,0 +1,275 @@
+DEFINE SCHEMA
+
+    CREATE ROLE TrailPublisher;
+    CREATE ROLE Moderator;
+
+    RECORD TYPE CD_BookmarkedLocationRecord (
+        CD_address      STRING,
+        CD_createdAt    TIMESTAMP,
+        CD_entityName   STRING,
+        CD_id           STRING,
+        CD_latitude     DOUBLE,
+        CD_longitude    DOUBLE,
+        CD_name         STRING,
+        "___createTime" TIMESTAMP,
+        "___createdBy"  REFERENCE,
+        "___etag"       STRING,
+        "___modTime"    TIMESTAMP,
+        "___modifiedBy" REFERENCE,
+        "___recordID"   REFERENCE,
+        GRANT WRITE TO "_creator",
+        GRANT CREATE TO "_icloud",
+        GRANT READ TO "_world"
+    );
+
+    RECORD TYPE CD_CustomRouteRecord (
+        CD_activityMode          STRING QUERYABLE SEARCHABLE SORTABLE,
+        CD_createdAt             TIMESTAMP QUERYABLE SORTABLE,
+        CD_entityName            STRING QUERYABLE SEARCHABLE SORTABLE,
+        CD_id                    STRING QUERYABLE SEARCHABLE SORTABLE,
+        CD_isLoop                INT64 QUERYABLE SORTABLE,
+        CD_name                  STRING QUERYABLE SEARCHABLE SORTABLE,
+        CD_totalDistance         DOUBLE QUERYABLE SORTABLE,
+        CD_waypointsData         BYTES QUERYABLE SORTABLE,
+        CD_waypointsData_ckAsset ASSET,
+        "___createTime"          TIMESTAMP,
+        "___createdBy"           REFERENCE,
+        "___etag"                STRING,
+        "___modTime"             TIMESTAMP,
+        "___modifiedBy"          REFERENCE,
+        "___recordID"            REFERENCE,
+        GRANT WRITE TO "_creator",
+        GRANT CREATE TO "_icloud",
+        GRANT READ TO "_world"
+    );
+
+    RECORD TYPE CD_PetProfileRecord (
+        CD_accentColorIndex INT64 QUERYABLE SORTABLE,
+        CD_breed            STRING QUERYABLE SEARCHABLE SORTABLE,
+        CD_customEmoji      STRING QUERYABLE SEARCHABLE SORTABLE,
+        CD_entityName       STRING QUERYABLE SEARCHABLE SORTABLE,
+        CD_goalSteps        INT64 QUERYABLE SORTABLE,
+        CD_id               STRING QUERYABLE SEARCHABLE SORTABLE,
+        CD_isActiveOnWalk   INT64 QUERYABLE SORTABLE,
+        CD_name             STRING QUERYABLE SEARCHABLE SORTABLE,
+        CD_ownerName        STRING QUERYABLE SEARCHABLE SORTABLE,
+        CD_ownerPhone       STRING QUERYABLE SEARCHABLE SORTABLE,
+        CD_species          STRING QUERYABLE SEARCHABLE SORTABLE,
+        "___createTime"     TIMESTAMP,
+        "___createdBy"      REFERENCE,
+        "___etag"           STRING,
+        "___modTime"        TIMESTAMP,
+        "___modifiedBy"     REFERENCE,
+        "___recordID"       REFERENCE,
+        GRANT WRITE TO "_creator",
+        GRANT CREATE TO "_icloud",
+        GRANT READ TO "_world"
+    );
+
+    RECORD TYPE CD_WalkSessionRecord (
+        CD_activePetIdsData         BYTES QUERYABLE SORTABLE,
+        CD_activePetIdsData_ckAsset ASSET,
+        CD_activityType             STRING QUERYABLE SEARCHABLE SORTABLE,
+        CD_countsTowardRouteStats   INT64 QUERYABLE SORTABLE,
+        CD_customRouteIdString      STRING QUERYABLE SEARCHABLE SORTABLE,
+        CD_date                     TIMESTAMP QUERYABLE SORTABLE,
+        CD_elapsedTime              DOUBLE QUERYABLE SORTABLE,
+        CD_entityName               STRING QUERYABLE SEARCHABLE SORTABLE,
+        CD_flaggedPossibleVehicle   INT64 QUERYABLE SORTABLE,
+        CD_id                       STRING QUERYABLE SEARCHABLE SORTABLE,
+        CD_isCommunityRoute         INT64 QUERYABLE SORTABLE,
+        CD_isLoop                   INT64 QUERYABLE SORTABLE,
+        CD_lapCount                 INT64 QUERYABLE SORTABLE,
+        CD_notes                    STRING QUERYABLE SEARCHABLE SORTABLE,
+        CD_petDistancesData         BYTES QUERYABLE SORTABLE,
+        CD_petDistancesData_ckAsset ASSET,
+        CD_routeName                STRING QUERYABLE SEARCHABLE SORTABLE,
+        CD_steps                    INT64 QUERYABLE SORTABLE,
+        CD_stopCount                INT64 QUERYABLE SORTABLE,
+        CD_totalDistance            DOUBLE QUERYABLE SORTABLE,
+        CD_waypointsData            BYTES QUERYABLE SORTABLE,
+        CD_waypointsData_ckAsset    ASSET,
+        "___createTime"             TIMESTAMP,
+        "___createdBy"              REFERENCE,
+        "___etag"                   STRING,
+        "___modTime"                TIMESTAMP,
+        "___modifiedBy"             REFERENCE,
+        "___recordID"               REFERENCE,
+        GRANT WRITE TO "_creator",
+        GRANT CREATE TO "_icloud",
+        GRANT READ TO "_world"
+    );
+
+    RECORD TYPE Challenge (
+        "___createTime"    TIMESTAMP SORTABLE,
+        "___createdBy"     REFERENCE,
+        "___etag"          STRING,
+        "___modTime"       TIMESTAMP,
+        "___modifiedBy"    REFERENCE,
+        "___recordID"      REFERENCE QUERYABLE,
+        activityFilter     STRING QUERYABLE SEARCHABLE SORTABLE,
+        authorName         STRING QUERYABLE,
+        emoji              STRING,
+        endDate            TIMESTAMP QUERYABLE,
+        goalDistanceMeters DOUBLE QUERYABLE SORTABLE,
+        goalPaceSecsPerKm  DOUBLE QUERYABLE SORTABLE,
+        goalSessionCount   INT64 QUERYABLE SORTABLE,
+        goalSteps          INT64,
+        goalType           STRING QUERYABLE SEARCHABLE SORTABLE,
+        startDate          TIMESTAMP SORTABLE,
+        title              STRING,
+        GRANT READ, WRITE TO Moderator,
+        GRANT WRITE TO "_creator",
+        GRANT CREATE TO "_icloud",
+        GRANT READ TO "_world"
+    );
+
+    RECORD TYPE ChallengeEntry (
+        "___createTime"     TIMESTAMP SORTABLE,
+        "___createdBy"      REFERENCE,
+        "___etag"           STRING,
+        "___modTime"        TIMESTAMP,
+        "___modifiedBy"     REFERENCE,
+        "___recordID"       REFERENCE QUERYABLE,
+        challengeRecordName STRING QUERYABLE,
+        deviceID            STRING QUERYABLE,
+        displayName         STRING,
+        steps               INT64 SORTABLE,
+        GRANT READ, WRITE TO Moderator,
+        GRANT WRITE TO "_creator",
+        GRANT CREATE TO "_icloud",
+        GRANT READ TO "_world"
+    );
+
+    RECORD TYPE CommunityName (
+        "___createTime" TIMESTAMP SORTABLE,
+        "___createdBy"  REFERENCE QUERYABLE,
+        "___etag"       STRING,
+        "___modTime"    TIMESTAMP,
+        "___modifiedBy" REFERENCE,
+        "___recordID"   REFERENCE QUERYABLE,
+        name            STRING,
+        GRANT READ, WRITE TO Moderator,
+        GRANT WRITE TO "_creator",
+        GRANT CREATE TO "_icloud",
+        GRANT READ TO "_world"
+    );
+
+    RECORD TYPE CommunityReport (
+        "___createTime"  TIMESTAMP SORTABLE,
+        "___createdBy"   REFERENCE,
+        "___etag"        STRING,
+        "___modTime"     TIMESTAMP,
+        "___modifiedBy"  REFERENCE,
+        "___recordID"    REFERENCE QUERYABLE,
+        note             STRING,
+        reason           STRING,
+        targetAuthorName STRING,
+        targetRecordName STRING QUERYABLE,
+        targetSummary    STRING,
+        targetType       STRING,
+        GRANT READ, WRITE TO Moderator,
+        GRANT CREATE TO "_icloud"
+    );
+
+    RECORD TYPE CommunityVote (
+        "___createTime"  TIMESTAMP SORTABLE,
+        "___createdBy"   REFERENCE,
+        "___etag"        STRING,
+        "___modTime"     TIMESTAMP,
+        "___modifiedBy"  REFERENCE,
+        "___recordID"    REFERENCE QUERYABLE,
+        targetRecordName STRING QUERYABLE,
+        targetType       STRING,
+        GRANT READ, WRITE TO Moderator,
+        GRANT WRITE TO "_creator",
+        GRANT CREATE TO "_icloud",
+        GRANT READ TO "_world"
+    );
+
+    RECORD TYPE ModerationAction (
+        "___createTime"  TIMESTAMP SORTABLE,
+        "___createdBy"   REFERENCE,
+        "___etag"        STRING,
+        "___modTime"     TIMESTAMP,
+        "___modifiedBy"  REFERENCE,
+        "___recordID"    REFERENCE QUERYABLE,
+        action           STRING,
+        note             STRING,
+        reason           STRING,
+        reportCount      INT64,
+        snapshot         STRING,
+        targetRecordName STRING QUERYABLE,
+        targetType       STRING,
+        GRANT READ, CREATE, WRITE TO Moderator
+    );
+
+    RECORD TYPE SharedRoute (
+        "___createTime" TIMESTAMP SORTABLE,
+        "___createdBy"  REFERENCE,
+        "___etag"       STRING,
+        "___modTime"    TIMESTAMP,
+        "___modifiedBy" REFERENCE,
+        "___recordID"   REFERENCE QUERYABLE,
+        authorName      STRING QUERYABLE SEARCHABLE SORTABLE,
+        difficultyTag   STRING QUERYABLE SEARCHABLE SORTABLE,
+        distanceMeters  DOUBLE QUERYABLE SORTABLE,
+        isLoop          INT64 QUERYABLE SORTABLE,
+        name            STRING QUERYABLE SEARCHABLE SORTABLE,
+        upvotes         INT64 QUERYABLE SORTABLE,
+        waypointsJSON   STRING QUERYABLE SEARCHABLE SORTABLE,
+        GRANT READ, WRITE TO Moderator,
+        GRANT WRITE TO "_creator",
+        GRANT CREATE TO "_icloud",
+        GRANT READ TO "_world"
+    );
+
+    RECORD TYPE TrailRegionPack (
+        "___createTime" TIMESTAMP,
+        "___createdBy"  REFERENCE,
+        "___etag"       STRING,
+        "___modTime"    TIMESTAMP,
+        "___modifiedBy" REFERENCE,
+        "___recordID"   REFERENCE QUERYABLE,
+        builtAt         TIMESTAMP,
+        pack            ASSET,
+        packVersion     INT64,
+        region          STRING,
+        regionName      STRING,
+        schemaVersion   INT64,
+        sizeBytes       INT64,
+        trailCount      INT64,
+        GRANT READ, CREATE, WRITE TO TrailPublisher,
+        GRANT WRITE TO "_creator",
+        GRANT READ TO "_world"
+    );
+
+    RECORD TYPE Users (
+        "___createTime" TIMESTAMP,
+        "___createdBy"  REFERENCE,
+        "___etag"       STRING,
+        "___modTime"    TIMESTAMP,
+        "___modifiedBy" REFERENCE,
+        "___recordID"   REFERENCE QUERYABLE,
+        roles           LIST<INT64>,
+        GRANT WRITE TO "_creator",
+        GRANT READ TO "_world"
+    );
+
+    RECORD TYPE WocketAchievement (
+        "___createTime" TIMESTAMP SORTABLE,
+        "___createdBy"  REFERENCE,
+        "___etag"       STRING,
+        "___modTime"    TIMESTAMP,
+        "___modifiedBy" REFERENCE,
+        "___recordID"   REFERENCE QUERYABLE,
+        authorName      STRING QUERYABLE,
+        badgeEmoji      STRING,
+        badgeName       STRING,
+        likes           INT64,
+        message         STRING,
+        GRANT READ, WRITE TO Moderator,
+        GRANT WRITE TO "_creator",
+        GRANT CREATE TO "_icloud",
+        GRANT READ TO "_world"
+    );
