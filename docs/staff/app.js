@@ -10,7 +10,7 @@ import { connect } from './ck.js';
 import {
   TYPES, REASONS, reasonLabel, groupReports, queue, topReason, filterByAuthor, authorOf,
   activity, DAY, parseWaypoints, routePath, describeItem, describeError, isNotAllowed, ago,
-  effectiveType, reopenFailedRemovals, targetsToCheck, SUSPENSION_LENGTHS, shortAccount, suspensionRows,
+  effectiveType, reopenFailedRemovals, targetsToCheck, SUSPENSION_LENGTHS, shortAccount, suspensionRows, canSuspend,
 } from './logic.js';
 import { removeItem, dismissItem, suspendAccount, liftSuspension, itemsOf, OWNED_TYPES } from './actions.js';
 
@@ -84,6 +84,8 @@ if (environment === 'development') {
 // MARK: - Start
 
 let store;
+/** The signed-in moderator's own user record: never offered for suspension. */
+let me = null;
 let view = 'reports';
 const tabs = document.getElementById('tabs');
 
@@ -115,6 +117,7 @@ async function start() {
   }
   store.whenUserSignsOut().then(() => location.reload());
   say('');
+  me = user?.userRecordName ?? null;
   document.getElementById('who').textContent = user?.userRecordName ? `Signed in: ${user.userRecordName}` : '';
   if (!(await isModerator(user))) return;
   tabs.hidden = false;
@@ -415,7 +418,7 @@ function browseCard(type, record) {
 
 /** "Suspend author" for an item whose creator is known; nothing otherwise. */
 function suspendButton(record, reason) {
-  if (!record?.creator) return null;
+  if (!record?.creator || !canSuspend(record.creator, me)) return null;
   return el('button', { class: 'btn', onclick: () => confirmSuspend({ account: record.creator, authorName: authorOf(record), reason }) },
     'Suspend author');
 }
@@ -442,13 +445,17 @@ function confirmSuspend({ account, authorName, reason = 'other' }) {
     try {
       const out = await suspendAccount(store, {
         account, authorName, length: form.elements.length.value, reason: form.elements.reason.value,
-        note: form.elements.note.value, removeItems: Boolean(form.elements.removeItems?.checked),
+        note: form.elements.note.value, removeItems: Boolean(form.elements.removeItems?.checked), moderator: me,
       });
       dialog.close();
       const end = out.until === null ? 'permanently' : `until ${new Date(out.until).toLocaleDateString()}`;
       const removed = out.removed ? ` Removed ${out.removed} item${out.removed === 1 ? '' : 's'}.` : '';
-      if (out.removeError) {
-        say(`Suspended ${who} ${end}.${removed} Some items couldn't be removed: ${describeError(out.removeError)}`, { error: true });
+      if (out.failed || out.relatedLeft) {
+        const problems = [
+          out.failed ? `${out.failed} couldn't be removed` : '',
+          out.relatedLeft ? `${out.relatedLeft} left votes or entries behind` : '',
+        ].filter(Boolean).join(', ');
+        say(`Suspended ${who} ${end}.${removed} ${problems} (${describeError(out.firstError)}). See Their items in Suspensions.`, { error: true });
       } else {
         say(`Suspended ${who} ${end}.${removed}`);
       }
@@ -562,12 +569,13 @@ async function renderActivity(seq) {
 
 const ACTION_LABELS = { removed: 'Removed', dismissed: 'Dismissed', suspended: 'Suspended', lifted: 'Lifted' };
 
-/** "MistyOak42, 7 days to 17 Oct" from a suspension's snapshot. */
+/** "MistyOak42, 7 days, until 10/17/2026" from a suspension's snapshot. */
 function suspensionSummary(snapshot) {
   try {
     const s = JSON.parse(snapshot ?? '{}');
+    const length = Object.hasOwn(SUSPENSION_LENGTHS, s.length ?? '') ? `${SUSPENSION_LENGTHS[s.length].label}, ` : '';
     const end = s.until ? `until ${new Date(s.until).toLocaleDateString()}` : 'permanently';
-    return `${s.authorName || shortAccount(s.account)}, ${end}`;
+    return `${s.authorName || shortAccount(s.account)}, ${length}${end}`;
   } catch {
     return '';
   }
@@ -586,7 +594,7 @@ async function renderHistory(seq) {
       snapshot = el('details', {}, el('summary', {}, f.action === 'suspended' ? 'Details' : 'What was removed'), el('pre', {}, pretty));
     }
     return el('article', { class: 'card' },
-      el('div', {}, el('span', { class: 'chip' }, (Object.hasOwn(TYPES, f.targetType ?? '') ? TYPES[f.targetType].label : (f.targetType || 'Item'))),
+      el('div', {}, el('span', { class: 'chip' }, (Object.hasOwn(TYPES, f.targetType ?? '') ? TYPES[f.targetType].label : (f.targetType === 'account' ? 'Account' : (f.targetType || 'Item')))),
         el('span', { class: `chip${['removed', 'suspended'].includes(f.action) ? ' warn' : ''}` }, (Object.hasOwn(ACTION_LABELS, f.action ?? '') ? ACTION_LABELS[f.action] : 'Action'))),
       f.action === 'suspended' ? el('div', {}, suspensionSummary(f.snapshot)) : null,
       el('div', {}, f.reason ? reasonLabel(f.reason) : 'No reason', f.reportCount ? ` · ${f.reportCount} report${f.reportCount === 1 ? '' : 's'}` : ''),

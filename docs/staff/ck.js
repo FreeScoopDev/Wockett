@@ -94,18 +94,16 @@ export async function pagedQuery(db, query, { max = 1000, pageSize = 200 } = {})
 }
 
 /**
- * Saves `recordName` with `fields`, replacing it if it exists: CloudKit
- * refuses a save over an existing record without its change tag.
+ * CloudKit JS fields from plain values. A value that is already
+ * `{ value, type }` (a TIMESTAMP, say) is sent as it is, so its type isn't
+ * left for CloudKit to guess from a bare number.
  */
-export async function upsertRecord(db, recordType, recordName, fields) {
-  const existing = await db.fetchRecords([recordName]);
-  const found = (existing?.records ?? []).find((r) => r?.recordName === recordName && r.recordChangeTag);
-  const ckFields = {};
-  for (const [key, value] of Object.entries(fields)) ckFields[key] = { value };
-  const record = { recordType, recordName, fields: ckFields };
-  if (found) record.recordChangeTag = found.recordChangeTag;
-  const response = check(await db.saveRecords([record]));
-  return plain(response.records[0]);
+export function ckFields(fields) {
+  const out = {};
+  for (const [key, value] of Object.entries(fields)) {
+    out[key] = value && typeof value === 'object' && 'value' in value ? value : { value };
+  }
+  return out;
 }
 
 export function connect({ CloudKit, containerIdentifier, apiToken, environment }) {
@@ -141,16 +139,18 @@ export function connect({ CloudKit, containerIdentifier, apiToken, environment }
     fetch: (recordNames) => fetchExisting(db, recordNames),
 
     /** Creates one record with `fields` (plain values). */
+    /** Creates one record named `recordName`; fails if it exists. */
+    async createNamed(recordType, recordName, fields) {
+      const response = check(await db.saveRecords([{ recordType, recordName, fields: ckFields(fields) }]));
+      return plain(response.records[0]);
+    },
+
     async create(recordType, fields) {
-      const ckFields = {};
-      for (const [key, value] of Object.entries(fields)) ckFields[key] = { value };
-      const response = check(await db.saveRecords([{ recordType, fields: ckFields }]));
+      const response = check(await db.saveRecords([{ recordType, fields: ckFields(fields) }]));
       return plain(response.records[0]);
     },
 
     /** Deletes records by name; ones already gone count as deleted. */
-    upsert: (recordType, recordName, fields) => upsertRecord(db, recordType, recordName, fields),
-
     async delete(recordNames) {
       for (let i = 0; i < recordNames.length; i += 200) {
         onlyRealErrors(await db.deleteRecords(recordNames.slice(i, i + 200)));

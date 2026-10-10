@@ -3,6 +3,7 @@
 
 import {
   actionFields, buildSnapshot, removalPlan, suspensionUntil, suspensionRecordName, suspensionFields, ownedBy, TYPES,
+  canSuspend,
 } from './logic.js';
 
 /**
@@ -56,39 +57,74 @@ export async function dismissItem(store, { target, type, note = '', reportCount 
 export const OWNED_TYPES = ['post', 'route', 'challenge'];
 
 /**
- * Suspends an account. The "suspended" ModerationAction is written first;
- * then the Suspension record (replacing one already there). If the record
- * can't be saved, the action is taken back. With `removeItems`, each item
- * the account itself created under `authorName` is then removed as Remove
- * does (snapshot first); a failure there is reported, not thrown, because
- * the suspension already stands.
+ * Puts a fresh Suspension record in place. An existing one is deleted and
+ * re-created rather than saved over, so no field of the old one (an end date
+ * when going permanent) can survive. If the new one can't be created, the
+ * old one is put back, then the error thrown.
+ */
+export async function replaceSuspension(store, account, until) {
+  const recordName = suspensionRecordName(account);
+  const old = (await store.fetch([recordName])).get(recordName) ?? null;
+  if (old) await store.delete([recordName]);
+  try {
+    await store.createNamed('Suspension', recordName, suspensionFields(account, until));
+  } catch (error) {
+    if (old) {
+      try {
+        await store.createNamed('Suspension', recordName, suspensionFields(account, old.fields.until ?? null));
+      } catch { /* the error below is what matters */ }
+    }
+    throw error;
+  }
+}
+
+/**
+ * Suspends an account. Refused for the signed-in moderator's own account
+ * and CloudKit's own-records placeholder. The "suspended" ModerationAction
+ * is written first; then the Suspension record. If that fails, the action is
+ * taken back. With `removeItems`, each item the account itself created
+ * under `authorName` is then removed as Remove does (snapshot first), one at
+ * a time: a failure skips that item only, and is counted, because the
+ * suspension already stands.
  */
 export async function suspendAccount(store, {
-  account, authorName = '', length, reason, note = '', now = Date.now(), removeItems = false,
+  account, authorName = '', length, reason, note = '', now = Date.now(), removeItems = false, moderator = null,
 }) {
-  const recordName = suspensionRecordName(account);
+  if (!canSuspend(account, moderator)) throw new Error('This account can\'t be suspended (it is yours, or not an account).');
   const until = suspensionUntil(length, now);
   const written = await store.create('ModerationAction', actionFields({
     target: account, type: 'account', action: 'suspended', reason, note,
-    snapshot: JSON.stringify({ account, authorName, until }),
+    snapshot: JSON.stringify({ account, authorName, length, until }),
   }));
   try {
-    await store.upsert('Suspension', recordName, suspensionFields(account, until));
+    await replaceSuspension(store, account, until);
   } catch (error) {
     try { await store.delete([written.recordName]); } catch { /* the error below is what matters */ }
     throw error;
   }
-  const result = { until, removed: 0, removeError: null };
+  const result = { until, removed: 0, failed: 0, relatedLeft: 0, firstError: null };
   if (!removeItems || !authorName) return result;
   for (const type of OWNED_TYPES) {
+    let records = [];
     try {
-      const { records } = await store.query(TYPES[type].recordType, { equals: ['authorName', authorName], max: 2000 });
-      for (const record of ownedBy(records, account)) {
-        await removeItem(store, { type, record, reason, note: note || 'Removed with a suspension' });
-        result.removed += 1;
-      }
+      ({ records } = await store.query(TYPES[type].recordType, { equals: ['authorName', authorName], max: 2000 }));
     } catch (error) {
-      result.removeError = result.removeError ?? error;
+      result.firstError = result.firstError ?? error;
+      result.failed += 1;
+      continue;
+    }
+    for (const record of ownedBy(records, account)) {
+      try {
+        const { relatedError } = await removeItem(store, { type, record, reason, note: note || 'Removed with a suspension' });
+        result.removed += 1;
+        if (relatedError) {
+          result.relatedLeft += 1;
+          result.firstError = result.firstError ?? relatedError;
+        }
+      } catch (error) {
+        result.failed += 1;
+        result.firstError = result.firstError ?? error;
+      }
     }
   }
   return result;

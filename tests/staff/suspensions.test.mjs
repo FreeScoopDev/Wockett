@@ -4,25 +4,32 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   suspensionUntil, suspensionRecordName, suspensionFields, ownedBy, shortAccount, suspensionRows, DAY, actionFields,
+  canSuspend,
 } from '../../docs/staff/logic.js';
 import { suspendAccount, liftSuspension, itemsOf } from '../../docs/staff/actions.js';
-import { plain, upsertRecord } from '../../docs/staff/ck.js';
+import { plain, ckFields } from '../../docs/staff/ck.js';
 
 const NOW = 1_800_000_000_000;
 
 /** A store that records calls in order. `items` answers authorName queries by record type. */
-function fakeStore({ items = {}, failUpsert = false, failDeletes = 0 } = {}) {
+function fakeStore({ items = {}, failCreateNamed = 0, failDeletes = 0, existing = null, failDeleteOf = null } = {}) {
   const calls = [];
   let deletesToFail = failDeletes;
+  let namedToFail = failCreateNamed;
   return {
     calls,
     async create(recordType, fields) { calls.push(['create', recordType, fields]); return { recordName: `act${calls.length}`, recordType, created: 1, fields }; },
-    async upsert(recordType, recordName, fields) {
-      calls.push(['upsert', recordType, recordName, fields]);
-      if (failUpsert) throw { ckErrorCode: 'ACCESS_DENIED' };
+    async fetch(names) {
+      calls.push(['fetch', names]);
+      return new Map(existing ? [[existing.recordName, existing]] : []);
+    },
+    async createNamed(recordType, recordName, fields) {
+      calls.push(['createNamed', recordType, recordName, fields]);
+      if (namedToFail > 0) { namedToFail -= 1; throw { ckErrorCode: 'ACCESS_DENIED' }; }
     },
     async delete(names) {
       calls.push(['delete', names]);
+      if (failDeleteOf && names.includes(failDeleteOf)) throw { ckErrorCode: 'THROTTLED' };
       if (deletesToFail > 0) { deletesToFail -= 1; throw { ckErrorCode: 'ACCESS_DENIED' }; }
     },
     async query(recordType, opts) { calls.push(['query', recordType, opts.equals]); return { records: items[recordType] ?? [], more: false }; },
@@ -40,29 +47,30 @@ test('one record per account, holding only the account and the end', () => {
   assert.equal(suspensionRecordName('_abc'), 'suspension._abc');
   assert.throws(() => suspensionRecordName(''));
   assert.throws(() => suspensionRecordName('has space'));
-  assert.deepEqual(suspensionFields('_abc', 5), { accountRecordName: '_abc', until: 5 });
+  assert.deepEqual(suspensionFields('_abc', 5), { accountRecordName: '_abc', until: { value: 5, type: 'TIMESTAMP' } });
   assert.deepEqual(suspensionFields('_abc', null), { accountRecordName: '_abc' });
 });
 
 test('Suspend writes the action first, then the Suspension', async () => {
   const store = fakeStore();
   const out = await suspendAccount(store, { account: '_bad', authorName: 'LoudCrow12', length: '7d', reason: 'spam', now: NOW });
-  assert.deepEqual(store.calls.map((c) => c[0]), ['create', 'upsert']);
+  assert.deepEqual(store.calls.map((c) => c[0]), ['create', 'fetch', 'createNamed']);
   const [, type, fields] = store.calls[0];
   assert.equal(type, 'ModerationAction');
   assert.equal(fields.action, 'suspended');
   assert.equal(fields.targetType, 'account');
   assert.equal(fields.targetRecordName, '_bad');
-  assert.deepEqual(JSON.parse(fields.snapshot), { account: '_bad', authorName: 'LoudCrow12', until: NOW + 7 * DAY });
-  assert.deepEqual(store.calls[1].slice(1), ['Suspension', 'suspension._bad', { accountRecordName: '_bad', until: NOW + 7 * DAY }]);
+  assert.deepEqual(JSON.parse(fields.snapshot), { account: '_bad', authorName: 'LoudCrow12', length: '7d', until: NOW + 7 * DAY });
+  assert.deepEqual(store.calls[2].slice(1), ['Suspension', 'suspension._bad',
+    { accountRecordName: '_bad', until: { value: NOW + 7 * DAY, type: 'TIMESTAMP' } }]);
   assert.equal(out.until, NOW + 7 * DAY);
 });
 
 test('if the Suspension can\'t be saved, the action is taken back', async () => {
-  const store = fakeStore({ failUpsert: true });
+  const store = fakeStore({ failCreateNamed: 1 });
   await assert.rejects(suspendAccount(store, { account: '_bad', length: 'permanent', reason: 'spam', now: NOW }), { ckErrorCode: 'ACCESS_DENIED' });
-  assert.deepEqual(store.calls.map((c) => c[0]), ['create', 'upsert', 'delete']);
-  assert.deepEqual(store.calls[2][1], ['act1']);
+  assert.deepEqual(store.calls.map((c) => c[0]), ['create', 'fetch', 'createNamed', 'delete']);
+  assert.deepEqual(store.calls[3][1], ['act1']);
 });
 
 test('"also remove" removes only what the suspended account itself created', async () => {
@@ -121,7 +129,8 @@ test('the Suspensions list names each account from its latest suspension, and sa
     [act('_a', 'Old', 1), act('_a', 'New', 5), { created: 9, fields: { action: 'suspended', targetRecordName: '_c', snapshot: 'not json' } }],
     NOW,
   );
-  assert.deepEqual(rows.map((r) => [r.account, r.ended, r.authorName]), [['_c', false, ''], ['_b', false, ''], ['_a', true, 'New']]);
+  // Newest suspension first: _c's (9), _a's re-suspension (5), then _b (2).
+  assert.deepEqual(rows.map((r) => [r.account, r.ended, r.authorName]), [['_c', false, ''], ['_a', true, 'New'], ['_b', false, '']]);
   assert.equal(rows.find((r) => r.account === '_b').until, null);
 });
 
@@ -139,17 +148,56 @@ test('the creator is kept for community items, never for reports or actions', ()
   assert.equal(plain(raw('Suspension')).creator, undefined);
 });
 
-test('suspending again replaces the record, using its change tag', async () => {
-  const saved = [];
-  const db = {
-    async fetchRecords(names) { return { records: [{ recordName: names[0], recordChangeTag: 'tag1', fields: {} }] }; },
-    async saveRecords(records) { saved.push(...records); return { records: [{ ...records[0], created: { timestamp: 2 } }] }; },
-  };
-  await upsertRecord(db, 'Suspension', 'suspension._a', { accountRecordName: '_a' });
-  assert.equal(saved[0].recordChangeTag, 'tag1');
-  const fresh = { async fetchRecords() { return { records: [{ recordName: 'suspension._a', serverErrorCode: 'NOT_FOUND' }] }; }, saveRecords: db.saveRecords };
-  saved.length = 0;
-  await upsertRecord(fresh, 'Suspension', 'suspension._a', { accountRecordName: '_a' });
-  assert.equal(saved[0].recordChangeTag, undefined, 'a new record has no tag');
-  assert.deepEqual(saved[0].fields, { accountRecordName: { value: '_a' } });
+test('going permanent replaces the record, so no old end date survives', async () => {
+  const existing = { recordName: 'suspension._bad', recordType: 'Suspension', created: 1, fields: { accountRecordName: '_bad', until: NOW + DAY } };
+  const store = fakeStore({ existing });
+  await suspendAccount(store, { account: '_bad', length: 'permanent', reason: 'spam', now: NOW });
+  assert.deepEqual(store.calls.map((c) => c[0]), ['create', 'fetch', 'delete', 'createNamed']);
+  assert.deepEqual(store.calls[2][1], ['suspension._bad']);
+  assert.deepEqual(store.calls[3][3], { accountRecordName: '_bad' }, 'no until: permanent');
+});
+
+test('if the new suspension can\'t be made, the old one is put back and the action taken back', async () => {
+  const existing = { recordName: 'suspension._bad', recordType: 'Suspension', created: 1, fields: { accountRecordName: '_bad', until: NOW + DAY } };
+  const store = fakeStore({ existing, failCreateNamed: 1 });
+  await assert.rejects(suspendAccount(store, { account: '_bad', length: '30d', reason: 'spam', now: NOW }));
+  const named = store.calls.filter((c) => c[0] === 'createNamed');
+  assert.equal(named.length, 2);
+  assert.deepEqual(named[1][3], { accountRecordName: '_bad', until: { value: NOW + DAY, type: 'TIMESTAMP' } }, 'the old end restored');
+  assert.deepEqual(store.calls.at(-1), ['delete', ['act1']]);
+});
+
+test('your own account, or CloudKit\'s own-records placeholder, can\'t be suspended', async () => {
+  assert.ok(!canSuspend('_me', '_me'));
+  assert.ok(!canSuspend('__defaultOwner__', '_me'));
+  assert.ok(canSuspend('_bad', '_me'));
+  for (const account of ['_me', '__defaultOwner__']) {
+    const store = fakeStore();
+    await assert.rejects(suspendAccount(store, { account, length: '7d', reason: 'spam', now: NOW, moderator: '_me' }));
+    assert.equal(store.calls.length, 0, 'refused before anything is written');
+  }
+});
+
+test('one item failing doesn\'t stop the rest, and is counted', async () => {
+  const post = (n) => ({ recordType: 'WocketAchievement', recordName: `p${n}`, created: 1, creator: '_bad', fields: {} });
+  const store = fakeStore({ items: { WocketAchievement: [post(1), post(2), post(3)] }, failDeleteOf: 'p2' });
+  const out = await suspendAccount(store, { account: '_bad', authorName: 'LoudCrow12', length: '7d', reason: 'spam', now: NOW, removeItems: true });
+  assert.equal(out.removed, 2);
+  assert.equal(out.failed, 1);
+  assert.deepEqual(out.firstError, { ckErrorCode: 'THROTTLED' });
+});
+
+test('typed fields are sent as they are; plain values are wrapped', () => {
+  assert.deepEqual(ckFields({ a: 'x', until: { value: 5, type: 'TIMESTAMP' } }),
+    { a: { value: 'x' }, until: { value: 5, type: 'TIMESTAMP' } });
+});
+
+test('the Suspensions list dates a re-suspended account by its latest suspension', () => {
+  const rows = suspensionRows(
+    [{ recordName: 'suspension._a', created: 1, fields: { accountRecordName: '_a' } },
+     { recordName: 'suspension._b', created: 50, fields: { accountRecordName: '_b' } }],
+    [{ created: 100, fields: { action: 'suspended', targetRecordName: '_a', snapshot: '{}' } }],
+    NOW,
+  );
+  assert.deepEqual(rows.map((r) => [r.account, r.created]), [['_a', 100], ['_b', 50]]);
 });

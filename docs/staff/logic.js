@@ -3,9 +3,10 @@
 // the route line. Tested by `node --test tests/staff/*.test.mjs` from the repo root.
 //
 // A record here is the adapter's plain shape (ck.js `plain`):
-//   { recordName, recordType, created (ms since 1970), fields: { name: value } }
-// Who created a record is deliberately not part of it: the dashboard never
-// shows who reported something.
+//   { recordName, recordType, created (ms since 1970), fields: { name: value },
+//     creator (community items only: the author's account) }
+// Who created a report is never part of it: the dashboard never shows who
+// reported something.
 
 /** The community types a moderator acts on, keyed by the app's `targetType`. */
 export const TYPES = {
@@ -259,8 +260,6 @@ export function filterByAuthor(records, query) {
 
 export const DAY = 86_400_000;
 
-
-
 /** How many records were created in the last 7 and 30 days before `now`. */
 export function countRecent(records, now) {
   let d7 = 0;
@@ -457,9 +456,23 @@ export function suspensionRecordName(account) {
   return `suspension.${account}`;
 }
 
-/** The Suspension record's fields: the account and, unless permanent, the end. Nothing else. */
+/**
+ * The Suspension record's fields: the account and, unless permanent, the end
+ * as a typed TIMESTAMP (the app reads it as a Date). Nothing else.
+ */
 export function suspensionFields(account, until) {
-  return until === null ? { accountRecordName: account } : { accountRecordName: account, until };
+  return until === null
+    ? { accountRecordName: account }
+    : { accountRecordName: account, until: { value: until, type: 'TIMESTAMP' } };
+}
+
+/**
+ * Accounts that can't be suspended: the signed-in moderator's own, and
+ * CloudKit's placeholder for "your own records" (`__defaultOwner__`), which
+ * would match everyone's own content on their own phone.
+ */
+export function canSuspend(account, moderator) {
+  return isValidRecordName(account) && !account.startsWith('__') && account !== moderator;
 }
 
 /** Records the account itself created: never another account's item that uses the same name. */
@@ -478,8 +491,10 @@ export function shortAccount(account) {
  */
 export function suspensionRows(suspensions, actions, now) {
   const names = new Map();
+  const latest = new Map();
   for (const a of [...actions].sort((x, y) => x.created - y.created)) {
     if (a.fields.action !== 'suspended') continue;
+    latest.set(a.fields.targetRecordName, a.created);
     try {
       const snap = JSON.parse(a.fields.snapshot ?? '{}');
       if (snap.authorName) names.set(a.fields.targetRecordName, snap.authorName);
@@ -488,13 +503,15 @@ export function suspensionRows(suspensions, actions, now) {
   return suspensions
     .map((s) => {
       const until = s.fields.until ?? null;
+      const account = s.fields.accountRecordName;
       return {
-        account: s.fields.accountRecordName,
+        account,
         recordName: s.recordName,
         until,
         ended: until !== null && until <= now,
-        authorName: names.get(s.fields.accountRecordName) ?? '',
-        created: s.created,
+        authorName: names.get(account) ?? '',
+        // The latest suspension of the account, which a re-suspend replaces.
+        created: Math.max(s.created, latest.get(account) ?? 0),
       };
     })
     .sort((a, b) => b.created - a.created);
