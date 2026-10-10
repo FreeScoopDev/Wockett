@@ -2,3 +2,4 @@
 # documentation for the repo, not a page for the website.
 exclude:
   - ci.md
+  - staff/README.md
