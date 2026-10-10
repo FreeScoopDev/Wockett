@@ -37,7 +37,7 @@ struct TrailsPanel: View {
     /// Trails in this list that Joe features, in list order, each once. They
     /// stay in "Trails near you" too.
     private var featured: [(item: TrailListItem, feature: FeaturedTrail)] {
-        FeaturedTrails.featuredItems(finder.items, in: shownFeatures, at: Date())
+        FeaturedTrails.featuredItems(finder.items, in: shownFeatures, at: Date()) { !TrailPackLibrary.shared.trails(key: $0).isEmpty }
     }
 
     var body: some View {

@@ -198,11 +198,32 @@ struct TrailPicksTests {
         #expect(picks.map(\.item.id) == ["y"])
     }
 
-    @Test("After a rebuild changed the key, the namesake within reach is matched once")
-    func nameFallbackOnce() {
+    @Test("After a rebuild changed the key, the trail is found by name within reach")
+    func nameFallbackAfterRebuild() {
         let rebuilt = TrailListItem(id: "r", name: "Lake Trail", sections: [section(5, "Lake Trail", key: "nc:w5")], distanceMeters: 100)
-        let picks = FeaturedTrails.featuredItems([rebuilt], in: [feature("nc:w1", "Lake Trail"), feature("nc:w2", "Lake Trail")], at: now)
-        #expect(picks.count == 1, "one row, one card")
+        let picks = FeaturedTrails.featuredItems([rebuilt], in: [feature("nc:w1", "Lake Trail")], at: now) { _ in false }
+        #expect(picks.map(\.item.id) == ["r"])
+    }
+
+    @Test("A featured trail only filtered out of the list gives no card to a namesake")
+    func filteredOutNoCard() {
+        let namesake = TrailListItem(id: "x", name: "Lake Trail", sections: [section(9, "Lake Trail", key: "nc:w9")], distanceMeters: 100)
+        let picks = FeaturedTrails.featuredItems([namesake], in: [feature("nc:w1", "Lake Trail")], at: now) { $0 == "nc:w1" }
+        #expect(picks.isEmpty, "nc:w1 is still in the pack: it was filtered, not renamed")
+    }
+
+    @Test("A row carrying two featured keys shows the feature listed first, every time")
+    func twoKeysOneRow() {
+        let row = TrailListItem(id: "m", name: "Swamp Rabbit Trail",
+                                sections: [section(1, "Swamp Rabbit Trail", key: "nc:w1"), section(2, "Swamp Rabbit Trail", key: "nc:w2")],
+                                distanceMeters: 100)
+        var b = feature("nc:w2", "Swamp Rabbit Trail")
+        b = FeaturedTrail(trail: b.trail, blurb: "B note", until: nil)
+        var a = feature("nc:w1", "Swamp Rabbit Trail")
+        a = FeaturedTrail(trail: a.trail, blurb: "A note", until: nil)
+        for _ in 0..<20 {
+            #expect(FeaturedTrails.featuredItems([row], in: [b, a], at: now).map(\.feature.blurb) == ["B note"])
+        }
     }
 
     @Test("A one-section row and the grouped row describe the trail the same way")

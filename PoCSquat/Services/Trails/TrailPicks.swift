@@ -211,42 +211,48 @@ enum FeaturedTrails {
         return nil
     }
 
-    /// The featured items among `items`, in list order, each feature once:
-    /// with sections listed separately every piece of a featured trail
-    /// matches, and only the first (nearest) is shown. The active list and
-    /// its names are worked out once, not per row, and geometry is decoded
-    /// only for a row whose name a feature shares.
-    static func featuredItems(_ items: [TrailListItem], in list: [FeaturedTrail], at now: Date) -> [(item: TrailListItem, feature: FeaturedTrail)] {
+    /// The featured items among `items`, in list order, each feature once.
+    /// First, each feature's nearest row carrying its key. Then, by the same
+    /// name within reach, only for features whose key the open packs no
+    /// longer hold (`keyExists`): a rebuild changed it. A feature whose trail
+    /// is merely filtered out of this list gets no card, so a namesake never
+    /// takes it. Geometry is decoded only for a row whose name such a feature
+    /// shares, and `keyExists` asked only for those features.
+    static func featuredItems(_ items: [TrailListItem], in list: [FeaturedTrail], at now: Date,
+                              keyExists: (String) -> Bool = { _ in true }) -> [(item: TrailListItem, feature: FeaturedTrail)] {
         let active = list.filter { $0.isActive(at: now) }
         guard !active.isEmpty else { return [] }
         let named = items.filter(\.hasName)
-        // First pass, by key: each feature's first (nearest) row carrying its
-        // key. A key in the list means the key didn't change.
         var chosen: [String: TrailListItem] = [:]
-        let keyed = Dictionary(active.map { ($0.trail.trailKey, $0) }, uniquingKeysWith: { first, _ in first })
+        let activeKeys = Set(active.map(\.trail.trailKey))
         for item in named {
-            for key in Set(item.sections.compactMap(\.trailKey)) where keyed[key] != nil && chosen[key] == nil {
+            for key in Set(item.sections.compactMap(\.trailKey)) where activeKeys.contains(key) && chosen[key] == nil {
                 chosen[key] = item
             }
         }
-        // Second pass, by name within reach, only for features whose key no
-        // row carries (a rebuild changed it), and never a row already chosen:
-        // a nearer namesake must not take a card from the trail itself.
-        let unmatched = active.filter { chosen[$0.trail.trailKey] == nil }
-        if !unmatched.isEmpty {
-            let names = Set(unmatched.map { normalized($0.trail.trailName) })
+        let rowNames = Set(named.map { normalized($0.name) })
+        let rekeyed = active.filter { feature in
+            chosen[feature.trail.trailKey] == nil
+                && rowNames.contains(normalized(feature.trail.trailName))
+                && !keyExists(feature.trail.trailKey)
+        }
+        if !rekeyed.isEmpty {
             var taken = Set(chosen.values.map(\.id))
+            let names = Set(rekeyed.map { normalized($0.trail.trailName) })
             for item in named where !taken.contains(item.id) && names.contains(normalized(item.name)) {
-                if let feature = match(item, in: unmatched.filter { chosen[$0.trail.trailKey] == nil }, at: now) {
+                if let feature = match(item, in: rekeyed.filter { chosen[$0.trail.trailKey] == nil }, at: now) {
                     chosen[feature.trail.trailKey] = item
                     taken.insert(item.id)
                 }
             }
         }
-        let byItem = Dictionary(chosen.map { ($0.value.id, $0.key) }, uniquingKeysWith: { first, _ in first })
-        return items.compactMap { item in
-            byItem[item.id].flatMap { keyed[$0] }.map { (item, $0) }
+        // One card per row, the feature listed first winning when a row
+        // carries two featured keys: walked in list order, not dictionary order.
+        var byItem: [String: FeaturedTrail] = [:]
+        for feature in active {
+            if let item = chosen[feature.trail.trailKey], byItem[item.id] == nil { byItem[item.id] = feature }
         }
+        return items.compactMap { item in byItem[item.id].map { (item, $0) } }
     }
 
     private static func normalized(_ name: String) -> String {
