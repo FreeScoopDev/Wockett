@@ -587,11 +587,8 @@ final class TrailFinder {
             minLengthMeters: includeShortPaths ? nil : TrailFilters.minimumLengthMeters(usesMiles: usesMiles),
             maxLengthMeters: filters.shortOnly ? TrailFilters.shortThresholdMeters(usesMiles: usesMiles) : nil,
             wholeTrail: { section in
-                // The key starts with the region ("nc:w123"), naming the pack it came from.
-                guard let key = section.trailKey,
-                      let region = key.split(separator: ":").first,
-                      let source = library.source(for: String(region)) else { return [] }
-                return (try? source.trails(key: key)) ?? []
+                guard let key = section.trailKey else { return [] }
+                return library.trails(key: key)
             }
         )
         (items, otherPaths) = TrailListBuilder.splitOtherPaths(all)

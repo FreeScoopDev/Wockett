@@ -543,19 +543,7 @@ struct CommunityReportSheet: View {
     }
 
     private func answer(_ symbol: WktSymbol, _ title: String, _ detail: String) -> some View {
-        VStack(spacing: 16) {
-            WktIconBadge(symbol: symbol, size: 64)
-            Text(title)
-                .font(.wktCardTitle).foregroundColor(.earthCream)
-                .multilineTextAlignment(.center)
-            Text(detail)
-                .font(.wktBodyText).foregroundColor(.earthMuted)
-                .multilineTextAlignment(.center)
-            Spacer()
-            WktPrimaryButton(title: "Done") { close() }
-        }
-        .padding(.horizontal, WktSpacing.screen)
-        .padding(.vertical, 24)
+        WktResultView(symbol: symbol, title: title, detail: detail) { close() }
     }
 
     private var fallback: some View {

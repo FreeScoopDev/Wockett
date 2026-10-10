@@ -132,6 +132,15 @@ final class TrailPackLibrary {
 
     func source(for region: String) -> BundledTrailSource? { sources[region] }
 
+    /// Every piece of the trail `key` names, from the pack its region prefix
+    /// ("nc:w123") names; empty when that pack isn't open. The one lookup the
+    /// list's grouping and a nomination both use, so they describe a trail
+    /// the same way.
+    func trails(key: String) -> [TrailFeature] {
+        guard let region = key.split(separator: ":").first, let source = source(for: String(region)) else { return [] }
+        return (try? source.trails(key: key)) ?? []
+    }
+
     /// Every open pack's metadata, in region order — for Settings.
     var packInfos: [TrailPackInfo] {
         sources.keys.sorted().compactMap { sources[$0]?.packInfo }
