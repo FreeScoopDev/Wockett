@@ -28,6 +28,17 @@ struct TrailsPanel: View {
     /// "Other paths" starts closed: it is the unnamed paths a
     /// downloaded state pack carries, there if wanted but not in the way.
     @State private var showOtherPaths = false
+    private let featuredTrails = FeaturedTrailService.shared
+    /// The features as they were when the list appeared: a fetch that lands
+    /// while it is open shows next time, not as cards pushing the list down
+    /// under a finger.
+    @State private var shownFeatures: [FeaturedTrail] = []
+
+    /// Trails in this list that Joe features, in list order, each once. They
+    /// stay in "Trails near you" too.
+    private var featured: [(item: TrailListItem, feature: FeaturedTrail)] {
+        FeaturedTrails.featuredItems(finder.items, in: shownFeatures, at: Date()) { !TrailPackLibrary.shared.trails(key: $0).isEmpty }
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -64,6 +75,17 @@ struct TrailsPanel: View {
     private var list: some View {
         ScrollView(showsIndicators: false) {
             LazyVStack(spacing: 10) {
+                let picks = emptyMessage == nil ? featured : []
+                if !picks.isEmpty {
+                    WktSectionHeader(title: "Featured near you")
+                        .padding(.horizontal, 20)
+                    ForEach(picks, id: \.item.id) { pick in
+                        FeaturedTrailCard(item: pick.item, feature: pick.feature, activityMode: activityMode) {
+                            withAnimation(.spring(response: 0.3)) { selected = pick.item }
+                        }
+                        .padding(.horizontal, 20)
+                    }
+                }
                 HStack(alignment: .firstTextBaseline) {
                     Text("Trails near you")
                         .font(.wktSection)
@@ -130,6 +152,8 @@ struct TrailsPanel: View {
             }
             .padding(.bottom, 14)
         }
+        .onAppear { shownFeatures = featuredTrails.list }
+        .task { await featuredTrails.refreshIfStale() }
     }
 
     /// One card that opens and closes the unnamed paths, styled like a
@@ -343,6 +367,11 @@ struct TrailDetailView: View {
                 TrailTagRow(item: item, activityMode: activityMode)
 
                 dogRule
+
+                // Named trails only: a nomination is about a trail people can find again.
+                if TrailRef.canNominate(item) {
+                    TrailNominateButton(item: item)
+                }
 
                 TrailCreditLine()
                     .frame(maxWidth: .infinity)
