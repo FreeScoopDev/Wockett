@@ -224,7 +224,7 @@ export function buildSnapshot(item, limit = SNAPSHOT_LIMIT) {
   return json;
 }
 
-export const ACTIONS = ['removed', 'dismissed', 'suspended', 'lifted'];
+export const ACTIONS = ['removed', 'dismissed', 'suspended', 'lifted', 'featured', 'unfeatured'];
 
 /** The fields of a `ModerationAction` record. */
 export function actionFields({ target, type, action, reason = '', note = '', reportCount = 0, snapshot = '' }) {
@@ -282,6 +282,7 @@ export const ACTIVITY_KINDS = [
   { key: 'vote', label: 'Wocketts given', recordType: 'CommunityVote' },
   { key: 'name', label: 'New community names', recordType: 'CommunityName' },
   { key: 'report', label: 'Reports', recordType: 'CommunityReport' },
+  { key: 'nomination', label: 'Trail nominations', recordType: 'TrailNomination' },
   { key: 'action', label: 'Moderation actions', recordType: 'ModerationAction' },
 ];
 
@@ -512,6 +513,129 @@ export function suspensionRows(suspensions, actions, now) {
         authorName: names.get(account) ?? '',
         // The latest suspension of the account, which a re-suspend replaces.
         created: Math.max(s.created, latest.get(account) ?? 0),
+      };
+    })
+    .sort((a, b) => b.created - a.created);
+}
+
+// MARK: - Trail nominations and featured trails
+
+/** The latest action per target, by `targetRecordName`. */
+function latestActions(actions) {
+  const last = new Map();
+  for (const a of actions) {
+    const t = a.fields.targetRecordName;
+    if (!t) continue;
+    const prev = last.get(t);
+    if (!prev || a.created > prev.created) last.set(t, a);
+  }
+  return last;
+}
+
+/**
+ * Nominations grouped by trail (`trailKey`), with the trail as the newest
+ * nomination describes it. A trail is open while it has a nomination newer
+ * than its latest action; count, notes and order use only those.
+ */
+export function groupNominations(nominations, actions = []) {
+  const last = latestActions(actions);
+  const groups = new Map();
+  for (const n of nominations) {
+    const key = n.fields.trailKey;
+    if (!key) continue;
+    let g = groups.get(key);
+    if (!g) {
+      g = { trailKey: key, nominations: [], latestAt: n.created, trail: null };
+      groups.set(key, g);
+    }
+    g.nominations.push(n);
+    if (!g.trail || n.created >= g.latestAt) {
+      g.latestAt = Math.max(g.latestAt, n.created);
+      const f = n.fields;
+      g.trail = { trailKey: key, trailName: f.trailName ?? key, region: f.region ?? '', latitude: f.latitude,
+                  longitude: f.longitude, lengthMeters: f.lengthMeters ?? 0 };
+    }
+  }
+  return [...groups.values()].map((g) => {
+    const action = last.get(g.trailKey) ?? null;
+    const fresh = action ? g.nominations.filter((n) => n.created > action.created) : g.nominations;
+    const notes = fresh
+      .filter((n) => (n.fields.note ?? '').trim() !== '')
+      .sort((a, b) => b.created - a.created)
+      .map((n) => ({ note: n.fields.note.trim(), at: n.created }));
+    return { ...g, count: g.nominations.length, newCount: fresh.length, notes, lastAction: action, open: fresh.length > 0 };
+  });
+}
+
+/** Open trails, most nominated first (ties: newest), or newest first. */
+export function nominationQueue(groups, order = 'most', actedAt = new Map()) {
+  const open = groups.filter((g) => g.open && !(actedAt.has(g.trailKey) && g.latestAt <= actedAt.get(g.trailKey)));
+  return open.sort(order === 'newest'
+    ? (a, b) => b.latestAt - a.latestAt
+    : (a, b) => b.newCount - a.newCount || b.latestAt - a.latestAt);
+}
+
+export const BLURB_LIMIT = 200;
+
+export const FEATURE_LENGTHS = {
+  '30d': { label: '30 days', days: 30 },
+  '90d': { label: '90 days', days: 90 },
+  open: { label: 'Until I unfeature it', days: null },
+};
+
+export function featureUntil(length, now) {
+  if (!Object.hasOwn(FEATURE_LENGTHS, length)) throw new Error(`Unknown length: ${length}`);
+  const { days } = FEATURE_LENGTHS[length];
+  return days === null ? null : now + days * DAY;
+}
+
+/** `featured.nc.w123`: one record per trail. */
+export function featuredRecordName(trailKey) {
+  const name = `featured.${String(trailKey ?? '').replace(/:/g, '.')}`;
+  if (!trailKey || !isValidRecordName(name)) throw new Error('Not a trail.');
+  return name;
+}
+
+/** The FeaturedTrail record's fields; `until` typed, absent when open-ended. */
+export function featuredFields(trail, blurb, until) {
+  const text = String(blurb ?? '').trim().slice(0, BLURB_LIMIT);
+  if (!text) throw new Error('A featured trail needs a note.');
+  const fields = {
+    trailKey: trail.trailKey,
+    trailName: trail.trailName,
+    region: trail.region ?? '',
+    latitude: trail.latitude,
+    longitude: trail.longitude,
+    lengthMeters: trail.lengthMeters ?? 0,
+    blurb: text,
+  };
+  if (until !== null) fields.until = { value: until, type: 'TIMESTAMP' };
+  return fields;
+}
+
+/**
+ * An Apple Maps link to a point, or null. Built only from the two numbers
+ * and the encoded name, so no user text can become a URL of its own.
+ */
+export function mapsLink(latitude, longitude, name) {
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+  if (Math.abs(latitude) > 90 || Math.abs(longitude) > 180) return null;
+  return `https://maps.apple.com/?ll=${latitude.toFixed(5)},${longitude.toFixed(5)}&q=${encodeURIComponent(String(name ?? 'Trail'))}`;
+}
+
+/** The Featured tab's rows, newest first, with whether each has ended. */
+export function featuredRows(records, now) {
+  return records
+    .map((r) => {
+      const until = r.fields.until ?? null;
+      return {
+        recordName: r.recordName,
+        trail: { trailKey: r.fields.trailKey, trailName: r.fields.trailName ?? r.fields.trailKey, region: r.fields.region ?? '',
+                 latitude: r.fields.latitude, longitude: r.fields.longitude, lengthMeters: r.fields.lengthMeters ?? 0 },
+        blurb: r.fields.blurb ?? '',
+        until,
+        ended: until !== null && until <= now,
+        created: r.created,
       };
     })
     .sort((a, b) => b.created - a.created);
