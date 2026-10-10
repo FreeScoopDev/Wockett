@@ -130,10 +130,12 @@ private struct WktButtonLabel: View {
 /// badge, a title, what happens next, and Done. One look in every sheet.
 struct WktResultView: View {
     let symbol: WktSymbol
-    var tint: Color = .earthGreen
     let title: String
     let detail: String
     let onDone: () -> Void
+
+    /// A warning reads as one in every sheet: orange, the rest green.
+    private var tint: Color { symbol == .warning ? .earthOrange : .earthGreen }
 
     var body: some View {
         VStack(spacing: 16) {

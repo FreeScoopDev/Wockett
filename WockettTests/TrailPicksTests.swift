@@ -190,6 +190,21 @@ struct TrailPicksTests {
         #expect(picks.map(\.item.id) == ["s1"])
     }
 
+    @Test("A feature goes to the trail with its key, not a nearer namesake")
+    func keyBeatsNamesake() {
+        let namesake = TrailListItem(id: "x", name: "Lake Trail", sections: [section(9, "Lake Trail", key: "nc:w9")], distanceMeters: 100)
+        let real = TrailListItem(id: "y", name: "Lake Trail", sections: [section(1, "Lake Trail", key: "nc:w1", at: 35.79)], distanceMeters: 500)
+        let picks = FeaturedTrails.featuredItems([namesake, real], in: [feature("nc:w1", "Lake Trail")], at: now)
+        #expect(picks.map(\.item.id) == ["y"])
+    }
+
+    @Test("After a rebuild changed the key, the namesake within reach is matched once")
+    func nameFallbackOnce() {
+        let rebuilt = TrailListItem(id: "r", name: "Lake Trail", sections: [section(5, "Lake Trail", key: "nc:w5")], distanceMeters: 100)
+        let picks = FeaturedTrails.featuredItems([rebuilt], in: [feature("nc:w1", "Lake Trail"), feature("nc:w2", "Lake Trail")], at: now)
+        #expect(picks.count == 1, "one row, one card")
+    }
+
     @Test("A one-section row and the grouped row describe the trail the same way")
     func wholeTrailReference() throws {
         let a = section(1, "Neuse River Trail", key: "nc:w1", at: 35.70, length: 300)
@@ -274,7 +289,9 @@ struct TrailPicksTests {
         while !condition(), Date() < end { await Task.yield() }
     }
 
-    @Test("The list waits no longer than the deadline; a slow fetch still lands for next time")
+    /// The time limit makes a missing deadline fail instead of hanging: the
+    /// held fetch would otherwise keep refreshIfStale waiting for ever.
+    @Test("The list waits no longer than the deadline; a slow fetch still lands for next time", .timeLimit(.minutes(1)))
     func deadline() async {
         let fake = FakeFeatured()
         fake.holds = true

@@ -12,12 +12,7 @@ struct TrailNominateButton: View {
     var body: some View {
         Button {
             let library = library
-            trail = TrailRef(item: item) { key in
-                // The key starts with the region ("nc:w123"), naming the pack it came from.
-                guard let region = key.split(separator: ":").first,
-                      let source = library.source(for: String(region)) else { return [] }
-                return (try? source.trails(key: key)) ?? []
-            }
+            trail = TrailRef(item: item) { library.trails(key: $0) }
         } label: {
             Label {
                 Text("Nominate this trail")
@@ -110,8 +105,7 @@ struct TrailNominationSheet: View {
     }
 
     private func answer(_ symbol: WktSymbol, _ title: String, _ detail: String) -> some View {
-        WktResultView(symbol: symbol, tint: symbol == .warning ? .earthOrange : .earthGreen,
-                      title: title, detail: detail) { dismiss() }
+        WktResultView(symbol: symbol, title: title, detail: detail) { dismiss() }
     }
 
     private func send() {

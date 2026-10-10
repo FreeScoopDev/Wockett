@@ -219,18 +219,34 @@ enum FeaturedTrails {
     static func featuredItems(_ items: [TrailListItem], in list: [FeaturedTrail], at now: Date) -> [(item: TrailListItem, feature: FeaturedTrail)] {
         let active = list.filter { $0.isActive(at: now) }
         guard !active.isEmpty else { return [] }
-        let names = Set(active.map { normalized($0.trail.trailName) })
-        let keys = Set(active.map(\.trail.trailKey))
-        var shown = Set<String>()
-        var out: [(item: TrailListItem, feature: FeaturedTrail)] = []
-        for item in items where item.hasName {
-            let hasKey = item.sections.contains { $0.trailKey.map(keys.contains) ?? false }
-            guard hasKey || names.contains(normalized(item.name)),
-                  let feature = match(item, in: active, at: now),
-                  shown.insert(feature.trail.trailKey).inserted else { continue }
-            out.append((item, feature))
+        let named = items.filter(\.hasName)
+        // First pass, by key: each feature's first (nearest) row carrying its
+        // key. A key in the list means the key didn't change.
+        var chosen: [String: TrailListItem] = [:]
+        let keyed = Dictionary(active.map { ($0.trail.trailKey, $0) }, uniquingKeysWith: { first, _ in first })
+        for item in named {
+            for key in Set(item.sections.compactMap(\.trailKey)) where keyed[key] != nil && chosen[key] == nil {
+                chosen[key] = item
+            }
         }
-        return out
+        // Second pass, by name within reach, only for features whose key no
+        // row carries (a rebuild changed it), and never a row already chosen:
+        // a nearer namesake must not take a card from the trail itself.
+        let unmatched = active.filter { chosen[$0.trail.trailKey] == nil }
+        if !unmatched.isEmpty {
+            let names = Set(unmatched.map { normalized($0.trail.trailName) })
+            var taken = Set(chosen.values.map(\.id))
+            for item in named where !taken.contains(item.id) && names.contains(normalized(item.name)) {
+                if let feature = match(item, in: unmatched.filter { chosen[$0.trail.trailKey] == nil }, at: now) {
+                    chosen[feature.trail.trailKey] = item
+                    taken.insert(item.id)
+                }
+            }
+        }
+        let byItem = Dictionary(chosen.map { ($0.value.id, $0.key) }, uniquingKeysWith: { first, _ in first })
+        return items.compactMap { item in
+            byItem[item.id].flatMap { keyed[$0] }.map { (item, $0) }
+        }
     }
 
     private static func normalized(_ name: String) -> String {
