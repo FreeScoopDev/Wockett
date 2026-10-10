@@ -1,2 +1,0 @@
-### Fixed
-- Community: likes on achievement posts and Wocketts on shared routes now count for everyone. Each is a small vote record the voter creates, counted per post or route, because CloudKit lets only a record's creator change it and every like or Wockett from anyone but the author was failing (likes silently, Wocketts with "Couldn't save your Wockett"). One vote per person per item, across their devices. A like or Wockett that fails to save is taken back on screen and says so. "Wocketts received" counts the votes on your shared routes.

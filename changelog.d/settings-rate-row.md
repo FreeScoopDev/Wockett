@@ -1,2 +1,0 @@
-### Added
-- Settings → Support → **Rate Wockett**, which opens the App Store's write-a-review page for Wockett. The system rating prompt added in 1.14 only appears when iOS allows it (at most three times a year, never in TestFlight), and with four ratings on the listing, a way to rate that is always there matters. Checked with a UI test that finds the row and confirms tapping it hands the review link to the system; the simulator has no App Store, so the final hop to the review page needs a phone (on the next QA card).
