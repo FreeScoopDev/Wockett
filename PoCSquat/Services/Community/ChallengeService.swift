@@ -185,10 +185,13 @@ struct ChallengeParticipant: Identifiable {
     var steps:       Int
     let deviceID:    String
     let joinedAt:    Date
+    /// The account that created the entry (CloudKit's creator), for suspensions.
+    let account:     String?
 
     var isCurrentDevice: Bool { deviceID == ChallengeService.shared.deviceID }
 
-    init?(record: CKRecord) {
+    /// `creator` is a seam for tests (records built in a test have none).
+    init?(record: CKRecord, creator: CKRecord.ID? = nil) {
         guard
             let displayName = record["displayName"] as? String,
             let steps       = record["steps"]       as? Int,
@@ -199,6 +202,7 @@ struct ChallengeParticipant: Identifiable {
         self.steps       = steps
         self.deviceID    = deviceID
         self.joinedAt    = record.creationDate ?? Date()
+        self.account     = CommunityAuthor.account(of: record, creator: creator)
     }
 }
 
@@ -247,6 +251,8 @@ final class ChallengeService {
     // MARK: - Fetch
 
     func fetchActiveChallenges() async throws -> [WalkChallenge] {
+        // Suspended accounts are hidden by the filter below: have the list current.
+        await SuspensionService.shared.refreshIfStale()
         let pred  = NSPredicate(format: "endDate >= %@", Date() as CVarArg)
         let query = CKQuery(recordType: challengeType, predicate: pred)
         query.sortDescriptors = [NSSortDescriptor(key: "startDate", ascending: true)]
@@ -259,15 +265,25 @@ final class ChallengeService {
     }
 
     func fetchLeaderboard(for challenge: WalkChallenge) async throws -> [ChallengeParticipant] {
+        // Suspended accounts are hidden by the filter below: have the list current.
+        await SuspensionService.shared.refreshIfStale()
         let pred  = NSPredicate(format: "challengeRecordName == %@", challenge.id.recordName)
         let query = CKQuery(recordType: entryType, predicate: pred)
         query.sortDescriptors = [NSSortDescriptor(key: "steps", ascending: false)]
         let (results, _) = try await db.records(matching: query, resultsLimit: 100)
-        return results.compactMap { _, r -> ChallengeParticipant? in
+        let participants = results.compactMap { _, r -> ChallengeParticipant? in
             guard let rec = try? r.get() else { return nil }
             return ChallengeParticipant(record: rec)
         }
-        .sorted { $0.steps > $1.steps }
+        return Self.visible(participants, moderation: .shared)
+    }
+
+    /// A leaderboard without suspended accounts' entries, most steps first.
+    static func visible(_ participants: [ChallengeParticipant], moderation: CommunityModerationStore,
+                        now: Date = Date()) -> [ChallengeParticipant] {
+        participants
+            .filter { !moderation.isSuspended(CommunityAuthor(name: $0.displayName, account: $0.account), at: now) }
+            .sorted { $0.steps > $1.steps }
     }
 
     // MARK: - Create
@@ -284,6 +300,7 @@ final class ChallengeService {
         durationDays: Int
     ) async throws {
         try ContentFilter.validate(name: title)
+        try await SuspensionService.shared.ensureCanPost()
         let cal   = Calendar.current
         let start = cal.startOfDay(for: Date())
         guard let end = cal.date(byAdding: .day, value: durationDays, to: start) else { return }
@@ -322,6 +339,9 @@ final class ChallengeService {
             record["steps"] = steps
             _ = try await db.save(record)
         } else {
+            // Joining is posting; updating steps on an entry already there
+            // isn't blocked (it is hidden anyway while suspended).
+            try await SuspensionService.shared.ensureCanPost()
             let record                    = CKRecord(recordType: entryType)
             record["challengeRecordName"] = key
             record["displayName"]         = try await CommunityNameService.shared.claimedName()

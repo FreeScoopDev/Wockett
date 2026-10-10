@@ -325,6 +325,8 @@ struct ShareAchievementSheet: View {
                 try? await Task.sleep(nanoseconds: 900_000_000)
                 dismiss()
                 onDone()
+            } catch let access as CommunityAccessError {
+                postError = access.message
             } catch let ck as CKError {
                 switch ck.code {
                 case .unknownItem, .invalidArguments:

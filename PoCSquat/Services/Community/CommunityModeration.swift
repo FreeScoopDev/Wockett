@@ -117,6 +117,9 @@ final class CommunityModerationStore {
     @ObservationIgnored private let blockedKey  = "communityBlockedAuthors"
     /// Accounts blocked since 2026-10-09.
     @ObservationIgnored private let blockedAccountsKey = "communityBlockedAccounts"
+    /// Suspended accounts as last fetched (SuspensionService), JSON. Held so
+    /// a load offline still hides them.
+    @ObservationIgnored private let suspensionsKey = "communitySuspensions"
     private(set) var revision = 0
 
     @ObservationIgnored private let defaults: UserDefaults
@@ -198,10 +201,54 @@ final class CommunityModerationStore {
         }
     }
 
+    // MARK: - Suspensions
+
+    /// Decoded once, not per item a list filters.
+    @ObservationIgnored private var decodedSuspensions: [Suspension]?
+
+    /// The suspensions held, ended ones included (each is checked against the time).
+    var suspensions: [Suspension] {
+        _ = revision
+        if let decodedSuspensions { return decodedSuspensions }
+        let list = defaults.data(forKey: suspensionsKey)
+            .flatMap { try? JSONDecoder().decode([Suspension].self, from: $0) } ?? []
+        decodedSuspensions = list
+        return list
+    }
+
+    /// Replaces the list held; redraws only when it changed.
+    func setSuspensions(_ list: [Suspension]) {
+        guard list != suspensions, let data = try? JSONEncoder().encode(list) else { return }
+        defaults.set(data, forKey: suspensionsKey)
+        decodedSuspensions = list
+        revision += 1
+    }
+
+    /// Whether this phone knows its own account yet.
+    var knowsMyAccount: Bool { myAccount() != nil }
+
+    /// The suspension on `account` in force at `now`, if any.
+    func activeSuspension(for account: String?, at now: Date) -> Suspension? {
+        guard let account else { return nil }
+        return suspensions.first { $0.account == account && $0.isActive(at: now) }
+    }
+
+    /// Hidden because its author is suspended. Never your own content.
+    func isSuspended(_ author: CommunityAuthor, at now: Date = Date()) -> Bool {
+        guard !isMine(author) else { return false }
+        return activeSuspension(for: author.account, at: now) != nil
+    }
+
+    /// Your own account's suspension in force at `now`; nil when there is
+    /// none or your account isn't known yet.
+    func mySuspension(at now: Date) -> Suspension? {
+        activeSuspension(for: myAccount(), at: now)
+    }
+
     // MARK: - Convenience
 
     func shouldHide(id: CKRecord.ID, author: CommunityAuthor) -> Bool {
-        isReported(id) || isBlocked(author)
+        isReported(id) || isBlocked(author) || isSuspended(author)
     }
 
     /// `items` minus anything reported or blocked: the one filter every list uses.

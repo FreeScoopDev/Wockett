@@ -289,6 +289,8 @@ struct PostToCommunitySheet: View {
                 didPost = true
                 try? await Task.sleep(nanoseconds: 900_000_000)
                 dismiss()
+            } catch let access as CommunityAccessError {
+                errorMessage = access.message
             } catch let ckError as CKError {
                 switch ckError.code {
                 case .notAuthenticated:

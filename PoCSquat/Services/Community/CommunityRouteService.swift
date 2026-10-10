@@ -104,6 +104,8 @@ final class CommunityRouteService {
     // Fetches newest 30 routes, sorts by Wocketts client-side.
     // Uses creationDate (auto-indexed by CloudKit) to avoid needing a custom index.
     func fetchRoutes(limit: Int = 30) async throws -> [SharedRoute] {
+        // Suspended accounts are hidden by the filter below: have the list current.
+        await SuspensionService.shared.refreshIfStale()
         let query = CKQuery(recordType: recordType, predicate: NSPredicate(value: true))
         query.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
         let (results, _) = try await db.records(matching: query, resultsLimit: limit)
@@ -128,6 +130,7 @@ final class CommunityRouteService {
 
     func publish(route: CustomRoute) async throws {
         try ContentFilter.validate(name: route.name)
+        try await SuspensionService.shared.ensureCanPost()
         let waypointData  = try JSONEncoder().encode(route.waypoints)
         let waypointsJSON = String(data: waypointData, encoding: .utf8) ?? "[]"
 

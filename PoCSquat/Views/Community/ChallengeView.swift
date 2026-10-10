@@ -452,6 +452,8 @@ struct ChallengeDetailView: View {
             try await ChallengeService.shared.joinOrUpdate(challenge, steps: value)
             syncMessage = "Synced \(challenge.leaderboardDisplay(for: value))"
             await loadLeaderboard()
+        } catch let access as CommunityAccessError {
+            syncMessage = access.message
         } catch {
             syncMessage = "Sync failed — check your connection."
         }
@@ -838,6 +840,8 @@ struct CreateChallengeView: View {
                 durationDays:       duration
             )
             dismiss()
+        } catch let access as CommunityAccessError {
+            saveError = access.message
         } catch {
             saveError = "Couldn't create challenge — check your connection."
         }
