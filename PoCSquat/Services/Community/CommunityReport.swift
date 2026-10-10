@@ -302,8 +302,8 @@ struct CommunityReportFlow: Equatable {
 /// The background step keeps it hidden if the app is killed while the
 /// reporter is in Mail.
 enum CommunityReportHandoff {
-    /// The app is going to the background: remember the item if closing the
-    /// sheet would hide it.
+    /// The app is leaving the foreground (or a send answered while it was
+    /// away): remember the item if closing the sheet would hide it.
     static func backgrounded(_ closing: (report: CommunityReport, hide: Bool)?,
                              store: CommunityModerationStore = .shared) {
         guard let closing, closing.hide else { return }
@@ -402,10 +402,18 @@ private struct CommunityReportModifier: ViewModifier {
             .sheet(item: $request, onDismiss: {
                 CommunityReportHandoff.closed(&closing, onHide: onHide)
             }, content: { report in
-                CommunityReportSheet(report: report) { sent, hide in closing = (sent, hide) }
+                CommunityReportSheet(report: report) { sent, hide in
+                    closing = (sent, hide)
+                    // A send that answers while the app is away: remember now,
+                    // no phase change follows before a kill.
+                    if scenePhase != .active { CommunityReportHandoff.backgrounded(closing) }
+                }
             })
             .onChange(of: scenePhase) { _, phase in
-                if phase == .background { CommunityReportHandoff.backgrounded(closing) }
+                // Not only .background: a kill from the app switcher can come
+                // straight from .inactive. No card-hosted list reacts to the
+                // store, so remembering early takes no sheet down.
+                if phase != .active { CommunityReportHandoff.backgrounded(closing) }
             }
     }
 }
