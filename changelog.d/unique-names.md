@@ -1,0 +1,2 @@
+### Changed
+- Community names are now unique. They stay random and anonymous (like MistyOak42: two words and two digits, 136,000 names), but the first account to use a name keeps it, so no two people share one. One person has the same name on every device. Existing users keep their current name if nobody else holds it, and otherwise get a new one the next time they share; things already posted keep the name they show.

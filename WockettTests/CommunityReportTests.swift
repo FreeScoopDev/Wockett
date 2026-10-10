@@ -223,7 +223,7 @@ struct CommunityReportTests {
         model.challenges = [reported, blocked, kept]
         #expect(model.visibleChallenges.count == 3)
         model.moderation.report(reported.id)
-        model.moderation.block(author: "LoudCrow")
+        model.moderation.block(CommunityAuthor(name: "LoudCrow", account: nil))
         #expect(model.visibleChallenges.map(\.id) == [kept.id])
     }
 
@@ -259,7 +259,7 @@ struct CommunityReportTests {
     func nothingAboutReporter() {
         let report = CommunityReport(kind: .route, recordID: CKRecord.ID(recordName: "r"), author: "A", content: "B")
         let text = report.body + report.subject
-        #expect(!text.contains(CommunityRouteService.shared.username))
+        #expect(!text.contains(CommunityNameService.shared.displayName))
         #expect(!text.contains(ChallengeService.shared.deviceID))
     }
 

@@ -8,11 +8,15 @@ struct AchievementPost: Identifiable {
     let badgeName: String
     let badgeEmoji: String
     let authorName: String
+    /// The account that created it (CloudKit's creator), for Block.
+    let authorAccount: String?
+    var author: CommunityAuthor { CommunityAuthor(name: authorName, account: authorAccount) }
     let message: String
     let createdAt: Date
     var likes: Int
 
-    init?(record: CKRecord) {
+    /// `creator` is a seam for tests (records built in a test have none).
+    init?(record: CKRecord, creator: CKRecord.ID? = nil) {
         guard
             let badgeName  = record["badgeName"]  as? String,
             let badgeEmoji = record["badgeEmoji"] as? String
@@ -22,6 +26,7 @@ struct AchievementPost: Identifiable {
         self.badgeName  = badgeName
         self.badgeEmoji = badgeEmoji
         self.authorName = record["authorName"] as? String ?? "Anonymous"
+        self.authorAccount = CommunityAuthor.account(of: record, creator: creator)
         self.message    = record["message"]    as? String ?? ""
         self.createdAt  = record.creationDate  ?? Date()
         self.likes      = record["likes"]      as? Int    ?? 0
@@ -44,8 +49,6 @@ final class AchievementFeedService {
     private let likedKey   = "achievementLikedIds"
 
     init() {}
-
-    var username: String { CommunityRouteService.shared.username }
 
     // MARK: - Like tracking (local device)
 
@@ -79,7 +82,7 @@ final class AchievementFeedService {
             guard let record = try? result.get() else { return nil }
             return AchievementPost(record: record)
         }
-        .filter { !CommunityModerationStore.shared.shouldHide(id: $0.id, author: $0.authorName) }
+        .filter { !CommunityModerationStore.shared.shouldHide(id: $0.id, author: $0.author) }
         // Likes are CommunityVote records (CommunityVotes.swift), not the
         // post's own `likes` field, which only its author could ever change.
         let tally = await CommunityVoteService.shared.tally(for: posts.map(\.id.recordName))
@@ -99,7 +102,7 @@ final class AchievementFeedService {
         let record = CKRecord(recordType: recordType)
         record["badgeName"]  = badgeName
         record["badgeEmoji"] = badgeEmoji
-        record["authorName"] = username
+        record["authorName"] = try await CommunityNameService.shared.claimedName()
         record["message"]    = message.trimmingCharacters(in: .whitespacesAndNewlines)
         record["likes"]      = 0
         _ = try await db.save(record)
@@ -112,3 +115,5 @@ final class AchievementFeedService {
         markLiked(id: id)
     }
 }
+
+extension AchievementPost: CommunityModerated {}

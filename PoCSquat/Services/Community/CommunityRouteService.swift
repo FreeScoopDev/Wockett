@@ -13,6 +13,9 @@ struct SharedRoute: Identifiable {
     let difficulty: RouteDifficulty
     var wocketts: Int
     let authorName: String
+    /// The account that created it (CloudKit's creator), for Block.
+    let authorAccount: String?
+    var author: CommunityAuthor { CommunityAuthor(name: authorName, account: authorAccount) }
     let createdAt: Date
 
     var distanceText: String {
@@ -37,7 +40,8 @@ struct SharedRoute: Identifiable {
         )
     }
 
-    init?(record: CKRecord) {
+    /// `creator` is a seam for tests (records built in a test have none).
+    init?(record: CKRecord, creator: CKRecord.ID? = nil) {
         guard
             let name          = record["name"] as? String,
             let waypointsJSON = record["waypointsJSON"] as? String,
@@ -54,6 +58,7 @@ struct SharedRoute: Identifiable {
         self.difficulty     = RouteDifficulty(rawValue: record["difficultyTag"] as? String ?? "") ?? .easy
         self.wocketts       = record["upvotes"] as? Int ?? 0
         self.authorName     = record["authorName"] as? String ?? "Anonymous"
+        self.authorAccount = CommunityAuthor.account(of: record, creator: creator)
         self.createdAt      = record.creationDate ?? Date()
     }
 }
@@ -66,28 +71,11 @@ final class CommunityRouteService {
     private let db         = CKContainer(identifier: WockettCloud.containerID).publicCloudDatabase
     private let recordType = "SharedRoute"
     private let votedKey      = "communityVotedRoutes"
-    private let usernameKey   = "communityUsername"
     private let publishedKey  = "wkt_publishedRouteIds"
-
-    private let adjectives = [
-        "Misty", "Golden", "Ancient", "Silent", "Swift", "Wild", "Calm",
-        "Wandering", "Gentle", "Humble", "Mossy", "Amber", "Russet", "Dappled", "Sunlit"
-    ]
-    private let nouns = [
-        "Oak", "Heron", "Fern", "Cedar", "Maple", "Wolf", "Falcon", "Birch",
-        "Stone", "River", "Meadow", "Pine", "Hawk", "Willow", "Aspen", "Moss", "Elk", "Sage"
-    ]
 
     init() {}
 
     // MARK: - Username
-
-    var username: String {
-        if let existing = UserDefaults.standard.string(forKey: usernameKey) { return existing }
-        let generated = (adjectives.randomElement() ?? "Misty") + (nouns.randomElement() ?? "Oak")
-        UserDefaults.standard.set(generated, forKey: usernameKey)
-        return generated
-    }
 
     // MARK: - Vote tracking (local device)
 
@@ -123,7 +111,7 @@ final class CommunityRouteService {
             guard let record = try? result.get() else { return nil }
             return SharedRoute(record: record)
         }
-        .filter { !CommunityModerationStore.shared.shouldHide(id: $0.id, author: $0.authorName) }
+        .filter { !CommunityModerationStore.shared.shouldHide(id: $0.id, author: $0.author) }
         // Wocketts are CommunityVote records (CommunityVotes.swift), not the
         // route's own `upvotes` field, which only its author could ever change.
         let tally = await CommunityVoteService.shared.tally(for: routes.map(\.id.recordName))
@@ -150,7 +138,7 @@ final class CommunityRouteService {
         record["distanceMeters"] = route.totalDistance
         record["difficultyTag"] = difficultyTag(for: route.totalDistance)
         record["upvotes"]       = 0
-        record["authorName"]    = username
+        record["authorName"]    = try await CommunityNameService.shared.claimedName()
 
         let saved = try await db.save(record)
         // Track published route ID so we can fetch received wocketts later
@@ -185,3 +173,5 @@ final class CommunityRouteService {
         return RouteDifficulty.hard.rawValue
     }
 }
+
+extension SharedRoute: CommunityModerated {}

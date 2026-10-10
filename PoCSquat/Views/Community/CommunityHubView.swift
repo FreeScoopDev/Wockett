@@ -94,6 +94,7 @@ struct CommunityHubView: View {
             tabRouter.pendingCommunityDestination = nil
         }
         .onChange(of: routeManager.lastLocation) { _, _ in refreshTrails() }
+        .task { await CommunityNameService.shared.refreshDisplayName() }
         .task {
             refreshTrails()
             await model.load(sessions: sessions)
@@ -108,7 +109,7 @@ struct CommunityHubView: View {
 
     private var youCard: some View {
         let earned = CommunityHubSummary.earnedCount(walkBadges, sessions: sessions, currentStreak: currentStreak)
-        let name = CommunityRouteService.shared.username
+        let name = CommunityNameService.shared.displayName
         return VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 12) {
                 avatar(name, size: 48, tint: .earthGreenFill, filled: true)
@@ -428,7 +429,7 @@ struct CommunityHubView: View {
 
     @ViewBuilder
     private var routesSection: some View {
-        let top = CommunityHubSummary.topRoutes(communityRoutesModel.routes, near: routeManager.lastLocation)
+        let top = CommunityHubSummary.topRoutes(communityRoutesModel.visibleRoutes, near: routeManager.lastLocation)
         if !top.isEmpty {
             WktSection(title: "Top community routes", actionTitle: "See all", action: { pushRoutes = true }, content: {
                 ScrollView(.horizontal, showsIndicators: false) {

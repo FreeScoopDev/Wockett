@@ -146,6 +146,29 @@ struct CommunityReportButton: View {
     }
 }
 
+/// The Block item in a community context menu: one look everywhere, and
+/// nothing at all on your own content.
+struct CommunityBlockButton: View {
+    let author: CommunityAuthor
+    let onHide: () -> Void
+    var store: CommunityModerationStore = .shared
+
+    var body: some View {
+        if !store.isMine(author) {
+            Button(role: .destructive) {
+                store.block(author)
+                onHide()
+            } label: {
+                Label {
+                    Text("Block \(author.name)")
+                } icon: {
+                    Image(wkt: .blockUser).wktIcon(.inline, tint: .red)
+                }
+            }
+        }
+    }
+}
+
 extension View {
     /// Sends `report` when it is set: opens the email, then remembers and
     /// hides the item (`onHide`) only once a mail app took it, or once the
