@@ -42,6 +42,23 @@ jobs:
           fi
           echo "Language guard passed."
 
+  staff-dashboard:
+    name: Staff dashboard tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # The moderation dashboard's rules (docs/staff/logic.js, actions.js):
+    # grouping reports, open vs resolved, the snapshot written before every
+    # removal, the activity counts. Node's own test runner, no packages.
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: node --test
+        run: node --test tests/staff/*.test.mjs
+
   swiftlint:
     name: SwiftLint
     runs-on: ubuntu-latest

@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Wockett Staff</title>
+  <link rel="stylesheet" href="styles.css">
+  <!-- Apple's CloudKit JS, from Apple. The only script not in this folder. -->
+  <script src="https://cdn.apple-cloudkit.com/ck/2/cloudkit.js"></script>
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <header class="top">
+    <div class="brand">Wockett Staff</div>
+    <label class="env">
+      <span class="visually-hidden">Environment</span>
+      <select id="env-select">
+        <option value="production">Production</option>
+        <option value="development">Development</option>
+      </select>
+    </label>
+    <div id="who" class="who small muted"></div>
+    <div id="apple-sign-out" class="signout"></div>
+  </header>
+  <div id="env-banner" class="banner" hidden></div>
+  <nav id="tabs" class="tabs" hidden>
+    <button data-view="reports" aria-current="page">Reports</button>
+    <button data-view="browse">Browse</button>
+    <button data-view="activity">Activity</button>
+    <button data-view="history">History</button>
+  </nav>
+  <div id="status" class="status" role="status" aria-live="polite"></div>
+  <main id="main">
+    <p class="muted">Loading…</p>
+  </main>
+  <div id="apple-sign-in" class="signin"></div>
+  <dialog id="dialog"></dialog>
+</body>
+</html>
