@@ -109,35 +109,41 @@ struct CommunityReportTests {
         CommunityReport(kind: .route, recordID: CKRecord.ID(recordName: "handoff-\(UUID().uuidString)"), author: "A", content: "B")
     }
 
-    @Test("Once a send was tried, the item is remembered before the sheet closes")
-    func rememberedBeforeClose() {
+    @Test("With the sheet up, the item is remembered only if the app goes to the background")
+    func rememberedOnBackground() {
         let store = isolatedStore()
         let report = freshReport()
-        CommunityReportHandoff.stepped(report, hides: false, store: store)
+        CommunityReportHandoff.backgrounded((report, false), store: store)
+        CommunityReportHandoff.backgrounded(nil, store: store)
         #expect(!store.isReported(report.recordID), "picking a reason remembers nothing")
-        CommunityReportHandoff.stepped(report, hides: true, store: store)
+        CommunityReportHandoff.backgrounded((report, true), store: store)
         #expect(store.isReported(report.recordID), "kept if the app is killed while the reporter is in Mail")
     }
 
-    @Test("Closing after a send hides the item once; a second close does nothing")
+    @Test("Closing after a send remembers the item and hides it once; a second close does nothing")
     func closedHidesOnce() {
+        let store = isolatedStore()
         let report = freshReport()
         var closing: (report: CommunityReport, hide: Bool)? = (report, true)
         var hidden: [CommunityReport] = []
-        CommunityReportHandoff.closed(&closing) { hidden.append($0) }
+        CommunityReportHandoff.closed(&closing, store: store) { hidden.append($0) }
         #expect(hidden == [report])
+        #expect(store.isReported(report.recordID), "remembered, so it stays hidden after a refresh or relaunch")
         #expect(closing == nil)
-        CommunityReportHandoff.closed(&closing) { hidden.append($0) }
+        CommunityReportHandoff.closed(&closing, store: store) { hidden.append($0) }
         #expect(hidden == [report])
     }
 
-    @Test("Cancelling, or closing with nothing said, hides nothing")
+    @Test("Cancelling, or closing with nothing said, hides and remembers nothing")
     func cancelHidesNothing() {
-        var closing: (report: CommunityReport, hide: Bool)? = (freshReport(), false)
+        let store = isolatedStore()
+        let report = freshReport()
+        var closing: (report: CommunityReport, hide: Bool)? = (report, false)
         var hidden = 0
-        CommunityReportHandoff.closed(&closing) { _ in hidden += 1 }
-        CommunityReportHandoff.closed(&closing) { _ in hidden += 1 }
+        CommunityReportHandoff.closed(&closing, store: store) { _ in hidden += 1 }
+        CommunityReportHandoff.closed(&closing, store: store) { _ in hidden += 1 }
         #expect(hidden == 0)
+        #expect(!store.isReported(report.recordID))
     }
 
     @Test("Report is not offered on your own content, signed in or out")

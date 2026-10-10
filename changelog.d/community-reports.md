@@ -9,9 +9,8 @@
   about the reporter beyond CloudKit's own creator reference. If the report
   can't be saved (signed out of iCloud, offline, any CloudKit error), the sheet
   offers the old email, prefilled with the reason and note, so a report still
-  always reaches us. A reported item is remembered as hidden as soon as the
-  report is tried, so it stays hidden even if Wockett is closed while the
-  reporter is in Mail. Report is no longer offered on your own posts, routes
+  always reaches us. A reported item stays hidden even if Wockett is closed
+  while the reporter is in Mail. Report is no longer offered on your own posts, routes
   or challenges: it could only hide them from you for good.
 
 ### Internal

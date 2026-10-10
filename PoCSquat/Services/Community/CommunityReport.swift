@@ -294,24 +294,32 @@ struct CommunityReportFlow: Equatable {
 
 // MARK: - Hiding
 
-/// Hiding a reported item happens in two steps, so it survives the app being
-/// killed while the reporter is in Mail: remembered as soon as a send was
-/// tried (`stepped`), removed from the screen once the sheet has closed
-/// (`closed`), because removing it sooner takes the sheet's card with it.
+/// Hiding a reported item, without taking the sheet down with it. The item
+/// is remembered (and so filtered out of every list) only once the sheet has
+/// closed, or when the app goes to the background with the sheet up: a list
+/// refresh that filters it out while the sheet is open would remove the card
+/// hosting the sheet, and the email fallback with it (critic, 2026-10-10).
+/// The background step keeps it hidden if the app is killed while the
+/// reporter is in Mail.
 enum CommunityReportHandoff {
-    /// The sheet moved on. Once closing it would hide the item, remember the
-    /// item as reported, so a relaunch keeps it hidden.
-    static func stepped(_ report: CommunityReport, hides: Bool, store: CommunityModerationStore = .shared) {
-        if hides { store.report(report.recordID) }
+    /// The app is going to the background: remember the item if closing the
+    /// sheet would hide it.
+    static func backgrounded(_ closing: (report: CommunityReport, hide: Bool)?,
+                             store: CommunityModerationStore = .shared) {
+        guard let closing, closing.hide else { return }
+        store.report(closing.report.recordID)
     }
 
-    /// The sheet closed: remove the item from the screen if a send was tried,
-    /// once. `closing` is what the sheet last said; cleared here.
+    /// The sheet closed: if a send was tried, remember the item and remove it
+    /// from the screen, once. `closing` is what the sheet last said; cleared here.
     static func closed(_ closing: inout (report: CommunityReport, hide: Bool)?,
+                       store: CommunityModerationStore = .shared,
                        onHide: (CommunityReport) -> Void) {
         guard let last = closing else { return }
         closing = nil
-        if last.hide { onHide(last.report) }
+        guard last.hide else { return }
+        store.report(last.report.recordID)
+        onHide(last.report)
     }
 }
 
@@ -387,17 +395,18 @@ private struct CommunityReportModifier: ViewModifier {
     let onHide: (CommunityReport) -> Void
     /// What the sheet decided, read when it closes.
     @State private var closing: (report: CommunityReport, hide: Bool)?
+    @Environment(\.scenePhase) private var scenePhase
 
     func body(content: Content) -> some View {
         content
             .sheet(item: $request, onDismiss: {
                 CommunityReportHandoff.closed(&closing, onHide: onHide)
             }, content: { report in
-                CommunityReportSheet(report: report) { sent, hide in
-                    closing = (sent, hide)
-                    CommunityReportHandoff.stepped(sent, hides: hide)
-                }
+                CommunityReportSheet(report: report) { sent, hide in closing = (sent, hide) }
             })
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .background { CommunityReportHandoff.backgrounded(closing) }
+            }
     }
 }
 
