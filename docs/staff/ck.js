@@ -7,16 +7,26 @@ import { isGone, isValidRecordName } from './logic.js';
 // Every call is made as the signed-in iCloud user. CloudKit's roles decide
 // what that user may read, write and delete; this file grants nothing.
 
-/** A CloudKit JS record as the plain shape logic.js uses. The creator is left out on purpose. */
+/**
+ * Record types whose creator the page may know: community content, where
+ * the creator is the author (public anyway, and what Suspend acts on).
+ * Never a report: who reported something stays out of the page.
+ */
+export const CREATOR_TYPES = new Set(['SharedRoute', 'WocketAchievement', 'Challenge', 'ChallengeEntry', 'CommunityName']);
+
+/** A CloudKit JS record as the plain shape logic.js uses. */
 export function plain(record) {
   const fields = {};
   for (const [key, field] of Object.entries(record.fields ?? {})) fields[key] = field?.value;
-  return {
+  const out = {
     recordName: record.recordName,
     recordType: record.recordType,
     created: record.created?.timestamp ?? 0,
     fields,
   };
+  const creator = record.created?.userRecordName;
+  if (creator && CREATOR_TYPES.has(record.recordType)) out.creator = creator;
+  return out;
 }
 
 /** Throws a response's first error, so every call fails the same way. */
@@ -83,6 +93,19 @@ export async function pagedQuery(db, query, { max = 1000, pageSize = 200 } = {})
   return { records: out.slice(0, max), more: hasMorePages(response) || out.length > max };
 }
 
+/**
+ * CloudKit JS fields from plain values. A value that is already
+ * `{ value, type }` (a TIMESTAMP, say) is sent as it is, so its type isn't
+ * left for CloudKit to guess from a bare number.
+ */
+export function ckFields(fields) {
+  const out = {};
+  for (const [key, value] of Object.entries(fields)) {
+    out[key] = value && typeof value === 'object' && 'value' in value ? value : { value };
+  }
+  return out;
+}
+
 export function connect({ CloudKit, containerIdentifier, apiToken, environment }) {
   CloudKit.configure({
     containers: [{
@@ -115,11 +138,32 @@ export function connect({ CloudKit, containerIdentifier, apiToken, environment }
 
     fetch: (recordNames) => fetchExisting(db, recordNames),
 
+    /**
+     * Creates one record named `recordName`. With no change tag, CloudKit
+     * treats the save as a create (unverified against a live container).
+     */
+    async createNamed(recordType, recordName, fields) {
+      const response = check(await db.saveRecords([{ recordType, recordName, fields: ckFields(fields) }]));
+      return plain(response.records[0]);
+    },
+
+    /**
+     * Replaces `recordName` in one step: CloudKit's forceReplace ignores the
+     * change tag and keeps none of the old record's fields that aren't sent.
+     * Atomic, so the record is never briefly missing. (The batch API's name
+     * is from Apple's docs; unverified against a live container. If it
+     * fails, the old record is untouched.)
+     */
+    async replaceNamed(recordType, recordName, fields) {
+      const response = check(await db.newRecordsBatch()
+        .forceReplace({ recordType, recordName, fields: ckFields(fields) })
+        .commit());
+      return plain(response.records[0]);
+    },
+
     /** Creates one record with `fields` (plain values). */
     async create(recordType, fields) {
-      const ckFields = {};
-      for (const [key, value] of Object.entries(fields)) ckFields[key] = { value };
-      const response = check(await db.saveRecords([{ recordType, fields: ckFields }]));
+      const response = check(await db.saveRecords([{ recordType, fields: ckFields(fields) }]));
       return plain(response.records[0]);
     },
 

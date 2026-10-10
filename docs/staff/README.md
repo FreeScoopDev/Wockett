@@ -89,6 +89,11 @@ rules need an ordinary account to be proved.
   entries). **Dismiss** keeps the item; it comes back if reported again.
 - **Browse**: the newest posts, routes, challenges and community names, with
   an author filter, so something unreported can be removed too.
+- **Suspend author** (on report and Browse cards): hides an account's
+  content for everyone and stops it posting, for 7 days, 30 days or for
+  good, optionally removing its items too. Other phones apply it on their
+  next community load, within about 10 minutes.
+- **Suspensions**: who is suspended and until when, their items, and Lift.
 - **Activity**: counts for the last 7 and 30 days.
 - **History**: every action, with what was removed.
 
