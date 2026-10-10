@@ -12,6 +12,7 @@ enum WktSymbol {
     case health             // heart
     case supportHeart       // heart.circle.fill (tip jar / supporter)
     case rateApp            // star.bubble (Settings → Rate Wockett)
+    case trailPick          // star (a featured or nominated trail)
     case community          // pawprint
     case settings           // slider.horizontal.3
     case routes             // map
@@ -165,6 +166,7 @@ enum WktSymbol {
         case .health:         return "heart"
         case .supportHeart:   return "heart.circle.fill"
         case .rateApp:        return "star.bubble"
+        case .trailPick:      return "star"
         case .community:      return "pawprint"
         case .settings:       return "slider.horizontal.3"
         case .routes:         return "map"

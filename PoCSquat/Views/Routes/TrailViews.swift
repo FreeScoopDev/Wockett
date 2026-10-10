@@ -28,6 +28,13 @@ struct TrailsPanel: View {
     /// "Other paths" starts closed: it is the unnamed paths a
     /// downloaded state pack carries, there if wanted but not in the way.
     @State private var showOtherPaths = false
+    private let featuredTrails = FeaturedTrailService.shared
+
+    /// Trails in this list that Joe features, in list order. They stay in
+    /// "Trails near you" too.
+    private var featured: [(item: TrailListItem, feature: FeaturedTrail)] {
+        FeaturedTrails.featuredItems(finder.items, in: featuredTrails.list, at: Date())
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -64,6 +71,16 @@ struct TrailsPanel: View {
     private var list: some View {
         ScrollView(showsIndicators: false) {
             LazyVStack(spacing: 10) {
+                if emptyMessage == nil, !featured.isEmpty {
+                    WktSectionHeader(title: "Featured near you")
+                        .padding(.horizontal, 20)
+                    ForEach(featured, id: \.item.id) { pick in
+                        FeaturedTrailCard(item: pick.item, feature: pick.feature, activityMode: activityMode) {
+                            withAnimation(.spring(response: 0.3)) { selected = pick.item }
+                        }
+                        .padding(.horizontal, 20)
+                    }
+                }
                 HStack(alignment: .firstTextBaseline) {
                     Text("Trails near you")
                         .font(.wktSection)
@@ -130,6 +147,7 @@ struct TrailsPanel: View {
             }
             .padding(.bottom, 14)
         }
+        .task { await featuredTrails.refreshIfStale() }
     }
 
     /// One card that opens and closes the unnamed paths, styled like a
@@ -343,6 +361,11 @@ struct TrailDetailView: View {
                 TrailTagRow(item: item, activityMode: activityMode)
 
                 dogRule
+
+                // Named trails only: a nomination is about a trail people can find again.
+                if let trail = TrailRef(item: item) {
+                    TrailNominateButton(trail: trail)
+                }
 
                 TrailCreditLine()
                     .frame(maxWidth: .infinity)
