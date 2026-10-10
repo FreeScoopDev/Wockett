@@ -7,16 +7,26 @@ import { isGone, isValidRecordName } from './logic.js';
 // Every call is made as the signed-in iCloud user. CloudKit's roles decide
 // what that user may read, write and delete; this file grants nothing.
 
-/** A CloudKit JS record as the plain shape logic.js uses. The creator is left out on purpose. */
+/**
+ * Record types whose creator the page may know: community content, where
+ * the creator is the author (public anyway, and what Suspend acts on).
+ * Never a report: who reported something stays out of the page.
+ */
+export const CREATOR_TYPES = new Set(['SharedRoute', 'WocketAchievement', 'Challenge', 'ChallengeEntry', 'CommunityName']);
+
+/** A CloudKit JS record as the plain shape logic.js uses. */
 export function plain(record) {
   const fields = {};
   for (const [key, field] of Object.entries(record.fields ?? {})) fields[key] = field?.value;
-  return {
+  const out = {
     recordName: record.recordName,
     recordType: record.recordType,
     created: record.created?.timestamp ?? 0,
     fields,
   };
+  const creator = record.created?.userRecordName;
+  if (creator && CREATOR_TYPES.has(record.recordType)) out.creator = creator;
+  return out;
 }
 
 /** Throws a response's first error, so every call fails the same way. */
@@ -83,6 +93,21 @@ export async function pagedQuery(db, query, { max = 1000, pageSize = 200 } = {})
   return { records: out.slice(0, max), more: hasMorePages(response) || out.length > max };
 }
 
+/**
+ * Saves `recordName` with `fields`, replacing it if it exists: CloudKit
+ * refuses a save over an existing record without its change tag.
+ */
+export async function upsertRecord(db, recordType, recordName, fields) {
+  const existing = await db.fetchRecords([recordName]);
+  const found = (existing?.records ?? []).find((r) => r?.recordName === recordName && r.recordChangeTag);
+  const ckFields = {};
+  for (const [key, value] of Object.entries(fields)) ckFields[key] = { value };
+  const record = { recordType, recordName, fields: ckFields };
+  if (found) record.recordChangeTag = found.recordChangeTag;
+  const response = check(await db.saveRecords([record]));
+  return plain(response.records[0]);
+}
+
 export function connect({ CloudKit, containerIdentifier, apiToken, environment }) {
   CloudKit.configure({
     containers: [{
@@ -124,6 +149,8 @@ export function connect({ CloudKit, containerIdentifier, apiToken, environment }
     },
 
     /** Deletes records by name; ones already gone count as deleted. */
+    upsert: (recordType, recordName, fields) => upsertRecord(db, recordType, recordName, fields),
+
     async delete(recordNames) {
       for (let i = 0; i < recordNames.length; i += 200) {
         onlyRealErrors(await db.deleteRecords(recordNames.slice(i, i + 200)));

@@ -223,9 +223,11 @@ export function buildSnapshot(item, limit = SNAPSHOT_LIMIT) {
   return json;
 }
 
+export const ACTIONS = ['removed', 'dismissed', 'suspended', 'lifted'];
+
 /** The fields of a `ModerationAction` record. */
 export function actionFields({ target, type, action, reason = '', note = '', reportCount = 0, snapshot = '' }) {
-  if (action !== 'removed' && action !== 'dismissed') throw new Error(`Unknown action: ${action}`);
+  if (!ACTIONS.includes(action)) throw new Error(`Unknown action: ${action}`);
   if (action === 'removed' && !snapshot) throw new Error('A removal needs its snapshot first.');
   return {
     targetRecordName: target,
@@ -256,6 +258,8 @@ export function filterByAuthor(records, query) {
 // MARK: - Activity
 
 export const DAY = 86_400_000;
+
+
 
 /** How many records were created in the last 7 and 30 days before `now`. */
 export function countRecent(records, now) {
@@ -430,4 +434,68 @@ export function ago(ms, now = Date.now()) {
   const d = Math.round(h / 24);
   if (d < 30) return `${d} days ago`;
   return new Date(ms).toISOString().slice(0, 10);
+}
+
+// MARK: - Suspensions
+
+export const SUSPENSION_LENGTHS = {
+  '7d': { label: '7 days', days: 7 },
+  '30d': { label: '30 days', days: 30 },
+  permanent: { label: 'Permanent', days: null },
+};
+
+/** When a suspension of `length` starting `now` ends, in ms; null for permanent. */
+export function suspensionUntil(length, now) {
+  if (!Object.hasOwn(SUSPENSION_LENGTHS, length)) throw new Error(`Unknown length: ${length}`);
+  const { days } = SUSPENSION_LENGTHS[length];
+  return days === null ? null : now + days * DAY;
+}
+
+/** One Suspension record per account, so suspending again replaces it. */
+export function suspensionRecordName(account) {
+  if (!isValidRecordName(account)) throw new Error('Not an account.');
+  return `suspension.${account}`;
+}
+
+/** The Suspension record's fields: the account and, unless permanent, the end. Nothing else. */
+export function suspensionFields(account, until) {
+  return until === null ? { accountRecordName: account } : { accountRecordName: account, until };
+}
+
+/** Records the account itself created: never another account's item that uses the same name. */
+export function ownedBy(records, account) {
+  return records.filter((r) => account && r.creator === account);
+}
+
+/** `_87331bb1…` for showing an account without the whole ID. */
+export function shortAccount(account) {
+  return account && account.length > 10 ? `${account.slice(0, 9)}…` : (account ?? '');
+}
+
+/**
+ * The Suspensions tab's rows, newest first: each suspension with the author
+ * name from its latest "suspended" action, and whether it has ended.
+ */
+export function suspensionRows(suspensions, actions, now) {
+  const names = new Map();
+  for (const a of [...actions].sort((x, y) => x.created - y.created)) {
+    if (a.fields.action !== 'suspended') continue;
+    try {
+      const snap = JSON.parse(a.fields.snapshot ?? '{}');
+      if (snap.authorName) names.set(a.fields.targetRecordName, snap.authorName);
+    } catch { /* an unreadable snapshot names no one */ }
+  }
+  return suspensions
+    .map((s) => {
+      const until = s.fields.until ?? null;
+      return {
+        account: s.fields.accountRecordName,
+        recordName: s.recordName,
+        until,
+        ended: until !== null && until <= now,
+        authorName: names.get(s.fields.accountRecordName) ?? '',
+        created: s.created,
+      };
+    })
+    .sort((a, b) => b.created - a.created);
 }

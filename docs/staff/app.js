@@ -10,9 +10,9 @@ import { connect } from './ck.js';
 import {
   TYPES, REASONS, reasonLabel, groupReports, queue, topReason, filterByAuthor, authorOf,
   activity, DAY, parseWaypoints, routePath, describeItem, describeError, isNotAllowed, ago,
-  effectiveType, reopenFailedRemovals, targetsToCheck,
+  effectiveType, reopenFailedRemovals, targetsToCheck, SUSPENSION_LENGTHS, shortAccount, suspensionRows,
 } from './logic.js';
-import { removeItem, dismissItem } from './actions.js';
+import { removeItem, dismissItem, suspendAccount, liftSuspension, itemsOf, OWNED_TYPES } from './actions.js';
 
 // MARK: - Helpers
 
@@ -163,7 +163,7 @@ function render() {
   say('');
   renderSeq += 1;
   const seq = renderSeq;
-  const screens = { reports: renderReports, browse: renderBrowse, activity: renderActivity, history: renderHistory };
+  const screens = { reports: renderReports, browse: renderBrowse, activity: renderActivity, suspensions: renderSuspensions, history: renderHistory };
   screens[view](seq).catch((error) => { if (current(seq)) fail(error); });
 }
 
@@ -237,7 +237,8 @@ function reportCard(group, record) {
   const buttons = el('div', { class: 'actions' },
     removable ? el('button', { class: 'btn danger', onclick: () => confirmRemove({ type, record, group }) }, `Remove ${TYPES[type].label.toLowerCase()} for everyone`) : null,
     el('button', { class: 'btn', onclick: () => confirmDismiss({ type, group, gone: !record }) },
-      record ? 'Dismiss reports' : 'Close (already gone)'));
+      record ? 'Dismiss reports' : 'Close (already gone)'),
+    suspendButton(removable ? record : null, topReason(group)));
   return el('article', { class: `card${record ? '' : ' gone'}` },
     el('div', { class: 'row' },
       type === 'route' && removable ? routeSvg(record.fields.waypointsJSON) : null,
@@ -406,7 +407,127 @@ function browseCard(type, record) {
         el('div', { class: 'small muted' }, type === 'name' ? `Taken ${ago(record.created)}` : `By ${authorOf(record) || 'unknown'} · ${ago(record.created)}`))),
     el('div', { class: 'actions' },
       el('button', { class: 'btn danger', onclick: () => confirmRemove({ type, record }) },
-        type === 'name' ? 'Free this name' : `Remove ${TYPES[type].label.toLowerCase()} for everyone`)));
+        type === 'name' ? 'Free this name' : `Remove ${TYPES[type].label.toLowerCase()} for everyone`),
+      suspendButton(record, 'other')));
+}
+
+// MARK: - Suspend
+
+/** "Suspend author" for an item whose creator is known; nothing otherwise. */
+function suspendButton(record, reason) {
+  if (!record?.creator) return null;
+  return el('button', { class: 'btn', onclick: () => confirmSuspend({ account: record.creator, authorName: authorOf(record), reason }) },
+    'Suspend author');
+}
+
+function confirmSuspend({ account, authorName, reason = 'other' }) {
+  const who = authorName ? `${authorName} (${shortAccount(account)})` : shortAccount(account);
+  const form = el('form', { method: 'dialog' },
+    el('h2', { class: 'title', id: 'dialog-title' }, `Suspend ${who}?`),
+    el('p', {}, 'Their posts, routes, challenges and leaderboard entries are hidden for everyone within about 10 minutes, and they can\'t post, share, join or give Wocketts. They can still walk and track. You can lift it from Suspensions.'),
+    el('label', {}, 'Length ', el('select', { name: 'length', 'aria-label': 'Length' },
+      Object.entries(SUSPENSION_LENGTHS).map(([value, l]) => el('option', { value, selected: value === '7d' }, l.label)))),
+    el('label', {}, 'Reason ', reasonSelect(reason)),
+    el('label', {}, 'Note (optional)', el('textarea', { name: 'note', maxlength: 1000 })),
+    authorName ? el('label', {}, el('input', { type: 'checkbox', name: 'removeItems' }),
+      ` Also remove their posts, routes and challenges (only ones this account created as ${authorName})`) : null,
+    el('div', { class: 'actions' },
+      el('button', { class: 'btn', value: 'cancel', formnovalidate: true }, 'Cancel'),
+      el('button', { class: 'btn danger', value: 'suspend' }, 'Suspend')));
+  form.addEventListener('submit', async (event) => {
+    if (event.submitter?.value !== 'suspend') return;
+    event.preventDefault();
+    for (const b of form.querySelectorAll('button')) b.disabled = true;
+    say(`Suspending ${who}…`);
+    try {
+      const out = await suspendAccount(store, {
+        account, authorName, length: form.elements.length.value, reason: form.elements.reason.value,
+        note: form.elements.note.value, removeItems: Boolean(form.elements.removeItems?.checked),
+      });
+      dialog.close();
+      const end = out.until === null ? 'permanently' : `until ${new Date(out.until).toLocaleDateString()}`;
+      const removed = out.removed ? ` Removed ${out.removed} item${out.removed === 1 ? '' : 's'}.` : '';
+      if (out.removeError) {
+        say(`Suspended ${who} ${end}.${removed} Some items couldn't be removed: ${describeError(out.removeError)}`, { error: true });
+      } else {
+        say(`Suspended ${who} ${end}.${removed}`);
+      }
+      setTimeout(() => render(), 600);
+    } catch (error) {
+      dialog.close();
+      fail(error);
+    }
+  });
+  openDialog(form);
+}
+
+// MARK: - Suspensions
+
+async function renderSuspensions(seq) {
+  show(el('p', { class: 'muted' }, 'Loading suspensions…'));
+  const [suspensions, actions] = await Promise.all([
+    store.query('Suspension', { max: 2000 }),
+    store.query('ModerationAction', { max: 5000 }),
+  ]);
+  if (!current(seq)) return;
+  const now = Date.now();
+  const rows = suspensionRows(suspensions.records, actions.records, now).map((s) => {
+    const items = el('div', {});
+    const who = s.authorName ? `${s.authorName} (${shortAccount(s.account)})` : shortAccount(s.account);
+    return el('article', { class: `card${s.ended ? ' gone' : ''}` },
+      el('div', {}, el('span', { class: `chip${s.ended ? '' : ' warn'}` }, s.ended ? 'Ended' : 'Suspended')),
+      el('div', { class: 'title' }, who),
+      el('div', { class: 'small muted' },
+        s.until === null ? 'Permanent' : `${s.ended ? 'Ended' : 'Until'} ${new Date(s.until).toLocaleDateString()}`,
+        ` · since ${ago(s.created)}`),
+      el('div', { class: 'actions' },
+        el('button', { class: 'btn', onclick: () => confirmLift(s, who) }, s.ended ? 'Clear' : 'Lift'),
+        s.authorName ? el('button', { class: 'btn', onclick: (e) => showItems(e.target, items, s) }, 'Their items') : null),
+      items);
+  });
+  show(el('div', { class: 'toolbar' }, el('div', { class: 'grow title' }, rows.length ? `${rows.length} suspension${rows.length === 1 ? '' : 's'}` : 'No one is suspended'),
+    el('button', { class: 'btn', onclick: render }, 'Refresh')), ...rows);
+}
+
+async function showItems(button, box, s) {
+  button.disabled = true;
+  box.replaceChildren(el('p', { class: 'muted small' }, 'Looking…'));
+  try {
+    const found = await itemsOf(store, { account: s.account, authorName: s.authorName });
+    const cards = OWNED_TYPES.flatMap((type) => found[type].map((record) => {
+      try { return browseCard(type, record); } catch { return null; }
+    }));
+    box.replaceChildren(cards.length ? el('div', {}, ...cards) : el('p', { class: 'muted small' }, `Nothing by ${s.authorName} from this account.`));
+  } catch (error) {
+    box.replaceChildren(el('p', { class: 'status error' }, describeError(error)));
+  } finally {
+    button.disabled = false;
+  }
+}
+
+function confirmLift(s, who) {
+  const form = el('form', { method: 'dialog' },
+    el('h2', { class: 'title', id: 'dialog-title' }, s.ended ? `Clear the ended suspension of ${who}?` : `Lift the suspension of ${who}?`),
+    el('p', {}, s.ended ? 'It has already ended; this removes it from the list.' : 'Their content shows again for everyone within about 10 minutes, and they can post again.'),
+    el('label', {}, 'Note (optional)', el('textarea', { name: 'note', maxlength: 1000 })),
+    el('div', { class: 'actions' },
+      el('button', { class: 'btn', value: 'cancel', formnovalidate: true }, 'Cancel'),
+      el('button', { class: 'btn primary', value: 'lift' }, s.ended ? 'Clear' : 'Lift')));
+  form.addEventListener('submit', async (event) => {
+    if (event.submitter?.value !== 'lift') return;
+    event.preventDefault();
+    for (const b of form.querySelectorAll('button')) b.disabled = true;
+    try {
+      await liftSuspension(store, { account: s.account, note: form.elements.note.value });
+      dialog.close();
+      say(`Lifted the suspension of ${who}.`);
+      setTimeout(() => render(), 600);
+    } catch (error) {
+      dialog.close();
+      fail(error);
+    }
+  });
+  openDialog(form);
 }
 
 // MARK: - Activity
@@ -439,6 +560,19 @@ async function renderActivity(seq) {
 
 // MARK: - History
 
+const ACTION_LABELS = { removed: 'Removed', dismissed: 'Dismissed', suspended: 'Suspended', lifted: 'Lifted' };
+
+/** "MistyOak42, 7 days to 17 Oct" from a suspension's snapshot. */
+function suspensionSummary(snapshot) {
+  try {
+    const s = JSON.parse(snapshot ?? '{}');
+    const end = s.until ? `until ${new Date(s.until).toLocaleDateString()}` : 'permanently';
+    return `${s.authorName || shortAccount(s.account)}, ${end}`;
+  } catch {
+    return '';
+  }
+}
+
 async function renderHistory(seq) {
   show(el('p', { class: 'muted' }, 'Loading history…'));
   const { records, more } = await store.query('ModerationAction', { max: 5000 });
@@ -449,11 +583,12 @@ async function renderHistory(seq) {
     if (f.snapshot) {
       let pretty = f.snapshot;
       try { pretty = JSON.stringify(JSON.parse(f.snapshot), null, 2); } catch { /* keep the raw text */ }
-      snapshot = el('details', {}, el('summary', {}, 'What was removed'), el('pre', {}, pretty));
+      snapshot = el('details', {}, el('summary', {}, f.action === 'suspended' ? 'Details' : 'What was removed'), el('pre', {}, pretty));
     }
     return el('article', { class: 'card' },
       el('div', {}, el('span', { class: 'chip' }, (Object.hasOwn(TYPES, f.targetType ?? '') ? TYPES[f.targetType].label : (f.targetType || 'Item'))),
-        el('span', { class: `chip${f.action === 'removed' ? ' warn' : ''}` }, f.action === 'removed' ? 'Removed' : 'Dismissed')),
+        el('span', { class: `chip${['removed', 'suspended'].includes(f.action) ? ' warn' : ''}` }, (Object.hasOwn(ACTION_LABELS, f.action ?? '') ? ACTION_LABELS[f.action] : 'Action'))),
+      f.action === 'suspended' ? el('div', {}, suspensionSummary(f.snapshot)) : null,
       el('div', {}, f.reason ? reasonLabel(f.reason) : 'No reason', f.reportCount ? ` · ${f.reportCount} report${f.reportCount === 1 ? '' : 's'}` : ''),
       f.note ? el('div', {}, `“${f.note}”`) : null,
       el('div', { class: 'small muted' }, `${new Date(a.created).toLocaleString()} · ${f.targetRecordName}`),
