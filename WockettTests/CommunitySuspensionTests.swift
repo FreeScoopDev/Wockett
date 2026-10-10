@@ -47,9 +47,23 @@ struct CommunitySuspensionTests {
         init(_ now: Date) { self.now = now }
     }
 
+    /// A deadline that never fires on its own (it is cancelled when the fetch
+    /// wins). With the real 3 s, a loaded CI machine let the deadline win and
+    /// tests about the rules failed on timing (PR 179, 2026-10-10). The tests
+    /// about the deadline pass their own.
+    private static let neverFires: OptimisticVote.Sleep = { _ in try await Task.sleep(for: .seconds(86_400)) }
+
     private func service(_ fake: FakeSuspensions, _ moderation: CommunityModerationStore, clock: Clock,
-                         sleep: @escaping OptimisticVote.Sleep = { try await Task.sleep(for: $0) }) -> SuspensionService {
+                         sleep: @escaping OptimisticVote.Sleep = neverFires) -> SuspensionService {
         SuspensionService(store: fake, moderation: moderation, now: { clock.now }, sleep: sleep)
+    }
+
+    /// Yields until `condition` holds, for up to 30 s of wall time: bounded
+    /// by time, not a count of turns, so a loaded machine can't run out of
+    /// turns first.
+    private func waitUntil(_ condition: () -> Bool) async {
+        let end = Date().addingTimeInterval(30)
+        while !condition(), Date() < end { await Task.yield() }
     }
 
     // MARK: Record
@@ -191,9 +205,9 @@ struct CommunitySuspensionTests {
         let s = service(fake, moderation, clock: Clock(now), sleep: { _ in })
         await s.refreshIfStale()
         #expect(moderation.suspensions.isEmpty, "this load went ahead without it")
-        for _ in 0..<1_000 where fake.gate == nil { await Task.yield() }
+        await waitUntil { fake.gate != nil }
         fake.gate?.resume()
-        for _ in 0..<1_000 where moderation.suspensions.isEmpty { await Task.yield() }
+        await waitUntil { !moderation.suspensions.isEmpty }
         #expect(moderation.suspensions == fake.list, "the next load has it")
         await s.refreshIfStale()
         #expect(fake.calls == 1, "and it counts as this interval's fetch")
@@ -210,7 +224,8 @@ struct CommunitySuspensionTests {
         let defaults = UserDefaults(suiteName: name) ?? .standard
         defaults.removePersistentDomain(forName: name)
         let moderation = CommunityModerationStore(defaults: defaults, myAccount: { known })
-        let s = SuspensionService(store: fake, moderation: moderation, now: { now }, refreshAccount: { known = "_me" })
+        let s = SuspensionService(store: fake, moderation: moderation, now: { now }, sleep: Self.neverFires,
+                                  refreshAccount: { known = "_me" })
         await #expect(throws: CommunityAccessError.suspended(until: nil)) { try await s.ensureCanPost() }
     }
 
