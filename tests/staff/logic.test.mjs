@@ -5,10 +5,10 @@ import assert from 'node:assert/strict';
 import {
   groupReports, queue, topReason, removalPlan, buildSnapshot, SNAPSHOT_LIMIT, actionFields,
   filterByAuthor, countRecent, activity, DAY, parseWaypoints, routePath, describeError, isGone,
-  isNotAllowed, describeItem, typeOfRecordType, reasonLabel,
+  isNotAllowed, describeItem, typeOfRecordType, reasonLabel, knownType, effectiveType, reopenFailedRemovals,
 } from '../../docs/staff/logic.js';
 import { removeItem, dismissItem } from '../../docs/staff/actions.js';
-import { plain } from '../../docs/staff/ck.js';
+import { plain, pagedQuery, buildQuery, hasMorePages } from '../../docs/staff/ck.js';
 
 const report = (target, created, fields = {}) => ({
   recordName: `report.${target}.${created}`, recordType: 'CommunityReport', created,
@@ -116,8 +116,9 @@ test('a removal can\'t be recorded without its snapshot', () => {
 });
 
 /** A store that records the order of calls. */
-function fakeStore({ related = [], failCreate = false } = {}) {
+function fakeStore({ related = [], failCreate = false, failDeletes = 0 } = {}) {
   const calls = [];
+  let deletesToFail = failDeletes;
   return {
     calls,
     async create(recordType, fields) {
@@ -125,7 +126,10 @@ function fakeStore({ related = [], failCreate = false } = {}) {
       if (failCreate) throw { ckErrorCode: 'NETWORK_ERROR' };
       return { recordName: 'new', recordType, created: 1, fields };
     },
-    async delete(names) { calls.push(['delete', names]); },
+    async delete(names) {
+      calls.push(['delete', names]);
+      if (deletesToFail > 0) { deletesToFail -= 1; throw { ckErrorCode: 'ACCESS_DENIED' }; }
+    },
     async query(recordType, opts) { calls.push(['query', recordType, opts.equals]); return { records: related, more: false }; },
   };
 }
@@ -233,4 +237,116 @@ test('a plain record carries no creator', () => {
                       fields: { reason: { value: 'spam' } } });
   assert.deepEqual(rec, { recordName: 'r', recordType: 'CommunityReport', created: 9, fields: { reason: 'spam' } });
   assert.ok(!JSON.stringify(rec).includes('_abc'));
+});
+
+// MARK: Second critic run
+
+test('report text is never trusted as a key', () => {
+  assert.equal(reasonLabel('constructor'), 'constructor');
+  assert.equal(reasonLabel('toString'), 'toString');
+  assert.equal(knownType('toString'), undefined);
+  assert.equal(knownType('__proto__'), undefined);
+  assert.equal(knownType('route'), 'route');
+});
+
+test('what an item is comes from its record, not the report', () => {
+  const group = { type: 'challenge' };
+  assert.equal(effectiveType(group, { recordType: 'WocketAchievement' }), 'post');
+  assert.equal(effectiveType(group, { recordType: 'ModerationAction' }), undefined, 'not community content: dismiss only');
+  assert.equal(effectiveType({ type: 'toString' }, null), undefined);
+  assert.equal(effectiveType({ type: 'route' }, null), 'route');
+});
+
+test('a failed delete takes back the removal record and rethrows', async () => {
+  const store = fakeStore({ failDeletes: 1 });
+  const record = { recordType: 'SharedRoute', recordName: 'r1', created: 1, fields: {} };
+  await assert.rejects(removeItem(store, { type: 'route', record, reason: 'spam' }), { ckErrorCode: 'ACCESS_DENIED' });
+  assert.deepEqual(store.calls.map((c) => c[0]), ['create', 'delete', 'delete']);
+  assert.deepEqual(store.calls[2][1], ['new'], 'the ModerationAction just written');
+  assert.equal(store.calls.filter((c) => c[0] === 'query').length, 0, 'nothing related is touched');
+});
+
+test('an item still up after a "removed" action goes back in the queue, flagged', () => {
+  const groups = groupReports([report('a', 100), report('b', 100)], [action('a', 200, 'removed'), action('b', 200, 'removed')]);
+  const reopened = reopenFailedRemovals(groups, new Map([['a', {}]]));
+  assert.deepEqual(queue(reopened).map((g) => g.target), ['a']);
+  assert.equal(reopened.find((g) => g.target === 'a').removalFailed, true);
+  const dismissed = groupReports([report('c', 100)], [action('c', 200, 'dismissed')]);
+  assert.equal(queue(reopenFailedRemovals(dismissed, new Map([['c', {}]]))).length, 0, 'a dismissed item stays up on purpose');
+});
+
+test('a re-opened item is judged on its new reports only', () => {
+  const old = Array.from({ length: 5 }, (_, i) => report('a', 10 + i, { reason: 'spam', note: `old ${i}` }));
+  const [g] = groupReports([...old, report('a', 500, { reason: 'offensive', note: 'new' })], [action('a', 100)]);
+  assert.deepEqual(g.reasons, [{ reason: 'offensive', count: 1 }]);
+  assert.deepEqual(g.notes.map((n) => n.note), ['new']);
+  assert.equal(topReason(g), 'offensive');
+  assert.equal(g.count, 6, 'the total still counts every report');
+});
+
+test('most reported ranks by reports since the last action', () => {
+  const groups = groupReports([
+    report('was-busy', 10), report('was-busy', 11), report('was-busy', 12), report('was-busy', 300),
+    report('new', 200), report('new', 201),
+  ], [action('was-busy', 100)]);
+  assert.deepEqual(queue(groups, 'most').map((g) => g.target), ['new', 'was-busy']);
+});
+
+test('items acted on this session stay out of the queue', () => {
+  const groups = groupReports([report('a', 1), report('b', 2)]);
+  assert.deepEqual(queue(groups, 'newest', new Set(['b'])).map((g) => g.target), ['a']);
+});
+
+test('a snapshot of many small fields still fits', () => {
+  const fields = Object.fromEntries(Array.from({ length: 100 }, (_, i) => [`f${i}`, 'x'.repeat(100)]));
+  const json = buildSnapshot({ recordType: 'T', recordName: 'n', created: 1, fields });
+  assert.ok(utf8(json) <= SNAPSHOT_LIMIT, `${utf8(json)} bytes`);
+  assert.equal(JSON.parse(json).recordName, 'n');
+});
+
+// MARK: Paging (the property name itself is checked only against a live container)
+
+function fakeDb(pages) {
+  const sent = [];
+  let i = 0;
+  return {
+    sent,
+    async performQuery(q, opts) { sent.push([q, opts]); return pages[i++]; },
+  };
+}
+const page = (names, more) => ({ records: names.map((n) => ({ recordName: n, recordType: 'T', fields: {} })), ...more });
+
+test('a query follows every page while moreComing', async () => {
+  const db = fakeDb([page(['a', 'b'], { moreComing: true }), page(['c'], { moreComing: true }), page(['d'], { moreComing: false })]);
+  const { records, more } = await pagedQuery(db, buildQuery('T'), { max: 100, pageSize: 2 });
+  assert.deepEqual(records.map((r) => r.recordName), ['a', 'b', 'c', 'd']);
+  assert.equal(more, false);
+  assert.equal(db.sent.length, 3);
+  assert.equal(db.sent[1][0].moreComing, true, 'the next page is asked for with the previous response');
+});
+
+test('a query stops at max and says more were left', async () => {
+  const db = fakeDb([page(['a', 'b'], { moreComing: true }), page(['c', 'd'], { moreComing: true })]);
+  const { records, more } = await pagedQuery(db, buildQuery('T'), { max: 3, pageSize: 2 });
+  assert.equal(records.length, 3);
+  assert.equal(more, true);
+});
+
+test('a continuation marker alone also means more pages', () => {
+  assert.ok(hasMorePages({ continuationMarker: 'xyz' }));
+  assert.ok(!hasMorePages({ records: [] }));
+});
+
+test('a query with an error response throws it', async () => {
+  const db = fakeDb([{ hasErrors: true, errors: [{ ckErrorCode: 'ACCESS_DENIED' }] }]);
+  await assert.rejects(pagedQuery(db, buildQuery('T')), { ckErrorCode: 'ACCESS_DENIED' });
+});
+
+test('the age filter is a typed timestamp on the creation time, newest first', () => {
+  const q = buildQuery('CommunityVote', { sinceMs: 1000, equals: ['targetRecordName', 'r1'] });
+  assert.deepEqual(q.filterBy, [
+    { fieldName: 'targetRecordName', comparator: 'EQUALS', fieldValue: { value: 'r1' } },
+    { systemFieldName: 'createdTimestamp', comparator: 'GREATER_THAN_OR_EQUALS', fieldValue: { value: 1000, type: 'TIMESTAMP' } },
+  ]);
+  assert.deepEqual(q.sortBy, [{ systemFieldName: 'createdTimestamp', ascending: false }]);
 });

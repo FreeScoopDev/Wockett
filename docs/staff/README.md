@@ -19,7 +19,8 @@ Tests: `node --test tests/staff` from the repo root (no packages).
 
 ## One-time setup (Joe)
 
-Needs the schema from `cloudkit/schema.ckdb` deployed first.
+Needs the community-reports pull request merged and its schema
+(`cloudkit/schema.ckdb`) deployed to Production first.
 
 ### 1. Create the API tokens
 
@@ -72,7 +73,13 @@ rules need an ordinary account to be proved.
    not records.
 3. Try deleting a **WocketAchievement** that another account created: it
    should be refused.
-4. If either works, stop and tell Claude: the schema's grants are wrong.
+4. On a phone or a private browser window, open
+   https://wockett.app/staff/?env=development and sign in with that same
+   second Apple ID. You should see "This Apple ID isn't a Wockett
+   moderator". If you see the Reports tab instead (even an empty one), stop
+   and tell Claude: the moderator check needs changing.
+5. If any step lets the ordinary account in, stop and tell Claude: the
+   schema's grants are wrong.
 
 ## Using it
 

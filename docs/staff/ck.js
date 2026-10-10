@@ -29,6 +29,41 @@ function onlyRealErrors(response) {
   if (errors.length) throw errors[0];
 }
 
+/**
+ * Whether a query response has another page. CloudKit JS calls it
+ * `moreComing`, with a `continuationMarker` for the next page; both are read
+ * so a renamed property can't silently stop every query at one page.
+ * Unverified against a live container until the Development run.
+ */
+export function hasMorePages(response) {
+  return Boolean(response?.moreComing ?? response?.moreRecordsComing ?? response?.continuationMarker);
+}
+
+/** The query CloudKit JS is sent: newest first, optional equality and age filters. */
+export function buildQuery(recordType, { equals, sinceMs } = {}) {
+  const filterBy = [];
+  if (equals) {
+    filterBy.push({ fieldName: equals[0], comparator: 'EQUALS', fieldValue: { value: equals[1] } });
+  }
+  if (sinceMs !== undefined) {
+    filterBy.push({ systemFieldName: 'createdTimestamp', comparator: 'GREATER_THAN_OR_EQUALS',
+                    fieldValue: { value: sinceMs, type: 'TIMESTAMP' } });
+  }
+  return { recordType, filterBy, sortBy: [{ systemFieldName: 'createdTimestamp', ascending: false }] };
+}
+
+/** Every page of a query, up to `max` records. `more` says some were left out. */
+export async function pagedQuery(db, query, { max = 1000, pageSize = 200 } = {}) {
+  const out = [];
+  let response = check(await db.performQuery(query, { resultsLimit: Math.min(pageSize, max) }));
+  out.push(...response.records.map(plain));
+  while (hasMorePages(response) && out.length < max) {
+    response = check(await db.performQuery(response));
+    out.push(...response.records.map(plain));
+  }
+  return { records: out.slice(0, max), more: hasMorePages(response) || out.length > max };
+}
+
 export function connect({ CloudKit, containerIdentifier, apiToken, environment }) {
   CloudKit.configure({
     containers: [{
@@ -55,24 +90,8 @@ export function connect({ CloudKit, containerIdentifier, apiToken, environment }
      * Records of `recordType`, newest first, following pages up to `max`.
      * `equals` is [field, value]; `sinceMs` keeps records created since then.
      */
-    async query(recordType, { equals, sinceMs, max = 1000, pageSize = 200 } = {}) {
-      const filterBy = [];
-      if (equals) {
-        filterBy.push({ fieldName: equals[0], comparator: 'EQUALS', fieldValue: { value: equals[1] } });
-      }
-      if (sinceMs !== undefined) {
-        filterBy.push({ systemFieldName: 'createdTimestamp', comparator: 'GREATER_THAN_OR_EQUALS',
-                        fieldValue: { value: sinceMs } });
-      }
-      const query = { recordType, filterBy, sortBy: [{ systemFieldName: 'createdTimestamp', ascending: false }] };
-      const out = [];
-      let response = check(await db.performQuery(query, { resultsLimit: Math.min(pageSize, max) }));
-      out.push(...response.records.map(plain));
-      while (response.moreRecordsComing && out.length < max) {
-        response = check(await db.performQuery(response));
-        out.push(...response.records.map(plain));
-      }
-      return { records: out.slice(0, max), more: response.moreRecordsComing || out.length > max };
+    query(recordType, { equals, sinceMs, max = 1000, pageSize = 200 } = {}) {
+      return pagedQuery(db, buildQuery(recordType, { equals, sinceMs }), { max, pageSize });
     },
 
     /** The records that still exist among `recordNames`, by name. */

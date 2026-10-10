@@ -1,13 +1,14 @@
 :root {
   --bg: #f6f3ec; --card: #ffffff; --raised: #ece7dc; --text: #24221d; --muted: #6b665c;
   --line: #ddd6c8; --green: #2f6b3a; --green-fill: #2f7a3e; --red: #b3261e; --orange: #9a5b00;
-  --dev: #b45309; --radius: 16px;
+  --red-fill: #b3261e; --dev-fill: #b45309; --radius: 16px;
   color-scheme: light dark;
 }
 @media (prefers-color-scheme: dark) {
   :root {
     --bg: #171612; --card: #22201b; --raised: #2d2a23; --text: #f1ece0; --muted: #a8a194;
-    --line: #3a362d; --green: #7cc48a; --green-fill: #3b8a4a; --red: #ff8a80; --orange: #f0b45a; --dev: #f59e0b;
+    --line: #3a362d; --green: #7cc48a; --green-fill: #2f7a3e; --red: #ff8a80; --orange: #f0b45a;
+    --red-fill: #b3261e; --dev-fill: #b45309;
   }
 }
 * { box-sizing: border-box; }
@@ -17,7 +18,7 @@ body {
   font: 15px/1.45 ui-rounded, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 .top {
-  display: flex; align-items: center; gap: 12px; padding: 12px 16px;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 12px 16px;
   border-bottom: 1px solid var(--line); background: var(--card); position: sticky; top: 0; z-index: 2;
 }
 .brand { font-weight: 800; font-size: 18px; flex: 1; }
@@ -25,7 +26,7 @@ body {
   font: inherit; color: var(--text); background: var(--raised); border: 1px solid var(--line);
   border-radius: 10px; padding: 6px 10px;
 }
-.banner { background: var(--dev); color: #fff; padding: 8px 16px; font-weight: 700; text-align: center; }
+.banner { background: var(--dev-fill); color: #fff; padding: 8px 16px; font-weight: 700; text-align: center; }
 .tabs { display: flex; gap: 4px; padding: 8px 12px; overflow-x: auto; }
 .tabs button {
   font: inherit; font-weight: 700; border: 0; background: transparent; color: var(--muted);
@@ -62,14 +63,17 @@ svg.route path { fill: none; stroke: var(--green); stroke-width: 2.5; stroke-lin
 .actions { display: flex; flex-wrap: wrap; gap: 8px; }
 button.btn {
   font: inherit; font-weight: 700; border: 1px solid var(--line); background: var(--raised); color: var(--text);
-  border-radius: 12px; padding: 8px 14px; cursor: pointer; min-height: 40px;
+  border-radius: 12px; padding: 8px 14px; cursor: pointer; min-height: 44px;
 }
-button.btn.danger { background: var(--red); border-color: var(--red); color: #fff; }
+button.btn.danger { background: var(--red-fill); border-color: var(--red-fill); color: #fff; }
 button.btn.primary { background: var(--green-fill); border-color: var(--green-fill); color: #fff; }
 button.btn:disabled { opacity: .5; cursor: default; }
 table { width: 100%; border-collapse: collapse; background: var(--card); border-radius: var(--radius); overflow: hidden; }
 th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); }
 td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+blockquote { margin: 0; padding-left: 10px; border-left: 3px solid var(--line); overflow-wrap: anywhere; }
+.who:empty { display: none; }
+.who { overflow-wrap: anywhere; }
 pre { white-space: pre-wrap; overflow-wrap: anywhere; background: var(--raised); padding: 10px; border-radius: 10px; font-size: 12px; }
 dialog {
   border: 1px solid var(--line); border-radius: var(--radius); background: var(--card); color: var(--text);

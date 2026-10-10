@@ -12,10 +12,18 @@ import { actionFields, buildSnapshot, removalPlan } from './logic.js';
 export async function removeItem(store, { type, record, reason, note = '', reportCount = 0 }) {
   const plan = removalPlan(type, record.recordName);
   const snapshot = buildSnapshot(record);
-  await store.create('ModerationAction', actionFields({
+  const written = await store.create('ModerationAction', actionFields({
     target: record.recordName, type, action: 'removed', reason, note, reportCount, snapshot,
   }));
-  await store.delete([plan.item.recordName]);
+  try {
+    await store.delete([plan.item.recordName]);
+  } catch (error) {
+    // The item is still up: take back the "removed" record, so History and
+    // the queue don't say otherwise. If even that fails, the queue still
+    // finds the live item (logic.js reopenFailedRemovals).
+    try { await store.delete([written.recordName]); } catch { /* reported below */ }
+    throw error;
+  }
   let related = 0;
   for (const rel of plan.related) {
     // Found in full first, then deleted: re-querying after each delete can

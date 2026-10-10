@@ -20,6 +20,22 @@ export function typeOfRecordType(recordType) {
   return Object.keys(TYPES).find((k) => TYPES[k].recordType === recordType);
 }
 
+/** `targetType` if it names one of TYPES, else undefined. Reports are written
+ * by any iCloud user, so their text is never trusted as a key ("toString"). */
+export function knownType(type) {
+  return typeof type === 'string' && Object.hasOwn(TYPES, type) ? type : undefined;
+}
+
+/**
+ * What a reported item really is: the fetched record's own type, never the
+ * report's say-so. Undefined when it isn't community content (a crafted
+ * report can name any record): such an item can only be dismissed.
+ */
+export function effectiveType(group, record) {
+  if (record) return typeOfRecordType(record.recordType);
+  return knownType(group?.type);
+}
+
 /** The app's report reasons (`CommunityReportReason` raw values). */
 export const REASONS = {
   spam: 'Spam',
@@ -30,7 +46,8 @@ export const REASONS = {
 };
 
 export function reasonLabel(reason) {
-  return REASONS[reason] ?? (reason ? String(reason) : 'No reason given');
+  if (typeof reason === 'string' && Object.hasOwn(REASONS, reason)) return REASONS[reason];
+  return reason ? String(reason) : 'No reason given';
 }
 
 // MARK: - Reports queue
@@ -69,19 +86,22 @@ export function groupReports(reports, actions = []) {
   }
   return [...groups.values()].map((g) => {
     const action = lastAction.get(g.target) ?? null;
+    // Reasons and notes are the ones since the last action: a dismissed item
+    // reported again is judged on what is new.
+    const fresh = action ? g.reports.filter((r) => r.created > action.created) : g.reports;
     const counts = new Map();
-    for (const r of g.reports) {
+    for (const r of fresh) {
       const reason = r.fields.reason ?? 'other';
       counts.set(reason, (counts.get(reason) ?? 0) + 1);
     }
     const reasons = [...counts.entries()]
       .map(([reason, count]) => ({ reason, count }))
       .sort((a, b) => b.count - a.count || a.reason.localeCompare(b.reason));
-    const notes = g.reports
+    const notes = fresh
       .filter((r) => (r.fields.note ?? '').trim() !== '')
       .sort((a, b) => b.created - a.created)
       .map((r) => ({ note: r.fields.note.trim(), reason: r.fields.reason ?? 'other', at: r.created }));
-    const sinceAction = action ? g.reports.filter((r) => r.created > action.created).length : g.reports.length;
+    const sinceAction = fresh.length;
     return {
       ...g,
       count: g.reports.length,
@@ -94,9 +114,23 @@ export function groupReports(reports, actions = []) {
   });
 }
 
-/** Open groups, newest report first, or most reported first (ties: newest). */
-export function queue(groups, order = 'newest') {
-  const open = groups.filter((g) => g.open);
+/**
+ * A group whose last action was a removal but whose item still exists: the
+ * delete failed after the action was written. Back in the queue, flagged.
+ */
+export function reopenFailedRemovals(groups, live) {
+  return groups.map((g) => (!g.open && g.lastAction?.fields?.action === 'removed' && live.has(g.target)
+    ? { ...g, open: true, removalFailed: true }
+    : g));
+}
+
+/**
+ * Open groups, newest report first, or most reported first (ties: newest).
+ * `hidden` holds targets acted on in this session, kept out until their
+ * action shows up in a query (CloudKit's index lags a save).
+ */
+export function queue(groups, order = 'newest', hidden = new Set()) {
+  const open = groups.filter((g) => g.open && !hidden.has(g.target));
   return open.sort(order === 'most'
     ? (a, b) => b.newCount - a.newCount || b.latestAt - a.latestAt
     : (a, b) => b.latestAt - a.latestAt);
@@ -162,6 +196,12 @@ export function buildSnapshot(item, limit = SNAPSHOT_LIMIT) {
     const keep = Math.max(0, Math.min(value.length - over - CUT.length - 8, Math.floor(value.length / 2)));
     snap.fields[key] = [...value].slice(0, keep).join('') + CUT;
     if (!snap.cut.includes(key)) snap.cut.push(key);
+    json = JSON.stringify(snap);
+  }
+  if (utf8Length(json) > limit) {
+    // Too many fields to shorten in time: keep only the identity.
+    snap.fields = {};
+    snap.cut = ['all fields'];
     json = JSON.stringify(snap);
   }
   return json;
