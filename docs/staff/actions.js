@@ -3,7 +3,7 @@
 
 import {
   actionFields, buildSnapshot, removalPlan, suspensionUntil, suspensionRecordName, suspensionFields, ownedBy, TYPES,
-  canSuspend,
+  canSuspend, featureUntil, featuredRecordName, featuredFields,
 } from './logic.js';
 
 /**
@@ -146,4 +146,63 @@ export async function liftSuspension(store, { account, note = '' }) {
     try { await store.delete([written.recordName]); } catch { /* the error below is what matters */ }
     throw error;
   }
+}
+
+/**
+ * Features a trail. The "featured" ModerationAction is written first (with
+ * the trail and the note); then the FeaturedTrail record, replaced in one
+ * step if the trail is already featured. If that fails, the action is taken
+ * back.
+ */
+export async function featureTrail(store, { trail, blurb, length, keepUntil, now = Date.now() }) {
+  // `keepUntil` (a time, or null for no end) keeps the current end when only the note changes.
+  const until = keepUntil !== undefined ? keepUntil : featureUntil(length, now);
+  const recordName = featuredRecordName(trail.trailKey);
+  const existing = (await store.fetch([recordName])).get(recordName) ?? null;
+  // Featuring again keeps the trail as first featured: the name and point the
+  // app matches by stay the ones Joe checked, whatever later nominations say.
+  // Only the note and the end change.
+  const shown = existing ? {
+    trailKey: trail.trailKey,
+    trailName: existing.fields.trailName ?? trail.trailName,
+    region: existing.fields.region ?? trail.region,
+    latitude: existing.fields.latitude ?? trail.latitude,
+    longitude: existing.fields.longitude ?? trail.longitude,
+    lengthMeters: existing.fields.lengthMeters ?? trail.lengthMeters,
+  } : trail;
+  const fields = featuredFields(shown, blurb, until);
+  const written = await store.create('ModerationAction', actionFields({
+    target: trail.trailKey, type: 'trail', action: 'featured', note: fields.blurb,
+    snapshot: JSON.stringify({ trail: shown, blurb: fields.blurb, length: keepUntil !== undefined ? 'kept' : length, until }),
+  }));
+  try {
+    if (existing) await store.replaceNamed('FeaturedTrail', recordName, fields);
+    else await store.createNamed('FeaturedTrail', recordName, fields);
+  } catch (error) {
+    try { await store.delete([written.recordName]); } catch { /* the error below is what matters */ }
+    throw error;
+  }
+  return { until };
+}
+
+/** Unfeatures a trail: an "unfeatured" action, then the record deleted; taken back if that fails. */
+export async function unfeatureTrail(store, { trail, note = '' }) {
+  const written = await store.create('ModerationAction', actionFields({
+    target: trail.trailKey, type: 'trail', action: 'unfeatured', note,
+    snapshot: JSON.stringify({ trail }),
+  }));
+  try {
+    await store.delete([featuredRecordName(trail.trailKey)]);
+  } catch (error) {
+    try { await store.delete([written.recordName]); } catch { /* the error below is what matters */ }
+    throw error;
+  }
+}
+
+/** Clears a trail's nominations without featuring it; they come back if it's nominated again. */
+export async function dismissNominations(store, { trail, note = '', count = 0 }) {
+  await store.create('ModerationAction', actionFields({
+    target: trail.trailKey, type: 'trail', action: 'dismissed', note, reportCount: count,
+    snapshot: JSON.stringify({ trail }),
+  }));
 }
