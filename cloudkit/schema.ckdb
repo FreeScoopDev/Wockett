@@ -224,6 +224,19 @@ DEFINE SCHEMA
         GRANT READ TO "_world"
     );
 
+    RECORD TYPE Suspension (
+        "___createTime"   TIMESTAMP SORTABLE,
+        "___createdBy"    REFERENCE,
+        "___etag"         STRING,
+        "___modTime"      TIMESTAMP,
+        "___modifiedBy"   REFERENCE,
+        "___recordID"     REFERENCE QUERYABLE,
+        accountRecordName STRING QUERYABLE,
+        until             TIMESTAMP,
+        GRANT READ, CREATE, WRITE TO Moderator,
+        GRANT READ TO "_world"
+    );
+
     RECORD TYPE TrailRegionPack (
         "___createTime" TIMESTAMP,
         "___createdBy"  REFERENCE,

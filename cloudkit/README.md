@@ -25,6 +25,9 @@
   (Console → Data → Users → the record → Roles).
 - `TrailPublisher`: writes trail region packs.
 
+`Suspension` is the one type everyone reads but only a Moderator writes:
+every phone needs the list to hide suspended accounts' content.
+
 `cktool` runs as the developer and ignores roles, so a permission rule is
 proved only from an ordinary account: Console → Act As iCloud Account, or a
 second Apple ID on a device.

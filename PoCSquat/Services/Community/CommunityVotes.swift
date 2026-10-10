@@ -93,6 +93,7 @@ enum CommunityVotes {
     /// What to tell someone whose vote didn't save. Signed out of iCloud is
     /// its own answer: "check your connection" would send them the wrong way.
     static func failureMessage(_ error: Error, noun: String) -> String {
+        if let access = error as? CommunityAccessError { return access.message }
         if (error as? CKError)?.code == .notAuthenticated {
             return "Sign in to iCloud in the Settings app to give a \(noun)."
         }
@@ -345,7 +346,8 @@ final class CloudKitCommunityVoteStore: CommunityVoteStore {
 // MARK: - Service
 
 final class CommunityVoteService {
-    static let shared = CommunityVoteService(store: CloudKitCommunityVoteStore())
+    static let shared = CommunityVoteService(store: CloudKitCommunityVoteStore(),
+                                             canVote: { try await SuspensionService.shared.ensureCanPost() })
 
     private let store: CommunityVoteStore
     private var cachedUser: String?
@@ -353,11 +355,15 @@ final class CommunityVoteService {
     /// How long counts may hold up a feed before it shows with 0s.
     private let tallyTimeout: Duration
     private let sleep: OptimisticVote.Sleep
+    /// Throws when this account may not vote (suspended). A seam for tests.
+    private let canVote: () async throws -> Void
 
     init(store: CommunityVoteStore, tallyTimeout: Duration = .seconds(6),
          sleep: @escaping OptimisticVote.Sleep = { try await Task.sleep(for: $0) },
-         notifications: NotificationCenter = .default) {
+         notifications: NotificationCenter = .default,
+         canVote: @escaping () async throws -> Void = {}) {
         self.store = store
+        self.canVote = canVote
         self.tallyTimeout = tallyTimeout
         self.sleep = sleep
         // iOS doesn't restart the app when the iCloud account changes; a
@@ -376,6 +382,7 @@ final class CommunityVoteService {
 
     /// Votes for `target`. Voting twice is not an error.
     func vote(for target: String, type: VoteTarget) async throws {
+        try await canVote()
         let voter = try await me()
         do {
             try await store.saveVote(recordName: CommunityVotes.recordName(target: target, voter: voter),

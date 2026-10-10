@@ -75,6 +75,8 @@ final class AchievementFeedService {
     // MARK: - Fetch
 
     func fetchPosts(limit: Int = 40) async throws -> [AchievementPost] {
+        // Suspended accounts are hidden by the filter below: have the list current.
+        await SuspensionService.shared.refreshIfStale()
         let query = CKQuery(recordType: recordType, predicate: NSPredicate(value: true))
         query.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
         let (results, _) = try await db.records(matching: query, resultsLimit: limit)
@@ -99,6 +101,7 @@ final class AchievementFeedService {
 
     func post(badgeName: String, badgeEmoji: String, message: String) async throws {
         try ContentFilter.validate(message: message)
+        try await SuspensionService.shared.ensureCanPost()
         let record = CKRecord(recordType: recordType)
         record["badgeName"]  = badgeName
         record["badgeEmoji"] = badgeEmoji

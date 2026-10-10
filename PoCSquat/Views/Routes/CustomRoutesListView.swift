@@ -132,6 +132,8 @@ struct CustomRouteDetailView: View {
     @State private var showMapsAlert      = false
     @State private var isEditing               = false
     @State private var shareState: ShareState  = .idle
+    /// Why sharing failed, when it is worth saying (a paused account).
+    @State private var shareMessage: String?
     @State private var showActiveSessionAlert  = false
     @State private var showRename              = false
     @State private var renameText              = ""
@@ -297,6 +299,7 @@ struct CustomRouteDetailView: View {
                                         try await CommunityRouteService.shared.publish(route: route)
                                         shareState = .shared
                                     } catch {
+                                        shareMessage = (error as? CommunityAccessError)?.message
                                         shareState = .failed
                                     }
                                 }
@@ -319,6 +322,11 @@ struct CustomRouteDetailView: View {
                             }
                             .buttonStyle(BounceButtonStyle(scale: 0.98))
                             .disabled(shareState != .idle)
+                            if let shareMessage {
+                                Text(shareMessage)
+                                    .font(.wktLabel)
+                                    .foregroundColor(.earthMuted)
+                            }
                         }
                     }
                     .padding(WktSpacing.screen)
