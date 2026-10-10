@@ -88,8 +88,9 @@ final class NoCommunitySuspensionStore: CommunitySuspensionStore {
 /// Keeps the moderation store's suspension list fresh, and refuses posting
 /// from a suspended account.
 final class SuspensionService {
-    static let shared = SuspensionService(store: AppModelContainer.isRunningUnderTests
-                                          ? NoCommunitySuspensionStore() : CloudKitCommunitySuspensionStore())
+    static let shared = AppModelContainer.isRunningUnderTests
+        ? SuspensionService(store: NoCommunitySuspensionStore(), refreshAccount: {})
+        : SuspensionService(store: CloudKitCommunitySuspensionStore())
 
     /// At most this often from CloudKit; community loads in between use the list held.
     static let refreshInterval: TimeInterval = 600
@@ -102,6 +103,8 @@ final class SuspensionService {
     private let moderation: CommunityModerationStore
     private let now: () -> Date
     private let sleep: OptimisticVote.Sleep
+    /// Looks up this phone's own account when it isn't known yet (a fresh install).
+    private let refreshAccount: () async -> Void
     private let log = Logger(subsystem: "com.wockett.app", category: "Suspensions")
     /// When the next fetch is due; nil fetches now.
     private(set) var nextRefresh: Date?
@@ -110,35 +113,36 @@ final class SuspensionService {
     init(store: CommunitySuspensionStore,
          moderation: CommunityModerationStore = .shared,
          now: @escaping () -> Date = Date.init,
-         sleep: @escaping OptimisticVote.Sleep = { try await Task.sleep(for: $0) }) {
+         sleep: @escaping OptimisticVote.Sleep = { try await Task.sleep(for: $0) },
+         refreshAccount: @escaping () async -> Void = { await MyAccount.refresh() }) {
         self.store = store
         self.moderation = moderation
         self.now = now
         self.sleep = sleep
+        self.refreshAccount = refreshAccount
     }
 
-    /// Fetches the list if it is due, waiting at most `deadline`; never
-    /// throws. Calls while a fetch runs wait for that one.
+    /// Starts a fetch if one is due, and waits for it at most `deadline`;
+    /// never throws. The fetch itself runs to the end in its own task, so a
+    /// slow one still updates the list when it lands, for the next load.
+    /// Calls while a fetch runs wait on that one.
     func refreshIfStale() async {
-        if let inFlight { return await inFlight.value }
-        if let nextRefresh, now() < nextRefresh { return }
-        let task = Task { await refresh() }
-        inFlight = task
-        await task.value
-        inFlight = nil
+        if inFlight == nil {
+            if let nextRefresh, now() < nextRefresh { return }
+            inFlight = Task { await self.fetch() }
+        }
+        guard let task = inFlight else { return }
+        let finished = try? await OptimisticVote.withDeadline(Self.deadline, sleep: sleep) {
+            await task.value
+            return true
+        }
+        if finished == nil { log.error("Suspension list slow; this load uses the one held") }
     }
 
-    private func refresh() async {
+    private func fetch() async {
+        defer { inFlight = nil }
         do {
-            let list = try await OptimisticVote.withDeadline(Self.deadline, sleep: sleep) { [store] in
-                try await store.suspensions()
-            }
-            guard let list else {
-                log.error("Suspension list timed out; using the one held")
-                nextRefresh = now().addingTimeInterval(Self.retryAfterFailure)
-                return
-            }
-            moderation.setSuspensions(list)
+            moderation.setSuspensions(try await store.suspensions())
             nextRefresh = now().addingTimeInterval(Self.refreshInterval)
         } catch {
             // Offline, signed out, or Production without the type: keep the
@@ -149,9 +153,12 @@ final class SuspensionService {
     }
 
     /// Throws `CommunityAccessError.suspended` when this account is suspended
-    /// now. An unknown own account is allowed.
+    /// now. An own account still unknown after a lookup is allowed.
     func ensureCanPost() async throws {
         await refreshIfStale()
+        // A fresh install doesn't know its own account until Community is
+        // opened; posting from elsewhere must not skip the check.
+        if !moderation.knowsMyAccount { await refreshAccount() }
         if let mine = moderation.mySuspension(at: now()) {
             throw CommunityAccessError.suspended(until: mine.until)
         }

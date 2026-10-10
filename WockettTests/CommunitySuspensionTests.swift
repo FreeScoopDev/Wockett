@@ -27,10 +27,14 @@ struct CommunitySuspensionTests {
         var error: Error?
         var hangs = false
         var calls = 0
+        /// Set: the fetch waits until the test resumes it.
+        var gate: CheckedContinuation<Void, Never>?
+        var holds = false
 
         func suspensions() async throws -> [Suspension] {
             calls += 1
             if hangs { try await Task.sleep(for: .seconds(600)) }
+            if holds { await withCheckedContinuation { gate = $0 } }
             for _ in 0..<5 { await Task.yield() }   // a real fetch suspends
             if let error { throw error }
             return list
@@ -108,7 +112,9 @@ struct CommunitySuspensionTests {
         let defaults = UserDefaults(suiteName: name) ?? .standard
         defaults.removePersistentDomain(forName: name)
         let first = CommunityModerationStore(defaults: defaults, myAccount: { nil })
+        let before = first.revision
         first.setSuspensions([Suspension(account: "_bad", until: nil)])
+        #expect(first.revision > before, "a new list redraws the hub")
         let revision = first.revision
         first.setSuspensions([Suspension(account: "_bad", until: nil)])
         #expect(first.revision == revision, "same list: no redraw")
@@ -176,7 +182,37 @@ struct CommunitySuspensionTests {
         #expect(moderation.suspensions == [Suspension(account: "_bad", until: nil)])
     }
 
+    @Test("A fetch slower than the deadline still updates the list when it lands")
+    func lateResultLands() async {
+        let fake = FakeSuspensions()
+        fake.holds = true
+        fake.list = [Suspension(account: "_bad", until: nil)]
+        let moderation = store()
+        let s = service(fake, moderation, clock: Clock(now), sleep: { _ in })
+        await s.refreshIfStale()
+        #expect(moderation.suspensions.isEmpty, "this load went ahead without it")
+        for _ in 0..<1_000 where fake.gate == nil { await Task.yield() }
+        fake.gate?.resume()
+        for _ in 0..<1_000 where moderation.suspensions.isEmpty { await Task.yield() }
+        #expect(moderation.suspensions == fake.list, "the next load has it")
+        await s.refreshIfStale()
+        #expect(fake.calls == 1, "and it counts as this interval's fetch")
+    }
+
     // MARK: Posting
+
+    @Test("A fresh install looks its own account up before deciding it may post")
+    func unknownAccountLooksUp() async {
+        let fake = FakeSuspensions()
+        fake.list = [Suspension(account: "_me", until: nil)]
+        var known: String?
+        let name = "CommunitySuspensionTests-u-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: name) ?? .standard
+        defaults.removePersistentDomain(forName: name)
+        let moderation = CommunityModerationStore(defaults: defaults, myAccount: { known })
+        let s = SuspensionService(store: fake, moderation: moderation, now: { now }, refreshAccount: { known = "_me" })
+        await #expect(throws: CommunityAccessError.suspended(until: nil)) { try await s.ensureCanPost() }
+    }
 
     @Test("A suspended account can't post, and is told until when")
     func suspendedCantPost() async {

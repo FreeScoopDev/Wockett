@@ -203,11 +203,16 @@ final class CommunityModerationStore {
 
     // MARK: - Suspensions
 
+    /// Decoded once, not per item a list filters.
+    @ObservationIgnored private var decodedSuspensions: [Suspension]?
+
     /// The suspensions held, ended ones included (each is checked against the time).
     var suspensions: [Suspension] {
         _ = revision
-        guard let data = defaults.data(forKey: suspensionsKey),
-              let list = try? JSONDecoder().decode([Suspension].self, from: data) else { return [] }
+        if let decodedSuspensions { return decodedSuspensions }
+        let list = defaults.data(forKey: suspensionsKey)
+            .flatMap { try? JSONDecoder().decode([Suspension].self, from: $0) } ?? []
+        decodedSuspensions = list
         return list
     }
 
@@ -215,8 +220,12 @@ final class CommunityModerationStore {
     func setSuspensions(_ list: [Suspension]) {
         guard list != suspensions, let data = try? JSONEncoder().encode(list) else { return }
         defaults.set(data, forKey: suspensionsKey)
+        decodedSuspensions = list
         revision += 1
     }
+
+    /// Whether this phone knows its own account yet.
+    var knowsMyAccount: Bool { myAccount() != nil }
 
     /// The suspension on `account` in force at `now`, if any.
     func activeSuspension(for account: String?, at now: Date) -> Suspension? {
