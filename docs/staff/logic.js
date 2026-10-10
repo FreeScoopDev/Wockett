@@ -1,6 +1,6 @@
 // The staff dashboard's rules, with no network and no page: grouping reports
 // by item, open versus resolved, the removal snapshot, the activity counts and
-// the route line. Tested by `node --test tests/staff` from the repo root.
+// the route line. Tested by `node --test tests/staff/*.test.mjs` from the repo root.
 //
 // A record here is the adapter's plain shape (ck.js `plain`):
 //   { recordName, recordType, created (ms since 1970), fields: { name: value } }
@@ -118,6 +118,21 @@ export function groupReports(reports, actions = []) {
  * A group whose last action was a removal but whose item still exists: the
  * delete failed after the action was written. Back in the queue, flagged.
  */
+/** Which targets to look up: open items, and items whose last action was a
+ * removal while they still have reports (to catch a removal that failed). */
+export function targetsToCheck(groups, max = 1000) {
+  return groups
+    .filter((g) => g.open || g.lastAction?.fields?.action === 'removed')
+    .sort((a, b) => Number(b.open) - Number(a.open) || b.latestAt - a.latestAt)
+    .slice(0, max)
+    .map((g) => g.target);
+}
+
+/** A string CloudKit could accept as a record name: 1-255 printable ASCII. */
+export function isValidRecordName(name) {
+  return typeof name === 'string' && /^[\x21-\x7e]{1,255}$/.test(name);
+}
+
 export function reopenFailedRemovals(groups, live) {
   return groups.map((g) => (!g.open && g.lastAction?.fields?.action === 'removed' && live.has(g.target)
     ? { ...g, open: true, removalFailed: true }
@@ -126,11 +141,12 @@ export function reopenFailedRemovals(groups, live) {
 
 /**
  * Open groups, newest report first, or most reported first (ties: newest).
- * `hidden` holds targets acted on in this session, kept out until their
- * action shows up in a query (CloudKit's index lags a save).
+ * `actedAt` maps targets acted on in this session to when: kept out while
+ * CloudKit's index catches up with the action, but back as soon as a report
+ * newer than the action arrives.
  */
-export function queue(groups, order = 'newest', hidden = new Set()) {
-  const open = groups.filter((g) => g.open && !hidden.has(g.target));
+export function queue(groups, order = 'newest', actedAt = new Map()) {
+  const open = groups.filter((g) => g.open && !(actedAt.has(g.target) && g.latestAt <= actedAt.get(g.target)));
   return open.sort(order === 'most'
     ? (a, b) => b.newCount - a.newCount || b.latestAt - a.latestAt
     : (a, b) => b.latestAt - a.latestAt);
@@ -344,7 +360,10 @@ export function describeItem(type, record) {
         lines: [[formatDistance(f.distanceMeters), f.difficultyTag, f.isLoop ? 'loop' : 'one way'].filter(Boolean).join(' · ')],
       };
     case 'challenge': {
-      const day = (ms) => (ms ? new Date(ms).toISOString().slice(0, 10) : '?');
+      const day = (ms) => {
+        const d = new Date(ms);
+        return ms && Number.isFinite(d.getTime()) ? d.toISOString().slice(0, 10) : '?';
+      };
       return {
         title: `${f.emoji ?? ''} ${f.title ?? 'Challenge'}`.trim(),
         lines: [`${day(f.startDate)} to ${day(f.endDate)}`, challengeGoal(f)],

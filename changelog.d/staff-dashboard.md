@@ -12,5 +12,5 @@
   only ever shown as text, never run as page code.
 
 ### Internal
-- `node --test tests/staff` covers the dashboard's rules, run in CI as
+- `node --test tests/staff/*.test.mjs` covers the dashboard's rules, run in CI as
   "Staff dashboard tests" on the Linux runner. Each rule was break-checked.

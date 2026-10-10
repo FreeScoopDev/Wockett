@@ -1,6 +1,6 @@
 :root {
   --bg: #f6f3ec; --card: #ffffff; --raised: #ece7dc; --text: #24221d; --muted: #6b665c;
-  --line: #ddd6c8; --green: #2f6b3a; --green-fill: #2f7a3e; --red: #b3261e; --orange: #9a5b00;
+  --line: #ddd6c8; --green: #2f6b3a; --green-fill: #2f7a3e; --red: #b3261e; --orange: #8a5100;
   --red-fill: #b3261e; --dev-fill: #b45309; --radius: 16px;
   color-scheme: light dark;
 }

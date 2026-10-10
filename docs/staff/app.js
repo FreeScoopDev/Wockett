@@ -10,7 +10,7 @@ import { connect } from './ck.js';
 import {
   TYPES, REASONS, reasonLabel, groupReports, queue, topReason, filterByAuthor, authorOf,
   activity, DAY, parseWaypoints, routePath, describeItem, describeError, isNotAllowed, ago,
-  effectiveType, reopenFailedRemovals,
+  effectiveType, reopenFailedRemovals, targetsToCheck,
 } from './logic.js';
 import { removeItem, dismissItem } from './actions.js';
 
@@ -153,29 +153,44 @@ tabs.addEventListener('click', (event) => {
   render();
 });
 
+let renderSeq = 0;
+/** False once another screen has started: a slow load must not draw over it. */
+function current(seq) {
+  return seq === renderSeq;
+}
+
 function render() {
   say('');
+  renderSeq += 1;
+  const seq = renderSeq;
   const screens = { reports: renderReports, browse: renderBrowse, activity: renderActivity, history: renderHistory };
-  screens[view]().catch(fail);
+  screens[view](seq).catch((error) => { if (current(seq)) fail(error); });
 }
 
 // MARK: - Reports
 
 let reportOrder = 'newest';
-/** Items acted on this session: kept out of the queue while CloudKit's index catches up. */
-const actedOn = new Set();
+/** Items acted on this session, and when: kept out of the queue while CloudKit's index catches up. */
+const actedOn = new Map();
 
-async function renderReports() {
+async function renderReports(seq) {
   show(el('p', { class: 'muted' }, 'Loading reports…'));
   const [reports, actions] = await Promise.all([
     store.query('CommunityReport', { max: 2000 }),
     store.query('ModerationAction', { max: 2000 }),
   ]);
+  if (!current(seq)) return;
   const all = groupReports(reports.records, actions.records);
   // Open items, and items whose removal may have failed (their record is
   // checked too: still there means the delete didn't happen).
-  const toFetch = all.filter((g) => g.open || g.lastAction?.fields?.action === 'removed').map((g) => g.target);
-  const live = await store.fetch(toFetch);
+  let live = new Map();
+  try {
+    live = await store.fetch(targetsToCheck(all));
+  } catch (error) {
+    // Cards without their items (Close only) beat an empty screen.
+    say(`Couldn't look up the reported items: ${describeError(error)}`, { error: true });
+  }
+  if (!current(seq)) return;
   const groups = queue(reopenFailedRemovals(all, live), reportOrder, actedOn);
 
   const order = el('select', { 'aria-label': 'Order', onchange: (e) => { reportOrder = e.target.value; render(); } },
@@ -274,13 +289,17 @@ function confirmRemove({ type, record, group = null }) {
     for (const b of form.querySelectorAll('button')) b.disabled = true;
     say(`Removing “${item.title}”…`);
     try {
-      const related = await removeItem(store, {
+      const { related, relatedError } = await removeItem(store, {
         type, record, reason: form.elements.reason.value, note: form.elements.note.value,
-        reportCount: group?.count ?? 0,
+        reportCount: group?.newCount ?? 0,
       });
-      actedOn.add(record.recordName);
+      actedOn.set(record.recordName, Date.now());
       dialog.close();
-      say(`Removed “${item.title}”${related ? ` and ${related} related record${related === 1 ? '' : 's'}` : ''}.`);
+      if (relatedError) {
+        say(`Removed “${item.title}”, but its votes or entries couldn't all be deleted: ${describeError(relatedError)}`, { error: true });
+      } else {
+        say(`Removed “${item.title}”${related ? ` and ${related} related record${related === 1 ? '' : 's'}` : ''}.`);
+      }
       setTimeout(() => render(), 600);
     } catch (error) {
       dialog.close();
@@ -306,8 +325,8 @@ function confirmDismiss({ type, group, gone }) {
     event.preventDefault();
     for (const b of form.querySelectorAll('button')) b.disabled = true;
     try {
-      await dismissItem(store, { target: group.target, type: type ?? 'unknown', note: form.elements.note.value, reportCount: group.count });
-      actedOn.add(group.target);
+      await dismissItem(store, { target: group.target, type: type ?? 'unknown', note: form.elements.note.value, reportCount: group.newCount });
+      actedOn.set(group.target, Date.now());
       dialog.close();
       say('Reports dismissed.');
       setTimeout(() => render(), 600);
@@ -324,7 +343,7 @@ function confirmDismiss({ type, group, gone }) {
 let browseType = 'post';
 let browseAuthor = '';
 
-async function renderBrowse() {
+async function renderBrowse(seq) {
   const typeSelect = el('select', { 'aria-label': 'Type', onchange: (e) => { browseType = e.target.value; render(); } },
     Object.entries(TYPES).map(([key, t]) => el('option', { value: key, selected: key === browseType }, `${t.label}s`)));
   const author = el('input', { class: 'grow', type: 'search', placeholder: 'Filter by author', value: browseAuthor,
@@ -332,7 +351,9 @@ async function renderBrowse() {
   const list = el('div', {}, el('p', { class: 'muted' }, 'Loading…'));
   show(el('div', { class: 'toolbar' }, typeSelect, author), list);
 
-  let { records, more } = await store.query(TYPES[browseType].recordType, { max: 300 });
+  const newest = await store.query(TYPES[browseType].recordType, { max: 300 });
+  if (!current(seq)) return;
+  let { records, more } = newest;
   let exact = null;
   const draw = () => {
     const shown = filterByAuthor(records, browseAuthor);
@@ -340,15 +361,34 @@ async function renderBrowse() {
       el('p', { class: 'muted small' }, exact
         ? `${shown.length} by exactly “${exact}”, all time.`
         : `${shown.length} shown, newest first${more ? ' (the newest 300 only; press Enter to search all by exact name)' : ''}.`),
-      ...shown.map((record) => browseCard(browseType, record)));
+      ...shown.map((record) => {
+        try {
+          return browseCard(browseType, record);
+        } catch (error) {
+          console.error(error);
+          return el('article', { class: 'card' }, el('div', { class: 'title' }, 'A record this page can\'t show'),
+            el('div', { class: 'small muted' }, record.recordName));
+        }
+      }));
   };
-  author.addEventListener('input', () => { browseAuthor = author.value; draw(); });
+  author.addEventListener('input', () => {
+    browseAuthor = author.value;
+    // Any change after an exact search goes back to the newest records.
+    if (exact !== null && author.value.trim() !== exact) {
+      exact = null;
+      ({ records, more } = newest);
+    }
+    draw();
+  });
   // Enter: every record by exactly this name, beyond the newest 300 (authorName is QUERYABLE).
   author.addEventListener('keydown', async (event) => {
     if (event.key !== 'Enter' || browseType === 'name' || !author.value.trim()) return;
     try {
-      exact = author.value.trim();
-      ({ records, more } = await store.query(TYPES[browseType].recordType, { equals: ['authorName', exact], max: 2000 }));
+      const name = author.value.trim();
+      const found = await store.query(TYPES[browseType].recordType, { equals: ['authorName', name], max: 2000 });
+      if (!current(seq) || author.value.trim() !== name) return;
+      exact = name;
+      ({ records, more } = found);
       draw();
     } catch (error) { fail(error); }
   });
@@ -371,13 +411,14 @@ function browseCard(type, record) {
 
 // MARK: - Activity
 
-async function renderActivity() {
+async function renderActivity(seq) {
   show(el('p', { class: 'muted' }, 'Counting the last 30 days…'));
   const now = Date.now();
   const since = now - 30 * DAY;
   const types = ['WocketAchievement', 'SharedRoute', 'Challenge', 'ChallengeEntry', 'CommunityVote', 'CommunityName', 'CommunityReport', 'ModerationAction'];
   const results = await Promise.all(types.map((t) => store.query(t, { sinceMs: since, max: 5000 })
     .then((r) => [t, r]).catch((error) => [t, { error }])));
+  if (!current(seq)) return;
   const byType = {};
   const capped = new Set();
   const failed = new Map();
@@ -398,9 +439,10 @@ async function renderActivity() {
 
 // MARK: - History
 
-async function renderHistory() {
+async function renderHistory(seq) {
   show(el('p', { class: 'muted' }, 'Loading history…'));
   const { records, more } = await store.query('ModerationAction', { max: 5000 });
+  if (!current(seq)) return;
   const rows = records.map((a) => {
     const f = a.fields;
     let snapshot = null;

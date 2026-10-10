@@ -15,7 +15,7 @@ write against the signed-in Apple ID's role.
 | `ck.js` | The only file that calls CloudKit JS |
 | `config.js` | Container and the public API tokens |
 
-Tests: `node --test tests/staff` from the repo root (no packages).
+Tests: `node --test tests/staff/*.test.mjs` from the repo root (no packages).
 
 ## One-time setup (Joe)
 

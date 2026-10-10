@@ -1,14 +1,15 @@
 // The staff dashboard's rules (docs/staff/logic.js, actions.js).
-// Run from the repo root: node --test tests/staff
+// Run from the repo root: node --test tests/staff/*.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   groupReports, queue, topReason, removalPlan, buildSnapshot, SNAPSHOT_LIMIT, actionFields,
   filterByAuthor, countRecent, activity, DAY, parseWaypoints, routePath, describeError, isGone,
   isNotAllowed, describeItem, typeOfRecordType, reasonLabel, knownType, effectiveType, reopenFailedRemovals,
+  targetsToCheck, isValidRecordName,
 } from '../../docs/staff/logic.js';
 import { removeItem, dismissItem } from '../../docs/staff/actions.js';
-import { plain, pagedQuery, buildQuery, hasMorePages } from '../../docs/staff/ck.js';
+import { plain, pagedQuery, buildQuery, hasMorePages, fetchExisting } from '../../docs/staff/ck.js';
 
 const report = (target, created, fields = {}) => ({
   recordName: `report.${target}.${created}`, recordType: 'CommunityReport', created,
@@ -138,8 +139,9 @@ test('Remove writes the action with its snapshot before deleting anything', asyn
   const votes = [{ recordName: 'v1' }, { recordName: 'v2' }];
   const store = fakeStore({ related: votes });
   const record = { recordType: 'WocketAchievement', recordName: 'p1', created: 1, fields: { message: 'x' } };
-  const n = await removeItem(store, { type: 'post', record, reason: 'spam', reportCount: 3 });
-  assert.equal(n, 2);
+  const { related, relatedError } = await removeItem(store, { type: 'post', record, reason: 'spam', reportCount: 3 });
+  assert.equal(related, 2);
+  assert.equal(relatedError, null);
   assert.deepEqual(store.calls.map((c) => c[0]), ['create', 'delete', 'query', 'delete']);
   const [, type, fields] = store.calls[0];
   assert.equal(type, 'ModerationAction');
@@ -292,9 +294,11 @@ test('most reported ranks by reports since the last action', () => {
   assert.deepEqual(queue(groups, 'most').map((g) => g.target), ['new', 'was-busy']);
 });
 
-test('items acted on this session stay out of the queue', () => {
+test('items acted on this session stay out of the queue until reported again', () => {
   const groups = groupReports([report('a', 1), report('b', 2)]);
-  assert.deepEqual(queue(groups, 'newest', new Set(['b'])).map((g) => g.target), ['a']);
+  assert.deepEqual(queue(groups, 'newest', new Map([['b', 100]])).map((g) => g.target), ['a']);
+  const again = groupReports([report('b', 2), report('b', 500)]);
+  assert.deepEqual(queue(again, 'newest', new Map([['b', 100]])).map((g) => g.target), ['b'], 'a newer report brings it back');
 });
 
 test('a snapshot of many small fields still fits', () => {
@@ -349,4 +353,51 @@ test('the age filter is a typed timestamp on the creation time, newest first', (
     { systemFieldName: 'createdTimestamp', comparator: 'GREATER_THAN_OR_EQUALS', fieldValue: { value: 1000, type: 'TIMESTAMP' } },
   ]);
   assert.deepEqual(q.sortBy, [{ systemFieldName: 'createdTimestamp', ascending: false }]);
+});
+
+// MARK: Third critic run
+
+test('failed related deletes are reported, not thrown: the item is already gone', async () => {
+  const store = fakeStore({ related: [{ recordName: 'v1' }] });
+  const realDelete = store.delete;
+  let n = 0;
+  store.delete = async (names) => { n += 1; if (n === 2) throw { ckErrorCode: 'THROTTLED' }; return realDelete(names); };
+  const record = { recordType: 'SharedRoute', recordName: 'r1', created: 1, fields: {} };
+  const out = await removeItem(store, { type: 'route', record, reason: 'spam' });
+  assert.deepEqual(out.relatedError, { ckErrorCode: 'THROTTLED' });
+  assert.equal(out.related, 0);
+});
+
+test('lookups cover open items and past removals, open first, capped', () => {
+  const groups = groupReports([report('open', 300), report('removed', 100), report('dismissed', 100)],
+    [action('removed', 200, 'removed'), action('dismissed', 200, 'dismissed')]);
+  assert.deepEqual(targetsToCheck(groups), ['open', 'removed']);
+  assert.deepEqual(targetsToCheck(groups, 1), ['open']);
+});
+
+test('only names CloudKit could accept are looked up', () => {
+  assert.ok(isValidRecordName('report.abc_123'));
+  assert.ok(!isValidRecordName('x'.repeat(256)));
+  assert.ok(!isValidRecordName('naïve'));
+  assert.ok(!isValidRecordName('has space'));
+  assert.ok(!isValidRecordName(''));
+});
+
+test('one bad name or record error leaves the rest of the lookup intact', async () => {
+  const asked = [];
+  const db = {
+    async fetchRecords(names) {
+      asked.push(...names);
+      return { hasErrors: true, errors: [{ ckErrorCode: 'BAD_REQUEST', recordName: 'odd' }],
+               records: [{ recordName: 'good', recordType: 'WocketAchievement', fields: {} }, { recordName: 'odd', serverErrorCode: 'BAD_REQUEST' }] };
+    },
+  };
+  const found = await fetchExisting(db, ['good', 'odd', 'x'.repeat(300)]);
+  assert.deepEqual([...found.keys()], ['good']);
+  assert.ok(!asked.includes('x'.repeat(300)), 'an impossible name is never sent');
+});
+
+test('a challenge with an impossible date still reads', () => {
+  const item = describeItem('challenge', { fields: { title: 'T', startDate: 1e16, endDate: 1e16 } });
+  assert.match(item.lines[0], /\?/);
 });

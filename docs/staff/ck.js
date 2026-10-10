@@ -2,6 +2,8 @@
 // from Apple's CDN by index.html). Everything else works on plain records, so
 // the rules in logic.js are tested without a network.
 //
+import { isGone, isValidRecordName } from './logic.js';
+
 // Every call is made as the signed-in iCloud user. CloudKit's roles decide
 // what that user may read, write and delete; this file grants nothing.
 
@@ -25,8 +27,25 @@ function check(response) {
 
 /** Errors for records that are already gone are not failures when deleting. */
 function onlyRealErrors(response) {
-  const errors = (response?.errors ?? []).filter((e) => !['UNKNOWN_ITEM', 'NOT_FOUND'].includes(e.ckErrorCode));
+  const errors = (response?.errors ?? []).filter((e) => !isGone(e));
   if (errors.length) throw errors[0];
+}
+
+/**
+ * The records that still exist among `recordNames`, by name. Names CloudKit
+ * couldn't accept are skipped, and a per-record error leaves that name out
+ * (shown as gone), so one crafted report can't stop the rest loading.
+ */
+export async function fetchExisting(db, recordNames) {
+  const found = new Map();
+  const names = recordNames.filter(isValidRecordName);
+  for (let i = 0; i < names.length; i += 200) {
+    const response = await db.fetchRecords(names.slice(i, i + 200));
+    for (const r of response?.records ?? []) {
+      if (r?.recordName && r.fields) found.set(r.recordName, plain(r));
+    }
+  }
+  return found;
 }
 
 /**
@@ -94,16 +113,7 @@ export function connect({ CloudKit, containerIdentifier, apiToken, environment }
       return pagedQuery(db, buildQuery(recordType, { equals, sinceMs }), { max, pageSize });
     },
 
-    /** The records that still exist among `recordNames`, by name. */
-    async fetch(recordNames) {
-      const found = new Map();
-      for (let i = 0; i < recordNames.length; i += 200) {
-        const response = await db.fetchRecords(recordNames.slice(i, i + 200));
-        onlyRealErrors(response);
-        for (const r of response.records ?? []) found.set(r.recordName, plain(r));
-      }
-      return found;
-    },
+    fetch: (recordNames) => fetchExisting(db, recordNames),
 
     /** Creates one record with `fields` (plain values). */
     async create(recordType, fields) {

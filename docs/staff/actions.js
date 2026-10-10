@@ -7,7 +7,8 @@ import { actionFields, buildSnapshot, removalPlan } from './logic.js';
  * Removes an item for everyone. The ModerationAction with the snapshot is
  * written first: if it can't be written, nothing is deleted. Then the item,
  * then what hangs off it. A record already gone counts as removed.
- * Returns the number of related records deleted.
+ * Returns how many related records were deleted, and the first error from
+ * deleting them, if any (the item is removed either way).
  */
 export async function removeItem(store, { type, record, reason, note = '', reportCount = 0 }) {
   const plan = removalPlan(type, record.recordName);
@@ -25,14 +26,20 @@ export async function removeItem(store, { type, record, reason, note = '', repor
     throw error;
   }
   let related = 0;
+  let relatedError = null;
   for (const rel of plan.related) {
     // Found in full first, then deleted: re-querying after each delete can
-    // return records CloudKit's index hasn't dropped yet.
-    const { records } = await store.query(rel.recordType, { equals: [rel.field, rel.value], max: 10000 });
-    if (records.length) await store.delete(records.map((r) => r.recordName));
-    related += records.length;
+    // return records CloudKit's index hasn't dropped yet. The item itself is
+    // already gone, so a failure here is reported, not thrown.
+    try {
+      const { records } = await store.query(rel.recordType, { equals: [rel.field, rel.value], max: 10000 });
+      if (records.length) await store.delete(records.map((r) => r.recordName));
+      related += records.length;
+    } catch (error) {
+      relatedError = relatedError ?? error;
+    }
   }
-  return related;
+  return { related, relatedError };
 }
 
 /**
