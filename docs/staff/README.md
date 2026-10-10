@@ -94,6 +94,12 @@ rules need an ordinary account to be proved.
   good, optionally removing its items too. Other phones apply it on their
   next community load, within about 10 minutes.
 - **Suspensions**: who is suspended and until when, their items, and Lift.
+- **Nominations**: trails people nominate in the app, most nominated first,
+  with their notes and a Maps link. **Feature** shows a trail under
+  "Featured near you" for everyone within 10 miles, with your note;
+  **Dismiss** clears it until it is nominated again. When nominations
+  disagree on a trail's name or place, the card says so: check the map.
+- **Featured**: what is featured, until when, with Change and Unfeature.
 - **Activity**: counts for the last 7 and 30 days.
 - **History**: every action, with what was removed.
 
