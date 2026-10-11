@@ -248,6 +248,7 @@ struct ChallengeDetailView: View {
     @EnvironmentObject private var historyStore: WalkHistoryStore
 
     @State private var participants:    [ChallengeParticipant] = []
+    @State private var entryDeletion: CommunityDeletionRequest?
     @State private var myProgressValue: Int    = 0
     @State private var isLoading              = false
     @State private var isSyncing              = false
@@ -279,6 +280,10 @@ struct ChallengeDetailView: View {
         .task {
             await loadLeaderboard()
             await loadMyProgress()
+        }
+        // Your entry, deleted: off the board now, and the challenge no longer joined.
+        .communityDeleting($entryDeletion) { deleted in
+            participants.removeAll { $0.id == deleted.recordID }
         }
     }
 
@@ -407,9 +412,18 @@ struct ChallengeDetailView: View {
                     Text("Be the first to join this challenge!")
                         .font(.wktBodyText).foregroundColor(.earthMuted)
                 } else {
-                    ForEach(participants.indices, id: \.self) { i in
+                    ForEach(Array(participants.enumerated()), id: \.element.id) { i, participant in
                         if i > 0 { WktDivider() }
-                        LeaderboardRow(rank: i + 1, participant: participants[i], challenge: challenge)
+                        // The row's own entry, captured when it's built: a board
+                        // reload while the menu is open can't point Delete elsewhere.
+                        LeaderboardRow(rank: i + 1, participant: participant, challenge: challenge)
+                            .contextMenu {
+                                CommunityDeleteButton(author: CommunityAuthor(name: participant.displayName,
+                                                                              account: participant.account)) {
+                                    entryDeletion = CommunityDeletionRequest(kind: .entry(challengeKey: challenge.id.recordName),
+                                                                             recordID: participant.id)
+                                }
+                            }
                     }
                 }
             }

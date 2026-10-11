@@ -121,6 +121,7 @@ struct CommunityRouteCard: View {
     let onStart: () -> Void
     var onHide: (() -> Void)? = nil
     @State private var report: CommunityReport?
+    @State private var deletion: CommunityDeletionRequest?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -183,9 +184,11 @@ struct CommunityRouteCard: View {
             if let onHide {
                 CommunityReportButton("Report Route", author: route.author) { report = CommunityReport(route: route) }
                 CommunityBlockButton(author: route.author, onHide: onHide)
+                CommunityDeleteButton(author: route.author) { deletion = CommunityDeletionRequest(kind: .route, recordID: route.id) }
             }
         }
         .communityReporting($report, onHide: { _ in onHide?() })
+        .communityDeleting($deletion) { _ in onHide?() }
     }
 }
 

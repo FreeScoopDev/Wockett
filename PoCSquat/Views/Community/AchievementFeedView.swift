@@ -132,6 +132,7 @@ private struct AchievementPostCard: View {
     let onLike: () -> Void
     var onHide: (() -> Void)? = nil
     @State private var report: CommunityReport?
+    @State private var deletion: CommunityDeletionRequest?
 
     private let green = Color.earthGreen
 
@@ -198,9 +199,11 @@ private struct AchievementPostCard: View {
             if let onHide {
                 CommunityReportButton("Report Post", author: post.author) { report = CommunityReport(post: post) }
                 CommunityBlockButton(author: post.author, onHide: onHide)
+                CommunityDeleteButton(author: post.author) { deletion = CommunityDeletionRequest(kind: .post, recordID: post.id) }
             }
         }
         .communityReporting($report, onHide: { _ in onHide?() })
+        .communityDeleting($deletion) { _ in onHide?() }
     }
 
     private func timeAgo(_ date: Date) -> String {
