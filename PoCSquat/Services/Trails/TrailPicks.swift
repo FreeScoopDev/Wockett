@@ -142,10 +142,10 @@ final class CloudKitTrailNominationStore: TrailNominationStore {
 
 @MainActor
 enum TrailNominationSubmission {
-    static let deadline: Duration = .seconds(15)
+    nonisolated static let deadline: Duration = .seconds(15)
 
     static func submit(_ trail: TrailRef, note: String,
-                       store: TrailNominationStore = CloudKitTrailNominationStore(),
+                       store: TrailNominationStore,
                        canPost: @escaping () async throws -> Void = { try await SuspensionService.shared.ensureCanPost() },
                        knownNominator: @escaping () -> String? = { MyAccount.recordName },
                        deadline: Duration = deadline,

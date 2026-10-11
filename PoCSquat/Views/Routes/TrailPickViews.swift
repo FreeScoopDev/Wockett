@@ -34,6 +34,7 @@ struct TrailNominateButton: View {
 /// Why it's worth it (optional), Send, then the answer.
 struct TrailNominationSheet: View {
     let trail: TrailRef
+    var store: TrailNominationStore = CloudKitTrailNominationStore()
     @Environment(\.dismiss) private var dismiss
     @State private var note = ""
     @State private var phase: Phase = .writing
@@ -112,7 +113,8 @@ struct TrailNominationSheet: View {
         phase = .sending
         let trail = trail
         let note = note
-        Task { phase = .done(await TrailNominationSubmission.submit(trail, note: note)) }
+        let store = store
+        Task { phase = .done(await TrailNominationSubmission.submit(trail, note: note, store: store)) }
     }
 }
 
