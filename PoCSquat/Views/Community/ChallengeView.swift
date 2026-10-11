@@ -185,6 +185,7 @@ private struct ChallengeCard: View {
     let isJoined:  Bool
     var onHide: (() -> Void)? = nil
     @State private var report: CommunityReport?
+    @State private var deletion: WalkChallenge?
 
     var body: some View {
         HStack(spacing: 14) {
@@ -234,9 +235,11 @@ private struct ChallengeCard: View {
             if let onHide {
                 CommunityReportButton("Report Challenge", author: challenge.author) { report = CommunityReport(challenge: challenge) }
                 CommunityBlockButton(author: challenge.author, onHide: onHide)
+                CommunityDeleteButton(author: challenge.author) { deletion = challenge }
             }
         }
         .communityReporting($report, onHide: { _ in onHide?() })
+        .challengeDeleting($deletion) { _ in onHide?() }
     }
 }
 
