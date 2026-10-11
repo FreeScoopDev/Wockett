@@ -113,6 +113,10 @@ final class CommunityModerationStore {
     static let shared = CommunityModerationStore()
 
     @ObservationIgnored private let reportedKey = "communityReportedIds"
+    /// Your own items deleted from Community (CommunityDeletion): gone from
+    /// every list at once, and kept out if CloudKit's index still returns
+    /// them for a moment.
+    @ObservationIgnored private let deletedKey = "communityDeletedIds"
     /// Names blocked before 2026-10-09, and authors whose account is unknown.
     @ObservationIgnored private let blockedKey  = "communityBlockedAuthors"
     /// Accounts blocked since 2026-10-09.
@@ -175,6 +179,16 @@ final class CommunityModerationStore {
 
     func report(_ id: CKRecord.ID) {
         append(id.recordName, toKey: reportedKey)
+    }
+
+    // MARK: - Deleted
+
+    func isDeleted(_ id: CKRecord.ID) -> Bool {
+        stored(forKey: deletedKey).contains(id.recordName)
+    }
+
+    func markDeleted(_ id: CKRecord.ID) {
+        append(id.recordName, toKey: deletedKey)
     }
 
     // MARK: - Block author
@@ -248,7 +262,7 @@ final class CommunityModerationStore {
     // MARK: - Convenience
 
     func shouldHide(id: CKRecord.ID, author: CommunityAuthor) -> Bool {
-        isReported(id) || isBlocked(author) || isSuspended(author)
+        isReported(id) || isDeleted(id) || isBlocked(author) || isSuspended(author)
     }
 
     /// `items` minus anything reported or blocked: the one filter every list uses.

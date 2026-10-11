@@ -38,6 +38,8 @@ final class CommunityHubModel: PostLiking {
 
     /// Where reports and blocks are remembered (a seam for tests).
     var moderation = CommunityModerationStore.shared
+    /// Whether this phone still tracks an entry in a challenge (a seam for tests).
+    var isJoined: (WalkChallenge) -> Bool = { ChallengeService.shared.hasJoined($0) }
 
     /// The cached lists, minus anything reported or blocked since they were
     /// fetched: the feed and challenge screens hide items only in their own
@@ -48,9 +50,11 @@ final class CommunityHubModel: PostLiking {
     var visibleChallenges: [WalkChallenge] {
         moderation.visible(challenges)
     }
-    /// Your joined challenge, unless it was reported or its author blocked.
+    /// Your joined challenge, unless it was reported, its author blocked, or
+    /// you deleted your entry since (the hub redraws when an item is deleted:
+    /// the moderation store's revision changes).
     var visibleYourChallenge: WalkChallenge? {
-        yourChallenge.flatMap { moderation.shouldHide(id: $0.id, author: $0.author) ? nil : $0 }
+        yourChallenge.flatMap { moderation.shouldHide(id: $0.id, author: $0.author) || !isJoined($0) ? nil : $0 }
     }
     /// Your place in that challenge; gone with it.
     var visibleStanding: CommunityHubSummary.Standing? {

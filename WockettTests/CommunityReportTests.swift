@@ -224,6 +224,7 @@ struct CommunityReportTests {
         let mine = try challenge("chal-mine-\(UUID().uuidString)")
         let model = CommunityHubModel()
         model.moderation = isolatedStore()
+        model.isJoined = { _ in true }   // the hub only shows a challenge this phone has joined
         model.yourChallenge = mine
         model.standing = CommunityHubSummary.Standing(rank: 2, total: 5, aheadName: nil, gapToAhead: nil)
         #expect(model.visibleYourChallenge?.id == mine.id)

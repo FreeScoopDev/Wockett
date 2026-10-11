@@ -31,6 +31,11 @@ enum CommunityDeletion {
     static let confirmMessage = "This removes it for everyone. Routes other people already saved stay with them."
     static let buttonTitle = "Delete from Community"
 
+    /// Whether Delete is offered for content by `author`: only your own.
+    static func isOffered(for author: CommunityAuthor, store: CommunityModerationStore) -> Bool {
+        store.isMine(author)
+    }
+
     enum Outcome: Equatable {
         case deleted
         case failed(String)
@@ -61,8 +66,12 @@ enum CommunityDeletion {
             let ids = (defaults.stringArray(forKey: key) ?? []).filter { $0 != request.recordID.recordName }
             defaults.set(ids, forKey: key)
         case .entry(let challengeKey):
+            // Only the entry this phone tracks: deleting an older one of
+            // yours (from before a reinstall, or another device) must not
+            // un-join the one you keep syncing.
             let key = ChallengeService.joinedKey
             var joined = defaults.dictionary(forKey: key) as? [String: String] ?? [:]
+            guard joined[challengeKey] == request.recordID.recordName else { return }
             joined[challengeKey] = nil
             defaults.set(joined, forKey: key)
         case .post:
@@ -89,14 +98,19 @@ final class CloudKitCommunityRecordDeleter: CommunityRecordDeleter {
 
 @MainActor
 enum CommunityDeletionRun {
-    /// Deletes the one record, then, if it's gone, clears the bookkeeping.
+    /// Deletes the one record, then, if it's gone, clears the bookkeeping and
+    /// marks it deleted, so every list (the hub's too) drops it at once.
     static func run(_ request: CommunityDeletionRequest,
                     deleter: CommunityRecordDeleter = CloudKitCommunityRecordDeleter(),
-                    defaults: UserDefaults = .standard) async -> CommunityDeletion.Outcome {
+                    defaults: UserDefaults = .standard,
+                    moderation: CommunityModerationStore = .shared) async -> CommunityDeletion.Outcome {
         var failure: Error?
         do { try await deleter.delete(request.recordID) } catch { failure = error }
         let outcome = CommunityDeletion.outcome(of: failure)
-        if outcome == .deleted { CommunityDeletion.forget(request, defaults: defaults) }
+        if outcome == .deleted {
+            CommunityDeletion.forget(request, defaults: defaults)
+            moderation.markDeleted(request.recordID)
+        }
         return outcome
     }
 }
@@ -110,7 +124,7 @@ struct CommunityDeleteButton: View {
     let action: () -> Void
 
     var body: some View {
-        if store.isMine(author) {
+        if CommunityDeletion.isOffered(for: author, store: store) {
             Button(role: .destructive, action: action) {
                 Label {
                     Text(CommunityDeletion.buttonTitle)

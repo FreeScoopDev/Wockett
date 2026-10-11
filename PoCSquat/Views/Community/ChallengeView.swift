@@ -412,14 +412,16 @@ struct ChallengeDetailView: View {
                     Text("Be the first to join this challenge!")
                         .font(.wktBodyText).foregroundColor(.earthMuted)
                 } else {
-                    ForEach(participants.indices, id: \.self) { i in
+                    ForEach(Array(participants.enumerated()), id: \.element.id) { i, participant in
                         if i > 0 { WktDivider() }
-                        LeaderboardRow(rank: i + 1, participant: participants[i], challenge: challenge)
+                        // The row's own entry, captured when it's built: a board
+                        // reload while the menu is open can't point Delete elsewhere.
+                        LeaderboardRow(rank: i + 1, participant: participant, challenge: challenge)
                             .contextMenu {
-                                CommunityDeleteButton(author: CommunityAuthor(name: participants[i].displayName,
-                                                                              account: participants[i].account)) {
+                                CommunityDeleteButton(author: CommunityAuthor(name: participant.displayName,
+                                                                              account: participant.account)) {
                                     entryDeletion = CommunityDeletionRequest(kind: .entry(challengeKey: challenge.id.recordName),
-                                                                             recordID: participants[i].id)
+                                                                             recordID: participant.id)
                                 }
                             }
                     }

@@ -285,6 +285,7 @@ final class ChallengeService {
                         now: Date = Date()) -> [ChallengeParticipant] {
         participants
             .filter { !moderation.isSuspended(CommunityAuthor(name: $0.displayName, account: $0.account), at: now) }
+            .filter { !moderation.isDeleted($0.id) }
             .sorted { $0.steps > $1.steps }
     }
 
