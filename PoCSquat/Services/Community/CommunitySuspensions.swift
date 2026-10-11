@@ -139,6 +139,13 @@ final class SuspensionService {
         if finished == nil { log.error("Suspension list slow; this load uses the one held") }
     }
 
+    /// Waits for a fetch already running to finish, however long it takes.
+    /// The deadline bounds how long a load waits, not the fetch; tests wait
+    /// for the late result with this rather than by polling.
+    func fetchInFlight() async {
+        await inFlight?.value
+    }
+
     private func fetch() async {
         defer { inFlight = nil }
         do {

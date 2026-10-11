@@ -30,11 +30,25 @@ struct CommunitySuspensionTests {
         /// Set: the fetch waits until the test resumes it.
         var gate: CheckedContinuation<Void, Never>?
         var holds = false
+        private var heldWaiters: [CheckedContinuation<Void, Never>] = []
+        /// Returns once the fetch is being held: an event, not a poll.
+        func held() async {
+            if gate != nil { return }
+            await withCheckedContinuation { heldWaiters.append($0) }
+        }
+        private func hold() async {
+            await withCheckedContinuation { c in
+                gate = c
+                let waiting = heldWaiters
+                heldWaiters = []
+                waiting.forEach { $0.resume() }
+            }
+        }
 
         func suspensions() async throws -> [Suspension] {
             calls += 1
             if hangs { try await Task.sleep(for: .seconds(600)) }
-            if holds { await withCheckedContinuation { gate = $0 } }
+            if holds { await hold() }
             for _ in 0..<5 { await Task.yield() }   // a real fetch suspends
             if let error { throw error }
             return list
@@ -58,13 +72,6 @@ struct CommunitySuspensionTests {
         SuspensionService(store: fake, moderation: moderation, now: { clock.now }, sleep: sleep)
     }
 
-    /// Yields until `condition` holds, for up to 30 s of wall time: bounded
-    /// by time, not a count of turns, so a loaded machine can't run out of
-    /// turns first.
-    private func waitUntil(_ condition: () -> Bool) async {
-        let end = Date().addingTimeInterval(30)
-        while !condition(), Date() < end { await Task.yield() }
-    }
 
     // MARK: Record
 
@@ -205,9 +212,12 @@ struct CommunitySuspensionTests {
         let s = service(fake, moderation, clock: Clock(now), sleep: { _ in })
         await s.refreshIfStale()
         #expect(moderation.suspensions.isEmpty, "this load went ahead without it")
-        await waitUntil { fake.gate != nil }
+        // Events, not polling: the fetch is held, released, then awaited to
+        // the end. Polling by yields lost the race on a loaded CI machine
+        // (PR 186, 2026-10-11).
+        await fake.held()
         fake.gate?.resume()
-        await waitUntil { !moderation.suspensions.isEmpty }
+        await s.fetchInFlight()
         #expect(moderation.suspensions == fake.list, "the next load has it")
         await s.refreshIfStale()
         #expect(fake.calls == 1, "and it counts as this interval's fetch")
