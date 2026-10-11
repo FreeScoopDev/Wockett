@@ -6,11 +6,12 @@
 // script in a signed-in moderator's browser.
 
 import { CONFIG } from './config.js';
-import { connect } from './ck.js';
+import { connect, reportedByAuthor } from './ck.js';
 import {
   TYPES, REASONS, reasonLabel, groupReports, queue, topReason, filterByAuthor, authorOf,
   activity, DAY, parseWaypoints, routePath, describeItem, describeError, isNotAllowed, ago,
   effectiveType, reopenFailedRemovals, targetsToCheck, SUSPENSION_LENGTHS, shortAccount, suspensionRows, canSuspend,
+  isOwnerRequestOnly, reasonLabelFor,
   groupNominations, nominationQueue, FEATURE_LENGTHS, BLURB_LIMIT, mapsLink, featuredRows, formatDistance,
   ACTIVITY_KINDS,
 } from './logic.js';
@@ -235,7 +236,7 @@ function reportCard(group, record) {
   const item = removable ? describeItem(type, record) : { title: group.summary || group.target, lines: [] };
   const author = record ? authorOf(record) : group.authorName;
   const reasons = el('div', { class: 'reasons' },
-    group.reasons.map((r) => el('span', { class: 'chip warn' }, `${reasonLabel(r.reason)} ×${r.count}`)));
+    group.reasons.map((r) => el('span', { class: 'chip warn' }, `${reasonLabelFor(r.reason, group, record, reportedByAuthor)} ×${r.count}`)));
   const notes = group.notes.length
     ? el('ul', { class: 'notes' }, group.notes.slice(0, 10).map((n) => el('li', {}, `“${n.note}” `, el('span', { class: 'muted small' }, ago(n.at)))))
     : null;
@@ -248,7 +249,8 @@ function reportCard(group, record) {
     removable ? el('button', { class: 'btn danger', onclick: () => confirmRemove({ type, record, group }) }, `Remove ${TYPES[type].label.toLowerCase()} for everyone`) : null,
     el('button', { class: 'btn', onclick: () => confirmDismiss({ type, group, gone: !record }) },
       record ? 'Dismiss reports' : 'Close (already gone)'),
-    suspendButton(removable ? record : null, topReason(group)));
+    // An owner asking to delete their own challenge isn't misconduct: no Suspend.
+    isOwnerRequestOnly(group) ? null : suspendButton(removable ? record : null, topReason(group)));
   return el('article', { class: `card${record ? '' : ' gone'}` },
     el('div', { class: 'row' },
       type === 'route' && removable ? routeSvg(record.fields.waypointsJSON) : null,

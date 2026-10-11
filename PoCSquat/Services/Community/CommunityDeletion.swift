@@ -30,6 +30,8 @@ enum CommunityDeletion {
     static let confirmTitle = "Delete from Community?"
     static let confirmMessage = "This removes it for everyone. Routes other people already saved stay with them."
     static let buttonTitle = "Delete from Community"
+    static let failedTitle = "Couldn't delete it"
+    static let signInMessage = "Sign in to iCloud in the Settings app to delete it."
 
     /// Whether Delete is offered for content by `author`: only your own.
     static func isOffered(for author: CommunityAuthor, store: CommunityModerationStore) -> Bool {
@@ -48,7 +50,7 @@ enum CommunityDeletion {
         case .unknownItem?:
             return .deleted
         case .notAuthenticated?:
-            return .failed("Sign in to iCloud in the Settings app to delete it.")
+            return .failed(signInMessage)
         case .permissionFailure?:
             return .failed("Only the account that shared it can delete it.")
         default:
@@ -168,7 +170,7 @@ private struct CommunityDeletionModifier: ViewModifier {
             } message: { _ in
                 Text(CommunityDeletion.confirmMessage)
             }
-            .alert("Couldn't delete it",
+            .alert(CommunityDeletion.failedTitle,
                    isPresented: Binding(get: { failure != nil }, set: { if !$0 { failure = nil } }),
                    presenting: failure) { _ in
                 Button("OK", role: .cancel) {}

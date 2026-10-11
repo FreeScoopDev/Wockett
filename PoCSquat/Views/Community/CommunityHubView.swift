@@ -28,6 +28,7 @@ struct CommunityHubView: View {
     /// reorders the top routes) and would take the alert with it.
     @State private var hubReport: CommunityReport?
     @State private var hubDeletion: CommunityDeletionRequest?
+    @State private var hubChallengeDeletion: WalkChallenge?
     @State private var trailFinder = TrailFinder()
 
     @State private var pushBadges       = false
@@ -73,6 +74,7 @@ struct CommunityHubView: View {
             model.hide(report.recordID)
             communityRoutesModel.routes.removeAll { $0.id == report.recordID }
         }
+        .challengeDeleting($hubChallengeDeletion) { deleted in model.hide(deleted.id) }
         .communityDeleting($hubDeletion) { deleted in
             model.hide(deleted.recordID)
             communityRoutesModel.routes.removeAll { $0.id == deleted.recordID }
@@ -188,6 +190,7 @@ struct CommunityHubView: View {
                         .contentShape(Rectangle())
                         .contextMenu {
                             CommunityReportButton("Report Challenge", author: challenge.author) { hubReport = CommunityReport(challenge: challenge) }
+                            CommunityDeleteButton(author: challenge.author) { hubChallengeDeletion = challenge }
                         }
                     }
                 } else if model.didLoad {
