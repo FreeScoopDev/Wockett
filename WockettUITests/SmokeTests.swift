@@ -298,7 +298,8 @@ final class SmokeTests: XCTestCase {
     func testHealthShowsDisclaimer() {
         XCTAssertTrue(el("home.statCard").waitForExistence(timeout: 10))
         tab("Health").tap()
-        XCTAssertTrue(el("health.root").waitForExistence(timeout: 15))
+        // 30 s like the other tabs: a loaded CI machine took longer than 15 (PR 186).
+        XCTAssertTrue(el("health.root").waitForExistence(timeout: 30))
         let note = app.staticTexts["health.disclaimer"]
         XCTAssertTrue(note.waitForExistence(timeout: 10), "Health disclaimer missing from the Health screen")
         // In the tree isn't on screen: a plain VStack keeps off-screen text in
