@@ -310,16 +310,22 @@ struct TrailPicksTests {
         while !condition(), Date() < end { await Task.yield() }
     }
 
-    /// The time limit makes a missing deadline fail instead of hanging: the
-    /// held fetch would otherwise keep refreshIfStale waiting for ever.
-    @Test("The list waits no longer than the deadline; a slow fetch still lands for next time", .timeLimit(.minutes(1)))
+    /// Without the deadline, refreshIfStale would wait for ever on the held
+    /// fetch. It runs in its own task and the test waits for it by wall time,
+    /// so that fails here instead of hanging. No `.timeLimit`: it counts time
+    /// queued behind other main-actor tests, and a loaded CI machine hit it
+    /// (PR 186, 2026-10-11), as #176 found for another test.
+    @Test("The list waits no longer than the deadline; a slow fetch still lands for next time")
     func deadline() async {
         let fake = FakeFeatured()
         fake.holds = true
         fake.list = [feature("nc:w1", "A")]
         var waited: Duration?
         let service = FeaturedTrailService(store: fake, defaults: defaults(), now: { now }, sleep: { waited = $0 })
-        await service.refreshIfStale()
+        var returned = false
+        Task { await service.refreshIfStale(); returned = true }
+        await waitUntil { returned }
+        #expect(returned, "refreshIfStale waited for the held fetch instead of the deadline")
         #expect(waited == .seconds(3))
         #expect(service.list.isEmpty, "this time the list went ahead without it")
         await waitUntil { fake.gate != nil }
