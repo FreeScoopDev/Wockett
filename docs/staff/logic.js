@@ -46,8 +46,18 @@ export const REASONS = {
   other: 'Something else',
 };
 
+/**
+ * Reasons that aren't a user's report: they read in the queue but are never
+ * offered as a removal reason. "ownerRequest" is the app's "ask to delete"
+ * for a challenge others have joined.
+ */
+export const REQUEST_REASONS = {
+  ownerRequest: 'Owner asked to delete it',
+};
+
 export function reasonLabel(reason) {
   if (typeof reason === 'string' && Object.hasOwn(REASONS, reason)) return REASONS[reason];
+  if (typeof reason === 'string' && Object.hasOwn(REQUEST_REASONS, reason)) return REQUEST_REASONS[reason];
   return reason ? String(reason) : 'No reason given';
 }
 

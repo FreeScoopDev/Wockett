@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import {
   groupNominations, nominationQueue, featureUntil, featuredRecordName, featuredFields, mapsLink, featuredRows,
   BLURB_LIMIT, DAY, ACTIVITY_KINDS, groupReports, queue, isTrailKey,
+  reasonLabel, REASONS,
 } from '../../docs/staff/logic.js';
 import { featureTrail, unfeatureTrail, dismissNominations } from '../../docs/staff/actions.js';
 import { plain, onePerNominator, pagedQuery } from '../../docs/staff/ck.js';
@@ -226,4 +227,11 @@ test('every description is listed with its count, so a moved point shows even wi
   const [g] = groupNominations([nom('nc:w1', 1), nom('nc:w1', 2), nom('nc:w1', 3, { latitude: 36.5 })]);
   assert.equal(g.disagree, true);
   assert.deepEqual(g.variants.map((v) => [v.trail.trailName, v.trail.latitude, v.count]), [['Lake Loop', 35.78, 2], ['Lake Loop', 36.5, 1]]);
+});
+
+// MARK: Owner deletion requests (feat/delete-own-challenge)
+
+test('an owner\'s request to delete reads as such, and is never a removal reason', () => {
+  assert.equal(reasonLabel('ownerRequest'), 'Owner asked to delete it');
+  assert.ok(!Object.hasOwn(REASONS, 'ownerRequest'), 'the Remove dialog lists REASONS only');
 });
