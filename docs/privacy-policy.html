@@ -21,9 +21,9 @@
 <body>
 
 <h1>Privacy Policy</h1>
-<p class="updated">Last updated: October 7, 2026</p>
+<p class="updated">Last updated: October 10, 2026</p>
 
-<p>This Privacy Policy describes how Wockett ("the App", "We", "Us") handles your information when you use our iOS application. We are committed to being transparent and collecting only what is necessary to make the app work.</p>
+<p>This Privacy Policy describes how Scoops Dev LLC, a Vermont limited liability company ("Scoops Dev", "we", "us"), the developer and publisher of Wockett ("the App"), handles your information when you use the App. We are committed to being transparent and collecting only what is necessary to make the app work.</p>
 
 <h2>Summary</h2>
 <p>Wockett is a local-first app. We do not operate servers of our own, do not create user accounts, and do not sell or share your personal data. Your data lives on your device and, if you use iCloud, syncs between your devices through your own private iCloud storage — where we cannot see it. The only information that ever becomes visible to other people is community content you explicitly choose to publish (see "Community content" below). Some features use Apple's own services (Maps, Weather, Health, iCloud) — those interactions are governed by <a href="https://www.apple.com/legal/privacy/" target="_blank">Apple's Privacy Policy</a>.</p>
@@ -39,12 +39,12 @@
     <tr>
         <td>Location (while using the app)</td>
         <td>Generate nearby walking route suggestions; track your position during navigation; calculate distance walked</td>
-        <td>Your live position is used on-device only during active walks. Route generation and street-level previews send coordinate data to Apple's Maps services, and the elevation chart for a selected route sends that route's coordinates to OpenTopoData (see Third-Party Services) — no personal information, account, or device identifier is included with either. Wockett itself never receives or stores your location. A GPS track may be saved temporarily to your device (see Walk Resume below).</td>
+        <td>Your live position is used on-device only during active walks. Route generation and street-level previews send coordinate data to Apple's Maps services, and the elevation chart for a selected route sends that route's coordinates to OpenTopoData (see Third-Party Services) — no personal information, account, or device identifier is included with either. Scoops Dev never receives or stores your location. A GPS track may be saved temporarily to your device (see Walk Resume below).</td>
     </tr>
     <tr>
         <td>Walk history</td>
         <td>Remember completed walks so you can view your history and repeat favourite routes</td>
-        <td>Stored on your device (route name, date, distance, duration, GPS waypoints) and synced between your devices through your own private iCloud database via Apple's CloudKit. This private database belongs to your Apple Account — Wockett (the developer) cannot access or read it. Nothing is transmitted to us.</td>
+        <td>Stored on your device (route name, date, distance, duration, GPS waypoints) and synced between your devices through your own private iCloud database via Apple's CloudKit. This private database belongs to your Apple Account — Scoops Dev cannot access or read it. Nothing is transmitted to us.</td>
     </tr>
     <tr>
         <td>Walk resume</td>
@@ -57,9 +57,9 @@
         <td>Reminders are local notifications only — no server is involved. Wockett never sends you marketing or remote push notifications. Apple's iCloud service does deliver silent, invisible background signals to keep your own data in sync between your devices; these are handled entirely by Apple.</td>
     </tr>
     <tr>
-        <td>HealthKit</td>
-        <td>Read your daily step count to track goal progress; write completed workouts (distance, duration, calories, GPS route) to Apple Health</td>
-        <td>Step count is read from your Health app. Completed walks and rides are written to Apple Health on your device. No Health data is transmitted to Wockett or any third party.</td>
+        <td>HealthKit (Apple Health)</td>
+        <td>Read, with your permission: step count and walking + running distance (goal progress); walking speed, step length, walking asymmetry and double support time (the walking-steadiness and gait views); walking heart rate average, resting heart rate, heart rate variability, sleep, active energy and flights climbed (the recovery and daily summary views). Write, with your permission: completed walks and rides as workouts, with distance, cycling distance, active energy and the GPS route.</td>
+        <td>Health data is read on your device to show it to you. Summaries the App works out from it, such as streaks and badges, sync with your other Wockett data through your private iCloud (see Walk history). Health figures appear in community content only if you choose to share an achievement. Completed walks and rides are written to Apple Health on your device. No Health data is transmitted to Scoops Dev or any third party, and it is never used for advertising. You choose which types to allow, and can change this at any time in the Health app.</td>
     </tr>
     <tr>
         <td>Weather (via Apple WeatherKit)</td>
@@ -90,10 +90,16 @@
 <ul>
     <li><strong>Apple Maps (MapKit)</strong> — used for route generation, on-screen directions, place search and nearby places, and directions to trails. Coordinate data is sent to Apple's servers to power these features.</li>
     <li><strong>Apple WeatherKit</strong> — provides weather conditions based on your approximate location.</li>
-    <li><strong>Apple HealthKit</strong> — step count is read from and completed workouts are written to your Health app. This data is not shared with any third party.</li>
-    <li><strong>Apple iCloud / CloudKit</strong> — syncs your walk history, badges, and streaks between your own devices through your private iCloud database, and stores community content you choose to publish in a shared public database. Wockett cannot read your private database.</li>
-    <li><strong>OpenTopoData</strong> (<a href="https://www.opentopodata.org/" target="_blank">opentopodata.org</a>) — provides the elevation chart shown for a selected route. When you pick a route, up to 100 points along its path are sent to OpenTopoData over an encrypted connection to look up ground elevation. No account, identifier, name, or other data is sent with them, and Wockett does not use a key or token that could tie requests to you. This is the only non-Apple service Wockett talks to.</li>
+    <li><strong>Apple HealthKit</strong> — the Health data listed above is read from, and completed workouts are written to, your Health app. This data is not shared with any third party.</li>
+    <li><strong>Apple iCloud / CloudKit</strong> — syncs your walk history, badges, and streaks between your own devices through your private iCloud database, and stores community content you choose to publish in a shared public database. Scoops Dev cannot read your private database.</li>
+    <li><strong>OpenTopoData</strong> (<a href="https://www.opentopodata.org/" target="_blank">opentopodata.org</a>) — provides the elevation chart shown for a selected route. When you pick a route, up to 100 points along its path are sent to OpenTopoData over an encrypted connection to look up ground elevation. No account, identifier, name, or other data is sent with them, and the App does not use a key or token that could tie requests to you. This is the only non-Apple service the App talks to.</li>
 </ul>
+
+<h2>In-App Purchases</h2>
+<p>Optional purchases (tips and Wockett Pro) are processed by Apple through the App Store. We never see your payment details, name or Apple ID; the App only asks the App Store on your device which purchases are active.</p>
+
+<h2>Community Content and Moderation</h2>
+<p>Content you publish is stored in Apple's public CloudKit database with the anonymous CloudKit identifier Apple assigns to your iCloud account for Wockett, which lets you manage your own posts and lets others block you. When you report a post or block a user, that choice is kept on your device and hides the content from you; it is not sent to us. To report content to us, or to have content you published removed, email <a href="mailto:support@wockett.app">support@wockett.app</a>. Scoops Dev can view and remove published community content, but cannot see your private data. A shared route can show where you started and finished, so consider that before sharing a route that begins at home.</p>
 
 <h2>Children's Privacy</h2>
 <p>Wockett is not directed at children under 13. We do not knowingly collect personal information from children. If you believe a child has provided personal information through the App, please contact us and we will take steps to address it.</p>
@@ -102,7 +108,8 @@
 <p>We may update this Privacy Policy from time to time. Any changes will be posted on this page with an updated date. Continued use of the App after changes are posted constitutes acceptance of the updated policy.</p>
 
 <h2>Contact</h2>
-<p>If you have any questions about this Privacy Policy, please open an issue on our <a href="https://github.com/FreeScoopDev/Wockett" target="_blank">GitHub repository</a> or use the support link on the App Store listing.</p>
+<p>Wockett is published by Scoops Dev LLC, 326 Mountain Rd, Fairlee, VT 05045, USA. Questions about this Privacy Policy: <a href="mailto:support@wockett.app">support@wockett.app</a>. You can also open an issue on our <a href="https://github.com/FreeScoopDev/Wockett" target="_blank">GitHub repository</a> or use the support link on the App Store listing.</p>
+<p>See also our <a href="terms-of-service.html">Terms of Service</a>.</p>
 
 </body>
 </html>
