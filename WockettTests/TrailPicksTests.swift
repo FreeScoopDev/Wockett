@@ -262,9 +262,23 @@ struct TrailPicksTests {
         var calls = 0
         var holds = false
         var gate: CheckedContinuation<Void, Never>?
+        private var heldWaiters: [CheckedContinuation<Void, Never>] = []
+        /// Returns once the fetch is being held: an event, not a poll.
+        func held() async {
+            if gate != nil { return }
+            await withCheckedContinuation { heldWaiters.append($0) }
+        }
+        private func hold() async {
+            await withCheckedContinuation { c in
+                gate = c
+                let waiting = heldWaiters
+                heldWaiters = []
+                waiting.forEach { $0.resume() }
+            }
+        }
         func featured() async throws -> [FeaturedTrail] {
             calls += 1
-            if holds { await withCheckedContinuation { gate = $0 } }
+            if holds { await hold() }
             await Task.yield()
             if let error { throw error }
             return list
@@ -304,11 +318,6 @@ struct TrailPicksTests {
         #expect(service.list == [feature("nc:w1", "A")])
     }
 
-    /// Yields until `condition` holds, for up to 30 s of wall time.
-    private func waitUntil(_ condition: () -> Bool) async {
-        let end = Date().addingTimeInterval(30)
-        while !condition(), Date() < end { await Task.yield() }
-    }
 
     /// Without the deadline, refreshIfStale would wait for ever on the held
     /// fetch. It runs in its own task and the test waits for it by wall time,
@@ -322,15 +331,19 @@ struct TrailPicksTests {
         fake.list = [feature("nc:w1", "A")]
         var waited: Duration?
         let service = FeaturedTrailService(store: fake, defaults: defaults(), now: { now }, sleep: { waited = $0 })
-        var returned = false
-        Task { await service.refreshIfStale(); returned = true }
-        await waitUntil { returned }
-        #expect(returned, "refreshIfStale waited for the held fetch instead of the deadline")
+        // The load runs on its own; it must finish while the fetch is still
+        // held. A 60 s outer bound turns a missing deadline into a failure
+        // instead of a hang; it waits on the load finishing, not by polling.
+        // withDeadline, not a task group: a group waits for every child, so
+        // the stuck load would hold it past its bound.
+        let load = Task { await service.refreshIfStale() }
+        let returned = (try? await OptimisticVote.withDeadline(.seconds(60)) { await load.value; return true }) ?? nil
+        #expect(returned == true, "refreshIfStale waited for the held fetch instead of the deadline")
         #expect(waited == .seconds(3))
         #expect(service.list.isEmpty, "this time the list went ahead without it")
-        await waitUntil { fake.gate != nil }
+        await fake.held()
         fake.gate?.resume()
-        await waitUntil { !service.list.isEmpty }
+        await service.fetchInFlight()
         #expect(service.list == fake.list)
     }
 
