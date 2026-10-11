@@ -5,10 +5,10 @@ import assert from 'node:assert/strict';
 import {
   groupNominations, nominationQueue, featureUntil, featuredRecordName, featuredFields, mapsLink, featuredRows,
   BLURB_LIMIT, DAY, ACTIVITY_KINDS, groupReports, queue, isTrailKey,
-  reasonLabel, REASONS,
+  reasonLabel, REASONS, topReason, isOwnerRequestOnly,
 } from '../../docs/staff/logic.js';
 import { featureTrail, unfeatureTrail, dismissNominations } from '../../docs/staff/actions.js';
-import { plain, onePerNominator, pagedQuery } from '../../docs/staff/ck.js';
+import { plain, onePerNominator, pagedQuery, reportedByAuthor } from '../../docs/staff/ck.js';
 
 const NOW = 1_800_000_000_000;
 const trail = { trailKey: 'nc:w1', trailName: 'Lake Loop', region: 'nc', latitude: 35.78, longitude: -78.64, lengthMeters: 2400 };
@@ -234,4 +234,26 @@ test('every description is listed with its count, so a moved point shows even wi
 test('an owner\'s request to delete reads as such, and is never a removal reason', () => {
   assert.equal(reasonLabel('ownerRequest'), 'Owner asked to delete it');
   assert.ok(!Object.hasOwn(REASONS, 'ownerRequest'), 'the Remove dialog lists REASONS only');
+});
+
+test('a removal never defaults to an owner\'s request, and never to Spam for one', () => {
+  const rep = (reason, created) => ({ recordName: `r${created}`, created, fields: { targetRecordName: 'c1', targetType: 'challenge', reason } });
+  const [only] = groupReports([rep('ownerRequest', 1)]);
+  assert.equal(topReason(only), 'other');
+  assert.equal(isOwnerRequestOnly(only), true);
+  const [mixed] = groupReports([rep('ownerRequest', 1), rep('ownerRequest', 2), rep('offensive', 3)]);
+  assert.equal(topReason(mixed), 'offensive');
+  assert.equal(isOwnerRequestOnly(mixed), false);
+});
+
+test('an owner\'s request is told from someone claiming to be the owner, without the filer reaching the page', async () => {
+  const report = (name, filer) => ({ recordName: name, recordType: 'CommunityReport', created: { timestamp: 1, userRecordName: filer },
+    fields: { targetRecordName: { value: 'c1' }, reason: { value: 'ownerRequest' } } });
+  const db = { async performQuery() { return { records: [report('real', '_owner'), report('forged', '_someoneElse')], moreComing: false }; } };
+  const { records } = await pagedQuery(db, { recordType: 'CommunityReport' });
+  assert.ok(records.every((r) => r.creator === undefined));
+  assert.equal(reportedByAuthor('real', '_owner'), true);
+  assert.equal(reportedByAuthor('forged', '_owner'), false);
+  assert.equal(reportedByAuthor('real', undefined), false);
+  assert.equal(reportedByAuthor('unknown', '_owner'), false);
 });

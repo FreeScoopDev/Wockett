@@ -30,22 +30,25 @@ struct ChallengeDeletionTests {
         return try #require(WalkChallenge(record: r, creator: CKRecord.ID(recordName: "_me")))
     }
 
-    private func entry(_ name: String, by account: String) throws -> ChallengeParticipant {
+    private func entry(_ name: String, by account: String?) throws -> ChallengeParticipant {
         let r = CKRecord(recordType: "ChallengeEntry", recordID: CKRecord.ID(recordName: name))
         r["displayName"] = name
         r["steps"] = 100
         r["deviceID"] = "d-\(name)"
-        return try #require(ChallengeParticipant(record: r, creator: CKRecord.ID(recordName: account)))
+        return try #require(ChallengeParticipant(record: r, creator: account.map { CKRecord.ID(recordName: $0) }))
     }
 
     private final class FakeLister: ChallengeEntryLister {
         var list: [ChallengeParticipant] = []
+        var unreadable = 0
         var error: Error?
-        func entries(of challengeKey: String) async throws -> [ChallengeParticipant] {
+        func entries(of challengeKey: String) async throws -> (entries: [ChallengeParticipant], unreadable: Int) {
             if let error { throw error }
-            return list
+            return (list, unreadable)
         }
     }
+
+    private static let neverFires: OptimisticVote.Sleep = { _ in try await Task.sleep(for: .seconds(86_400)) }
 
     private final class FakeDeleter: CommunityRecordDeleter {
         var deleted: [String] = []
@@ -77,16 +80,49 @@ struct ChallengeDeletionTests {
         #expect(ChallengeDeletion.othersJoined([], moderation: s) == 0)
     }
 
+    @Test("A suspended entrant still joined: they count")
+    func suspendedCounts() throws {
+        let s = store(defaults())
+        s.setSuspensions([Suspension(account: "_s", until: nil)])
+        #expect(ChallengeDeletion.othersJoined([try entry("s", by: "_s")], moderation: s) == 1)
+    }
+
+    @Test("An entrant whose account is unknown counts as someone else")
+    func unknownCounts() throws {
+        #expect(ChallengeDeletion.othersJoined([try entry("x", by: nil)], moderation: store(defaults())) == 1)
+    }
+
+    @Test("An entry that can't be read counts as someone else's: ask, don't delete")
+    func unreadableCounts() async throws {
+        let lister = FakeLister()
+        lister.list = [try entry("mine", by: "_me")]
+        lister.unreadable = 1
+        #expect(await ChallengeDeletion.plan(for: try challenge(), lister: lister, moderation: store(defaults()), sleep: Self.neverFires)
+                == .request(others: 1))
+    }
+
+    @Test("A check that doesn't answer in time says so")
+    func planTimesOut() async throws {
+        final class Hanging: ChallengeEntryLister {
+            func entries(of challengeKey: String) async throws -> (entries: [ChallengeParticipant], unreadable: Int) {
+                try await Task.sleep(for: .seconds(600))
+                return ([], 0)
+            }
+        }
+        #expect(await ChallengeDeletion.plan(for: try challenge(), lister: Hanging(), moderation: store(defaults()), sleep: { _ in })
+                == .failed(ChallengeDeletion.timedOut))
+    }
+
     @Test("Alone, it's a delete; with others, a request; unreadable, a plain message")
     func plans() async throws {
         let d = defaults()
         let lister = FakeLister()
         lister.list = [try entry("mine", by: "_me")]
-        #expect(await ChallengeDeletion.plan(for: try challenge(), lister: lister, moderation: store(d)) == .delete)
+        #expect(await ChallengeDeletion.plan(for: try challenge(), lister: lister, moderation: store(d), sleep: Self.neverFires) == .delete)
         lister.list.append(try entry("a", by: "_a"))
-        #expect(await ChallengeDeletion.plan(for: try challenge(), lister: lister, moderation: store(d)) == .request(others: 1))
+        #expect(await ChallengeDeletion.plan(for: try challenge(), lister: lister, moderation: store(d), sleep: Self.neverFires) == .request(others: 1))
         lister.error = CKError(.networkUnavailable)
-        #expect(await ChallengeDeletion.plan(for: try challenge(), lister: lister, moderation: store(d))
+        #expect(await ChallengeDeletion.plan(for: try challenge(), lister: lister, moderation: store(d), sleep: Self.neverFires)
                 == .failed("Couldn't check who has joined. Check your connection and try again."))
     }
 
@@ -130,16 +166,27 @@ struct ChallengeDeletionTests {
         #expect(record["targetType"] as? String == "challenge")
         #expect(record["reason"] as? String == "ownerRequest")
         #expect(record["note"] as? String == "The person who created it asked to delete it. 3 other people have joined.")
-        #expect(record.recordID.recordName == CommunityReports.recordName(target: "c1", reporter: "_me"))
+    }
+
+    @Test("One request per person per challenge per day, so asking again after a dismissal still arrives")
+    func requestPerDay() throws {
+        let day1 = Date(timeIntervalSince1970: 2_000_000_000)
+        let day2 = day1.addingTimeInterval(86_400)
+        let c = try challenge()
+        let a = ChallengeDeletion.requestRecord(for: c, others: 1, requester: "_me", on: day1).recordID.recordName
+        #expect(a == ChallengeDeletion.requestRecord(for: c, others: 1, requester: "_me", on: day1).recordID.recordName)
+        #expect(a != ChallengeDeletion.requestRecord(for: c, others: 1, requester: "_me", on: day2).recordID.recordName)
+        #expect(a != ChallengeDeletion.requestRecord(for: c, others: 1, requester: "_other", on: day1).recordID.recordName)
+        #expect(!a.contains("_me"))
     }
 
     @Test("Sending saves once; a second request is 'already sent'")
     func request() async throws {
         let reports = FakeReports()
-        #expect(await ChallengeDeletion.request(try challenge(), others: 2, store: reports, knownRequester: { nil }) == .sent)
+        #expect(await ChallengeDeletion.request(try challenge(), others: 2, store: reports, knownRequester: { nil }, sleep: Self.neverFires) == .sent)
         #expect(reports.saved.count == 1)
         reports.error = CKError(.serverRecordChanged)
-        #expect(await ChallengeDeletion.request(try challenge(), others: 2, store: reports, knownRequester: { nil }) == .alreadySent)
+        #expect(await ChallengeDeletion.request(try challenge(), others: 2, store: reports, knownRequester: { nil }, sleep: Self.neverFires) == .alreadySent)
     }
 
     @Test("The words say what happens")

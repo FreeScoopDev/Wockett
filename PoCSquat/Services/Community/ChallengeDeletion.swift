@@ -11,18 +11,28 @@ import SwiftUI
 // Reports queue with no new record type.
 
 /// Every entry in a challenge, unfiltered: the leaderboard hides suspended
-/// and deleted entries, but they still joined.
+/// and deleted entries, but they still joined. `unreadable` counts entries
+/// that couldn't be read or decoded: they are someone's too.
 protocol ChallengeEntryLister: AnyObject {
-    func entries(of challengeKey: String) async throws -> [ChallengeParticipant]
+    func entries(of challengeKey: String) async throws -> (entries: [ChallengeParticipant], unreadable: Int)
 }
 
 final class CloudKitChallengeEntryLister: ChallengeEntryLister {
     private let db = CKContainer(identifier: WockettCloud.containerID).publicCloudDatabase
 
-    func entries(of challengeKey: String) async throws -> [ChallengeParticipant] {
+    func entries(of challengeKey: String) async throws -> (entries: [ChallengeParticipant], unreadable: Int) {
         let query = CKQuery(recordType: "ChallengeEntry", predicate: NSPredicate(format: "challengeRecordName == %@", challengeKey))
         let (results, _) = try await db.records(matching: query, resultsLimit: 400)
-        return results.compactMap { try? $0.1.get() }.compactMap { ChallengeParticipant(record: $0) }
+        var entries: [ChallengeParticipant] = []
+        var unreadable = 0
+        for (_, result) in results {
+            if let record = try? result.get(), let entry = ChallengeParticipant(record: record) {
+                entries.append(entry)
+            } else {
+                unreadable += 1
+            }
+        }
+        return (entries, unreadable)
     }
 }
 
@@ -31,7 +41,10 @@ enum ChallengeDeletion {
     static let deleteMessage = "This removes the challenge and your entry for everyone."
     static let requestTitle = "Ask to delete this challenge?"
     static let requestSent = "Request sent. The Wockett team will review it."
-    static let requestAlreadySent = "You've asked already. The Wockett team will review it."
+    static let requestAlreadySent = "You've asked today already. The Wockett team will review it."
+    /// How long Delete waits on CloudKit before saying so.
+    static let deadline: Duration = .seconds(15)
+    static let timedOut = "That's taking too long. Check your connection and try again."
     /// The report reason the dashboard reads as "Owner asked to delete it".
     static let requestReason = "ownerRequest"
 
@@ -53,15 +66,22 @@ enum ChallengeDeletion {
         case failed(String)
     }
 
+    /// Asked when Delete is tapped and again when it's confirmed: someone may
+    /// have joined while the question was up.
     @MainActor
     static func plan(for challenge: WalkChallenge, lister: ChallengeEntryLister = CloudKitChallengeEntryLister(),
-                     moderation: CommunityModerationStore = .shared) async -> Plan {
+                     moderation: CommunityModerationStore = .shared,
+                     sleep: @escaping OptimisticVote.Sleep = { try await Task.sleep(for: $0) }) async -> Plan {
         do {
-            let others = othersJoined(try await lister.entries(of: challenge.id.recordName), moderation: moderation)
+            let found = try await OptimisticVote.withDeadline(deadline, sleep: sleep) {
+                try await lister.entries(of: challenge.id.recordName)
+            }
+            guard let found else { return .failed(timedOut) }
+            let others = othersJoined(found.entries, moderation: moderation) + found.unreadable
             return others == 0 ? .delete : .request(others: others)
         } catch {
             if (error as? CKError)?.code == .notAuthenticated {
-                return .failed("Sign in to iCloud in the Settings app to delete it.")
+                return .failed(CommunityDeletion.signInMessage)
             }
             return .failed("Couldn't check who has joined. Check your connection and try again.")
         }
@@ -91,12 +111,19 @@ enum ChallengeDeletion {
     }
 
     /// The request: a report on the challenge, reason "ownerRequest", one per
-    /// person (the report record-name rule), nothing about you but CloudKit's
-    /// own creator reference.
-    static func requestRecord(for challenge: WalkChallenge, others: Int, requester: String?) -> CKRecord {
+    /// person per day (so asking again after a moderator dismissed it still
+    /// reaches the queue), nothing about you but CloudKit's own creator
+    /// reference. The dashboard checks that creator against the challenge's
+    /// before calling it the owner's.
+    static func requestRecord(for challenge: WalkChallenge, others: Int, requester: String?, on day: Date = Date()) -> CKRecord {
         var report = CommunityReport(challenge: challenge)
         report.note = "The person who created it asked to delete it. \(others) other \(others == 1 ? "person has" : "people have") joined."
-        let record = CommunityReports.record(for: report, reporter: requester)
+        let template = CommunityReports.record(for: report, reporter: requester)
+        let stamp = day.formatted(.iso8601.year().month().day())
+        let name = requester.map { CommunityReports.recordName(target: "\(challenge.id.recordName)@\(stamp)", reporter: $0) }
+            ?? template.recordID.recordName
+        let record = CKRecord(recordType: template.recordType, recordID: CKRecord.ID(recordName: name))
+        for key in template.allKeys() { record[key] = template[key] }
         record["reason"] = requestReason
         return record
     }
@@ -110,11 +137,16 @@ enum ChallengeDeletion {
     @MainActor
     static func request(_ challenge: WalkChallenge, others: Int,
                         store: CommunityReportStore = CloudKitCommunityReportStore(),
-                        knownRequester: @escaping () -> String? = { MyAccount.recordName }) async -> RequestOutcome {
+                        knownRequester: @escaping () -> String? = { MyAccount.recordName },
+                        sleep: @escaping OptimisticVote.Sleep = { try await Task.sleep(for: $0) }) async -> RequestOutcome {
         do {
-            let requester = (try? await store.currentUserRecordName()) ?? knownRequester()
-            try await store.save(requestRecord(for: challenge, others: others, requester: requester))
-            return .sent
+            let saved: Bool? = try await OptimisticVote.withDeadline(deadline, sleep: sleep) {
+                let requester = (try? await store.currentUserRecordName()) ?? knownRequester()
+                try Task.checkCancellation()
+                try await store.save(requestRecord(for: challenge, others: others, requester: requester))
+                return true
+            }
+            return saved == nil ? .failed(timedOut) : .sent
         } catch {
             switch CommunityReports.outcome(of: error) {
             case .alreadyReported: return .alreadySent
@@ -166,7 +198,7 @@ private struct ChallengeDeletionModifier: ViewModifier {
                     switch await ChallengeDeletion.plan(for: challenge) {
                     case .delete: prompt = .delete(challenge)
                     case .request(let others): prompt = .request(challenge, others: others)
-                    case .failed(let text): prompt = .message(title: "Couldn't delete it", text: text)
+                    case .failed(let text): prompt = .message(title: CommunityDeletion.failedTitle, text: text)
                     }
                 }
             }
@@ -175,9 +207,20 @@ private struct ChallengeDeletionModifier: ViewModifier {
                 case .delete(let challenge):
                     Button("Delete", role: .destructive) {
                         Task {
+                            // Ask again: someone may have joined while this was up.
+                            switch await ChallengeDeletion.plan(for: challenge) {
+                            case .request(let others):
+                                prompt = .request(challenge, others: others)
+                                return
+                            case .failed(let text):
+                                prompt = .message(title: CommunityDeletion.failedTitle, text: text)
+                                return
+                            case .delete:
+                                break
+                            }
                             switch await ChallengeDeletion.delete(challenge) {
                             case .deleted: onDeleted(challenge)
-                            case .failed(let text): prompt = .message(title: "Couldn't delete it", text: text)
+                            case .failed(let text): prompt = .message(title: CommunityDeletion.failedTitle, text: text)
                             }
                         }
                     }

@@ -170,7 +170,14 @@ export function queue(groups, order = 'newest', actedAt = new Map()) {
 
 /** The reason a removal is filed under by default: the commonest one reported. */
 export function topReason(group) {
-  return group?.reasons?.[0]?.reason ?? 'other';
+  // Only a reason a moderator can file a removal under: an owner's request
+  // isn't one, and a removal must never default to "Spam" for it.
+  return group?.reasons?.find((r) => Object.hasOwn(REASONS, r.reason))?.reason ?? 'other';
+}
+
+/** Every report on the item is an owner's request to delete it. */
+export function isOwnerRequestOnly(group) {
+  return Boolean(group?.reasons?.length) && group.reasons.every((r) => Object.hasOwn(REQUEST_REASONS, r.reason));
 }
 
 // MARK: - Removal

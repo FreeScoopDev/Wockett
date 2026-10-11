@@ -101,6 +101,20 @@ export function onePerNominator(records) {
   });
 }
 
+/**
+ * Who filed each report, kept inside this module and never returned: the
+ * page may only ask whether a report came from the item's own author
+ * (`reportedByAuthor`), which is how an owner's request to delete is told
+ * from someone else claiming to be the owner.
+ */
+const reportFilers = new Map();
+
+/** Whether the report named `reportRecordName` was filed by `authorAccount`. */
+export function reportedByAuthor(reportRecordName, authorAccount) {
+  const filer = reportFilers.get(reportRecordName);
+  return Boolean(filer && authorAccount && filer === authorAccount);
+}
+
 /** Every page of a query, up to `max` records. `more` says some were left out. */
 export async function pagedQuery(db, query, { max = 1000, pageSize = 200 } = {}) {
   const raw = [];
@@ -109,6 +123,9 @@ export async function pagedQuery(db, query, { max = 1000, pageSize = 200 } = {})
   while (hasMorePages(response) && raw.length < max) {
     response = check(await db.performQuery(response));
     raw.push(...response.records);
+  }
+  if (query.recordType === 'CommunityReport') {
+    for (const r of raw) if (r.created?.userRecordName) reportFilers.set(r.recordName, r.created.userRecordName);
   }
   const kept = query.recordType === 'TrailNomination' ? onePerNominator(raw) : raw;
   return { records: kept.slice(0, max).map(plain), more: hasMorePages(response) || raw.length > max };
