@@ -27,6 +27,7 @@ struct CommunityHubView: View {
     /// a row can leave the screen mid-alert (a refresh, a location fix that
     /// reorders the top routes) and would take the alert with it.
     @State private var hubReport: CommunityReport?
+    @State private var hubDeletion: CommunityDeletionRequest?
     @State private var trailFinder = TrailFinder()
 
     @State private var pushBadges       = false
@@ -71,6 +72,10 @@ struct CommunityHubView: View {
         .communityReporting($hubReport) { report in
             model.hide(report.recordID)
             communityRoutesModel.routes.removeAll { $0.id == report.recordID }
+        }
+        .communityDeleting($hubDeletion) { deleted in
+            model.hide(deleted.recordID)
+            communityRoutesModel.routes.removeAll { $0.id == deleted.recordID }
         }
         .navigationDestination(isPresented: $pushBadges) { BadgesContentView() }
         .navigationDestination(isPresented: $pushFeed) { AchievementFeedContentView() }
@@ -422,7 +427,10 @@ struct CommunityHubView: View {
         }
         .padding(.vertical, 8)
         .contentShape(Rectangle())
-        .contextMenu { CommunityReportButton("Report Post", author: post.author) { hubReport = CommunityReport(post: post) } }
+        .contextMenu {
+            CommunityReportButton("Report Post", author: post.author) { hubReport = CommunityReport(post: post) }
+            CommunityDeleteButton(author: post.author) { hubDeletion = CommunityDeletionRequest(kind: .post, recordID: post.id) }
+        }
     }
 
     // MARK: - Community routes
@@ -494,7 +502,10 @@ struct CommunityHubView: View {
         .buttonStyle(BounceButtonStyle(scale: 0.97))
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(route.name), number \(rank), \(route.wocketts) wocketts, \(detail)")
-        .contextMenu { CommunityReportButton("Report Route", author: route.author) { hubReport = CommunityReport(route: route) } }
+        .contextMenu {
+            CommunityReportButton("Report Route", author: route.author) { hubReport = CommunityReport(route: route) }
+            CommunityDeleteButton(author: route.author) { hubDeletion = CommunityDeletionRequest(kind: .route, recordID: route.id) }
+        }
     }
 
     // MARK: - Trails

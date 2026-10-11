@@ -238,7 +238,9 @@ final class ChallengeService {
     private let db            = CKContainer(identifier: "iCloud.Scoops.PoCSquat").publicCloudDatabase
     private let challengeType = "Challenge"
     private let entryType     = "ChallengeEntry"
-    private let joinedKey     = "wkt_joinedChallengeEntries_v1"  // [challengeRecordName: entryRecordName]
+    /// [challengeRecordName: entryRecordName]. Static: deleting your entry clears it (CommunityDeletion).
+    static let joinedKey = "wkt_joinedChallengeEntries_v1"
+    private var joinedKey: String { Self.joinedKey }
 
     // Stable per-device identifier — never changes, never contains PII.
     var deviceID: String {

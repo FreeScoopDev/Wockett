@@ -248,6 +248,7 @@ struct ChallengeDetailView: View {
     @EnvironmentObject private var historyStore: WalkHistoryStore
 
     @State private var participants:    [ChallengeParticipant] = []
+    @State private var entryDeletion: CommunityDeletionRequest?
     @State private var myProgressValue: Int    = 0
     @State private var isLoading              = false
     @State private var isSyncing              = false
@@ -279,6 +280,10 @@ struct ChallengeDetailView: View {
         .task {
             await loadLeaderboard()
             await loadMyProgress()
+        }
+        // Your entry, deleted: off the board now, and the challenge no longer joined.
+        .communityDeleting($entryDeletion) { deleted in
+            participants.removeAll { $0.id == deleted.recordID }
         }
     }
 
@@ -410,6 +415,13 @@ struct ChallengeDetailView: View {
                     ForEach(participants.indices, id: \.self) { i in
                         if i > 0 { WktDivider() }
                         LeaderboardRow(rank: i + 1, participant: participants[i], challenge: challenge)
+                            .contextMenu {
+                                CommunityDeleteButton(author: CommunityAuthor(name: participants[i].displayName,
+                                                                              account: participants[i].account)) {
+                                    entryDeletion = CommunityDeletionRequest(kind: .entry(challengeKey: challenge.id.recordName),
+                                                                             recordID: participants[i].id)
+                                }
+                            }
                     }
                 }
             }
