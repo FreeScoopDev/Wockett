@@ -290,6 +290,28 @@ final class SmokeTests: XCTestCase {
                       "ODbL attribution line missing")
     }
 
+    // MARK: - 6b. Health disclaimer
+
+    /// The Health screen ends with the "not medical advice" footnote
+    /// (liability review, 2026-10-11): present, with the exact words, and
+    /// reachable by scrolling to the end of a long screen.
+    func testHealthShowsDisclaimer() {
+        XCTAssertTrue(el("home.statCard").waitForExistence(timeout: 10))
+        tab("Health").tap()
+        XCTAssertTrue(el("health.root").waitForExistence(timeout: 15))
+        let note = app.staticTexts["health.disclaimer"]
+        XCTAssertTrue(note.waitForExistence(timeout: 10), "Health disclaimer missing from the Health screen")
+        // In the tree isn't on screen: a plain VStack keeps off-screen text in
+        // the accessibility tree, so scroll until it can be reached.
+        var swipes = 0
+        while !note.isHittable && swipes < 12 {
+            app.swipeUp()
+            swipes += 1
+        }
+        XCTAssertTrue(note.isHittable, "Health disclaimer can't be scrolled into view")
+        XCTAssertEqual(note.label, "For general information, not medical advice. Wockett isn't a medical device.")
+    }
+
     // MARK: - 7. Trails list
 
     /// Routes → Trails lists real trails from the bundled pack, a card opens

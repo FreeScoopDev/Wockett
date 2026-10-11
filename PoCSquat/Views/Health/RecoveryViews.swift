@@ -136,6 +136,10 @@ struct RecoveryMetricDetailSheet: View {
                         case .readiness:  readinessContent
                         case .calories:   caloriesContent
                         }
+                        // The sheet covers the Health screen's footnote, and
+                        // says more about the body (HRV, heart rhythm) than any
+                        // other screen.
+                        HealthDisclaimer()
                     }
                     .padding(.horizontal, WktSpacing.screen)
                     .padding(.top, 8)

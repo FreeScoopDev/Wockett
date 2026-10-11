@@ -39,6 +39,7 @@ struct HealthHubView: View {
                     HealthFunStatsCard(sessions: historyStore.sessions, todaySteps: stepManager.todaySteps)
                     insightsCard
                     activityHistoryCard
+                    HealthDisclaimer()
                 }
                 .padding(.horizontal, WktSpacing.screen)
                 .padding(.top, 8)
