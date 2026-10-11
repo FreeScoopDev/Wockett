@@ -122,6 +122,7 @@ export function groupReports(reports, actions = []) {
       reasons,
       notes,
       lastAction: action,
+      fresh,
       open: sinceAction > 0,
     };
   });
@@ -173,6 +174,22 @@ export function topReason(group) {
   // Only a reason a moderator can file a removal under: an owner's request
   // isn't one, and a removal must never default to "Spam" for it.
   return group?.reasons?.find((r) => Object.hasOwn(REASONS, r.reason))?.reason ?? 'other';
+}
+
+/**
+ * A reason's label on a report card. An owner's request is called that only
+ * when one of the reports since the last action was filed by the item's
+ * author (`filedByAuthor(reportRecordName, authorAccount)`, answered inside
+ * ck.js); a request from someone else says so, and with no author to check
+ * against it says it couldn't check. Older, already-handled reports never
+ * vouch for a new one.
+ */
+export function reasonLabelFor(reason, group, record, filedByAuthor) {
+  if (!Object.hasOwn(REQUEST_REASONS, reason)) return reasonLabel(reason);
+  if (!record?.creator) return 'Says the owner asked (couldn\'t check)';
+  const recent = group.fresh ?? group.reports;
+  const fromOwner = recent.some((r) => r.fields.reason === reason && filedByAuthor(r.recordName, record.creator));
+  return fromOwner ? reasonLabel(reason) : 'Says the owner asked (not from the owner\'s account)';
 }
 
 /** Every report on the item is an owner's request to delete it. */

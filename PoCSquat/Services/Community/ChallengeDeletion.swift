@@ -115,11 +115,13 @@ enum ChallengeDeletion {
     /// reaches the queue), nothing about you but CloudKit's own creator
     /// reference. The dashboard checks that creator against the challenge's
     /// before calling it the owner's.
-    static func requestRecord(for challenge: WalkChallenge, others: Int, requester: String?, on day: Date = Date()) -> CKRecord {
+    static func requestRecord(for challenge: WalkChallenge, others: Int, requester: String?, on day: Date = Date(),
+                              timeZone: TimeZone = .current) -> CKRecord {
         var report = CommunityReport(challenge: challenge)
         report.note = "The person who created it asked to delete it. \(others) other \(others == 1 ? "person has" : "people have") joined."
         let template = CommunityReports.record(for: report, reporter: requester)
-        let stamp = day.formatted(.iso8601.year().month().day())
+        // The person's own day, not UTC's: "today" means their today.
+        let stamp = day.formatted(Date.ISO8601FormatStyle(timeZone: timeZone).year().month().day())
         let name = requester.map { CommunityReports.recordName(target: "\(challenge.id.recordName)@\(stamp)", reporter: $0) }
             ?? template.recordID.recordName
         let record = CKRecord(recordType: template.recordType, recordID: CKRecord.ID(recordName: name))

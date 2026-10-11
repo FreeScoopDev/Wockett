@@ -11,7 +11,7 @@ import {
   TYPES, REASONS, reasonLabel, groupReports, queue, topReason, filterByAuthor, authorOf,
   activity, DAY, parseWaypoints, routePath, describeItem, describeError, isNotAllowed, ago,
   effectiveType, reopenFailedRemovals, targetsToCheck, SUSPENSION_LENGTHS, shortAccount, suspensionRows, canSuspend,
-  isOwnerRequestOnly, REQUEST_REASONS,
+  isOwnerRequestOnly, reasonLabelFor,
   groupNominations, nominationQueue, FEATURE_LENGTHS, BLURB_LIMIT, mapsLink, featuredRows, formatDistance,
   ACTIVITY_KINDS,
 } from './logic.js';
@@ -228,17 +228,6 @@ async function renderReports(seq) {
     reports.more ? el('p', { class: 'muted small' }, 'Showing the newest 2,000 reports.') : null);
 }
 
-/**
- * A reason's label on a report card. An owner's request is called that only
- * when one of those reports really came from the item's author; anyone can
- * file a report saying so.
- */
-function reasonLabelFor(reason, group, record) {
-  if (!Object.hasOwn(REQUEST_REASONS, reason)) return reasonLabel(reason);
-  const fromOwner = record?.creator && group.reports.some((r) => r.fields.reason === reason && reportedByAuthor(r.recordName, record.creator));
-  return fromOwner ? reasonLabel(reason) : 'Says the owner asked (not from the owner\'s account)';
-}
-
 function reportCard(group, record) {
   // The record's own type, never the report's say-so; null for anything that
   // isn't community content, which can only be dismissed.
@@ -247,7 +236,7 @@ function reportCard(group, record) {
   const item = removable ? describeItem(type, record) : { title: group.summary || group.target, lines: [] };
   const author = record ? authorOf(record) : group.authorName;
   const reasons = el('div', { class: 'reasons' },
-    group.reasons.map((r) => el('span', { class: 'chip warn' }, `${reasonLabelFor(r.reason, group, record)} ×${r.count}`)));
+    group.reasons.map((r) => el('span', { class: 'chip warn' }, `${reasonLabelFor(r.reason, group, record, reportedByAuthor)} ×${r.count}`)));
   const notes = group.notes.length
     ? el('ul', { class: 'notes' }, group.notes.slice(0, 10).map((n) => el('li', {}, `“${n.note}” `, el('span', { class: 'muted small' }, ago(n.at)))))
     : null;

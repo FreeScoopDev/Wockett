@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import {
   groupNominations, nominationQueue, featureUntil, featuredRecordName, featuredFields, mapsLink, featuredRows,
   BLURB_LIMIT, DAY, ACTIVITY_KINDS, groupReports, queue, isTrailKey,
-  reasonLabel, REASONS, topReason, isOwnerRequestOnly,
+  reasonLabel, REASONS, topReason, isOwnerRequestOnly, reasonLabelFor,
 } from '../../docs/staff/logic.js';
 import { featureTrail, unfeatureTrail, dismissNominations } from '../../docs/staff/actions.js';
 import { plain, onePerNominator, pagedQuery, reportedByAuthor } from '../../docs/staff/ck.js';
@@ -256,4 +256,21 @@ test('an owner\'s request is told from someone claiming to be the owner, without
   assert.equal(reportedByAuthor('forged', '_owner'), false);
   assert.equal(reportedByAuthor('real', undefined), false);
   assert.equal(reportedByAuthor('unknown', '_owner'), false);
+});
+
+test('the owner label checks the requests since the last action against the author', () => {
+  const req = (name, created) => ({ recordName: name, created, fields: { targetRecordName: 'c1', targetType: 'challenge', reason: 'ownerRequest' } });
+  const filers = { genuine: '_owner', old: '_owner', forged: '_x' };
+  const byAuthor = (name, author) => filers[name] === author;
+  const live = { creator: '_owner' };
+  const [genuine] = groupReports([req('genuine', 5)]);
+  assert.equal(reasonLabelFor('ownerRequest', genuine, live, byAuthor), 'Owner asked to delete it');
+  const [forged] = groupReports([req('forged', 5)]);
+  assert.equal(reasonLabelFor('ownerRequest', forged, live, byAuthor), 'Says the owner asked (not from the owner\'s account)');
+  // The owner's old request was dismissed; a new one from someone else must not ride on it.
+  const dismissed = { created: 10, fields: { targetRecordName: 'c1', action: 'dismissed', targetType: 'challenge' } };
+  const [later] = groupReports([req('old', 5), req('forged', 20)], [dismissed]);
+  assert.equal(reasonLabelFor('ownerRequest', later, live, byAuthor), 'Says the owner asked (not from the owner\'s account)');
+  assert.equal(reasonLabelFor('ownerRequest', genuine, null, byAuthor), 'Says the owner asked (couldn\'t check)');
+  assert.equal(reasonLabelFor('spam', genuine, live, byAuthor), 'Spam');
 });

@@ -180,6 +180,18 @@ struct ChallengeDeletionTests {
         #expect(!a.contains("_me"))
     }
 
+    @Test("'Today' is the person's own day, not UTC's")
+    func requestLocalDay() throws {
+        let c = try challenge()
+        let la = try #require(TimeZone(identifier: "America/Los_Angeles"))
+        // 6 pm in Los Angeles on Oct 11 is already Oct 12 in UTC; 9 am the next day is Oct 12 in both.
+        let evening = try #require(ISO8601DateFormatter().date(from: "2026-10-12T01:00:00Z"))
+        let nextMorning = try #require(ISO8601DateFormatter().date(from: "2026-10-12T16:00:00Z"))
+        let first = ChallengeDeletion.requestRecord(for: c, others: 1, requester: "_me", on: evening, timeZone: la).recordID.recordName
+        let again = ChallengeDeletion.requestRecord(for: c, others: 1, requester: "_me", on: nextMorning, timeZone: la).recordID.recordName
+        #expect(first != again, "asking again the next morning is a new request")
+    }
+
     @Test("Sending saves once; a second request is 'already sent'")
     func request() async throws {
         let reports = FakeReports()
