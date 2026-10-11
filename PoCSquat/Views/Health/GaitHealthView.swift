@@ -541,6 +541,7 @@ struct GaitMetricDetailContentView: View {
                     aboutSection
                     affectsSection
                     tipsSection
+                    HealthDisclaimer()
                 }
                 .padding(.horizontal, WktSpacing.screen)
                 .padding(.top, 8)

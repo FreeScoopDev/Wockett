@@ -290,6 +290,25 @@ final class SmokeTests: XCTestCase {
                       "ODbL attribution line missing")
     }
 
+    // MARK: - 6b. Health disclaimer
+
+    /// The Health screen ends with the "not medical advice" footnote
+    /// (liability review, 2026-10-11). It is the last thing on a long
+    /// screen, so this scrolls to it rather than trusting that it renders.
+    func testHealthShowsDisclaimer() {
+        XCTAssertTrue(el("home.statCard").waitForExistence(timeout: 10))
+        tab("Health").tap()
+        XCTAssertTrue(el("health.root").waitForExistence(timeout: 15))
+        let note = app.staticTexts["health.disclaimer"]
+        var swipes = 0
+        while !note.exists && swipes < 12 {
+            app.swipeUp()
+            swipes += 1
+        }
+        XCTAssertTrue(note.waitForExistence(timeout: 10), "Health disclaimer missing from the Health screen")
+        XCTAssertEqual(note.label, "For general information, not medical advice. Wockett isn't a medical device.")
+    }
+
     // MARK: - 7. Trails list
 
     /// Routes → Trails lists real trails from the bundled pack, a card opens
