@@ -103,7 +103,7 @@ extension Color {
     static let earthMuted = Color(UIColor { tc in
         tc.userInterfaceStyle == .dark
             ? UIColor(red: 0.631, green: 0.631, blue: 0.659, alpha: 1)
-            : UIColor(red: 0.431, green: 0.447, blue: 0.420, alpha: 1)
+            : UIColor(red: 0.404, green: 0.420, blue: 0.392, alpha: 1)   // #676B64: 4.94:1 on earthBg, 5.43:1 on earthCard, 4.63:1 on earthRaised (chips); was 4.46 / 4.91 / 4.19
     })
 
     // MARK: Design system foundation (added for v1.10 unified design system)
