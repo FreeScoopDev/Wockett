@@ -304,27 +304,32 @@ final class StepManager: ObservableObject {
 
     // MARK: - HealthKit
 
-    private func authorizeAndFetchHealthKit() async {
-        guard HKHealthStore.isHealthDataAvailable() else { return }
-        let stepType = HKQuantityType(.stepCount)
-        // Write types: workout records, their GPS route, distance samples, calories.
-        // These are requested here so a single system prompt covers all HealthKit access.
-        // The route is its own permission: HealthWorkoutWriter has always built
-        // one, but without this it was never allowed, finishRoute failed into
-        // a log line, and walks reached Health with no map (release audit,
-        // 2026-09-25). Existing users are asked once for just this type.
-        let typesToShare: Set<HKSampleType> = [
+    /// Write types: workout records, their GPS route, distance samples, calories.
+    /// The route is its own permission: HealthWorkoutWriter has always built
+    /// one, but without this it was never allowed, finishRoute failed into
+    /// a log line, and walks reached Health with no map (release audit,
+    /// 2026-09-25). Existing users are asked once for just this type.
+    static var coreShareTypes: Set<HKSampleType> {
+        [
             .workoutType(),
             HKSeriesType.workoutRoute(),
             HKQuantityType(.distanceWalkingRunning),
             HKQuantityType(.distanceCycling),
             HKQuantityType(.activeEnergyBurned)
         ]
-        var readTypes: Set<HKObjectType> = [stepType, HKQuantityType(.distanceWalkingRunning)]
-        GaitHealthService.readTypes.forEach  { readTypes.insert($0) }
-        RecoveryService.readTypes.forEach    { readTypes.insert($0) }
+    }
+
+    /// What the step ring and the rest of the app read. The Health tab's
+    /// recovery and gait types are not here: they are asked for from that tab
+    /// (`HealthExtrasAccess`), so the first-launch sheet stays short.
+    static var coreReadTypes: Set<HKObjectType> {
+        [HKQuantityType(.stepCount), HKQuantityType(.distanceWalkingRunning)]
+    }
+
+    private func authorizeAndFetchHealthKit() async {
+        guard HKHealthStore.isHealthDataAvailable() else { return }
         do {
-            try await healthStore.requestAuthorization(toShare: typesToShare, read: readTypes)
+            try await healthStore.requestAuthorization(toShare: Self.coreShareTypes, read: Self.coreReadTypes)
             permissionDenied = false
             await fetchHealthKitSteps()
             observeHealthKit()

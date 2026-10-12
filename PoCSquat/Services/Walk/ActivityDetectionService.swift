@@ -33,6 +33,20 @@ final class ActivityDetectionService {
 
     private init() {}
 
+    /// Launch and returning to the foreground: starts only if the user already
+    /// allowed Motion & Fitness. Starting updates is what shows iOS's prompt, and
+    /// a prompt at launch for a Home banner was one of three a new user saw in
+    /// the first seconds. A walk asks instead (`startDetection()`), where the
+    /// vehicle check and auto-resume are what motion is for.
+    func startDetectionIfAuthorized() {
+        Task {
+            guard await Self.authorizationStatus() == .authorized else { return }
+            startDetection()
+        }
+    }
+
+    /// Starts updates, asking for Motion & Fitness if it has never been asked.
+    /// Call it only where the user has just started something that uses it.
     func startDetection() {
         guard CMMotionActivityManager.isActivityAvailable() else { return }
         motionManager.startActivityUpdates(to: .main) { [weak self] activity in
@@ -45,6 +59,29 @@ final class ActivityDetectionService {
 
     func stopDetection() {
         motionManager.stopActivityUpdates()
+    }
+
+    /// Settings' untracked-walk nudge: the background check reads Core Motion
+    /// history and cannot prompt there, so turning the nudge on is the moment
+    /// to ask. A one-minute history query shows the prompt if it has never
+    /// been shown, and does nothing visible otherwise.
+    func requestAccessIfNeverAsked() async {
+        guard CMMotionActivityManager.isActivityAvailable(),
+              await Self.authorizationStatus() == .notDetermined else { return }
+        let now = Date()
+        await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+            motionManager.queryActivityStarting(from: now.addingTimeInterval(-60), to: now, to: .main) { _, _ in
+                cont.resume()
+            }
+        }
+    }
+
+    /// `@concurrent` so the read runs off the main thread: it is a synchronous
+    /// call to the system, like the CoreLocation and HealthKit reads that
+    /// stalled the main thread on 2026-09-28.
+    @concurrent
+    private nonisolated static func authorizationStatus() async -> CMAuthorizationStatus {
+        CMMotionActivityManager.authorizationStatus()
     }
 
     func dismissSuggestion() {

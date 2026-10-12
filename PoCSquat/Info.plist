@@ -23,7 +23,7 @@
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>NSHealthShareUsageDescription</key>
-	<string>Wockett reads your steps and walking distance to track your daily goal, and your sleep, heart rate (resting, walking and variability), active calories, flights climbed, and walking speed, step length and symmetry to show your recovery and walking health.</string>
+	<string>Wockett reads your steps and walking distance to track your daily goal. If you connect them from the Health tab, it also reads your sleep, heart rate (resting, walking and variability), active calories, flights climbed, and walking speed, step length and symmetry to show your recovery and walking health.</string>
 	<key>NSHealthUpdateUsageDescription</key>
 	<string>Wockett saves your walks, runs and rides to Apple Health, including distance, duration, active calories and the route, so they count toward your Move and Exercise rings.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
@@ -46,10 +46,6 @@
 	<string>Wockett only uses your calendar to find and delete the walk reminders an earlier version added. It no longer creates calendar events.</string>
 	<key>NSCalendarsUsageDescription</key>
 	<string>Wockett only uses your calendar to find and delete the walk reminders an earlier version added. It no longer creates calendar events.</string>
-	<key>NSRemindersFullAccessUsageDescription</key>
-	<string>Wockett adds walk reminders to your Reminders app to help you hit your daily step goal.</string>
-	<key>NSRemindersUsageDescription</key>
-	<string>Wockett adds walk reminders to your Reminders app to help you hit your daily step goal.</string>
 	<key>NSSupportsLiveActivities</key>
 	<true/>
 	<key>NSSupportsLiveActivitiesFrequentUpdates</key>

@@ -512,7 +512,17 @@ struct SettingsView: View {
         .onChange(of: [weeklySummaryEnabled, hydrationEnabled, streakProtectionEnabled, petNudgeEnabled, untrackedWalkEnabled]) { old, new in
             // A toggle switched on while delivery is only quiet is the user asking
             // for alerts — the moment for the real prompt.
-            if zip(old, new).contains(where: { !$0 && $1 }) { Task { await promptForAlerts() } }
+            guard zip(old, new).contains(where: { !$0 && $1 }) else { return }
+            // `untrackedWalkEnabled` is the last switch in the list.
+            let untrackedSwitchedOn = old.last == false && new.last == true
+            Task {
+                await promptForAlerts()
+                // The untracked-walk check reads Core Motion history in the
+                // background, where it cannot ask. Launch no longer asks either,
+                // so this switch is the moment. After the alert prompt, not
+                // alongside it, so the two never stack.
+                if untrackedSwitchedOn { await ActivityDetectionService.shared.requestAccessIfNeverAsked() }
+            }
         }
     }
 

@@ -139,7 +139,7 @@ struct StepCounterView: View {
                 if phase == .background {
                     ActivityDetectionService.shared.stopDetection()
                 } else if phase == .active {
-                    ActivityDetectionService.shared.startDetection()
+                    ActivityDetectionService.shared.startDetectionIfAuthorized()
                     Task {
                         await stepManager.scheduleStreakNudge(currentStreak: streakStore.currentStreak)
                         await petStore.schedulePetNudge(sessions: historyStore.sessions)
@@ -290,12 +290,17 @@ struct StepCounterView: View {
                 tabRouter.selected = .community
             },
             chips: {
-                WktStatusChip(
-                    text: gpsIsReady ? "GPS" : "Location off",
-                    dot: gpsIsReady ? .earthGreen : .earthMuted,
-                    textColor: gpsIsReady ? .earthCream : .earthMuted
-                )
-                .accessibilityLabel(gpsIsReady ? "GPS ready" : "Location off")
+                // Not before location was ever asked: a new user would see
+                // "Location off" for something they never turned off, beside
+                // the weather chip that asks for it.
+                if routeManager.authStatus != .notDetermined {
+                    WktStatusChip(
+                        text: gpsIsReady ? "GPS" : "Location off",
+                        dot: gpsIsReady ? .earthGreen : .earthMuted,
+                        textColor: gpsIsReady ? .earthCream : .earthMuted
+                    )
+                    .accessibilityLabel(gpsIsReady ? "GPS ready" : "Location off")
+                }
                 HomeWeatherStatusChip(locator: weatherLocator) { showWeatherDetail = true }
             }
         )

@@ -187,7 +187,7 @@ struct SquatCounterApp: App {
                 handleNotificationAction()
                 handleWalkIntent()
                 handleChallengeLink()
-                ActivityDetectionService.shared.startDetection()
+                ActivityDetectionService.shared.startDetectionIfAuthorized()
                 NotificationService.shared.registerCategories()
                 NotificationService.shared.pruneExpiredWalkReminders()
                 // Quiet delivery, once, only if never asked. The real prompt is Settings' job.

@@ -304,6 +304,9 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
         stopped = false
         UIApplication.shared.isIdleTimerDisabled = true
         locationManager.startUpdatingLocation()
+        // The vehicle check and auto-resume read Core Motion. Launch no longer
+        // asks for it, so starting a walk is where a new user is asked.
+        ActivityDetectionService.shared.startDetection()
         let storedMins = UserDefaults.standard.integer(forKey: "walk_breakPromptMinutes")
         let breakMins = storedMins > 0 ? storedMins : 3
         stopTracker = StopTracker(breakThresholdSeconds: TimeInterval(breakMins * 60))
