@@ -20,163 +20,18 @@ struct ActiveSessionView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(ActiveWalkStore.self) private var walkStore
 
-    // Both unwraps are guarded by `body`, which renders nothing unless
-    // `walkStore.session != nil`, and ActiveWalkStore writes/clears `session` and
-    // `activeRoute` together at every site (beginSession, restoreIfNeeded,
-    // endSession). The store is @MainActor and body evaluates synchronously on it,
-    // so there is no window between the check and these reads. The invariant is
-    // real; it just wasn't written down until 2026-09-08.
-    // swiftlint:disable:next force_unwrapping
-    private var session: NavigationSessionManager { walkStore.session! }
-    // swiftlint:disable:next force_unwrapping
-    private var route: NavigableRoute { walkStore.activeRoute! }
-    private var isGuided: Bool { !(walkStore.activeRoute?.waypoints.isEmpty ?? true) }
-
-    // Shared state
-    @State private var endSessionOnDismiss    = false
-    @State private var showActivitySummary    = false
-    @State private var summarySession: WalkSession?
-    @State private var summaryPRs: [PRType]   = []
-    @State private var summarySplits: [(label: String, elapsed: TimeInterval)] = []
-    @State private var waterBreakEnabled      = false
-    @State private var checkpointsEnabled     = false
-    @State private var scheduledBreakCount    = 0
-    @State private var showHeatBanner         = false
-    @State private var walkWeather: RouteWeather? = nil
-    @State private var petCompletions: [PetCompletion] = []
-    @State private var completedPetNames: [String] = []
-    @State private var computedLegs: [RouteLeg] = []
-    /// Bumped when the session turns a closed line round, once the legs for
-    /// the new direction are ready: the map is rebuilt with its checkpoint pins
-    /// numbered in the order they will now be walked.
-    @State private var mapGeneration = 0
-    @State private var showBreakPromptAlert   = false
-    @State private var showDrivingBanner      = false
-    /// Set once this screen has had a session, started here or reopened. A
+    /// Set once this view has had a session, started here or reopened. A
     /// session that then goes (Live Activity End) dismisses the screen; only
-    /// a screen that never had one starts a free walk. A reopened guided walk
-    /// never set it until 2026-10-12, so clearing one would have started a
-    /// free walk in its place.
-    @State private var hasAttemptedStart      = false
-    @StateObject private var poiManager       = POIOverlayManager()
-    @State private var position: MapCameraPosition = .userLocation(fallback: .automatic)
-    @State private var showOwnerUpdateSheet   = false
-    @State private var ownerUpdateRecipient: String? = nil
-    @State private var ownerUpdateBody        = ""
-    @State private var ownerUpdatePickerPets: [PetProfile] = []
-    // Panel, finish and map orientation — redesign of 2026-09-24 (option B
-    // of the "Active Walk Screen" canvas).
-    @State private var panelExpanded          = false
-    @State private var showFinishConfirm      = false
-    @State private var pendingFinish: FinishChoice?
-    @State private var headingUp              = false
-    @State private var recenterToken          = 0
-    @State private var headingTracker         = HeadingTracker()
-    @State private var freeMapHeading: Double = 0
-    @AppStorage("wkt_offTrailAlerts_v1") private var offTrailAlerts = true
-    /// "Not now" on the arrived-at-the-trail banner. The offer stays in the
-    /// pulled-up panel.
-    @State private var trailArrivalDismissed  = false
-    @State private var confirmHeadBack        = false
-
-    private enum FinishChoice { case save, saveWithRoute, discard }
-
-    // MARK: - Body
+    /// a view that never had one starts a free walk. A guided walk, or any
+    /// walk reopened from the mini tile, never set it until 2026-10-12, so
+    /// ending one from the Live Activity started a free walk in its place.
+    @State private var hasAttemptedStart = false
 
     var body: some View {
-        if walkStore.session != nil {
-            activeContent
-                .accessibilityElement(children: .contain)
-                .accessibilityIdentifier("session.root")
-                .toolbar(.hidden, for: .navigationBar)
-                .presentationDetents([.large])
-                .presentationDragIndicator(.visible)
-                .task {
-                    hasAttemptedStart = true
-                    await startSession()
-                }
-                .onDisappear { if endSessionOnDismiss { walkStore.endSession() } }
-                .onChange(of: checkpointsEnabled) { _, enabled in handleCheckpointToggle(enabled) }
-                .onChange(of: session.isCompleted) { _, completed in
-                    guard completed, isGuided else { return }
-                    handleWalkComplete()
-                }
-                .onChange(of: session.totalDistanceCovered) { _, dist in
-                    let elapsed = session.elapsedTime
-                    let isPaused = session.isPaused
-                    let pace = dist > 100 && elapsed > 10 ? elapsed / (dist / 1000) : nil
-                    Task {
-                        await WalkLiveActivityManager.shared.update(
-                            distanceCovered: dist,
-                            elapsedSeconds: Int(elapsed),
-                            isPaused: isPaused,
-                            paceSecsPerKm: pace,
-                            pausedDuration: session.totalPausedDuration,
-                            pauseTime: isPaused ? Date() : nil
-                        )
-                    }
-                }
-                .onChange(of: Int(session.elapsedTime)) { _, elapsed in
-                    // Free sessions use elapsed-time ticks as an additional LA heartbeat.
-                    guard !isGuided, elapsed > 0, elapsed % 10 == 0 else { return }
-                    let dist = session.totalDistanceCovered
-                    let paused = session.isPaused
-                    let pace: Double? = dist > 50 ? Double(elapsed) / (dist / 1_000) : nil
-                    Task {
-                        await WalkLiveActivityManager.shared.update(
-                            distanceCovered: dist,
-                            elapsedSeconds: elapsed,
-                            isPaused: paused,
-                            paceSecsPerKm: pace,
-                            pausedDuration: session.totalPausedDuration,
-                            pauseTime: paused ? Date() : nil
-                        )
-                    }
-                }
-                .onChange(of: session.isPaused) { _, paused in
-                    let dist = session.totalDistanceCovered
-                    let elapsed = session.elapsedTime
-                    let pace = dist > 100 && elapsed > 10 ? elapsed / (dist / 1000) : nil
-                    Task {
-                        await WalkLiveActivityManager.shared.update(
-                            distanceCovered: dist,
-                            elapsedSeconds: Int(elapsed),
-                            isPaused: paused,
-                            paceSecsPerKm: pace,
-                            pausedDuration: session.totalPausedDuration,
-                            pauseTime: paused ? Date() : nil
-                        )
-                    }
-                }
-                .onChange(of: petStore.activePets.count) { _, count in handlePetCountChange(count) }
-                .onChange(of: session.showBreakPrompt) { _, show in
-                    // False when an auto-resume cleared the prompt.
-                    showBreakPromptAlert = show
-                }
-                .onChange(of: session.drivingSuspected) { _, suspected in
-                    if suspected { showDrivingBanner = true }
-                }
-                .onChange(of: session.trackPoints.count) { _, _ in
-                    guard !isGuided, let last = session.trackPoints.last else { return }
-                    poiManager.refreshIfNeeded(near: last)
-                }
-                .onChange(of: waterBreakEnabled) { _, enabled in
-                    guard enabled else { return }
-                    Task { await scheduleWaterBreakReminders() }
-                }
-                .modifier(BreakPromptAlert(
-                    isPresented: $showBreakPromptAlert,
-                    activityMode: route.activityMode,
-                    onEnd: {
-                        session.dismissBreakPrompt()
-                        if session.autoPausedForInactivity { session.resume() }
-                        finishWalk()
-                    },
-                    onKeepTracking: {
-                        session.dismissBreakPrompt()
-                        if session.autoPausedForInactivity { session.resume() }
-                    }
-                ))
+        if let session = walkStore.session, let route = walkStore.activeRoute {
+            ActiveSessionScreen(session: session, route: route,
+                                historyStore: historyStore, routeStore: routeStore)
+                .onAppear { hasAttemptedStart = true }
         } else {
             // Session was cleared externally (Live Activity End) — or this is a new free session
             // that hasn't started yet.
@@ -205,7 +60,7 @@ struct ActiveSessionView: View {
                         activityMode: activityMode,
                         customRouteId: nil
                     )
-                    guard walkStore.beginSession(route: stub) != nil else { dismiss(); return }
+                    guard let session = walkStore.beginSession(route: stub) else { dismiss(); return }
                     walkStore.markStarted()
                     session.start()
                     for pet in petStore.activePets { session.petJoined(pet.id) }
@@ -217,6 +72,170 @@ struct ActiveSessionView: View {
                     )
                 }
         }
+    }
+}
+
+/// The walk screen itself, for a session that exists.
+///
+/// `session` and `route` are values handed in by `ActiveSessionView`, not
+/// read from the store. Until 2026-10-12 they were `walkStore.session!` and
+/// `walkStore.activeRoute!`, on the reasoning that `body` checked the store
+/// first. It does not hold: SwiftUI can update a `ForEach` row on its own,
+/// without running `body` again. On 2026-10-12 a crew-row pet button's
+/// accessibility label was updated after Done had cleared the store, read
+/// `walkStore.activeRoute!` and trapped (crash report backtrace: `route`
+/// getter <- `crewSection` <- `ForEachChild.updateValue`, during
+/// `updatePreferences`). A value cannot be cleared from under a late
+/// update: it is the walk that was on screen.
+private struct ActiveSessionScreen: View {
+    let session: NavigationSessionManager
+    /// The store's current route; "Head back" and starting a trail from the
+    /// way there replace it, and `ActiveSessionView` passes the new one in.
+    let route: NavigableRoute
+    @ObservedObject var historyStore: WalkHistoryStore
+    @ObservedObject var routeStore: CustomRouteStore
+
+    @EnvironmentObject var petStore: PetStore
+    @Environment(\.dismiss) private var dismiss
+    @Environment(ActiveWalkStore.self) private var walkStore
+
+    private var isGuided: Bool { !route.waypoints.isEmpty }
+
+    // Shared state
+    @State private var endSessionOnDismiss    = false
+    @State private var showActivitySummary    = false
+    @State private var summarySession: WalkSession?
+    @State private var summaryPRs: [PRType]   = []
+    @State private var summarySplits: [(label: String, elapsed: TimeInterval)] = []
+    @State private var waterBreakEnabled      = false
+    @State private var checkpointsEnabled     = false
+    @State private var scheduledBreakCount    = 0
+    @State private var showHeatBanner         = false
+    @State private var walkWeather: RouteWeather? = nil
+    @State private var petCompletions: [PetCompletion] = []
+    @State private var completedPetNames: [String] = []
+    @State private var computedLegs: [RouteLeg] = []
+    /// Bumped when the session turns a closed line round, once the legs for
+    /// the new direction are ready: the map is rebuilt with its checkpoint pins
+    /// numbered in the order they will now be walked.
+    @State private var mapGeneration = 0
+    @State private var showBreakPromptAlert   = false
+    @State private var showDrivingBanner      = false
+    @StateObject private var poiManager       = POIOverlayManager()
+    @State private var position: MapCameraPosition = .userLocation(fallback: .automatic)
+    @State private var showOwnerUpdateSheet   = false
+    @State private var ownerUpdateRecipient: String? = nil
+    @State private var ownerUpdateBody        = ""
+    @State private var ownerUpdatePickerPets: [PetProfile] = []
+    // Panel, finish and map orientation — redesign of 2026-09-24 (option B
+    // of the "Active Walk Screen" canvas).
+    @State private var panelExpanded          = false
+    @State private var showFinishConfirm      = false
+    @State private var pendingFinish: FinishChoice?
+    @State private var headingUp              = false
+    @State private var recenterToken          = 0
+    @State private var headingTracker         = HeadingTracker()
+    @State private var freeMapHeading: Double = 0
+    @AppStorage("wkt_offTrailAlerts_v1") private var offTrailAlerts = true
+    /// "Not now" on the arrived-at-the-trail banner. The offer stays in the
+    /// pulled-up panel.
+    @State private var trailArrivalDismissed  = false
+    @State private var confirmHeadBack        = false
+
+    private enum FinishChoice { case save, saveWithRoute, discard }
+
+    // MARK: - Body
+
+    var body: some View {
+        activeContent
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("session.root")
+            .toolbar(.hidden, for: .navigationBar)
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
+            .task { await startSession() }
+            .onDisappear { if endSessionOnDismiss { walkStore.endSession() } }
+            .onChange(of: checkpointsEnabled) { _, enabled in handleCheckpointToggle(enabled) }
+            .onChange(of: session.isCompleted) { _, completed in
+                guard completed, isGuided else { return }
+                handleWalkComplete()
+            }
+            .onChange(of: session.totalDistanceCovered) { _, dist in
+                let elapsed = session.elapsedTime
+                let isPaused = session.isPaused
+                let pace = dist > 100 && elapsed > 10 ? elapsed / (dist / 1000) : nil
+                Task {
+                    await WalkLiveActivityManager.shared.update(
+                        distanceCovered: dist,
+                        elapsedSeconds: Int(elapsed),
+                        isPaused: isPaused,
+                        paceSecsPerKm: pace,
+                        pausedDuration: session.totalPausedDuration,
+                        pauseTime: isPaused ? Date() : nil
+                    )
+                }
+            }
+            .onChange(of: Int(session.elapsedTime)) { _, elapsed in
+                // Free sessions use elapsed-time ticks as an additional LA heartbeat.
+                guard !isGuided, elapsed > 0, elapsed % 10 == 0 else { return }
+                let dist = session.totalDistanceCovered
+                let paused = session.isPaused
+                let pace: Double? = dist > 50 ? Double(elapsed) / (dist / 1_000) : nil
+                Task {
+                    await WalkLiveActivityManager.shared.update(
+                        distanceCovered: dist,
+                        elapsedSeconds: elapsed,
+                        isPaused: paused,
+                        paceSecsPerKm: pace,
+                        pausedDuration: session.totalPausedDuration,
+                        pauseTime: paused ? Date() : nil
+                    )
+                }
+            }
+            .onChange(of: session.isPaused) { _, paused in
+                let dist = session.totalDistanceCovered
+                let elapsed = session.elapsedTime
+                let pace = dist > 100 && elapsed > 10 ? elapsed / (dist / 1000) : nil
+                Task {
+                    await WalkLiveActivityManager.shared.update(
+                        distanceCovered: dist,
+                        elapsedSeconds: Int(elapsed),
+                        isPaused: paused,
+                        paceSecsPerKm: pace,
+                        pausedDuration: session.totalPausedDuration,
+                        pauseTime: paused ? Date() : nil
+                    )
+                }
+            }
+            .onChange(of: petStore.activePets.count) { _, count in handlePetCountChange(count) }
+            .onChange(of: session.showBreakPrompt) { _, show in
+                // False when an auto-resume cleared the prompt.
+                showBreakPromptAlert = show
+            }
+            .onChange(of: session.drivingSuspected) { _, suspected in
+                if suspected { showDrivingBanner = true }
+            }
+            .onChange(of: session.trackPoints.count) { _, _ in
+                guard !isGuided, let last = session.trackPoints.last else { return }
+                poiManager.refreshIfNeeded(near: last)
+            }
+            .onChange(of: waterBreakEnabled) { _, enabled in
+                guard enabled else { return }
+                Task { await scheduleWaterBreakReminders() }
+            }
+            .modifier(BreakPromptAlert(
+                isPresented: $showBreakPromptAlert,
+                activityMode: route.activityMode,
+                onEnd: {
+                    session.dismissBreakPrompt()
+                    if session.autoPausedForInactivity { session.resume() }
+                    finishWalk()
+                },
+                onKeepTracking: {
+                    session.dismissBreakPrompt()
+                    if session.autoPausedForInactivity { session.resume() }
+                }
+            ))
     }
 
     // MARK: - Active Content
@@ -243,12 +262,11 @@ struct ActiveSessionView: View {
         }
         .onAppear {
             headingTracker.start()
-            walkStore.session?.isSessionScreenVisible = true
+            session.isSessionScreenVisible = true
         }
         .onDisappear {
             headingTracker.stop()
-            // Optional: the session may already be over when the screen goes.
-            walkStore.session?.isSessionScreenVisible = false
+            session.isSessionScreenVisible = false
         }
         .onChange(of: headingUp) { _, up in
             position = .userLocation(followsHeading: up, fallback: .automatic)
