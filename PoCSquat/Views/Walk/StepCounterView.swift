@@ -137,7 +137,13 @@ struct StepCounterView: View {
             }
             .onChange(of: scenePhase) { _, phase in
                 if phase == .background {
-                    ActivityDetectionService.shared.stopDetection()
+                    // Saves battery, but never during a walk, run or ride: the
+                    // vehicle check and auto-resume read these updates, and a
+                    // session spends most of its time in a pocket. Until
+                    // 2026-10-12 this stopped them regardless, so both went
+                    // deaf the moment the phone was locked. A session that
+                    // ends in the background stops them itself.
+                    if !walkStore.isActive { ActivityDetectionService.shared.stopDetection() }
                 } else if phase == .active {
                     ActivityDetectionService.shared.startDetectionIfAuthorized()
                     Task {
