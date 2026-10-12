@@ -1,3 +1,4 @@
+import CloudKit
 import Foundation
 
 /// The invitation a challenge is shared with: what it asks, and its link,
@@ -22,7 +23,7 @@ enum ChallengeShareMessage {
         if let link = ChallengeLink.url(for: challenge.id.recordName) {
             return "\(invitation)\n\n\(link.absoluteString)"
         }
-        // A record name no link can carry (none so far): Step 1's directions.
+        // A record name no link can carry (none so far): the App Store and where to look.
         return """
         \(invitation)
 

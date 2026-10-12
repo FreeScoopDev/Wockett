@@ -59,7 +59,7 @@ struct ChallengeShareMessageTests {
 
     @Test func unlinkableRecordName_fallsBackToAppStoreAndDirections() throws {
         let challenge = try makeChallenge(recordName: "odd.name", goalType: .steps)
-        let text = ChallengeShareMessage.text(for: challenge, isMine: true, locale: us)
+        let text = ChallengeShareMessage.text(for: challenge, moderation: moderation, locale: us)
         #expect(text == """
         Join my "Weekend Runfest" challenge on Wockett: 50,000 steps in 7 days.
 
