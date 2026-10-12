@@ -1,6 +1,7 @@
 import Testing
 import Foundation
 import HealthKit
+import CoreLocation
 @testable import PoCSquat
 
 /// The decisions behind asking for each permission where it is used
@@ -78,6 +79,31 @@ struct PermissionsInContextTests {
         await sut.connect()
         #expect(sut.state == .ready)
         #expect(await log.requests == [HealthExtrasAccess.readTypes])
+    }
+
+    // MARK: Location at walk start
+
+    private typealias Session = NavigationSessionManager
+
+    @Test func aWalkAsksForLocationWhenNeverAsked() {
+        #expect(Session.locationAction(status: .notDetermined, tracking: true, paused: false) == .ask)
+    }
+
+    @Test func aWalkRestartsUpdatesOnceLocationIsGranted() {
+        #expect(Session.locationAction(status: .authorizedWhenInUse, tracking: true, paused: false) == .startUpdates)
+    }
+
+    @Test func nothingIsAskedBeforeAWalkStartsOrAfterItEnds() {
+        #expect(Session.locationAction(status: .notDetermined, tracking: false, paused: false) == .nothing)
+    }
+
+    @Test func aDeniedOrUnknownStatusAsksNothing() {
+        #expect(Session.locationAction(status: .denied, tracking: true, paused: false) == .nothing)
+        #expect(Session.locationAction(status: nil, tracking: true, paused: false) == .nothing)
+    }
+
+    @Test func aPausedWalkLeavesRestartingToResume() {
+        #expect(Session.locationAction(status: .authorizedWhenInUse, tracking: true, paused: true) == .nothing)
     }
 
     // MARK: Calendar day reminder

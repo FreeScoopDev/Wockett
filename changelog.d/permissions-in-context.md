@@ -12,8 +12,9 @@
     measures are asked from the Health tab, behind a card that says what is
     read and why, when you tap **Connect Apple Health**. Anyone already asked
     sees the Health tab exactly as before.
-  - **Location** for Home's weather is asked when you tap the **Weather**
-    chip. Routes asks as it always has.
+  - **Location** is asked when you start a walk, or when you tap Home's
+    **Weather** chip, whichever comes first. Routes asks as it always has.
+    Home no longer shows "Location off" before you were ever asked.
 - A future day's **Remind me** in Health's calendar sets a Wockett walk
   reminder (a notification at 8 AM, listed and deletable in Settings) instead
   of adding an item to the Reminders app. Adding one item needed full access

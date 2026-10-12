@@ -172,6 +172,12 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
 
     private(set) var route: NavigableRoute
     private let locationManager = CLLocationManager()
+    /// From `locationManagerDidChangeAuthorization`, which CoreLocation calls
+    /// once the delegate is set; nil until then. Read here rather than from
+    /// `locationManager.authorizationStatus`, a synchronous call to locationd.
+    private var locationAuthorization: CLAuthorizationStatus?
+    /// Between `beginTracking()` and `stopTracking()`.
+    private var isTrackingLocation = false
     private let pedometer = CMPedometer()
     private(set) var startTime = Date()
     private var timer: Timer?
@@ -302,8 +308,14 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
 
     private func beginTracking() {
         stopped = false
+        isTrackingLocation = true
         UIApplication.shared.isIdleTimerDisabled = true
         locationManager.startUpdatingLocation()
+        // Home no longer asks for location on its own (the weather chip asks
+        // on a tap), so a new user's first walk from Home is where they are
+        // asked. `startUpdatingLocation` neither asks nor delivers anything
+        // while location is undetermined.
+        applyLocationAction()
         // The vehicle check and auto-resume read Core Motion. Launch no longer
         // asks for it, so starting a walk is where a new user is asked.
         ActivityDetectionService.shared.startDetection()
@@ -504,6 +516,7 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
     /// uses it: the walk is over but not yet saved.
     private func stopTracking() {
         stopped = true
+        isTrackingLocation = false
         autoPausedForInactivity = false
         endAutoResumeWatch()
         NotificationService.shared.withdraw(.offTrail)
@@ -791,6 +804,42 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
     }
 
     nonisolated func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {}
+
+    nonisolated func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        let status = manager.authorizationStatus
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            self.locationAuthorization = status
+            self.applyLocationAction()
+        }
+    }
+
+    enum LocationAction: Equatable { case ask, startUpdates, nothing }
+
+    /// What a walk does about location authorization. Asks only while
+    /// tracking and only when never asked; restarts updates once granted,
+    /// because updates started while undetermined never arrive. A paused
+    /// walk restarts them itself on resume. Unknown status waits for the
+    /// callback, which always follows the delegate being set.
+    nonisolated static func locationAction(status: CLAuthorizationStatus?, tracking: Bool,
+                                           paused: Bool) -> LocationAction {
+        guard tracking, let status else { return .nothing }
+        switch status {
+        case .notDetermined:                         return .ask
+        case .authorizedWhenInUse, .authorizedAlways: return paused ? .nothing : .startUpdates
+        default:                                     return .nothing
+        }
+    }
+
+    private func applyLocationAction() {
+        switch Self.locationAction(status: locationAuthorization, tracking: isTrackingLocation, paused: isPaused) {
+        // Never under UI tests: a system alert mid-walk breaks the taps that
+        // follow it (they fake location through RouteManager instead).
+        case .ask:          if !isWKTUITestMode { locationManager.requestWhenInUseAuthorization() }
+        case .startUpdates: locationManager.startUpdatingLocation()
+        case .nothing:      break
+        }
+    }
 
     /// Internal, not private, so tests can feed a fix without a CLLocationManager.
     func checkArrival(at location: CLLocation) {

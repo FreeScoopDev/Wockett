@@ -6,6 +6,7 @@ struct DayDetailSheet: View {
     let sessions: [WalkSession]
     @Environment(\.dismiss) private var dismiss
     @State private var showReminderError = false
+    @State private var isAddingReminder = false
     private var notifications = NotificationService.shared
 
     private static let fullDateFmt: DateFormatter = {
@@ -97,7 +98,7 @@ struct DayDetailSheet: View {
                                 }
                             }
                             .buttonStyle(BounceButtonStyle(scale: 0.98))
-                            .disabled(reminderScheduled)
+                            .disabled(reminderScheduled || isAddingReminder)
                             .alert("Couldn't Add Reminder", isPresented: $showReminderError) {
                                 Button("OK", role: .cancel) {}
                             } message: {
@@ -144,14 +145,18 @@ struct DayDetailSheet: View {
     }
 
     private var reminderTime: String {
-        let morning = Calendar.current.date(bySettingHour: WalkReminder.goalDayHour, minute: 0, second: 0, of: day.date) ?? day.date
-        return morning.formatted(date: .omitted, time: .shortened)
+        WalkReminder.goalDayMorning(of: day.date).formatted(date: .omitted, time: .shortened)
     }
 
     /// A walk reminder like Settings' and a route's: a notification, listed
     /// and deletable in Settings. The service shows the real notification
     /// prompt if delivery is only quiet, because the user just asked.
     private func scheduleReminder() async {
+        // A second tap while the first is still waiting on the service must
+        // not add a second reminder.
+        guard !isAddingReminder, !reminderScheduled else { return }
+        isAddingReminder = true
+        defer { isAddingReminder = false }
         let reminder = WalkReminder.goalDay(day.date, goal: day.goal)
         guard await notifications.addWalkReminder(reminder) else { showReminderError = true; return }
     }

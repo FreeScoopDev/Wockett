@@ -30,6 +30,10 @@ final class HealthExtrasAccess {
     private(set) var state: State = .checking
 
     /// Exactly what the Recovery card and the Walking health section read.
+    /// Adding a type to either list makes HealthKit report `.shouldRequest`
+    /// for everyone, so every existing user sees the connect card again until
+    /// they tap it. That is the right ask for a new type, but it is a visible
+    /// change: say so in the changelog.
     static var readTypes: Set<HKObjectType> {
         RecoveryService.readTypes.union(GaitHealthService.readTypes.map { $0 as HKObjectType })
     }

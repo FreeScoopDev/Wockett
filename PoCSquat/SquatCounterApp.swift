@@ -188,6 +188,9 @@ struct SquatCounterApp: App {
                 handleWalkIntent()
                 handleChallengeLink()
                 ActivityDetectionService.shared.startDetectionIfAuthorized()
+                // Shows no UI. Done at launch so the Health tab already knows
+                // whether to show its cards or the connect card.
+                Task { await HealthExtrasAccess.shared.refresh() }
                 NotificationService.shared.registerCategories()
                 NotificationService.shared.pruneExpiredWalkReminders()
                 // Quiet delivery, once, only if never asked. The real prompt is Settings' job.
