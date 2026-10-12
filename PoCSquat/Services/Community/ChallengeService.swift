@@ -334,6 +334,9 @@ final class ChallengeService {
 
     // MARK: - Create
 
+    /// Saves a new challenge and returns it as saved, so the list can show it
+    /// before CloudKit's query index catches up (see `withJustCreated`).
+    @discardableResult
     func createChallenge(
         title: String,
         emoji: String,
@@ -344,12 +347,12 @@ final class ChallengeService {
         goalPaceSecsPerKm: Double,
         goalSessionCount: Int,
         durationDays: Int
-    ) async throws {
+    ) async throws -> WalkChallenge? {
         try ContentFilter.validate(name: title)
         try await SuspensionService.shared.ensureCanPost()
         let cal   = Calendar.current
         let start = cal.startOfDay(for: Date())
-        guard let end = cal.date(byAdding: .day, value: durationDays, to: start) else { return }
+        guard let end = cal.date(byAdding: .day, value: durationDays, to: start) else { return nil }
         let record           = CKRecord(recordType: challengeType)
         record["title"]      = title
         record["emoji"]      = emoji
@@ -369,7 +372,21 @@ final class ChallengeService {
             record["goalPaceSecsPerKm"] = goalPaceSecsPerKm
             record["goalSessionCount"]  = goalSessionCount
         }
-        _ = try await db.save(record)
+        return WalkChallenge(record: try await db.save(record))
+    }
+
+    /// The list as fetched, plus challenges this screen just created that the
+    /// fetch left out. CloudKit's query index takes a few seconds to include a
+    /// new record, so the reload after "Create Challenge" usually misses it
+    /// (Joe, 2026-10-12: it showed only after leaving and reopening the list).
+    /// Ended ones drop out; order is the query's, start date first.
+    static func withJustCreated(_ fetched: [WalkChallenge], justCreated: [WalkChallenge],
+                                now: Date = Date()) -> [WalkChallenge] {
+        let missing = justCreated.filter { new in
+            new.endDate >= now && !fetched.contains { $0.id == new.id }
+        }
+        guard !missing.isEmpty else { return fetched }
+        return (fetched + missing).sorted { $0.startDate < $1.startDate }
     }
 
     // MARK: - Join / update progress
