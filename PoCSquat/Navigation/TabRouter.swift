@@ -14,6 +14,8 @@ enum CommunityDestination: Hashable {
     case achievementFeed
     case challenges
     case communityRoutes
+    /// Challenges, with this one opened: a challenge link (ChallengeLink).
+    case challenge(recordName: String)
 }
 
 // MARK: - Routes Destination

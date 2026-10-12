@@ -18,6 +18,7 @@ struct ChallengeShareMessageTests {
         myAccount: { "_me" })
 
     private func makeChallenge(
+        recordName: String = "6F1C2B9E-0D3A-4E57-9B1A-2C7D8E9F0A1B",
         title: String = "Weekend Runfest",
         creator: String = "_me",
         goalType: ChallengeGoalType,
@@ -31,7 +32,7 @@ struct ChallengeShareMessageTests {
         // June: no daylight-saving change inside the window in any time zone,
         // so durationDays is exactly `days` wherever the test runs.
         let start = Date(timeIntervalSince1970: 1_780_315_200) // 2026-06-01 12:00 UTC
-        let record = CKRecord(recordType: "Challenge")
+        let record = CKRecord(recordType: "Challenge", recordID: CKRecord.ID(recordName: recordName))
         record["title"]              = title as CKRecordValue
         record["startDate"]          = start as CKRecordValue
         record["endDate"]            = start.addingTimeInterval(Double(days) * 86_400) as CKRecordValue
@@ -46,8 +47,18 @@ struct ChallengeShareMessageTests {
 
     // MARK: - Whole message
 
-    @Test func stepsMessage_hasTitleGoalDurationLinkAndWhereToJoin() throws {
+    @Test func stepsMessage_hasTitleGoalDurationAndChallengeLink() throws {
         let challenge = try makeChallenge(goalType: .steps)
+        let text = ChallengeShareMessage.text(for: challenge, moderation: moderation, locale: us)
+        #expect(text == """
+        Join my "Weekend Runfest" challenge on Wockett: 50,000 steps in 7 days.
+
+        https://wockett.app/c/?id=6F1C2B9E-0D3A-4E57-9B1A-2C7D8E9F0A1B
+        """)
+    }
+
+    @Test func unlinkableRecordName_fallsBackToAppStoreAndDirections() throws {
+        let challenge = try makeChallenge(recordName: "odd.name", goalType: .steps)
         let text = ChallengeShareMessage.text(for: challenge, moderation: moderation, locale: us)
         #expect(text == """
         Join my "Weekend Runfest" challenge on Wockett: 50,000 steps in 7 days.

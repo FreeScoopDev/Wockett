@@ -281,6 +281,34 @@ final class ChallengeService {
         .filter { !CommunityModerationStore.shared.shouldHide(id: $0.id, author: $0.author) }
     }
 
+    /// One challenge by record name, for a challenge link. Nil when it does not
+    /// exist, has ended, or is one the list would hide (blocked, suspended,
+    /// deleted), so a link never opens what Community → Challenges keeps out.
+    func fetchChallenge(recordName: String) async throws -> WalkChallenge? {
+        guard ChallengeLink.isValid(recordName) else { return nil }
+        await SuspensionService.shared.refreshIfStale()
+        let record: CKRecord
+        do {
+            record = try await db.record(for: CKRecord.ID(recordName: recordName))
+        } catch let error as CKError where error.code == .unknownItem {
+            return nil
+        }
+        return Self.linkable(record, moderation: .shared)
+    }
+
+    /// The challenge a link may open: a Challenge record that is still running
+    /// and not one the list hides (reported, deleted, blocked, suspended).
+    /// `creator` and `now` are seams for tests.
+    static func linkable(_ record: CKRecord, creator: CKRecord.ID? = nil, now: Date = Date(),
+                         moderation: CommunityModerationStore) -> WalkChallenge? {
+        guard record.recordType == "Challenge",
+              let challenge = WalkChallenge(record: record, creator: creator),
+              challenge.endDate >= now,
+              !moderation.shouldHide(id: challenge.id, author: challenge.author)
+        else { return nil }
+        return challenge
+    }
+
     func fetchLeaderboard(for challenge: WalkChallenge) async throws -> [ChallengeParticipant] {
         // Suspended accounts are hidden by the filter below: have the list current.
         await SuspensionService.shared.refreshIfStale()

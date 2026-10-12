@@ -3,3 +3,7 @@
 exclude:
   - ci.md
   - staff/README.md
+# Jekyll skips dot-folders unless told otherwise. .well-known holds
+# apple-app-site-association, which lets challenge links open the app.
+include:
+  - .well-known

@@ -1,0 +1,13 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["7U83DJ2F97.Scoops.PoCSquat"],
+        "components": [
+          { "/": "/c/", "?": { "id": "?*" }, "comment": "A challenge link: https://wockett.app/c/?id=<recordName> (ChallengeLink.swift)" },
+          { "/": "/c", "?": { "id": "?*" }, "comment": "The same, without the slash" }
+        ]
+      }
+    ]
+  }
+}
