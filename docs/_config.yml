@@ -2,6 +2,7 @@
 # documentation for the repo, not a page for the website.
 exclude:
   - ci.md
+  - help/SCREENSHOTS.md
   - staff/README.md
 # Jekyll skips dot-folders unless told otherwise. .well-known holds
 # apple-app-site-association, which lets challenge links open the app.
