@@ -12,15 +12,22 @@ enum ChallengeGoalType: String, CaseIterable {
 
 // MARK: - Formatting helpers (shared between service and view)
 
-func challengeFormattedDistance(_ meters: Double, locale: Locale = .current) -> String {
+/// Whole units from 10 up, one decimal below. A goal rounds to the nearest
+/// (the "13 mi" option is 20,921 m, 12.9997 mi, and truncating showed 12);
+/// progress passes `.down` so it never reads as the goal before it is.
+func challengeFormattedDistance(
+    _ meters: Double,
+    locale: Locale = .current,
+    rule: FloatingPointRoundingRule = .toNearestOrAwayFromZero
+) -> String {
     let useMetric = locale.measurementSystem != .us
-    if useMetric {
-        let km = meters / 1000
-        return km >= 10 ? "\(Int(km)) km" : String(format: "%.1f km", km)
-    } else {
-        let mi = meters / 1609.34
-        return mi >= 10 ? "\(Int(mi)) mi" : String(format: "%.1f mi", mi)
-    }
+    let value = useMetric ? meters / 1000 : meters / 1609.34
+    let unit = useMetric ? "km" : "mi"
+    // Decide the branch on the value as shown, so 9.96 reads "10 mi", not "10.0 mi".
+    let tenths = (value * 10).rounded(rule) / 10
+    return tenths >= 10
+        ? "\(Int(value.rounded(rule))) \(unit)"
+        : String(format: "%.1f %@", tenths, unit)
 }
 
 func challengeFormattedPace(_ secsPerKm: Double, locale: Locale = .current) -> String {
@@ -106,7 +113,7 @@ struct WalkChallenge: Identifiable {
         case .steps:
             return "\(value.formatted()) / \(goalSteps.formatted()) steps"
         case .distance:
-            return "\(challengeFormattedDistance(Double(value))) / \(challengeFormattedDistance(goalDistanceMeters))"
+            return "\(formattedDistanceProgress(value)) / \(challengeFormattedDistance(goalDistanceMeters))"
         case .pace:
             let noun = activityFilter == "running" ? "run" : "session"
             return "\(value) / \(goalSessionCount) qualifying \(noun)\(goalSessionCount == 1 ? "" : "s")"
@@ -116,11 +123,19 @@ struct WalkChallenge: Identifiable {
     func leaderboardDisplay(for value: Int) -> String {
         switch goalType {
         case .steps:    return value.formatted()
-        case .distance: return challengeFormattedDistance(Double(value))
+        case .distance: return formattedDistanceProgress(value)
         case .pace:
             let noun = activityFilter == "running" ? "run" : "session"
             return "\(value) \(noun)\(value == 1 ? "" : "s")"
         }
+    }
+
+    /// Progress rounds down until the goal is reached, so 12.6 of 13 mi is not
+    /// "13 mi / 13 mi"; from then on it rounds like the goal, so 20,921 m reads "13 mi".
+    func formattedDistanceProgress(_ meters: Int, locale: Locale = .current) -> String {
+        let reached = Double(meters) >= goalDistanceMeters
+        return challengeFormattedDistance(Double(meters), locale: locale,
+                                          rule: reached ? .toNearestOrAwayFromZero : .down)
     }
 
     // Returns the value to write into ChallengeEntry.steps for non-step goals.
