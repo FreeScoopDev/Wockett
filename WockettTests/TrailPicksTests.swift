@@ -319,11 +319,15 @@ struct TrailPicksTests {
     }
 
 
-    /// Without the deadline, refreshIfStale would wait for ever on the held
-    /// fetch. It runs in its own task and the test waits for it by wall time,
-    /// so that fails here instead of hanging. No `.timeLimit`: it counts time
-    /// queued behind other main-actor tests, and a loaded CI machine hit it
-    /// (PR 186, 2026-10-11), as #176 found for another test.
+    /// The deadline itself is driven by the injected sleep, which returns at
+    /// once, so a correct refreshIfStale finishes as soon as the main actor
+    /// runs it, with the fetch still held: `list.isEmpty` proves that order.
+    /// Without the deadline it would wait for ever on the held fetch, so the
+    /// test also needs a hang guard. That guard is wall time, and wall time
+    /// includes time queued behind other main-actor tests: one minute fired
+    /// on a correct build on a loaded CI machine (PR 196, 2026-10-12, with
+    /// every deadline test taking 137-161 s), as `.timeLimit` did on PR 186.
+    /// So it is five minutes: it only has to tell a hang from a slow machine.
     @Test("The list waits no longer than the deadline; a slow fetch still lands for next time")
     func deadline() async {
         let fake = FakeFeatured()
@@ -332,12 +336,12 @@ struct TrailPicksTests {
         var waited: Duration?
         let service = FeaturedTrailService(store: fake, defaults: defaults(), now: { now }, sleep: { waited = $0 })
         // The load runs on its own; it must finish while the fetch is still
-        // held. A 60 s outer bound turns a missing deadline into a failure
+        // held. The outer bound turns a missing deadline into a failure
         // instead of a hang; it waits on the load finishing, not by polling.
         // withDeadline, not a task group: a group waits for every child, so
         // the stuck load would hold it past its bound.
         let load = Task { await service.refreshIfStale() }
-        let returned = (try? await OptimisticVote.withDeadline(.seconds(60)) { await load.value; return true }) ?? nil
+        let returned = (try? await OptimisticVote.withDeadline(.seconds(300)) { await load.value; return true }) ?? nil
         #expect(returned == true, "refreshIfStale waited for the held fetch instead of the deadline")
         #expect(waited == .seconds(3))
         #expect(service.list.isEmpty, "this time the list went ahead without it")
