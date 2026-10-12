@@ -214,8 +214,11 @@ private struct WalkLockScreenView: View {
 // MARK: - Apple Watch Smart Stack (.small family)
 
 // Since watchOS 11 the iPhone's Live Activity also shows in the paired Watch's
-// Smart Stack, in the `.small` family. Without a layout of its own the system
-// squeezed the Lock Screen view into it. The phone still does all the
+// Smart Stack, in the `.small` family. Without a layout of its own the watch
+// showed only the Dynamic Island's compact views (icon and distance) under the
+// app's name (Apple, WWDC24 "Bring your Live Activity to Apple Watch"). The
+// Smart Stack's frame is small and clips rather than scrolls, so the layout
+// stays tight and shrinks before it truncates. The phone still does all the
 // tracking; this is what you see on the wrist. One button, Pause/Resume:
 // ending stays a hold-to-finish on the phone, where it can't be tapped by
 // mistake.
@@ -227,12 +230,14 @@ private struct WalkWristView: View {
     private var attrs: WalkActivityAttributes { context.attributes }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 4) {
                 Image(systemName: activityIcon(attrs.activityMode))
                     .foregroundColor(.earthGreen)
+                // The paused state is the last thing to lose to truncation.
                 Text(state.isPaused ? "Paused" : activityNoun(attrs.activityMode))
                     .foregroundColor(state.isPaused ? .earthOrange : .earthCream)
+                    .layoutPriority(1)
                 Spacer(minLength: 0)
                 Text(timerInterval: adjustedStart(attrs, state)...adjustedStart(attrs, state).addingTimeInterval(86400),
                      pauseTime: state.pauseTime, countsDown: false)
@@ -241,6 +246,7 @@ private struct WalkWristView: View {
             }
             .font(Font.wktLabel.monospacedDigit())
             .lineLimit(1)
+            .minimumScaleFactor(0.7)
 
             HStack(alignment: .firstTextBaseline) {
                 Text(fmtDistance(state.distanceCoveredMeters))
@@ -265,7 +271,7 @@ private struct WalkWristView: View {
             .buttonBorderShape(.capsule)
             .controlSize(.small)
         }
-        .padding(8)
+        .padding(6)
     }
 }
 
@@ -408,6 +414,7 @@ struct WocketWalkLiveActivity: Widget {
             .keylineTint(Color.earthGreen)
             .widgetURL(URL(string: "wockett://walk"))
         }
-        .supplementalActivityFamilies([.small])
+        // Both, as in Apple's ActivityFamily sample: .medium is the iPhone's own.
+        .supplementalActivityFamilies([.small, .medium])
     }
 }
