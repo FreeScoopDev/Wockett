@@ -1,6 +1,7 @@
 // The challenge link's rules, shared with the app: PoCSquat/Services/Community/
 // ChallengeLink.swift checks the id the same way. Change one, change the other.
 // Pure, so tests/c/link.test.mjs runs them without a browser or a network.
+import { suspensionRecordName as staffSuspensionRecordName } from '../staff/logic.js';
 
 export const MAX_ID_LENGTH = 100;
 export const MAX_TITLE_LENGTH = 80;
@@ -32,10 +33,16 @@ export function clean(value, max = MAX_TITLE_LENGTH) {
   return graphemes.length > max ? `${graphemes.slice(0, max).join('').trimEnd()}…` : stripped;
 }
 
-/** The Suspension record that would name a challenge's creator, or null. */
+/**
+ * The Suspension record that would name a challenge's creator, or null. Named
+ * by the staff dashboard's rule, the one that writes them.
+ */
 export function suspensionRecordName(record) {
-  const creator = record?.created?.userRecordName;
-  return typeof creator === 'string' && creator ? `suspension.${creator}` : null;
+  try {
+    return staffSuspensionRecordName(record?.created?.userRecordName);
+  } catch {
+    return null; // no creator, or not a record name
+  }
 }
 
 /**
