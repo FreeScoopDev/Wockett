@@ -148,6 +148,15 @@ struct SquatCounterApp: App {
             .onChange(of: WalkIntentInbox.shared.pending) { _, _ in
                 handleWalkIntent()
             }
+            // A challenge link (https://wockett.app/c/?id=…). iOS delivers a
+            // universal link as a browsing activity; onOpenURL covers the rest.
+            .onOpenURL { url in ChallengeLinkInbox.shared.post(url) }
+            .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { activity in
+                if let url = activity.webpageURL { ChallengeLinkInbox.shared.post(url) }
+            }
+            .onChange(of: ChallengeLinkInbox.shared.pending) { _, _ in
+                handleChallengeLink()
+            }
             // After a personal record or a new badge, once per version.
             .asksForReviewWhenDue()
             // The Control Center button runs in the widget process and can only
@@ -177,6 +186,7 @@ struct SquatCounterApp: App {
                 // view exists — `onChange` would never see it.
                 handleNotificationAction()
                 handleWalkIntent()
+                handleChallengeLink()
                 ActivityDetectionService.shared.startDetection()
                 NotificationService.shared.registerCategories()
                 NotificationService.shared.pruneExpiredWalkReminders()
@@ -223,6 +233,14 @@ struct SquatCounterApp: App {
         } else {
             tabRouter.pendingWalkStart = request.mode
         }
+    }
+
+    /// Opens the challenge a link named: Community → Challenges → that one.
+    @MainActor
+    private func handleChallengeLink() {
+        guard let recordName = ChallengeLinkInbox.shared.consume() else { return }
+        tabRouter.selected = .community
+        tabRouter.pendingCommunityDestination = .challenge(recordName: recordName)
     }
 
     // Moved from StepCounterView so it runs once at launch, not on every Home tab appear.

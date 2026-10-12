@@ -316,8 +316,6 @@ struct ActivitySummaryShareSheet: View {
     @State private var shareItems: [Any]   = []
     @State private var showSystemShare     = false
 
-    private static let appStoreURL = "https://apps.apple.com/app/id6794364736"
-
     private var routeComparison: String? {
         guard let store = historyStore else { return nil }
         return Self.computeComparison(session: session, store: store)
@@ -484,7 +482,7 @@ struct ActivitySummaryShareSheet: View {
             default:        verb = "walked"
             }
             items.append(
-                "Just \(verb) \(session.distanceText) in \(session.timeText) on Wockett 🐾\n\(Self.appStoreURL)"
+                "Just \(verb) \(session.distanceText) in \(session.timeText) on Wockett 🐾\n\(AppStoreLink.page)"
             )
         }
 

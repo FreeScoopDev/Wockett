@@ -48,7 +48,8 @@ jobs:
     timeout-minutes: 5
     # The moderation dashboard's rules (docs/staff/logic.js, actions.js):
     # grouping reports, open vs resolved, the snapshot written before every
-    # removal, the activity counts. Node's own test runner, no packages.
+    # removal, the activity counts. Also the challenge link page's rules
+    # (docs/c/link.js). Node's own test runner, no packages.
     steps:
       - name: Check out repo
         uses: actions/checkout@v4
@@ -57,7 +58,7 @@ jobs:
         with:
           node-version: '22'
       - name: node --test
-        run: node --test tests/staff/*.test.mjs
+        run: node --test tests/staff/*.test.mjs tests/c/*.test.mjs
 
   swiftlint:
     name: SwiftLint
