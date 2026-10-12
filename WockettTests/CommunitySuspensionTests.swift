@@ -203,6 +203,14 @@ struct CommunitySuspensionTests {
         #expect(moderation.suspensions == [Suspension(account: "_bad", until: nil)])
     }
 
+    /// Without the deadline, refreshIfStale would wait for ever on the held
+    /// fetch and hang the run until CI's job timeout. The load runs in its own
+    /// task behind a five-minute guard, so that fails here instead. The guard
+    /// is wall time, which includes time queued behind other main-actor
+    /// tests; one minute fired on a correct build of the featured-trails
+    /// twin of this test (PR 196, 2026-10-12), so it only tells a hang from a
+    /// slow machine. withDeadline, not a task group: a group waits for every
+    /// child, so the stuck load would hold it past its bound.
     @Test("A fetch slower than the deadline still updates the list when it lands")
     func lateResultLands() async {
         let fake = FakeSuspensions()
@@ -210,7 +218,9 @@ struct CommunitySuspensionTests {
         fake.list = [Suspension(account: "_bad", until: nil)]
         let moderation = store()
         let s = service(fake, moderation, clock: Clock(now), sleep: { _ in })
-        await s.refreshIfStale()
+        let load = Task { await s.refreshIfStale() }
+        let returned = (try? await OptimisticVote.withDeadline(.seconds(300)) { await load.value; return true }) ?? nil
+        #expect(returned == true, "refreshIfStale waited for the held fetch instead of the deadline")
         #expect(moderation.suspensions.isEmpty, "this load went ahead without it")
         // Events, not polling: the fetch is held, released, then awaited to
         // the end. Polling by yields lost the race on a loaded CI machine
