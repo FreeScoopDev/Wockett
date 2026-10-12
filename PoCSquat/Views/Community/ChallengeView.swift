@@ -371,6 +371,13 @@ struct ChallengeDetailView: View {
             .buttonStyle(BounceButtonStyle(scale: 0.98))
             .disabled(isSyncing)
 
+            // Messages, Mail, social apps: the system share sheet, as a badge shares.
+            ShareLink(item: ChallengeShareMessage.text(for: challenge), subject: Text(challenge.title)) {
+                WktSecondaryLabel(title: "Share Challenge", symbol: .share)
+            }
+            .buttonStyle(BounceButtonStyle(scale: 0.98))
+            .accessibilityIdentifier("challenge.share")
+
             if let msg = syncMessage {
                 Text(msg)
                     .font(.wktLabel).foregroundColor(.earthGreen)

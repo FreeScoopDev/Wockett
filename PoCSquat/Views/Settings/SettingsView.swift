@@ -345,7 +345,7 @@ struct SettingsView: View {
                     // shows at most three times a year and never in TestFlight.
                     // Opens the App Store's write-a-review page directly.
                     Button {
-                        if let url = URL(string: "https://apps.apple.com/app/id6794364736?action=write-review") {
+                        if let url = URL(string: AppStoreLink.writeReview) {
                             openURL(url)
                         }
                     } label: {

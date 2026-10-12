@@ -30,8 +30,8 @@ func challengeFormattedDistance(
         : String(format: "%.1f %@", tenths, unit)
 }
 
-func challengeFormattedPace(_ secsPerKm: Double) -> String {
-    let useMetric = Locale.current.measurementSystem != .us
+func challengeFormattedPace(_ secsPerKm: Double, locale: Locale = .current) -> String {
+    let useMetric = locale.measurementSystem != .us
     let displaySecs = useMetric ? secsPerKm : secsPerKm * 1.60934
     let unit = useMetric ? "/km" : "/mi"
     let mins = Int(displaySecs) / 60
