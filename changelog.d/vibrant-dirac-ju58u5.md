@@ -1,0 +1,2 @@
+### Added
+- wockett.app has a Help & Tips page (`help.html`, linked from the home page): getting started, walking your dog, challenges (including sharing one, marked as coming in the next update), making routes, quick tips, an FAQ and what's new. Every step names the buttons and screens as the app shows them, traced from the code, so people can find answers without writing in. Screenshots go in `docs/help/` from the list in `docs/help/SCREENSHOTS.md`, which the site doesn't publish.
