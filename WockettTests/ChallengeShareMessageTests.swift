@@ -11,9 +11,16 @@ struct ChallengeShareMessageTests {
     private let us = Locale(identifier: "en_US")      // miles
     private let canada = Locale(identifier: "en_CA")  // kilometres
 
+    /// Moderation that knows this phone's account as "_me", without touching
+    /// the app's own settings or iCloud.
+    private let moderation = CommunityModerationStore(
+        defaults: UserDefaults(suiteName: "ChallengeShareMessageTests") ?? .standard,
+        myAccount: { "_me" })
+
     private func makeChallenge(
         recordName: String = "6F1C2B9E-0D3A-4E57-9B1A-2C7D8E9F0A1B",
         title: String = "Weekend Runfest",
+        creator: String = "_me",
         goalType: ChallengeGoalType,
         activityFilter: String? = nil,
         goalSteps: Int = 50_000,
@@ -35,14 +42,14 @@ struct ChallengeShareMessageTests {
         record["goalPaceSecsPerKm"]  = goalPaceSecsPerKm as CKRecordValue
         record["goalSessionCount"]   = goalSessionCount as CKRecordValue
         if let activityFilter { record["activityFilter"] = activityFilter as CKRecordValue }
-        return try #require(WalkChallenge(record: record))
+        return try #require(WalkChallenge(record: record, creator: CKRecord.ID(recordName: creator)))
     }
 
     // MARK: - Whole message
 
     @Test func stepsMessage_hasTitleGoalDurationAndChallengeLink() throws {
         let challenge = try makeChallenge(goalType: .steps)
-        let text = ChallengeShareMessage.text(for: challenge, isMine: true, locale: us)
+        let text = ChallengeShareMessage.text(for: challenge, moderation: moderation, locale: us)
         #expect(text == """
         Join my "Weekend Runfest" challenge on Wockett: 50,000 steps in 7 days.
 
@@ -62,15 +69,20 @@ struct ChallengeShareMessageTests {
     }
 
     @Test func someoneElsesChallenge_isTheNotMy() throws {
-        let challenge = try makeChallenge(goalType: .steps)
-        let text = ChallengeShareMessage.text(for: challenge, isMine: false, locale: us)
+        let challenge = try makeChallenge(creator: "_someoneElse", goalType: .steps)
+        let text = ChallengeShareMessage.text(for: challenge, moderation: moderation, locale: us)
         #expect(text.hasPrefix("Join the \"Weekend Runfest\" challenge on Wockett: "))
     }
 
     @Test func oneDayChallenge_isSingular() throws {
         let challenge = try makeChallenge(goalType: .steps, goalSteps: 10_000, days: 1)
-        let text = ChallengeShareMessage.text(for: challenge, isMine: true, locale: us)
+        let text = ChallengeShareMessage.text(for: challenge, moderation: moderation, locale: us)
         #expect(text.contains(": 10,000 steps in 1 day."))
+    }
+
+    @Test func steps_followTheLocalesGrouping() throws {
+        let challenge = try makeChallenge(goalType: .steps)
+        #expect(ChallengeShareMessage.goal(for: challenge, locale: Locale(identifier: "de_DE")) == "50.000 steps")
     }
 
     // MARK: - Distance
@@ -92,7 +104,7 @@ struct ChallengeShareMessageTests {
 
     @Test func distanceMessage_endsWithDuration() throws {
         let run = try makeChallenge(goalType: .distance, activityFilter: "running", goalDistanceMeters: 10_000, days: 14)
-        let text = ChallengeShareMessage.text(for: run, isMine: true, locale: canada)
+        let text = ChallengeShareMessage.text(for: run, moderation: moderation, locale: canada)
         #expect(text.contains("challenge on Wockett: run 10 km in 14 days."))
     }
 

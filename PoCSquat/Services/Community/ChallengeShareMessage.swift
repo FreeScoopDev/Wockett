@@ -5,12 +5,13 @@ import Foundation
 /// Get Wockett button (ChallengeLink). Plain text, because the system share
 /// sheet sends it to Messages, Mail and social apps alike.
 enum ChallengeShareMessage {
-    static let appStoreURL = "https://apps.apple.com/app/id6794364736"
-
-    /// `isMine` says "my" challenge for the one who created it, "the" for anyone
-    /// else sharing it. `locale` picks mi or km and the number grouping, the
-    /// same rule the detail screen uses; tests pass a fixed one.
-    static func text(for challenge: WalkChallenge, isMine: Bool, locale: Locale = .current) -> String {
+    /// Says "my" challenge to the one who created it (`moderation.isMine`), "the"
+    /// to anyone else sharing it. `locale` picks mi or km and the number
+    /// grouping, the same rule the detail screen uses; tests pass fixed ones.
+    static func text(for challenge: WalkChallenge,
+                     moderation: CommunityModerationStore = .shared,
+                     locale: Locale = .current) -> String {
+        let isMine = moderation.isMine(challenge.author)
         let days = challenge.durationDays
         let invitation = """
         Join \(isMine ? "my" : "the") "\(challenge.title)" challenge on Wockett: \
@@ -25,7 +26,7 @@ enum ChallengeShareMessage {
         return """
         \(invitation)
 
-        Get Wockett: \(appStoreURL)
+        Get Wockett: \(AppStoreLink.page)
         Then open Community → Challenges to join.
         """
     }
@@ -46,13 +47,8 @@ enum ChallengeShareMessage {
             }
         case .pace:
             let count = challenge.goalSessionCount
-            let noun: String
-            switch challenge.activityFilter {
-            case "running": noun = "run"
-            case "walking": noun = "walk"
-            case "cycling": noun = "ride"
-            default:        noun = "session"
-            }
+            // The activity's own noun (run, walk, ride); "session" when any counts.
+            let noun = challenge.activityFilter.flatMap(ActivityMode.init(rawValue:))?.noun ?? "session"
             let pace = challengeFormattedPace(challenge.goalPaceSecsPerKm, locale: locale)
             return "\(count) \(noun)\(count == 1 ? "" : "s") at \(pace) pace or faster"
         }

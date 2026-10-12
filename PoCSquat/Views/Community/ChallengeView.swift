@@ -402,9 +402,7 @@ struct ChallengeDetailView: View {
             .disabled(isSyncing)
 
             // Messages, Mail, social apps: the system share sheet, as a badge shares.
-            ShareLink(item: ChallengeShareMessage.text(for: challenge,
-                                                       isMine: CommunityModerationStore.shared.isMine(challenge.author)),
-                      subject: Text(challenge.title)) {
+            ShareLink(item: ChallengeShareMessage.text(for: challenge), subject: Text(challenge.title)) {
                 WktSecondaryLabel(title: "Share Challenge", symbol: .share)
             }
             .buttonStyle(BounceButtonStyle(scale: 0.98))
