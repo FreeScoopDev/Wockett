@@ -19,7 +19,7 @@ struct ChallengesContentView: View {
     /// Opens this challenge on arrival (a challenge link), once.
     private let openChallengeID: String?
     @State private var didOpenLinkedChallenge = false
-    @State private var linkedChallengeUnavailable = false
+    @State private var linkedChallengeProblem: LinkedChallengeProblem?
 
     init(startCreating: Bool = false, openChallengeID: String? = nil) {
         self.startCreating = startCreating
@@ -55,10 +55,18 @@ struct ChallengesContentView: View {
             await load()
             await openLinkedChallenge()
         }
-        .alert("Challenge unavailable", isPresented: $linkedChallengeUnavailable) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text("That challenge has ended or is no longer available. Here are the challenges running now.")
+        .alert(linkedChallengeProblem?.title ?? "",
+               isPresented: Binding(get: { linkedChallengeProblem != nil },
+                                    set: { if !$0 { linkedChallengeProblem = nil } }),
+               presenting: linkedChallengeProblem) { problem in
+            if case .failed = problem {
+                Button("Try Again") { Task { await openLinkedChallenge() } }
+                Button("Cancel", role: .cancel) {}
+            } else {
+                Button("OK", role: .cancel) {}
+            }
+        } message: { problem in
+            Text(problem.message)
         }
         .onAppear {
             if startCreating, !didStartCreating {
@@ -134,7 +142,10 @@ struct ChallengesContentView: View {
 
     private func errorView(_ message: String) -> some View {
         WktEmptyState(symbol: .cloudError, message: message, actionTitle: "Retry") {
-            Task { await load() }
+            Task {
+                await load()
+                await openLinkedChallenge()   // a link that failed offline looks again
+            }
         }
     }
 
@@ -143,16 +154,25 @@ struct ChallengesContentView: View {
     private func openLinkedChallenge() async {
         guard let recordName = openChallengeID, !didOpenLinkedChallenge else { return }
         didOpenLinkedChallenge = true
-        var challenge = challenges.first { $0.id.recordName == recordName }
-        if challenge == nil {
-            challenge = try? await ChallengeService.shared.fetchChallenge(recordName: recordName)
-        }
-        guard let challenge else {
-            linkedChallengeUnavailable = true
+        if let listed = challenges.first(where: { $0.id.recordName == recordName }) {
+            selectedChallenge = listed
+            showDetail = true
             return
         }
-        selectedChallenge = challenge
-        showDetail = true
+        do {
+            guard let challenge = try await ChallengeService.shared.fetchChallenge(recordName: recordName) else {
+                linkedChallengeProblem = .unavailable
+                return
+            }
+            selectedChallenge = challenge
+            showDetail = true
+        } catch {
+            // Offline or CloudKit busy: not "ended". Say so, and let Try Again
+            // (or the list's Retry) look again.
+            didOpenLinkedChallenge = false
+            linkedChallengeProblem = .failed((error as? CKError).map(ckErrorMessage)
+                ?? "Couldn't open the challenge. Check your connection and try again.")
+        }
     }
 
     private func load() async {
@@ -270,6 +290,28 @@ private struct ChallengeCard: View {
         }
         .communityReporting($report, onHide: { _ in onHide?() })
         .challengeDeleting($deletion) { _ in onHide?() }
+    }
+}
+
+/// Why a challenge link couldn't open its challenge.
+private enum LinkedChallengeProblem: Equatable {
+    /// Ended, deleted, hidden, or never existed: looking again won't help.
+    case unavailable
+    /// Offline or CloudKit busy: looking again might.
+    case failed(String)
+
+    var title: String {
+        switch self {
+        case .unavailable: return "Challenge unavailable"
+        case .failed:      return "Couldn't open the challenge"
+        }
+    }
+
+    var message: String {
+        switch self {
+        case .unavailable: return "That challenge has ended or is no longer available. Here are the challenges running now."
+        case .failed(let message): return message
+        }
     }
 }
 

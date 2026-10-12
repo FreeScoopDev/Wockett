@@ -1,10 +1,12 @@
 import Testing
 import Foundation
+import CloudKit
 @testable import PoCSquat
 
 // ChallengeLink parses URLs from outside the app (Messages, Mail, any web
 // page), so everything here is hostile input until it passes the rule.
 
+@MainActor
 struct ChallengeLinkTests {
 
     private let id = "6F1C2B9E-0D3A-4E57-9B1A-2C7D8E9F0A1B"
@@ -80,5 +82,54 @@ struct ChallengeLinkTests {
         let inbox = ChallengeLinkInbox()
         #expect(!inbox.post(try #require(URL(string: "https://evil.example/c/?id=\(id)"))))
         #expect(inbox.pending == nil)
+    }
+
+    // MARK: - Which challenges a link may open
+
+    /// A fresh moderation store, so blocks and reports don't leak between tests.
+    private func moderation() -> CommunityModerationStore {
+        let suite = "ChallengeLinkTests.\(UUID().uuidString)"
+        return CommunityModerationStore(defaults: UserDefaults(suiteName: suite) ?? .standard,
+                                        myAccount: { "_me" })
+    }
+
+    private let now = Date(timeIntervalSince1970: 1_791_806_400) // 2026-10-12 12:00 UTC
+
+    private func record(type: String = "Challenge", endsIn: TimeInterval = 86_400) -> CKRecord {
+        let r = CKRecord(recordType: type, recordID: CKRecord.ID(recordName: id))
+        r["title"]      = "Weekend Runfest" as CKRecordValue
+        r["authorName"] = "Sam" as CKRecordValue
+        r["startDate"]  = now.addingTimeInterval(-86_400) as CKRecordValue
+        r["endDate"]    = now.addingTimeInterval(endsIn) as CKRecordValue
+        r["goalType"]   = "steps" as CKRecordValue
+        r["goalSteps"]  = 50_000 as CKRecordValue
+        return r
+    }
+
+    private let author = CKRecord.ID(recordName: "_sam")
+
+    @Test func linkable_aRunningChallenge() {
+        let challenge = ChallengeService.linkable(record(), creator: author, now: now, moderation: moderation())
+        #expect(challenge?.id.recordName == id)
+    }
+
+    @Test func notLinkable_endedOrAnotherRecordType() {
+        #expect(ChallengeService.linkable(record(endsIn: -1), creator: author, now: now, moderation: moderation()) == nil)
+        #expect(ChallengeService.linkable(record(type: "SharedRoute"), creator: author, now: now,
+                                          moderation: moderation()) == nil)
+    }
+
+    @Test func notLinkable_whatTheListHides() {
+        let blocked = moderation()
+        blocked.block(CommunityAuthor(name: "Sam", account: "_sam"))
+        #expect(ChallengeService.linkable(record(), creator: author, now: now, moderation: blocked) == nil)
+
+        let reported = moderation()
+        reported.report(CKRecord.ID(recordName: id))
+        #expect(ChallengeService.linkable(record(), creator: author, now: now, moderation: reported) == nil)
+
+        let suspended = moderation()
+        suspended.setSuspensions([Suspension(account: "_sam", until: nil)])
+        #expect(ChallengeService.linkable(record(), creator: author, now: now, moderation: suspended) == nil)
     }
 }

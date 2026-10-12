@@ -40,7 +40,7 @@ struct CommunityHubView: View {
     @State private var pushPets         = false
     @State private var pushLinkedChallenge = false
     /// The challenge a link asked for, opened by the Challenges list it pushes.
-    @State private var linkedChallengeID: String?
+    @State private var linkedChallenge: LinkedChallengeRequest?
 
     private var sessions: [WalkSession] { historyStore.sessions }
     private var currentStreak: Int { streakStore.currentStreak }
@@ -88,7 +88,13 @@ struct CommunityHubView: View {
         .navigationDestination(isPresented: $pushNewChallenge) { ChallengesContentView(startCreating: true) }
         .navigationDestination(isPresented: $pushRoutes) { CommunityRoutesView() }
         .navigationDestination(isPresented: $pushLinkedChallenge) {
-            ChallengesContentView(openChallengeID: linkedChallengeID)
+            // A new identity per link: a second link while the first one's
+            // screen is still open builds a fresh list that opens the new one,
+            // instead of reusing the old list, which has already opened its own.
+            if let linkedChallenge {
+                ChallengesContentView(openChallengeID: linkedChallenge.recordName)
+                    .id(linkedChallenge.id)
+            }
         }
         .navigationDestination(isPresented: $pushMyRoutes) {
             CustomRoutesListView(store: routeStore, historyStore: historyStore)
@@ -106,7 +112,10 @@ struct CommunityHubView: View {
             case .challenges:      pushChallenges = true
             case .communityRoutes: pushRoutes     = true
             case .challenge(let recordName):
-                linkedChallengeID   = recordName
+                // Whatever the Community tab was showing gives way to the link.
+                pushBadges = false; pushFeed = false; pushChallenges = false; pushNewChallenge = false
+                pushRoutes = false; pushMyRoutes = false; pushPets = false
+                linkedChallenge     = LinkedChallengeRequest(recordName: recordName)
                 pushLinkedChallenge = true
             }
             tabRouter.pendingCommunityDestination = nil
@@ -648,4 +657,11 @@ private struct RouteShape: Shape {
         }
         return path
     }
+}
+
+/// One opened challenge link. Its own `id`, so the same challenge linked twice
+/// is still a new request.
+private struct LinkedChallengeRequest: Identifiable {
+    let id = UUID()
+    let recordName: String
 }

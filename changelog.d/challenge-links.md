@@ -6,8 +6,12 @@
   "find it in Community → Challenges", which a friend installing the app
   for the first time had to remember. A challenge that has ended, was
   removed, or is hidden by a block opens the Challenges list with a
-  message instead. The page reads the name from the challenge itself, never
-  from the link, so a link cannot make wockett.app show words of its own.
+  message instead; no signal says so and offers Try Again, rather than
+  calling the challenge gone. A second link opens its own challenge even
+  while the first one's screen is still up. The page reads the name from
+  the challenge itself, never from the link, so a link cannot make
+  wockett.app show words of its own, and it shows no name for a suspended
+  author's challenge, which the app hides too.
 
 ### Internal
 - Associated Domains (`applinks:wockett.app`) and

@@ -2,7 +2,6 @@
 // ChallengeLink.swift checks the id the same way. Change one, change the other.
 // Pure, so tests/c/link.test.mjs runs them without a browser or a network.
 
-export const APP_STORE_URL = 'https://apps.apple.com/app/id6794364736';
 export const MAX_ID_LENGTH = 100;
 export const MAX_TITLE_LENGTH = 80;
 
@@ -33,12 +32,31 @@ export function clean(value, max = MAX_TITLE_LENGTH) {
   return graphemes.length > max ? `${graphemes.slice(0, max).join('').trimEnd()}…` : stripped;
 }
 
+/** The Suspension record that would name a challenge's creator, or null. */
+export function suspensionRecordName(record) {
+  const creator = record?.created?.userRecordName;
+  return typeof creator === 'string' && creator ? `suspension.${creator}` : null;
+}
+
 /**
- * What the page shows for a CloudKit JS record (or null when there is none):
+ * Whether a Suspension record (from the staff dashboard) is in force: no
+ * `until` is permanent. The app hides a suspended author's challenges
+ * (CommunityModerationStore.shouldHide); so does this page.
+ */
+export function isSuspended(suspension, now = Date.now()) {
+  if (!suspension || !suspension.fields) return false;
+  const until = suspension.fields.until?.value;
+  return typeof until !== 'number' || until > now;
+}
+
+/**
+ * What the page shows for a CloudKit JS record (or null when there is none)
+ * and its creator's Suspension record, if any:
  * { state: 'open' | 'ended' | 'unknown', title, emoji }.
  */
-export function describe(record, now = Date.now()) {
+export function describe(record, suspension = null, now = Date.now()) {
   if (!record || record.recordType !== 'Challenge' || !record.fields) return { state: 'unknown' };
+  if (isSuspended(suspension, now)) return { state: 'unknown' };
   const title = clean(record.fields.title?.value);
   if (!title) return { state: 'unknown' };
   const emoji = clean(record.fields.emoji?.value, 2);

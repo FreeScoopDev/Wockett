@@ -1,6 +1,6 @@
 // Fills in docs/c/index.html. The only part of the page that talks to
 // CloudKit: one anonymous read of the public database, no sign-in, no write.
-import { challengeID, describe } from './link.js';
+import { challengeID, describe, suspensionRecordName } from './link.js';
 import { CONFIG } from '../staff/config.js';
 
 const $ = (id) => document.getElementById(id);
@@ -29,8 +29,12 @@ async function load() {
       }],
     });
     const db = window.CloudKit.getDefaultContainer().publicCloudDatabase;
-    const response = await db.fetchRecords([id]);
-    show(describe(response?.records?.[0]));
+    const record = (await db.fetchRecords([id]))?.records?.[0];
+    // A suspended author's challenge stays generic here, as it is hidden in
+    // the app. Suspension records are public; a missing one is no suspension.
+    const name = suspensionRecordName(record);
+    const suspension = name ? (await db.fetchRecords([name]))?.records?.[0] : null;
+    show(describe(record, suspension));
   } catch {
     // Offline, blocked, or CloudKit down: the generic invitation stands.
   }

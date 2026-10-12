@@ -1,7 +1,9 @@
 // The dashboard's CloudKit settings. The API tokens are public by design:
 // a CloudKit JS token only names this container and environment, and works
-// only from the allowed origins set with it (wockett.app, localhost). Every
-// read and write still needs a moderator's Apple ID sign-in.
+// only from the allowed origins set with it (wockett.app; 127.0.0.1 was
+// refused on 2026-10-12). Without a sign-in it reads only what the public
+// database lets anyone read: the challenge link page (docs/c/) uses it that
+// way. Everything the dashboard does still needs a moderator's sign-in.
 //
 // Create each token in CloudKit Console → iCloud.Scoops.PoCSquat → the
 // environment → Tokens & Keys → API Tokens (see docs/staff/README.md).

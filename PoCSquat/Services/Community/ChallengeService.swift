@@ -278,10 +278,18 @@ final class ChallengeService {
         } catch let error as CKError where error.code == .unknownItem {
             return nil
         }
-        guard record.recordType == challengeType,
-              let challenge = WalkChallenge(record: record),
-              challenge.endDate >= Date(),
-              !CommunityModerationStore.shared.shouldHide(id: challenge.id, author: challenge.author)
+        return Self.linkable(record, moderation: .shared)
+    }
+
+    /// The challenge a link may open: a Challenge record that is still running
+    /// and not one the list hides (reported, deleted, blocked, suspended).
+    /// `creator` and `now` are seams for tests.
+    static func linkable(_ record: CKRecord, creator: CKRecord.ID? = nil, now: Date = Date(),
+                         moderation: CommunityModerationStore) -> WalkChallenge? {
+        guard record.recordType == "Challenge",
+              let challenge = WalkChallenge(record: record, creator: creator),
+              challenge.endDate >= now,
+              !moderation.shouldHide(id: challenge.id, author: challenge.author)
         else { return nil }
         return challenge
     }
