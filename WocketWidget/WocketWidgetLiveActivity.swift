@@ -211,12 +211,86 @@ private struct WalkLockScreenView: View {
     }
 }
 
+// MARK: - Apple Watch Smart Stack (.small family)
+
+// Since watchOS 11 the iPhone's Live Activity also shows in the paired Watch's
+// Smart Stack, in the `.small` family. Without a layout of its own the system
+// squeezed the Lock Screen view into it. The phone still does all the
+// tracking; this is what you see on the wrist. One button, Pause/Resume:
+// ending stays a hold-to-finish on the phone, where it can't be tapped by
+// mistake.
+
+private struct WalkWristView: View {
+    let context: ActivityViewContext<WalkActivityAttributes>
+
+    private var state: WalkActivityAttributes.ContentState { context.state }
+    private var attrs: WalkActivityAttributes { context.attributes }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 4) {
+                Image(systemName: activityIcon(attrs.activityMode))
+                    .foregroundColor(.earthGreen)
+                Text(state.isPaused ? "Paused" : activityNoun(attrs.activityMode))
+                    .foregroundColor(state.isPaused ? .earthOrange : .earthCream)
+                Spacer(minLength: 0)
+                Text(timerInterval: adjustedStart(attrs, state)...adjustedStart(attrs, state).addingTimeInterval(86400),
+                     pauseTime: state.pauseTime, countsDown: false)
+                    .multilineTextAlignment(.trailing)
+                    .foregroundColor(.earthCream)
+            }
+            .font(Font.wktLabel.monospacedDigit())
+            .lineLimit(1)
+
+            HStack(alignment: .firstTextBaseline) {
+                Text(fmtDistance(state.distanceCoveredMeters))
+                    .font(Font.wktRowTitle.monospacedDigit())
+                    .foregroundColor(.earthCream)
+                Spacer(minLength: 4)
+                Text(fmtPace(state.paceSecsPerKm, mode: attrs.activityMode))
+                    .font(Font.wktLabel.monospacedDigit())
+                    .foregroundColor(.earthMuted)
+            }
+            .lineLimit(1)
+            .minimumScaleFactor(0.7)
+
+            Button(intent: ToggleWalkPauseLiveActivityIntent()) {
+                Label(state.isPaused ? "Resume" : "Pause",
+                      systemImage: state.isPaused ? WS.play : WS.pause)
+                    .font(.wktLabel)
+                    .frame(maxWidth: .infinity)
+            }
+            .tint(.earthGreenFill)
+            .buttonStyle(.borderedProminent)
+            .buttonBorderShape(.capsule)
+            .controlSize(.small)
+        }
+        .padding(8)
+    }
+}
+
+/// The Lock Screen, StandBy and banner keep `WalkLockScreenView`; only the
+/// Watch's `.small` family gets the wrist layout.
+private struct WalkActivityContent: View {
+    let context: ActivityViewContext<WalkActivityAttributes>
+    @Environment(\.activityFamily) private var family
+
+    var body: some View {
+        switch family {
+        case .small:
+            WalkWristView(context: context)
+        default:
+            WalkLockScreenView(context: context)
+        }
+    }
+}
+
 // MARK: - Live Activity Widget
 
 struct WocketWalkLiveActivity: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: WalkActivityAttributes.self) { context in
-            WalkLockScreenView(context: context)
+            WalkActivityContent(context: context)
                 .activityBackgroundTint(Color.earthBg)
                 .activitySystemActionForegroundColor(Color.earthGreen)
 
@@ -334,5 +408,6 @@ struct WocketWalkLiveActivity: Widget {
             .keylineTint(Color.earthGreen)
             .widgetURL(URL(string: "wockett://walk"))
         }
+        .supplementalActivityFamilies([.small])
     }
 }
