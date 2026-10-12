@@ -12,8 +12,8 @@ enum ChallengeGoalType: String, CaseIterable {
 
 // MARK: - Formatting helpers (shared between service and view)
 
-func challengeFormattedDistance(_ meters: Double) -> String {
-    let useMetric = Locale.current.measurementSystem != .us
+func challengeFormattedDistance(_ meters: Double, locale: Locale = .current) -> String {
+    let useMetric = locale.measurementSystem != .us
     if useMetric {
         let km = meters / 1000
         return km >= 10 ? "\(Int(km)) km" : String(format: "%.1f km", km)
@@ -23,8 +23,8 @@ func challengeFormattedDistance(_ meters: Double) -> String {
     }
 }
 
-func challengeFormattedPace(_ secsPerKm: Double) -> String {
-    let useMetric = Locale.current.measurementSystem != .us
+func challengeFormattedPace(_ secsPerKm: Double, locale: Locale = .current) -> String {
+    let useMetric = locale.measurementSystem != .us
     let displaySecs = useMetric ? secsPerKm : secsPerKm * 1.60934
     let unit = useMetric ? "/km" : "/mi"
     let mins = Int(displaySecs) / 60
