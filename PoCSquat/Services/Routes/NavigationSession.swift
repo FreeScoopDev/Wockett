@@ -526,6 +526,12 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
         timer?.invalidate()
         timer = nil
         UIApplication.shared.isIdleTimerDisabled = false
+        // Home leaves updates running in the background while a session is
+        // on, so a session that ends there (the Live Activity's End) stops
+        // them itself. In the foreground Home's banner still wants them.
+        if UIApplication.shared.applicationState != .active {
+            ActivityDetectionService.shared.stopDetection()
+        }
     }
 
     /// Total time paused so far, including a pause currently in progress —
