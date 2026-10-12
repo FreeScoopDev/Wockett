@@ -16,9 +16,14 @@ struct ChallengesContentView: View {
     /// Opens "New challenge" on arrival (the Community hub's Start a challenge).
     private let startCreating: Bool
     @State private var didStartCreating = false
+    /// Opens this challenge on arrival (a challenge link), once.
+    private let openChallengeID: String?
+    @State private var didOpenLinkedChallenge = false
+    @State private var linkedChallengeUnavailable = false
 
-    init(startCreating: Bool = false) {
+    init(startCreating: Bool = false, openChallengeID: String? = nil) {
         self.startCreating = startCreating
+        self.openChallengeID = openChallengeID
     }
 
     var body: some View {
@@ -46,7 +51,15 @@ struct ChallengesContentView: View {
                 .accessibilityLabel("New challenge")
             }
         }
-        .task { await load() }
+        .task {
+            await load()
+            await openLinkedChallenge()
+        }
+        .alert("Challenge unavailable", isPresented: $linkedChallengeUnavailable) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("That challenge has ended or is no longer available. Here are the challenges running now.")
+        }
         .onAppear {
             if startCreating, !didStartCreating {
                 didStartCreating = true
@@ -123,6 +136,23 @@ struct ChallengesContentView: View {
         WktEmptyState(symbol: .cloudError, message: message, actionTitle: "Retry") {
             Task { await load() }
         }
+    }
+
+    /// The challenge a link named: from the list when it is there, otherwise
+    /// looked up, since the list holds only the first 40.
+    private func openLinkedChallenge() async {
+        guard let recordName = openChallengeID, !didOpenLinkedChallenge else { return }
+        didOpenLinkedChallenge = true
+        var challenge = challenges.first { $0.id.recordName == recordName }
+        if challenge == nil {
+            challenge = try? await ChallengeService.shared.fetchChallenge(recordName: recordName)
+        }
+        guard let challenge else {
+            linkedChallengeUnavailable = true
+            return
+        }
+        selectedChallenge = challenge
+        showDetail = true
     }
 
     private func load() async {

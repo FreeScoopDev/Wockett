@@ -38,6 +38,9 @@ struct CommunityHubView: View {
     @State private var pushRoutes       = false
     @State private var pushMyRoutes     = false
     @State private var pushPets         = false
+    @State private var pushLinkedChallenge = false
+    /// The challenge a link asked for, opened by the Challenges list it pushes.
+    @State private var linkedChallengeID: String?
 
     private var sessions: [WalkSession] { historyStore.sessions }
     private var currentStreak: Int { streakStore.currentStreak }
@@ -84,19 +87,27 @@ struct CommunityHubView: View {
         .navigationDestination(isPresented: $pushChallenges) { ChallengesContentView() }
         .navigationDestination(isPresented: $pushNewChallenge) { ChallengesContentView(startCreating: true) }
         .navigationDestination(isPresented: $pushRoutes) { CommunityRoutesView() }
+        .navigationDestination(isPresented: $pushLinkedChallenge) {
+            ChallengesContentView(openChallengeID: linkedChallengeID)
+        }
         .navigationDestination(isPresented: $pushMyRoutes) {
             CustomRoutesListView(store: routeStore, historyStore: historyStore)
         }
         .navigationDestination(isPresented: $pushPets) {
             PetManagementView(historyStore: historyStore, defaultGoal: stepManager.currentGoal)
         }
-        .onChange(of: tabRouter.pendingCommunityDestination) { _, dest in
+        // `initial`: a link that switches to this tab can set the destination
+        // before this view exists, and onChange alone only sees later changes.
+        .onChange(of: tabRouter.pendingCommunityDestination, initial: true) { _, dest in
             guard let dest else { return }
             switch dest {
             case .badges:          pushBadges     = true
             case .achievementFeed: pushFeed       = true
             case .challenges:      pushChallenges = true
             case .communityRoutes: pushRoutes     = true
+            case .challenge(let recordName):
+                linkedChallengeID   = recordName
+                pushLinkedChallenge = true
             }
             tabRouter.pendingCommunityDestination = nil
         }

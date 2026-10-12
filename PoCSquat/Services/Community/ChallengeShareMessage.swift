@@ -1,8 +1,9 @@
 import Foundation
 
-/// The invitation a challenge is shared with: what it asks, where to get the
-/// app, and where to find the challenge once there. Plain text, because the
-/// system share sheet sends it to Messages, Mail and social apps alike.
+/// The invitation a challenge is shared with: what it asks, and its link,
+/// which opens the challenge in Wockett or, without the app, a page with a
+/// Get Wockett button (ChallengeLink). Plain text, because the system share
+/// sheet sends it to Messages, Mail and social apps alike.
 enum ChallengeShareMessage {
     static let appStoreURL = "https://apps.apple.com/app/id6794364736"
 
@@ -11,9 +12,18 @@ enum ChallengeShareMessage {
     /// same rule the detail screen uses; tests pass a fixed one.
     static func text(for challenge: WalkChallenge, isMine: Bool, locale: Locale = .current) -> String {
         let days = challenge.durationDays
-        return """
+        let invitation = """
         Join \(isMine ? "my" : "the") "\(challenge.title)" challenge on Wockett: \
         \(goal(for: challenge, locale: locale)) in \(days) day\(days == 1 ? "" : "s").
+        """
+        // The link on a line of its own, with nothing after it: Messages would
+        // fold trailing punctuation into the link.
+        if let link = ChallengeLink.url(for: challenge.id.recordName) {
+            return "\(invitation)\n\n\(link.absoluteString)"
+        }
+        // A record name no link can carry (none so far): Step 1's directions.
+        return """
+        \(invitation)
 
         Get Wockett: \(appStoreURL)
         Then open Community → Challenges to join.
