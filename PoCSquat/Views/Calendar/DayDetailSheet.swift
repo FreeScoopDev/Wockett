@@ -7,7 +7,9 @@ struct DayDetailSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var showReminderError = false
     @State private var isAddingReminder = false
-    private var notifications = NotificationService.shared
+    // Computed, not stored: a stored private property makes the memberwise
+    // initializer private on CI's Xcode 26.6 (it compiled on 27 locally).
+    private var notifications: NotificationService { .shared }
 
     private static let fullDateFmt: DateFormatter = {
         let f = DateFormatter(); f.dateStyle = .full; return f
