@@ -323,11 +323,18 @@ final class ChallengeService {
         return Self.visible(participants, moderation: .shared)
     }
 
-    /// A leaderboard without suspended accounts' entries, most steps first.
+    /// A leaderboard without the entries of accounts you blocked or a
+    /// moderator suspended, or ones you deleted, most steps first. Block was
+    /// missing until 2026-10-12: someone you blocked vanished from every
+    /// Community list but still sat on your challenge's leaderboard. Your own
+    /// entry is never hidden (both checks exclude your own content).
     static func visible(_ participants: [ChallengeParticipant], moderation: CommunityModerationStore,
                         now: Date = Date()) -> [ChallengeParticipant] {
         participants
-            .filter { !moderation.isSuspended(CommunityAuthor(name: $0.displayName, account: $0.account), at: now) }
+            .filter {
+                let author = CommunityAuthor(name: $0.displayName, account: $0.account)
+                return !moderation.isBlocked(author) && !moderation.isSuspended(author, at: now)
+            }
             .filter { !moderation.isDeleted($0.id) }
             .sorted { $0.steps > $1.steps }
     }
