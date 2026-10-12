@@ -72,6 +72,14 @@ struct StepCounterView: View {
                     ActiveSessionView(activityMode: route.activityMode, historyStore: historyStore, routeStore: routeStore)
                 }
             }
+            // A walk ended from outside the walk screen (the Live Activity's
+            // End) takes the screen with it. The screen dismisses itself
+            // (ActiveSessionView's `hasAttemptedStart`); this covers the order
+            // where the `if let` above removes it first and would leave an
+            // empty cover. That order has not been seen, only reasoned about.
+            .onChange(of: walkStore.isActive) { _, active in
+                if !active { showResumeWalk = false }
+            }
             .alert("Resume Your Activity?", isPresented: $showRestoreWalkPrompt) {
                 Button("Resume") {
                     if walkStore.restoreIfNeeded() != nil {

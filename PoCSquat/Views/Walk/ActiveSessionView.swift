@@ -20,12 +20,18 @@ struct ActiveSessionView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(ActiveWalkStore.self) private var walkStore
 
+    /// Set once this view has had a session, started here or reopened. A
+    /// session that then goes (Live Activity End) dismisses the screen; only
+    /// a view that never had one starts a free walk. A guided walk, or any
+    /// walk reopened from the mini tile, never set it until 2026-10-12, so
+    /// ending one from the Live Activity started a free walk in its place.
     @State private var hasAttemptedStart = false
 
     var body: some View {
         if let session = walkStore.session, let route = walkStore.activeRoute {
             ActiveSessionScreen(session: session, route: route,
                                 historyStore: historyStore, routeStore: routeStore)
+                .onAppear { hasAttemptedStart = true }
         } else {
             // Session was cleared externally (Live Activity End) — or this is a new free session
             // that hasn't started yet.

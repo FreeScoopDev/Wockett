@@ -262,6 +262,60 @@ final class SmokeTests: XCTestCase {
         // assertion that looks like protection and isn't.
     }
 
+    // MARK: - 5b. Guided walk ended from the Live Activity
+
+    /// A guided walk's screen is a full-screen cover on Home. Ending the walk
+    /// from the Live Activity while that screen is up must take the person
+    /// back to Home, not leave them on an empty cover with no way out.
+    func testGuidedWalkEndedFromLiveActivityReturnsHome() {
+        XCTAssertTrue(el("home.statCard").waitForExistence(timeout: 10))
+        tab("Routes").tap()
+        let findRoutes = app.buttons["routes.findRoutes"]
+        XCTAssertTrue(findRoutes.waitForExistence(timeout: 30))
+        findRoutes.tap()
+        let firstCard = app.buttons["routes.routeCard"].firstMatch
+        XCTAssertTrue(firstCard.waitForExistence(timeout: 30))
+        forceTap(firstCard)
+        let startWalk = app.buttons["routes.startWalk"]
+        XCTAssertTrue(startWalk.waitForExistence(timeout: 10))
+        forceTap(startWalk)
+        XCTAssertTrue(el("session.root").waitForExistence(timeout: 30),
+                      "Start Walk must open the guided walk screen")
+
+        // The real End button, on the Live Activity in Notification Centre.
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let top = springboard.coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: 0.001))
+        top.press(forDuration: 0.1, thenDragTo: springboard.coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: 0.6)))
+        let end = springboard.buttons["End Walk"].firstMatch
+        XCTAssertTrue(end.waitForExistence(timeout: 15),
+                      "The Live Activity's End Walk button must be in Notification Centre")
+        end.tap()
+        let bottom = springboard.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.999))
+        bottom.press(forDuration: 0.1, thenDragTo: springboard.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.3)))
+        app.activate()
+
+        // A full-screen cover leaves the views beneath it in the tree, so
+        // `exists` would pass on an empty cover; only a hittable tab proves
+        // the cover went.
+        let sessionGone = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "exists == NO"), object: el("session.root"))
+        let homeHittable = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "hittable == YES"), object: tab("Home"))
+        if XCTWaiter().wait(for: [sessionGone, homeHittable], timeout: 20) != .completed {
+            let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+            shot.name = "After Live Activity End"
+            shot.lifetime = .keepAlways
+            add(shot)
+            XCTFail("Home is not back 20 s after the Live Activity ended the walk. "
+                    + "\(screenState()), mini tile \(app.buttons["accessory.miniTile"].exists)")
+        }
+        // Nothing may replace the walk that ended. Until 2026-10-12 the walk
+        // screen started a free walk here, and a cover closing over it would
+        // still hide that from the checks above.
+        XCTAssertFalse(app.buttons["accessory.miniTile"].waitForExistence(timeout: 5),
+                       "No walk may be running after the Live Activity ended it")
+    }
+
     // MARK: - 6. Trail data credits
 
     /// The bundled trail pack opened at launch and Settings → About credits its
