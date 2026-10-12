@@ -643,8 +643,9 @@ struct CreateChallengeView: View {
     // Steps
     @State private var goalSteps = 50_000
 
-    // Distance
-    @State private var goalDistanceMeters = 10_000.0
+    // Distance. Starts on one of the options shown, or none is highlighted:
+    // 10,000 m was the default in every locale and matches no mile option.
+    @State private var goalDistanceMeters = CreateChallengeView.defaultDistanceMeters(for: .current)
 
     // Pace
     @State private var goalPaceSecsPerKm = 480.0  // 8:00/km
@@ -656,10 +657,19 @@ struct CreateChallengeView: View {
     private let sessionCountOptions = [1, 3, 5, 7, 10]
 
     private var distanceOptions: [(meters: Double, label: String)] {
-        let useMetric = Locale.current.measurementSystem != .us
+        Self.distanceOptions(for: .current)
+    }
+
+    static func distanceOptions(for locale: Locale) -> [(meters: Double, label: String)] {
+        let useMetric = locale.measurementSystem != .us
         return useMetric
             ? [(5_000, "5 km"), (10_000, "10 km"), (20_000, "20 km"), (50_000, "50 km"), (100_000, "100 km")]
             : [(4_828, "3 mi"), (9_656, "6 mi"), (20_921, "13 mi"), (41_843, "26 mi"), (99_779, "62 mi")]
+    }
+
+    /// The second option: 10 km, or 6 mi in US units.
+    static func defaultDistanceMeters(for locale: Locale) -> Double {
+        distanceOptions(for: locale)[1].meters
     }
 
     private let paceOptions: [(secsPerKm: Double, hint: String)] = [
