@@ -9,3 +9,8 @@
   and pace use the sharer's units, and the message says "my" challenge only
   to the person who created it. A link that opens the challenge directly is
   a separate change.
+
+### Internal
+- Wockett's App Store link is one constant (`AppStoreLink`), used by the
+  challenge invitation, the activity share card and Settings' Write a
+  Review, instead of three hand-copied strings that could drift apart.
