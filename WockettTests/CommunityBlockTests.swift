@@ -142,6 +142,35 @@ struct CommunityBlockTests {
         #expect(model.routes.map(\.id) == [other.id])
     }
 
+    // MARK: Challenge leaderboards
+
+    private func entry(_ name: String, steps: Int, account: String) throws -> ChallengeParticipant {
+        let r = CKRecord(recordType: "ChallengeEntry", recordID: CKRecord.ID(recordName: "entry-\(name)"))
+        r["displayName"] = name
+        r["steps"] = steps
+        r["deviceID"] = "device-\(name)"
+        return try #require(ChallengeParticipant(record: r, creator: CKRecord.ID(recordName: account)))
+    }
+
+    @Test("Someone you blocked is off your challenge leaderboards, under any name")
+    func leaderboardHidesBlocked() throws {
+        let f = fixture(me: "_me")
+        f.store.block(CommunityAuthor(name: "MistyOak", account: "_troll"))
+        let board = [try entry("SwiftFalcon", steps: 900, account: "_troll"),
+                     try entry("AmberElk", steps: 500, account: "_me"),
+                     try entry("QuietFern", steps: 300, account: "_other")]
+        let names = ChallengeService.visible(board, moderation: f.store).map(\.displayName)
+        #expect(names == ["AmberElk", "QuietFern"], "the renamed blocked account is gone; the rest keep their order")
+    }
+
+    @Test("An old name block that matches your own name never takes your entry off a leaderboard")
+    func leaderboardKeepsYours() throws {
+        // Block was once offered on your own posts, and names were not unique.
+        let f = fixture(names: ["AmberElk"], me: "_me")
+        let board = [try entry("AmberElk", steps: 500, account: "_me")]
+        #expect(ChallengeService.visible(board, moderation: f.store).map(\.displayName) == ["AmberElk"])
+    }
+
     @Test("An iCloud account change forgets and refreshes the saved ID, and redraws")
     func accountChangeRefreshes() async {
         let center = NotificationCenter()
