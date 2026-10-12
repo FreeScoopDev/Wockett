@@ -256,12 +256,11 @@ private struct ActiveSessionScreen: View {
         }
         .onAppear {
             headingTracker.start()
-            walkStore.session?.isSessionScreenVisible = true
+            session.isSessionScreenVisible = true
         }
         .onDisappear {
             headingTracker.stop()
-            // Optional: the session may already be over when the screen goes.
-            walkStore.session?.isSessionScreenVisible = false
+            session.isSessionScreenVisible = false
         }
         .onChange(of: headingUp) { _, up in
             position = .userLocation(followsHeading: up, fallback: .automatic)

@@ -24,7 +24,10 @@ final class HeadingTracker: NSObject, CLLocationManagerDelegate {
     /// A compass reading worse than this many degrees is not used.
     nonisolated static let maximumAccuracyDegrees = 45.0
 
-    @ObservationIgnored private let manager = CLLocationManager()
+    /// Lazy: a `@State` initial value is built on every init of the walk
+    /// screen and all but the first are thrown away, so the manager is made
+    /// only by the tracker that is started.
+    @ObservationIgnored private lazy var manager = CLLocationManager()
 
     func start() {
         guard CLLocationManager.headingAvailable() else { return }
