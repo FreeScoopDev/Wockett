@@ -13,6 +13,8 @@ struct ChallengesContentView: View {
     @State private var selectedChallenge: WalkChallenge?  = nil
     @State private var showDetail        = false
     @State private var showCreate        = false
+    /// Created here this visit; kept in the list until CloudKit's query has it.
+    @State private var justCreated:      [WalkChallenge]  = []
     /// Opens "New challenge" on arrival (the Community hub's Start a challenge).
     private let startCreating: Bool
     @State private var didStartCreating = false
@@ -75,7 +77,10 @@ struct ChallengesContentView: View {
             }
         }
         .sheet(isPresented: $showCreate, onDismiss: { Task { await load() } }) {
-            CreateChallengeView()
+            CreateChallengeView { created in
+                justCreated.append(created)
+                challenges = ChallengeService.withJustCreated(challenges, justCreated: justCreated)
+            }
         }
         // A push like every other Community detail. `selectedChallenge` is left
         // set on the way back so the page doesn't blank out mid-pop.
@@ -178,7 +183,8 @@ struct ChallengesContentView: View {
     private func load() async {
         isLoading = true; loadError = nil
         do {
-            challenges = try await ChallengeService.shared.fetchActiveChallenges()
+            challenges = ChallengeService.withJustCreated(try await ChallengeService.shared.fetchActiveChallenges(),
+                                                          justCreated: justCreated)
         } catch let ck as CKError {
             #if DEBUG
             print("[ChallengeService] CKError \(ck.code.rawValue): \(ck)")
@@ -621,6 +627,8 @@ private struct LeaderboardRow: View {
 
 struct CreateChallengeView: View {
     @Environment(\.dismiss) private var dismiss
+    /// The challenge as saved, so the list can show it at once.
+    var onCreated: (WalkChallenge) -> Void = { _ in }
 
     @State private var title    = ""
     @State private var emoji    = "🏆"
@@ -924,7 +932,7 @@ struct CreateChallengeView: View {
     private func save() async {
         isSaving = true; saveError = nil
         do {
-            try await ChallengeService.shared.createChallenge(
+            let created = try await ChallengeService.shared.createChallenge(
                 title:              title.trimmingCharacters(in: .whitespaces),
                 emoji:              emoji,
                 goalType:           goalType,
@@ -935,6 +943,7 @@ struct CreateChallengeView: View {
                 goalSessionCount:   goalSessionCount,
                 durationDays:       duration
             )
+            if let created { onCreated(created) }
             dismiss()
         } catch let access as CommunityAccessError {
             saveError = access.message
