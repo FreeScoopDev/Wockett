@@ -52,7 +52,11 @@ struct ActiveSessionView: View {
     @State private var mapGeneration = 0
     @State private var showBreakPromptAlert   = false
     @State private var showDrivingBanner      = false
-    // Free-session specific state
+    /// Set once this screen has had a session, started here or reopened. A
+    /// session that then goes (Live Activity End) dismisses the screen; only
+    /// a screen that never had one starts a free walk. A reopened guided walk
+    /// never set it until 2026-10-12, so clearing one would have started a
+    /// free walk in its place.
     @State private var hasAttemptedStart      = false
     @StateObject private var poiManager       = POIOverlayManager()
     @State private var position: MapCameraPosition = .userLocation(fallback: .automatic)
@@ -87,7 +91,10 @@ struct ActiveSessionView: View {
                 .toolbar(.hidden, for: .navigationBar)
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
-                .task { await startSession() }
+                .task {
+                    hasAttemptedStart = true
+                    await startSession()
+                }
                 .onDisappear { if endSessionOnDismiss { walkStore.endSession() } }
                 .onChange(of: checkpointsEnabled) { _, enabled in handleCheckpointToggle(enabled) }
                 .onChange(of: session.isCompleted) { _, completed in
