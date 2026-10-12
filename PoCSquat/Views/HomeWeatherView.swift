@@ -4,7 +4,9 @@ import CoreLocation
 // MARK: - Home Weather Locator
 
 enum WeatherFetchState {
-    case idle, loading, loaded, denied, failed
+    /// `notAsked`: location was never requested. Home does not ask for it on
+    /// its own; the chip offers weather and asks on a tap.
+    case idle, notAsked, loading, loaded, denied, failed
 }
 
 @Observable
@@ -26,6 +28,15 @@ final class HomeWeatherLocator: NSObject {
         // `m.authorizationStatus` here instead is a synchronous call to locationd
         // on the main thread, while Home is appearing.
         manager = m
+    }
+
+    /// The chip's "Weather" tap: the moment to ask, because the user just
+    /// asked for something that needs location. Granting it lands in
+    /// `locationManagerDidChangeAuthorization`, which fetches.
+    @MainActor
+    func requestPermission() {
+        guard let manager else { fetchIfAuthorized(); return }
+        manager.requestWhenInUseAuthorization()
     }
 
     @MainActor
@@ -61,7 +72,10 @@ extension HomeWeatherLocator: CLLocationManagerDelegate {
         } else if status == .denied || status == .restricted {
             fetchState = .denied
         } else if status == .notDetermined {
-            manager.requestWhenInUseAuthorization()
+            // Not asked from here: a prompt on Home's first appearance, for a
+            // weather chip, was one of three a new user saw in the first
+            // seconds (2026-10-12). The chip asks when tapped.
+            fetchState = .notAsked
         }
     }
 
@@ -142,6 +156,12 @@ struct HomeWeatherStatusChip: View {
                 Image(wkt: .refresh).wktIcon(.inline, tint: .earthGreen)
             }
             .accessibilityHint("Tries again")
+        case .notAsked:
+            WktStatusChip(text: "Weather", action: { locator.requestPermission() }) {
+                Image(wkt: .locationOn).wktIcon(.inline, tint: .earthGreen)
+            }
+            .accessibilityLabel("Show local weather")
+            .accessibilityHint("Asks to use your location for the weather")
         case .idle, .loading:
             EmptyView()
         }

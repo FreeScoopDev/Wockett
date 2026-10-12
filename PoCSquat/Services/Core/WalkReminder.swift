@@ -87,3 +87,37 @@ struct WalkReminder: Codable, Identifiable, Hashable, Sendable {
         }
     }
 }
+
+// MARK: - A future day's reminder
+//
+// Health's calendar offers "Remind me" on a future day. Until 2026-10-12 that
+// added an item to the Reminders app, which needed full access to every
+// reminder the user has, for one item. It is a walk reminder like any other
+// now: a notification, listed and deletable in Settings.
+
+extension WalkReminder {
+    static let goalDayHour = 8
+
+    /// 8:00 on that day. The one place the time is worked out, so the
+    /// reminder, its button and the duplicate check always agree.
+    static func goalDayMorning(of date: Date, calendar: Calendar = .current) -> Date {
+        calendar.date(bySettingHour: goalDayHour, minute: 0, second: 0, of: date) ?? date
+    }
+
+    /// Once, at 8:00 on that day.
+    static func goalDay(_ date: Date, goal: Int, calendar: Calendar = .current) -> WalkReminder {
+        WalkReminder(title: "Walk goal: \(goal.formatted()) steps",
+                     schedule: .once(goalDayMorning(of: date, calendar: calendar)))
+    }
+
+    /// Whether `reminders` already holds that day's reminder, so the sheet
+    /// shows it as set instead of adding a second.
+    static func hasGoalDayReminder(on date: Date, in reminders: [WalkReminder],
+                                   calendar: Calendar = .current) -> Bool {
+        let morning = goalDayMorning(of: date, calendar: calendar)
+        return reminders.contains { reminder in
+            guard reminder.routeName == nil, case .once(let when) = reminder.schedule else { return false }
+            return when == morning
+        }
+    }
+}

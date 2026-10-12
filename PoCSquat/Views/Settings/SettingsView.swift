@@ -509,10 +509,21 @@ struct SettingsView: View {
             NotificationService.shared.pruneExpiredWalkReminders()
             await refreshNotificationStatus()
         }
-        .onChange(of: [weeklySummaryEnabled, hydrationEnabled, streakProtectionEnabled, petNudgeEnabled, untrackedWalkEnabled]) { old, new in
+        .onChange(of: [weeklySummaryEnabled, hydrationEnabled, streakProtectionEnabled, petNudgeEnabled]) { old, new in
             // A toggle switched on while delivery is only quiet is the user asking
             // for alerts — the moment for the real prompt.
             if zip(old, new).contains(where: { !$0 && $1 }) { Task { await promptForAlerts() } }
+        }
+        .onChange(of: untrackedWalkEnabled) { _, isOn in
+            guard isOn else { return }
+            Task {
+                await promptForAlerts()
+                // The untracked-walk check reads Core Motion history in the
+                // background, where it cannot ask. Launch no longer asks either,
+                // so this switch is the moment. After the alert prompt, not
+                // alongside it, so the two never stack.
+                await ActivityDetectionService.shared.requestAccessIfNeverAsked()
+            }
         }
     }
 

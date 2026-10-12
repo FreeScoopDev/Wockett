@@ -1,13 +1,15 @@
 import SwiftUI
 import MapKit
-import EventKit
 
 struct DayDetailSheet: View {
     let day: CalendarDay
     let sessions: [WalkSession]
     @Environment(\.dismiss) private var dismiss
-    @State private var reminderScheduled = false
     @State private var showReminderError = false
+    @State private var isAddingReminder = false
+    // Computed, not stored: a stored private property makes the memberwise
+    // initializer private on CI's Xcode 26.6 (it compiled on 27 locally).
+    private var notifications: NotificationService { .shared }
 
     private static let fullDateFmt: DateFormatter = {
         let f = DateFormatter(); f.dateStyle = .full; return f
@@ -92,17 +94,17 @@ struct DayDetailSheet: View {
                                 Task { await scheduleReminder() }
                             } label: {
                                 if reminderScheduled {
-                                    WktSecondaryLabel(title: "Added to Reminders", symbol: .success)
+                                    WktSecondaryLabel(title: "Reminder set for \(reminderTime)", symbol: .success)
                                 } else {
-                                    WktPrimaryLabel(title: "Add to Reminders", symbol: .notifications)
+                                    WktPrimaryLabel(title: "Remind me at \(reminderTime)", symbol: .notifications)
                                 }
                             }
                             .buttonStyle(BounceButtonStyle(scale: 0.98))
-                            .disabled(reminderScheduled)
+                            .disabled(reminderScheduled || isAddingReminder)
                             .alert("Couldn't Add Reminder", isPresented: $showReminderError) {
                                 Button("OK", role: .cancel) {}
                             } message: {
-                                Text("Please allow Reminders access in Settings to use this feature.")
+                                Text("Notifications are off for Wockett. Turn them on in the Settings app to get walk reminders.")
                             }
                         }
 
@@ -138,32 +140,27 @@ struct DayDetailSheet: View {
         .presentationDetents([.large])
     }
 
-    @MainActor
+    /// Derived from the saved reminders, so reopening the day still shows it
+    /// as set, and it cannot be added twice.
+    private var reminderScheduled: Bool {
+        WalkReminder.hasGoalDayReminder(on: day.date, in: notifications.walkReminders)
+    }
+
+    private var reminderTime: String {
+        WalkReminder.goalDayMorning(of: day.date).formatted(date: .omitted, time: .shortened)
+    }
+
+    /// A walk reminder like Settings' and a route's: a notification, listed
+    /// and deletable in Settings. The service shows the real notification
+    /// prompt if delivery is only quiet, because the user just asked.
     private func scheduleReminder() async {
-        let store = EKEventStore()
-        let granted: Bool
-        do {
-            granted = try await store.requestFullAccessToReminders()
-        } catch {
-            showReminderError = true
-            return
-        }
-        guard granted else { showReminderError = true; return }
-        do {
-            let reminder = EKReminder(eventStore: store)
-            reminder.title = "Time for your walk! Goal: \(day.goal.formatted()) steps"
-            var comps = Calendar.current.dateComponents([.year, .month, .day], from: day.date)
-            comps.hour = 8; comps.minute = 0
-            reminder.dueDateComponents = comps
-            reminder.calendar = store.defaultCalendarForNewReminders()
-            try store.save(reminder, commit: true)
-            reminderScheduled = true
-            if let url = URL(string: "x-apple-reminder://") {
-                await UIApplication.shared.open(url)
-            }
-        } catch {
-            showReminderError = true
-        }
+        // A second tap while the first is still waiting on the service must
+        // not add a second reminder.
+        guard !isAddingReminder, !reminderScheduled else { return }
+        isAddingReminder = true
+        defer { isAddingReminder = false }
+        let reminder = WalkReminder.goalDay(day.date, goal: day.goal)
+        guard await notifications.addWalkReminder(reminder) else { showReminderError = true; return }
     }
 
     private static func formatDist(_ meters: Double) -> String {

@@ -12,13 +12,18 @@ struct HealthHubView: View {
     @State private var showMonthCalendar = false
     @State private var pushWalkHistory   = false
     @State private var pushInsights      = false
+    private var healthExtras = HealthExtrasAccess.shared
 
     var body: some View {
         ZStack {
             Color.earthBg.ignoresSafeArea()
             ScrollView {
                 VStack(alignment: .leading, spacing: WktSpacing.betweenSections) {
-                    RecoveryCard()
+                    switch healthExtras.state {
+                    case .ready:    RecoveryCard()
+                    case .needsAsk: HealthExtrasCard()
+                    case .checking: EmptyView()
+                    }
                     WeeklyCalendarView(
                         days: stepManager.weeklyCalendar,
                         weekOffset: calendarWeekOffset,
@@ -35,7 +40,7 @@ struct HealthHubView: View {
                         },
                         onCalendarTap: { showMonthCalendar = true }
                     )
-                    GaitHealthSection()
+                    if healthExtras.state == .ready { GaitHealthSection() }
                     HealthFunStatsCard(sessions: historyStore.sessions, todaySteps: stepManager.todaySteps)
                     insightsCard
                     activityHistoryCard
@@ -50,6 +55,7 @@ struct HealthHubView: View {
                     sessions: historyStore.sessions, weekOffset: calendarWeekOffset)
             }
         }
+        .task { await healthExtras.refresh() }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("health.root")
         .navigationTitle("Health")
