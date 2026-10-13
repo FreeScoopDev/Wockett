@@ -122,7 +122,11 @@ final class CloudKitBlockListBackend: BlockListBackend {
         do {
             let record = try await database.record(for: recordID)
             last = record
-            return BlockList.decoded(record["entries"] as? String) ?? BlockList()
+            // A copy this version can't read is never merged as empty and
+            // saved over: the blocks only it holds would be lost.
+            guard let text = record["entries"] as? String else { return BlockList() }
+            guard let list = BlockList.decoded(text) else { throw CKError(.incompatibleVersion) }
+            return list
         } catch let error as CKError where error.code == .unknownItem {
             last = nil
             return nil
@@ -137,7 +141,9 @@ final class CloudKitBlockListBackend: BlockListBackend {
         } catch let error as CKError where error.code == .serverRecordChanged {
             let server = error.serverRecord
             last = server
-            throw BlockListConflict(server: BlockList.decoded(server?["entries"] as? String) ?? BlockList())
+            let text = server?["entries"] as? String
+            guard let list = text == nil ? BlockList() : BlockList.decoded(text) else { throw CKError(.incompatibleVersion) }
+            throw BlockListConflict(server: list)
         }
     }
 }

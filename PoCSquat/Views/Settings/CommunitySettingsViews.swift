@@ -161,7 +161,7 @@ struct DeleteCommunityDataView: View {
 
                 Section {
                     Button {
-                        if let url = CommunityDataDeletion.supportMailURL(account: MyAccount.recordName) { openURL(url) }
+                        if let url = CommunityDataDeletion.supportMailURL(account: reportAccount ?? MyAccount.recordName) { openURL(url) }
                     } label: {
                         Label { Text("Email support@wockett.app") } icon: { Image(wkt: .envelope).wktIcon(.row, tint: .earthGreen) }
                             .foregroundColor(.earthGreen)
@@ -184,6 +184,13 @@ struct DeleteCommunityDataView: View {
         } message: {
             Text(CommunityDataDeletion.confirmMessage)
         }
+    }
+
+    /// The account the last run found, which a fresh install may not have
+    /// saved yet (MyAccount fills in only on the Community screens).
+    private var reportAccount: String? {
+        if case .done(let report) = model.phase { return report.account }
+        return nil
     }
 
     private var isRunning: Bool {

@@ -116,6 +116,7 @@ enum CommunityDataDeletion {
         switch (error as? CKError)?.code {
         case .notAuthenticated?: return signInMessage
         case .permissionFailure?: return "Only the account that shared it can delete it."
+        case .invalidArguments?: return "iCloud can't look these up yet. Email us and we'll remove them."
         default: return "Couldn't reach iCloud. Check your connection and try again."
         }
     }
@@ -146,6 +147,8 @@ struct CommunityDataDeletionReport: Equatable {
     var results: [CommunityDataKindResult] = []
     /// Set when nothing could start (signed out of iCloud).
     var stopped: String?
+    /// The account the run deleted for, for the support email.
+    var account: String?
 
     var hasFailures: Bool { stopped != nil || results.contains { !$0.failures.isEmpty } }
 }
@@ -229,7 +232,7 @@ struct CommunityDataDeletionRun {
                                                ? CommunityDataDeletion.signInMessage
                                                : CommunityDataDeletion.message(for: error))
         }
-        var report = CommunityDataDeletionReport()
+        var report = CommunityDataDeletionReport(account: me)
         for kind in kinds {
             progress(kind)
             let result: CommunityDataKindResult?
@@ -296,7 +299,7 @@ struct CommunityDataDeletionRun {
         }
         var seen = Set<String>()
         result.failures = result.failures.filter { seen.insert($0).inserted }
-        forget(gone, kind: kind)
+        forget(gone, kind: kind, me: me)
         return result
     }
 
@@ -306,7 +309,9 @@ struct CommunityDataDeletionRun {
         var toDelete: [CKRecord.ID] = []
         for record in records {
             guard let challenge = WalkChallenge(record: record) else {
-                toDelete.append(record.recordID)   // unreadable, but yours: nothing to show anyone
+                // This version can't read it (a newer goal type?), so it can't
+                // check who joined: never delete it blind.
+                result.failures.append("A challenge you created couldn't be checked for other people's entries, so it was kept. Email us to remove it.")
                 continue
             }
             switch await plan(challenge) {
@@ -326,7 +331,7 @@ struct CommunityDataDeletionRun {
 
     /// Clears what this phone remembers about records now gone, and drops
     /// them from every list at once.
-    private func forget(_ gone: [CKRecord.ID], kind: CommunityDataKind) {
+    private func forget(_ gone: [CKRecord.ID], kind: CommunityDataKind, me: String) {
         guard !gone.isEmpty else { return }
         for id in gone where kind != .votes && kind != .name {
             moderation.markDeleted(id)
@@ -344,8 +349,23 @@ struct CommunityDataDeletionRun {
             }
         case .name:
             nameDeleted()
-        case .votes, .posts, .challenges:
-            // Vote marks stay: the Wockett Giver badge counts them.
+        case .votes:
+            // The vote is gone, so the item must not read as voted (its
+            // button would stay disabled for good). The Wockett Giver badge
+            // counted the route marks: keep what it had reached first.
+            let floor = StreakStore.wockettsGivenFloorKey
+            let routeMarks = defaults.stringArray(forKey: CommunityRouteService.votedKey) ?? []
+            defaults.set(max(defaults.integer(forKey: floor), routeMarks.count), forKey: floor)
+            let targets = Set(gone.compactMap { id -> String? in
+                let suffix = ".\(me)"
+                guard id.recordName.hasPrefix("vote."), id.recordName.hasSuffix(suffix) else { return nil }
+                return String(id.recordName.dropFirst("vote.".count).dropLast(suffix.count))
+            })
+            for key in [AchievementFeedService.likedKey, CommunityRouteService.votedKey] {
+                let kept = (defaults.stringArray(forKey: key) ?? []).filter { !targets.contains($0) }
+                defaults.set(kept, forKey: key)
+            }
+        case .posts, .challenges:
             break
         }
     }

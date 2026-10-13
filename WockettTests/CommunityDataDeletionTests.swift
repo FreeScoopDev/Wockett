@@ -149,7 +149,12 @@ struct CommunityDataDeletionTests {
         #expect(report.hasFailures)
         #expect(d.stringArray(forKey: CommunityRouteService.publishedKey) == [])
         #expect((d.dictionary(forKey: ChallengeService.joinedKey) as? [String: String]) == [:])
-        #expect(d.stringArray(forKey: CommunityRouteService.votedKey) == ["route7"], "vote marks stay: a badge counts them")
+        #expect(d.stringArray(forKey: CommunityRouteService.votedKey) == [], "a deleted vote must not read as voted")
+        #expect(d.stringArray(forKey: AchievementFeedService.likedKey) == [])
+        #expect(StreakStore.wockettsGiven(defaults: d) == 1, "the Wockett Giver badge keeps the count it reached")
+        #expect(report.account == "_me", "the support email can carry the account ID")
+        #expect(report.results.first?.failures == [
+            "Couldn't look them all up (iCloud can't look these up yet. Email us and we'll remove them.) Any this iPhone remembers were still deleted."])
         #expect(d.bool(forKey: UnsentVoteCatchUp.doneKey), "the catch-up must never re-send deleted votes")
     }
 
@@ -166,6 +171,27 @@ struct CommunityDataDeletionTests {
         let challenges = report.results.first { $0.kind == .challenges }
         #expect(challenges?.deleted == 1)
         #expect(challenges?.requested == 1)
+    }
+
+    @Test("A challenge this version can't read is kept and reported, never deleted blind")
+    func unreadableChallengeKept() async {
+        let store = FakeStore()
+        store.byType = ["Challenge": [record("Challenge", "future", ["goalType": "elevation" as CKRecordValue])]]
+        let report = await runner(store, defaults(), plan: { _ in .delete }).run()
+        #expect(store.deleted.isEmpty)
+        let challenges = report.results.first { $0.kind == .challenges }
+        #expect(challenges?.deleted == 0)
+        #expect(challenges?.failures.count == 1)
+    }
+
+    @Test("Only the marks of votes actually deleted are cleared")
+    func onlyDeletedMarksCleared() async {
+        let d = defaults()
+        d.set(["p1", "p2"], forKey: AchievementFeedService.likedKey)
+        let store = FakeStore()
+        store.deleteErrors = ["vote.p2._me": CKError(.networkFailure)]
+        _ = await runner(store, d).run()
+        #expect(d.stringArray(forKey: AchievementFeedService.likedKey) == ["p2"])
     }
 
     @Test("A record that won't delete is reported, and the rest still go")
