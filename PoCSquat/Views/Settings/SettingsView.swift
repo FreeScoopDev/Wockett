@@ -493,7 +493,7 @@ struct SettingsView: View {
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("settings.root")
         .navigationTitle("Settings")
-        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarTitleDisplayMode(.large)
         .sheet(isPresented: $showScheduleSheet) { WalkReminderSheet() }
         .sheet(isPresented: $showGoalSheet) { GoalEditorSheet(stepManager: stepManager) }
         .alert(
@@ -619,7 +619,7 @@ private struct WalkReminderSheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
-                        .foregroundColor(.earthGreen)
+                        .foregroundColor(.earthMuted)
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button {

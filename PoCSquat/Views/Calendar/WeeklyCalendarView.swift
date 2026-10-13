@@ -103,7 +103,7 @@ private struct TrendChartSection: View {
             // Header row
             HStack(alignment: .firstTextBaseline) {
                 Text("Last 30 days")
-                    .font(.wktLabel)
+                    .font(.wktDense(13, weight: .bold))
                     .foregroundColor(.earthMuted)
                 Spacer()
                 HStack(spacing: 12) {
@@ -148,7 +148,7 @@ private struct TrendChartSection: View {
                         .foregroundStyle(Color.earthOrange.opacity(0.5))
                         .annotation(position: .top, alignment: .leading) {
                             Text("Goal")
-                                .font(.wktBody(9))
+                                .font(.wktDense(9))
                                 .foregroundColor(.earthOrange.opacity(0.7))
                         }
                     // Today's dot
@@ -166,7 +166,7 @@ private struct TrendChartSection: View {
                     AxisMarks(values: .stride(by: .day, count: 7)) { _ in
                         AxisGridLine().foregroundStyle(Color.earthTrack)
                         AxisValueLabel(format: .dateTime.month(.abbreviated).day())
-                            .font(.wktBody(9))
+                            .font(.wktDense(9))
                             .foregroundStyle(Color.earthMuted)
                     }
                 }
@@ -176,7 +176,7 @@ private struct TrendChartSection: View {
                         AxisValueLabel {
                             if let d = v.as(Double.self) {
                                 Text(formatK(Int(d)))
-                                    .font(.wktBody(9))
+                                    .font(.wktDense(9))
                                     .foregroundStyle(Color.earthMuted)
                             }
                         }
@@ -212,10 +212,10 @@ private struct TrendChartSection: View {
     private func miniStat(label: String, value: String) -> some View {
         HStack(spacing: 3) {
             Text(value)
-                .font(.wktLabel)
+                .font(.wktDense(13, weight: .bold))
                 .foregroundColor(.earthCream)
             Text(label)
-                .font(.wktLabel)
+                .font(.wktDense(13, weight: .bold))
                 .foregroundColor(.earthMuted)
         }
     }
@@ -243,14 +243,15 @@ private struct DayCell: View {
     var body: some View {
         VStack(spacing: 6) {
             Text(day.date, format: .dateTime.weekday(.abbreviated))
-                .font(.wktLabel)
+                .font(.wktDense(13, weight: .bold))
                 .foregroundColor(day.isToday ? .earthGreen : .earthMuted)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
 
             Text(Self.numFmt.string(from: day.date))
-                .font(.wktRowTitle)
+                .font(.wktDense(16, weight: .heavy))
                 .foregroundColor(day.isToday ? .earthCream : .earthMuted)
+                .lineLimit(1)
 
             ZStack {
                 Circle()
@@ -281,7 +282,7 @@ private struct DayCell: View {
                                 .foregroundColor(.earthGreen)
                         } else if let steps = day.steps, steps > 0 {
                             Text(WktPercent.text(Double(steps) / Double(max(1, day.goal))))
-                                .font(.wktBody(9))
+                                .font(.wktDense(9))
                                 .foregroundColor(.earthOrange)
                                 .minimumScaleFactor(0.7)
                         } else {
@@ -302,7 +303,7 @@ private struct DayCell: View {
                     .frame(height: 15)
             } else if let tag = day.tag {
                 Text(tag)
-                    .font(.wktBody(9))
+                    .font(.wktDense(9))
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
                     .padding(.horizontal, 4).padding(.vertical, 1)
@@ -315,12 +316,12 @@ private struct DayCell: View {
 
             if let steps = day.steps {
                 Text(steps >= 1_000 ? "\(steps / 1_000)K" : "\(steps)")
-                    .font(.wktLabel)
+                    .font(.wktDense(13, weight: .bold))
                     .foregroundColor(day.goalMet == true ? .earthGreen : .earthMuted)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
             } else {
-                Text("—").font(.wktLabel).foregroundColor(.earthMuted.opacity(0.4))
+                Text("—").font(.wktDense(13, weight: .bold)).foregroundColor(.earthMuted.opacity(0.4))
             }
         }
         .frame(maxWidth: .infinity)
