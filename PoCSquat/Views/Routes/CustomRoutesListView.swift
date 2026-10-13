@@ -298,6 +298,9 @@ struct CustomRouteDetailView: View {
                                     do {
                                         try await CommunityRouteService.shared.publish(route: route)
                                         shareState = .shared
+                                    } catch let tooShort as SharedRouteTrim.TooShortError {
+                                        shareMessage = tooShort.message
+                                        shareState = .failed
                                     } catch {
                                         shareMessage = (error as? CommunityAccessError)?.message
                                         shareState = .failed
@@ -321,7 +324,8 @@ struct CustomRouteDetailView: View {
                                 }
                             }
                             .buttonStyle(BounceButtonStyle(scale: 0.98))
-                            .disabled(shareState != .idle)
+                            .disabled(shareState != .idle || !RouteSharePrivacyNote.canShare(route))
+                            RouteSharePrivacyNote(route: route)
                             if let shareMessage {
                                 Text(shareMessage)
                                     .font(.wktLabel)

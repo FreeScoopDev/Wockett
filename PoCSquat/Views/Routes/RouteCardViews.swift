@@ -205,6 +205,10 @@ struct PostToCommunitySheet: View {
     @State private var didPost = false
     @State private var errorMessage: String? = nil
 
+    /// The route as it would be saved, for the privacy note (its name doesn't matter).
+    private var previewRoute: CustomRoute { route.toCustomRoute(name: "") }
+    private var canShare: Bool { RouteSharePrivacyNote.canShare(previewRoute) }
+
     var body: some View {
         NavigationStack {
             ZStack {
@@ -243,7 +247,10 @@ struct PostToCommunitySheet: View {
                         }
                     }
                     .buttonStyle(BounceButtonStyle(scale: 0.98))
-                    .disabled(isPosting || didPost || routeName.trimmingCharacters(in: .whitespaces).isEmpty)
+                    .disabled(isPosting || didPost || !canShare
+                              || routeName.trimmingCharacters(in: .whitespaces).isEmpty)
+
+                    RouteSharePrivacyNote(route: previewRoute)
 
                     Spacer()
                 }
@@ -294,6 +301,10 @@ struct PostToCommunitySheet: View {
                 dismiss()
             } catch let access as CommunityAccessError {
                 errorMessage = access.message
+                isPosting = false
+            } catch let tooShort as SharedRouteTrim.TooShortError {
+                errorMessage = tooShort.message
+                isPosting = false
             } catch let ckError as CKError {
                 switch ckError.code {
                 case .notAuthenticated:

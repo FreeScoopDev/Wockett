@@ -69,7 +69,8 @@ final class CommunityRouteService {
     static let shared = CommunityRouteService()
 
     private let db         = CKContainer(identifier: WockettCloud.containerID).publicCloudDatabase
-    private let recordType = "SharedRoute"
+    static let recordType = "SharedRoute"
+    private var recordType: String { Self.recordType }
     private let votedKey      = "communityVotedRoutes"
     /// Static: deleting your route clears it (CommunityDeletion).
     static let publishedKey = "wkt_publishedRouteIds"
@@ -130,19 +131,13 @@ final class CommunityRouteService {
 
     // MARK: - Publish
 
+    /// Publishes `route` without its first and last 200 m (`SharedRouteTrim`),
+    /// so the public copy doesn't give away where its walker starts and ends,
+    /// usually home. `route` itself, the copy the user keeps, is not changed.
     func publish(route: CustomRoute) async throws {
         try ContentFilter.validate(name: route.name)
+        let record = try Self.record(for: route)
         try await SuspensionService.shared.ensureCanPost()
-        let waypointData  = try JSONEncoder().encode(route.waypoints)
-        let waypointsJSON = String(data: waypointData, encoding: .utf8) ?? "[]"
-
-        let record = CKRecord(recordType: recordType)
-        record["name"]          = route.name
-        record["waypointsJSON"] = waypointsJSON
-        record["isLoop"]        = route.isLoop ? 1 : 0
-        record["distanceMeters"] = route.totalDistance
-        record["difficultyTag"] = difficultyTag(for: route.totalDistance)
-        record["upvotes"]       = 0
         record["authorName"]    = try await CommunityNameService.shared.claimedName()
 
         let saved = try await db.save(record)
@@ -172,7 +167,29 @@ final class CommunityRouteService {
 
     // MARK: - Helpers
 
-    private func difficultyTag(for distanceMeters: Double) -> String {
+    /// The public record for `route`, before its author is added: the trimmed
+    /// path, the distance of that path, and always open (`isLoop` 0), because a
+    /// viewer's app closes a loop by routing back to its first point, which
+    /// would draw the trimmed ends back in. Throws `SharedRouteTrim.TooShortError`
+    /// for a route under 600 m.
+    static func record(for route: CustomRoute) throws -> CKRecord {
+        guard case .trimmed(let trimmed) = SharedRouteTrim.trim(route.waypoints, isLoop: route.isLoop) else {
+            throw SharedRouteTrim.TooShortError()
+        }
+        let distance = trimmed.publishedDistance(totalDistance: route.totalDistance)
+        let waypointData = try JSONEncoder().encode(trimmed.waypoints)
+
+        let record = CKRecord(recordType: recordType)
+        record["name"]           = route.name
+        record["waypointsJSON"]  = String(data: waypointData, encoding: .utf8) ?? "[]"
+        record["isLoop"]         = 0
+        record["distanceMeters"] = distance
+        record["difficultyTag"]  = difficultyTag(for: distance)
+        record["upvotes"]        = 0
+        return record
+    }
+
+    private static func difficultyTag(for distanceMeters: Double) -> String {
         if distanceMeters < 2000 { return RouteDifficulty.easy.rawValue }
         if distanceMeters < 5000 { return RouteDifficulty.moderate.rawValue }
         return RouteDifficulty.hard.rawValue
