@@ -8,7 +8,7 @@ import Foundation
 // person just ahead, the next badge, your crew's week, the latest community
 // posts, the top community routes by wocketts, and official trails nearby.
 // The decisions it makes about that data live here, as plain functions, so
-// they are tested without CloudKit, HealthKit or a view.
+// they are tested without CloudKit or a view.
 
 enum CommunityHubSummary {
 

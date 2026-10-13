@@ -9,7 +9,7 @@ import MapKit
 // section heading above it (`wktCard`, `WktSection`), so the tab reads as
 // the same app. Before, it was four menu rows and three of them said the same thing
 // whatever was happening. The decisions are in `CommunityHubSummary`, the
-// CloudKit and HealthKit reads in `CommunityHubModel`.
+// CloudKit reads in `CommunityHubModel`.
 
 struct CommunityHubView: View {
     @EnvironmentObject private var tabRouter: TabRouter
