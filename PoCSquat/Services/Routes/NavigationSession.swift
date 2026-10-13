@@ -1134,15 +1134,18 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
 
 // MARK: - Navigation Map
 
-// Annotation dropped on the route at every 1 km milestone during an active walk.
+// Annotation dropped on the route at every whole mile (US) or kilometre
+// during an active walk: the same rule as the spoken cues.
 final class MilestoneAnnotation: NSObject, MKAnnotation {
     var coordinate: CLLocationCoordinate2D
-    let distanceMeters: Double
-    init(coordinate: CLLocationCoordinate2D, distanceMeters: Double) {
+    let units: Int
+    let usesMiles: Bool
+    init(coordinate: CLLocationCoordinate2D, units: Int, usesMiles: Bool) {
         self.coordinate = coordinate
-        self.distanceMeters = distanceMeters
+        self.units = units
+        self.usesMiles = usesMiles
     }
-    var title: String? { String(format: "%.0f km", distanceMeters / 1000) }
+    var title: String? { "\(units) \(usesMiles ? "mi" : "km")" }
 }
 
 struct NavigationMapView: UIViewRepresentable {
@@ -1236,10 +1239,13 @@ struct NavigationMapView: UIViewRepresentable {
             }
         }
 
-        // 1 km milestone markers — placed on the route polyline as the user walks
+        // Whole-mile (US) or whole-km milestone markers, placed on the route
+        // polyline as the user walks.
         if !computedLegs.isEmpty && distanceCoveredMeters > 0 {
-            let milestoneKm = Int(distanceCoveredMeters / 1000)
-            guard milestoneKm > context.coordinator.lastMilestoneKm else { return }
+            let usesMiles = WalkAudioCueService.usesMiles
+            let unitMeters = usesMiles ? WalkAudioCueService.metersPerMile : 1000
+            let milestone = WalkAudioCueService.unitsCovered(meters: distanceCoveredMeters, usesMiles: usesMiles)
+            guard milestone > context.coordinator.lastMilestone else { return }
             var allCoords: [CLLocationCoordinate2D] = []
             for leg in computedLegs {
                 let pts = leg.polyline.points()
@@ -1250,14 +1256,14 @@ struct NavigationMapView: UIViewRepresentable {
             let poly = MKPolyline(coordinates: &combined, count: combined.count)
             let totalLegDist = computedLegs.reduce(0.0) { $0 + $1.distance }
             guard totalLegDist > 0 else { return }
-            for km in (context.coordinator.lastMilestoneKm + 1)...milestoneKm {
-                let targetMeters = Double(km) * 1000
+            for unit in (context.coordinator.lastMilestone + 1)...milestone {
+                let targetMeters = Double(unit) * unitMeters
                 let fraction = min(targetMeters / totalLegDist, 0.99)
                 if let coord = poly.coordinate(atFraction: fraction) {
-                    map.addAnnotation(MilestoneAnnotation(coordinate: coord, distanceMeters: targetMeters))
+                    map.addAnnotation(MilestoneAnnotation(coordinate: coord, units: unit, usesMiles: usesMiles))
                 }
             }
-            context.coordinator.lastMilestoneKm = milestoneKm
+            context.coordinator.lastMilestone = milestone
         }
     }
 
@@ -1301,7 +1307,7 @@ struct NavigationMapView: UIViewRepresentable {
         var hasAddedLegs = false
         var lastWaypointIndex = 0
         var hasAddedCheckpoints = false
-        var lastMilestoneKm = 0
+        var lastMilestone = 0
         var lastHeadingUp = false
         var lastRecenterToken = 0
         var headingDegrees: Double?

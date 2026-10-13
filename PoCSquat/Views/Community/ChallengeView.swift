@@ -217,23 +217,6 @@ struct ChallengesContentView: View {
     }
 }
 
-// MARK: - Challenges View (sheet wrapper — keeps existing callers compiling)
-
-struct ChallengesView: View {
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        NavigationStack {
-            ChallengesContentView()
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button("Done") { dismiss() }.foregroundColor(.earthGreen)
-                    }
-                }
-        }
-    }
-}
-
 // MARK: - Challenge Card
 
 private struct ChallengeCard: View {

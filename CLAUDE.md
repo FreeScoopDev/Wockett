@@ -149,8 +149,11 @@ way unless there's a strong reason; adding the first one is a real decision.
   files had them, because the search missed
   `Label(…, systemImage: cond ? "a" : "b")`: search for both spellings.
 - **Colours and fonts** come from `DesignSystem.swift`, which has dual target
-  membership so the widget can't drift. There are ~164 legacy raw
-  `.font(.system(size:))` sites; fix opportunistically, don't sweep.
+  membership so the widget can't drift. 27 raw `.font(.system(size:))`
+  sites remain in 14 files (2026-10-13, `git grep -c -E
+  '\.font\(\.system\(size:' -- '*.swift'`; the widget has none), mostly
+  emoji glyphs and the calendar views; fix opportunistically, don't sweep.
+  The figure here was "~164" until then.
 - **App-group keys live in `AppGroup.swift`** (repo root, dual target
   membership like `DesignSystem.swift`), and `WidgetSnapshot` is the one
   writer of the widget's numbers. No `"group.com.scoops.wockett"` or

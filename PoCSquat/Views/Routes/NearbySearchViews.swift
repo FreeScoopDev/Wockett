@@ -601,26 +601,3 @@ private struct NearbyPlaceRow: View {
         }
     }
 }
-
-// MARK: - POI Emoji Loader
-
-struct POIEmojiLoader: View {
-    private let emojis = ["🌳", "🏖️", "🏛️", "📚", "☕", "🍽️", "🥐", "💪"]
-    @State private var index   = 0
-    @State private var opacity = 1.0
-
-    var body: some View {
-        Text(emojis[index])
-            .font(.system(size: 18))
-            .opacity(opacity)
-            .task {
-                while !Task.isCancelled {
-                    try? await Task.sleep(for: .milliseconds(650))
-                    withAnimation(.easeInOut(duration: 0.2)) { opacity = 0 }
-                    try? await Task.sleep(for: .milliseconds(220))
-                    index = (index + 1) % emojis.count
-                    withAnimation(.easeInOut(duration: 0.2)) { opacity = 1 }
-                }
-            }
-    }
-}

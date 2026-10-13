@@ -711,24 +711,3 @@ struct GaitMetricDetailContentView: View {
         }
     }
 }
-
-// MARK: - Detail Sheet (thin wrapper — keeps existing sheet callers compiling)
-
-struct GaitMetricDetailSheet: View {
-    let config:    GaitMetricConfig
-    let snapshots: [GaitDaySnapshot]
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        NavigationStack {
-            GaitMetricDetailContentView(config: config, snapshots: snapshots)
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button("Done") { dismiss() }.foregroundColor(.earthGreen)
-                    }
-                }
-        }
-        .presentationDetents([.large])
-        .presentationDragIndicator(.visible)
-    }
-}

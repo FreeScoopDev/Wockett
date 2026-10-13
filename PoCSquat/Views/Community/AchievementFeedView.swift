@@ -107,23 +107,6 @@ struct AchievementFeedContentView: View {
     }
 }
 
-// MARK: - Achievement Feed View (sheet wrapper — keeps existing callers compiling)
-
-struct AchievementFeedView: View {
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        NavigationStack {
-            AchievementFeedContentView()
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button("Done") { dismiss() }.foregroundColor(.earthGreen)
-                    }
-                }
-        }
-    }
-}
-
 // MARK: - Achievement Post Card
 
 private struct AchievementPostCard: View {

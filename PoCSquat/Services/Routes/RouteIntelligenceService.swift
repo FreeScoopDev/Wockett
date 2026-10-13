@@ -377,6 +377,13 @@ struct DifficultyBadge: View {
 struct ElevationProfileChart: View {
     let profile: ElevationProfile
 
+    // Miles in the US, like the spoken cues; elevation stays in metres.
+    private var usesMiles: Bool { WalkAudioCueService.usesMiles }
+
+    private func axisDistance(_ km: Double) -> Double {
+        usesMiles ? km * 1000 / WalkAudioCueService.metersPerMile : km
+    }
+
     private var yDomain: ClosedRange<Double> {
         let pad = max((profile.maxElevationMeters - profile.minElevationMeters) * 0.3, 15)
         return (profile.minElevationMeters - pad)...(profile.maxElevationMeters + pad)
@@ -393,7 +400,7 @@ struct ElevationProfileChart: View {
 
             Chart(profile.points) { pt in
                 AreaMark(
-                    x: .value("Dist", pt.distanceKm),
+                    x: .value("Dist", axisDistance(pt.distanceKm)),
                     y: .value("Elev", pt.elevationMeters)
                 )
                 .foregroundStyle(
@@ -403,7 +410,7 @@ struct ElevationProfileChart: View {
                     )
                 )
                 LineMark(
-                    x: .value("Dist", pt.distanceKm),
+                    x: .value("Dist", axisDistance(pt.distanceKm)),
                     y: .value("Elev", pt.elevationMeters)
                 )
                 .foregroundStyle(Color.earthGreen)
@@ -411,7 +418,7 @@ struct ElevationProfileChart: View {
                 .interpolationMethod(.catmullRom)
             }
             .chartYScale(domain: yDomain)
-            .chartXAxisLabel("km", alignment: .trailing)
+            .chartXAxisLabel(usesMiles ? "mi" : "km", alignment: .trailing)
             .chartYAxisLabel("m", alignment: .top)
             .frame(height: 110)
         }
