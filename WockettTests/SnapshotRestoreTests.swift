@@ -630,9 +630,12 @@ struct SnapshotRestoreTests {
         mgr.writesSnapshots = false
         let writer = FakeWorkoutWriter()
         mgr.workoutWriter = writer
+        var liveActivityEndsWhenFinished: Int?
+        writer.onFinish = { liveActivityEndsWhenFinished = live.ends.count }
         mgr.totalDistanceCovered = 820
         #expect(store.end(.save) != nil)
         await store.endTask?.value
+        #expect(liveActivityEndsWhenFinished == 1, "the Live Activity ends before the workout is finished")
         #expect(writer.finishedDistances == [820], "a saved walk's workout is finished once, with its distance")
         #expect(writer.discards == 0, "a saved walk's workout is not thrown away")
         #expect(live.ends.count == 1, "the Live Activity ends once")
@@ -691,10 +694,12 @@ private final class FakeLiveActivity: WalkLiveActivityEnding {
 private final class FakeWorkoutWriter: WalkWorkoutRecording {
     private(set) var discards = 0
     private(set) var finishedDistances: [Double] = []
+    var onFinish: (() -> Void)?
     func addLocations(_ locations: [CLLocation]) {}
     func discard() { discards += 1 }
     func finish(totalDistanceMeters: Double, endDate: Date) async -> HKWorkout? {
         finishedDistances.append(totalDistanceMeters)
+        onFinish?()
         return nil
     }
 }
