@@ -15,7 +15,7 @@ struct ChallengeShareMessageTests {
     /// the app's own settings or iCloud.
     private let moderation = CommunityModerationStore(
         defaults: UserDefaults(suiteName: "ChallengeShareMessageTests") ?? .standard,
-        myAccount: { "_me" })
+        myAccount: { "_me" }, notifications: NotificationCenter())
 
     private func makeChallenge(
         recordName: String = "6F1C2B9E-0D3A-4E57-9B1A-2C7D8E9F0A1B",

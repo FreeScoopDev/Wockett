@@ -102,7 +102,7 @@ struct CommunityReportTests {
         let name = "CommunityReportTests-\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: name) ?? .standard
         defaults.removePersistentDomain(forName: name)
-        return CommunityModerationStore(defaults: defaults)
+        return CommunityModerationStore(defaults: defaults, notifications: NotificationCenter())
     }
 
     private func freshReport() -> CommunityReport {
@@ -151,7 +151,7 @@ struct CommunityReportTests {
         let name = "CommunityReportTests-own-\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: name) ?? .standard
         defaults.removePersistentDomain(forName: name)
-        let store = CommunityModerationStore(defaults: defaults, myAccount: { "_me" })
+        let store = CommunityModerationStore(defaults: defaults, myAccount: { "_me" }, notifications: NotificationCenter())
         #expect(!store.canReport(CommunityAuthor(name: "Me", account: CKCurrentUserDefaultName)))
         #expect(!store.canReport(CommunityAuthor(name: "Me", account: "_me")))
         #expect(store.canReport(CommunityAuthor(name: "Me", account: "_someoneElse")), "a namesake is still reportable")

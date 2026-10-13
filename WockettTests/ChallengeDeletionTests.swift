@@ -16,7 +16,7 @@ struct ChallengeDeletionTests {
     }
 
     private func store(_ d: UserDefaults) -> CommunityModerationStore {
-        CommunityModerationStore(defaults: d, myAccount: { "_me" })
+        CommunityModerationStore(defaults: d, myAccount: { "_me" }, notifications: NotificationCenter())
     }
 
     private func challenge(_ name: String = "c1") throws -> WalkChallenge {

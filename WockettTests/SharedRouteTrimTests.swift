@@ -300,7 +300,7 @@ struct SharedRouteTrimTests {
     func storeNeverMakesALocalOffset() async {
         let backend = FakeBackend()
         backend.fetchError = CKError(.networkUnavailable)
-        let store = SharePrivacyOffsetStore(backend: backend)
+        let store = SharePrivacyOffsetStore(backend: backend, notifications: NotificationCenter())
         await #expect(throws: CKError.self) { try await store.current() }
         #expect(await store.currentIfAvailable() == nil)
         #expect(backend.created.isEmpty)
@@ -310,7 +310,7 @@ struct SharedRouteTrimTests {
     func storeUsesTheStoredOffset() async throws {
         let backend = FakeBackend()
         backend.stored = testOffset
-        let store = SharePrivacyOffsetStore(backend: backend)
+        let store = SharePrivacyOffsetStore(backend: backend, notifications: NotificationCenter())
         #expect(try await store.current() == testOffset)
         #expect(try await store.current() == testOffset)
         #expect(backend.fetches == 1)
@@ -320,7 +320,7 @@ struct SharedRouteTrimTests {
         let empty = FakeBackend()
         let other = SharePrivacyOffset(east: -70, north: 70, extra: 10)
         empty.storedElsewhere = other
-        let fresh = SharePrivacyOffsetStore(backend: empty)
+        let fresh = SharePrivacyOffsetStore(backend: empty, notifications: NotificationCenter())
         #expect(try await fresh.current() == other)
         #expect(empty.created.count == 1 && empty.created[0].isValid)
     }
@@ -329,9 +329,10 @@ struct SharedRouteTrimTests {
     func storeForgetsOnAccountChange() async throws {
         let backend = FakeBackend()
         backend.stored = testOffset
-        let store = SharePrivacyOffsetStore(backend: backend)
+        let center = NotificationCenter()
+        let store = SharePrivacyOffsetStore(backend: backend, notifications: center)
         _ = try await store.current()
-        NotificationCenter.default.post(name: .CKAccountChanged, object: nil)
+        center.post(name: .CKAccountChanged, object: nil)
         let other = SharePrivacyOffset(east: -70, north: 70, extra: 10)
         backend.stored = other
         #expect(try await store.current() == other)

@@ -90,7 +90,7 @@ struct ChallengeLinkTests {
     private func moderation() -> CommunityModerationStore {
         let suite = "ChallengeLinkTests.\(UUID().uuidString)"
         return CommunityModerationStore(defaults: UserDefaults(suiteName: suite) ?? .standard,
-                                        myAccount: { "_me" })
+                                        myAccount: { "_me" }, notifications: NotificationCenter())
     }
 
     private let now = Date(timeIntervalSince1970: 1_791_806_400) // 2026-10-12 12:00 UTC

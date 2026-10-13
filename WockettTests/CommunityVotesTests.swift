@@ -128,7 +128,7 @@ struct CommunityVotesTests {
         let store = FakeStore()
         store.userError = CKError(.notAuthenticated)
         store.stored = [vote("r1", by: "_x"), vote("r1", by: "_y")]
-        let t = await CommunityVoteService(store: store).tally(for: ["r1"])
+        let t = await CommunityVoteService(store: store, notifications: NotificationCenter()).tally(for: ["r1"])
         #expect(t.counts == ["r1": 2])
         #expect(t.mine.isEmpty)
         #expect(CommunityVotes.tally([vote("r1", by: "_x")], me: nil).mine.isEmpty)
@@ -146,7 +146,7 @@ struct CommunityVotesTests {
     @Test("Voting saves one record named for the item and this user")
     func voteSaves() async throws {
         let store = FakeStore()
-        let service = CommunityVoteService(store: store)
+        let service = CommunityVoteService(store: store, notifications: NotificationCenter())
         try await service.vote(for: "route-1", type: .route)
         try await service.vote(for: "post-2", type: .post)
         #expect(store.saved.map(\.recordName) == ["vote.route-1._me", "vote.post-2._me"])
@@ -159,7 +159,7 @@ struct CommunityVotesTests {
     func voteTwice() async throws {
         let store = FakeStore()
         store.saveError = CKError(.serverRecordChanged)
-        try await CommunityVoteService(store: store).vote(for: "route-1", type: .route)
+        try await CommunityVoteService(store: store, notifications: NotificationCenter()).vote(for: "route-1", type: .route)
     }
 
     @Test("Any other save failure is reported")
@@ -167,7 +167,7 @@ struct CommunityVotesTests {
         let store = FakeStore()
         store.saveError = CKError(.networkUnavailable)
         await #expect(throws: CKError.self) {
-            try await CommunityVoteService(store: store).vote(for: "route-1", type: .route)
+            try await CommunityVoteService(store: store, notifications: NotificationCenter()).vote(for: "route-1", type: .route)
         }
     }
 
@@ -175,7 +175,7 @@ struct CommunityVotesTests {
     func serviceTally() async {
         let store = FakeStore()
         store.stored = [vote("r1", by: "_me"), vote("r1", by: "_x"), vote("r2", by: "_x")]
-        let t = await CommunityVoteService(store: store).tally(for: ["r1", "r2", "r3"])
+        let t = await CommunityVoteService(store: store, notifications: NotificationCenter()).tally(for: ["r1", "r2", "r3"])
         #expect(t.counts == ["r1": 2, "r2": 1])
         #expect(t.mine == ["r1"])
     }
@@ -185,7 +185,7 @@ struct CommunityVotesTests {
         let store = FakeStore()
         store.stored = [vote("r1", by: "_x")]
         store.readError = CKError(.unknownItem)    // Production before the vote type is deployed
-        let t = await CommunityVoteService(store: store).tally(for: ["r1"])
+        let t = await CommunityVoteService(store: store, notifications: NotificationCenter()).tally(for: ["r1"])
         #expect(t == VoteTally())
     }
 
@@ -218,7 +218,7 @@ struct CommunityVotesTests {
         }
         let store = StubbornStore()
         let deadline = ManualDeadline()
-        let service = CommunityVoteService(store: store, sleep: deadline.sleep)
+        let service = CommunityVoteService(store: store, sleep: deadline.sleep, notifications: NotificationCenter())
         var tally: VoteTally?
         let counting = Task { tally = await service.tally(for: ["r"]) }
         #expect(await turns { store.answer != nil && deadline.started }, "the query and the deadline both began")
@@ -411,7 +411,7 @@ struct CommunityVotesTests {
     func catchUpSendsOnce() async {
         let store = FakeStore()
         let defaults = throwawayDefaults()
-        let service = CommunityVoteService(store: store)
+        let service = CommunityVoteService(store: store, notifications: NotificationCenter())
         await UnsentVoteCatchUp.runIfNeeded(service: service, likes: ["post-x"], wocketts: ["route-y"], defaults: defaults)
         #expect(store.saved.map(\.recordName) == ["vote.post-x._me", "vote.route-y._me"])
         #expect(store.saved.map(\.type) == [.post, .route])
@@ -424,10 +424,10 @@ struct CommunityVotesTests {
         let store = FakeStore()
         store.userError = CKError(.notAuthenticated)
         let defaults = throwawayDefaults()
-        await UnsentVoteCatchUp.runIfNeeded(service: CommunityVoteService(store: store), likes: ["post-x"], wocketts: [], defaults: defaults)
+        await UnsentVoteCatchUp.runIfNeeded(service: CommunityVoteService(store: store, notifications: NotificationCenter()), likes: ["post-x"], wocketts: [], defaults: defaults)
         #expect(store.saved.isEmpty)
         store.userError = nil
-        await UnsentVoteCatchUp.runIfNeeded(service: CommunityVoteService(store: store), likes: ["post-x"], wocketts: [], defaults: defaults)
+        await UnsentVoteCatchUp.runIfNeeded(service: CommunityVoteService(store: store, notifications: NotificationCenter()), likes: ["post-x"], wocketts: [], defaults: defaults)
         #expect(store.saved.map(\.recordName) == ["vote.post-x._me"])
     }
 

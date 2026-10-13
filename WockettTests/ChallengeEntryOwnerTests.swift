@@ -9,7 +9,7 @@ struct ChallengeEntryOwnerTests {
 
     private func moderation(me: String?) -> CommunityModerationStore {
         let suite = "ChallengeEntryOwnerTests.\(UUID().uuidString)"
-        return CommunityModerationStore(defaults: UserDefaults(suiteName: suite) ?? .standard, myAccount: { me })
+        return CommunityModerationStore(defaults: UserDefaults(suiteName: suite) ?? .standard, myAccount: { me }, notifications: NotificationCenter())
     }
 
     private func entry(name: String = "entry-1", deviceID: String, creator: String) throws -> ChallengeParticipant {

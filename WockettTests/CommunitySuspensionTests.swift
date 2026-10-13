@@ -18,7 +18,7 @@ struct CommunitySuspensionTests {
         let name = "CommunitySuspensionTests-\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: name) ?? .standard
         defaults.removePersistentDomain(forName: name)
-        return CommunityModerationStore(defaults: defaults, myAccount: { me })
+        return CommunityModerationStore(defaults: defaults, myAccount: { me }, notifications: NotificationCenter())
     }
 
     /// CloudKit without a network.
@@ -132,14 +132,14 @@ struct CommunitySuspensionTests {
         let name = "CommunitySuspensionTests-p-\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: name) ?? .standard
         defaults.removePersistentDomain(forName: name)
-        let first = CommunityModerationStore(defaults: defaults, myAccount: { nil })
+        let first = CommunityModerationStore(defaults: defaults, myAccount: { nil }, notifications: NotificationCenter())
         let before = first.revision
         first.setSuspensions([Suspension(account: "_bad", until: nil)])
         #expect(first.revision > before, "a new list redraws the hub")
         let revision = first.revision
         first.setSuspensions([Suspension(account: "_bad", until: nil)])
         #expect(first.revision == revision, "same list: no redraw")
-        let relaunched = CommunityModerationStore(defaults: defaults, myAccount: { nil })
+        let relaunched = CommunityModerationStore(defaults: defaults, myAccount: { nil }, notifications: NotificationCenter())
         #expect(relaunched.suspensions == [Suspension(account: "_bad", until: nil)], "offline after a relaunch still hides")
     }
 
@@ -243,7 +243,7 @@ struct CommunitySuspensionTests {
         let name = "CommunitySuspensionTests-u-\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: name) ?? .standard
         defaults.removePersistentDomain(forName: name)
-        let moderation = CommunityModerationStore(defaults: defaults, myAccount: { known })
+        let moderation = CommunityModerationStore(defaults: defaults, myAccount: { known }, notifications: NotificationCenter())
         let s = SuspensionService(store: fake, moderation: moderation, now: { now }, sleep: Self.neverFires,
                                   refreshAccount: { known = "_me" })
         await #expect(throws: CommunityAccessError.suspended(until: nil)) { try await s.ensureCanPost() }
@@ -310,7 +310,7 @@ struct CommunitySuspensionTests {
     @Test("A suspended account's Wockett isn't saved, and says why")
     func votesRefused() async {
         let votes = FakeVotes()
-        let service = CommunityVoteService(store: votes, canVote: { throw CommunityAccessError.suspended(until: nil) })
+        let service = CommunityVoteService(store: votes, notifications: NotificationCenter(), canVote: { throw CommunityAccessError.suspended(until: nil) })
         await #expect(throws: CommunityAccessError.self) { try await service.vote(for: "r1", type: .route) }
         #expect(votes.saved == 0)
         #expect(CommunityVotes.failureMessage(CommunityAccessError.suspended(until: nil), noun: "Wockett")
