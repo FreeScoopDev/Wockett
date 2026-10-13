@@ -28,6 +28,15 @@ final class SharePrivacyOffsetStore {
 
     init(backend: SharePrivacyOffsetBackend) {
         self.backend = backend
+        // Another iCloud account has another offset: never carry this one over.
+        NotificationCenter.default.addObserver(forName: .CKAccountChanged, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.forget() }
+        }
+    }
+
+    /// Drops the cached offset, so the next `current()` asks iCloud again.
+    func forget() {
+        cached = nil
     }
 
     func current() async throws -> SharePrivacyOffset {

@@ -12,6 +12,8 @@ struct RouteSharePrivacyNote: View {
     /// The path or the privacy offset is still loading: say so rather than
     /// why the route can't be shared.
     var isPreparing = false
+    /// Asks iCloud for the privacy offset again, after it couldn't be fetched.
+    var onRetry: (() -> Void)?
 
     var body: some View {
         let tint: Color = Self.canShare(outcome) || isPreparing ? .earthMuted : .earthOrange
@@ -48,6 +50,10 @@ struct RouteSharePrivacyNote: View {
             }
             .accessibilityElement(children: .combine)
             .accessibilityIdentifier("routes.sharePrivacyNote")
+
+            if !isPreparing, outcome == .offsetUnavailable, let onRetry {
+                WktPillButton(title: "Try again", action: onRetry)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .wktCard()

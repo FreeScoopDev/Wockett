@@ -95,6 +95,9 @@ enum SharedRouteTrim {
     /// directions and recordings are tens of metres or less.
     static let minimumPathPoints = 10
     static let maxMedianSpacingMeters: Double = 100
+    /// The most points one shared route carries: about 120 km at 10 m, and
+    /// well under CloudKit's 1 MB record limit as JSON (about 63 bytes each).
+    static let maxPublishedPoints = 12_000
 
     struct Trimmed: Equatable {
         /// The points to publish: every `spacingMeters` along the kept stretch.
@@ -119,6 +122,8 @@ enum SharedRouteTrim {
         case notAPath
         /// The user's `SharePrivacyOffset` isn't available yet.
         case offsetUnavailable
+        /// More than `maxPublishedPoints`: too big for one record.
+        case tooLong
     }
 
     /// Thrown by `CommunityRouteService.publish` for a route that can't be trimmed.
@@ -140,6 +145,9 @@ enum SharedRouteTrim {
         case .notAPath:
             return "Wockett couldn't load the path this route follows, which it needs to share it. "
                 + "Check your connection, then open the route again."
+        case .tooLong:
+            return "This route is too long to share. Wockett can share routes up to "
+                + "\(formatted(Double(maxPublishedPoints) * spacingMeters)) long."
         case .offsetUnavailable:
             return "Sharing needs iCloud to set up your privacy area, so it's the same on all your devices. "
                 + "Check you're signed in to iCloud and online, then try again."
@@ -150,7 +158,9 @@ enum SharedRouteTrim {
     /// the `trim`med one.
     static func prepare(_ waypoints: [WaypointCoord], isLoop: Bool, hideEnds: Bool,
                         offset: SharePrivacyOffset?) -> Outcome {
-        hideEnds ? trim(waypoints, isLoop: isLoop, offset: offset) : whole(waypoints, isLoop: isLoop)
+        let outcome = hideEnds ? trim(waypoints, isLoop: isLoop, offset: offset) : whole(waypoints, isLoop: isLoop)
+        if case .trimmed(let t) = outcome, t.waypoints.count > maxPublishedPoints { return .tooLong }
+        return outcome
     }
 
     static func prepare(_ route: CustomRoute, hideEnds: Bool, offset: SharePrivacyOffset?) -> Outcome {

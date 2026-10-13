@@ -10,7 +10,8 @@
   made once for you and kept in your own iCloud, so it is the same on all
   your devices; without it, a few loops from the same door would point
   straight at it. If iCloud can't be reached, a hidden share waits rather
-  than making a different offset on this phone. A route that would have
+  than making a different offset on this phone, with a Try again button.
+  A route that would have
   less than 400 m (or a quarter of it) left can't be shared hidden, and a
   hidden loop is published as an open route so no app draws the missing
   ends back in. This hides the door, not the neighbourhood.
@@ -22,7 +23,8 @@
   where it was planned. Other phones follow it as a recorded line. The
   published distance is the length of what is published; a saved
   multi-lap suggestion used to publish every lap's distance for one lap.
-  In My Routes the button waits until the route's directions have loaded,
+  A route too long for one shared record (over about 120 km) is refused
+  with a message instead of failing to save. In My Routes the button waits until the route's directions have loaded,
   and says so if they couldn't be.
 
 ### Fixed

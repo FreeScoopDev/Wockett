@@ -92,6 +92,31 @@ struct SharedRouteTrimTests {
         #expect(SharedRouteTrim.homeWarning.contains("where you live"))
     }
 
+    @Test("With Hide start and finish off, a short route is shared, not refused")
+    func toggleOffSharesShortRoutes() throws {
+        let short = line(30)                      // about 320 m
+        guard case .trimmed(let t) = SharedRouteTrim.prepare(short, isLoop: false, hideEnds: false, offset: nil) else {
+            Issue.record("a short route should be shared whole"); return
+        }
+        #expect(!t.hidesEnds)
+        #expect(abs(t.keptMeters - 321.6) < 1)
+        // The same route with hiding on is too short.
+        guard case .tooShort = SharedRouteTrim.prepare(short, isLoop: false, hideEnds: true, offset: testOffset) else {
+            Issue.record("expected tooShort with hiding on"); return
+        }
+    }
+
+    @Test("A route too long for one record is refused before anything is written")
+    func tooLongRefused() {
+        let long = line(11_000, step: 0.0002)    // about 244 km at 22 m
+        #expect(SharedRouteTrim.prepare(long, isLoop: false, hideEnds: false, offset: nil) == .tooLong)
+        let route = CustomRoute(id: UUID(), name: "Coast", waypoints: long, totalDistance: 244_000,
+                                isLoop: false, createdAt: Date())
+        #expect(throws: SharedRouteTrim.CannotShareError(outcome: .tooLong)) {
+            try CommunityRouteService.record(for: route, hideEnds: false, offset: nil)
+        }
+    }
+
     @Test("With Hide start and finish off, a planned route's corners are still refused")
     func toggleOffStillNeedsAPath() {
         let square = [offset(east: 0, north: 0), offset(east: 0, north: 400),
@@ -298,6 +323,19 @@ struct SharedRouteTrimTests {
         let fresh = SharePrivacyOffsetStore(backend: empty)
         #expect(try await fresh.current() == other)
         #expect(empty.created.count == 1 && empty.created[0].isValid)
+    }
+
+    @Test("Signing in to another iCloud account drops the cached offset")
+    func storeForgetsOnAccountChange() async throws {
+        let backend = FakeBackend()
+        backend.stored = testOffset
+        let store = SharePrivacyOffsetStore(backend: backend)
+        _ = try await store.current()
+        NotificationCenter.default.post(name: .CKAccountChanged, object: nil)
+        let other = SharePrivacyOffset(east: -70, north: 70, extra: 10)
+        backend.stored = other
+        #expect(try await store.current() == other)
+        #expect(backend.fetches == 2)
     }
 
     @Test("The private record reads back only a valid offset")

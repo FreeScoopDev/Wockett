@@ -140,6 +140,7 @@ struct CustomRouteDetailView: View {
     /// Hide start and finish is on; nil until iCloud answers.
     @State private var shareOffset: SharePrivacyOffset?
     @State private var shareOffsetChecked = false
+    @State private var shareOffsetAttempt = 0
     @State private var showActiveSessionAlert  = false
     @State private var showRename              = false
     @State private var renameText              = ""
@@ -340,7 +341,8 @@ struct CustomRouteDetailView: View {
                             .buttonStyle(BounceButtonStyle(scale: 0.98))
                             .disabled(shareState != .idle || !(shareTrim.map(RouteSharePrivacyNote.canShare) ?? false))
                             RouteSharePrivacyNote(outcome: shareTrim ?? .notAPath, hideEnds: $hideShareEnds,
-                                                  isPreparing: sharePreparing)
+                                                  isPreparing: sharePreparing,
+                                                  onRetry: { shareOffsetAttempt += 1 })
                             if let shareMessage {
                                 Text(shareMessage)
                                     .font(.wktLabel)
@@ -352,7 +354,7 @@ struct CustomRouteDetailView: View {
                 }
             }
         }
-        .task(id: hideShareEnds) {
+        .task(id: "\(hideShareEnds)-\(shareOffsetAttempt)") {
             guard hideShareEnds, shareOffset == nil else { return }
             shareOffsetChecked = false
             shareOffset = await SharePrivacyOffsetStore.shared.currentIfAvailable()

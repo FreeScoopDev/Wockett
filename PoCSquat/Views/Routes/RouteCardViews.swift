@@ -213,6 +213,7 @@ struct PostToCommunitySheet: View {
     /// The user's privacy offset, fetched only once Hide start and finish is on.
     @State private var shareOffset: SharePrivacyOffset?
     @State private var shareOffsetChecked = false
+    @State private var shareOffsetAttempt = 0
 
     var body: some View {
         // Worked out once per render, so the note and the button agree.
@@ -259,7 +260,8 @@ struct PostToCommunitySheet: View {
                     .disabled(isPosting || didPost || !canShare
                               || routeName.trimmingCharacters(in: .whitespaces).isEmpty)
 
-                    RouteSharePrivacyNote(outcome: outcome ?? .notAPath, hideEnds: $hideEnds, isPreparing: isPreparing)
+                    RouteSharePrivacyNote(outcome: outcome ?? .notAPath, hideEnds: $hideEnds,
+                                          isPreparing: isPreparing, onRetry: { shareOffsetAttempt += 1 })
 
                     Spacer()
                 }
@@ -286,7 +288,7 @@ struct PostToCommunitySheet: View {
             routeName = route.label ?? "\(route.directionName) \(route.isLoop ? "Loop" : "Route")"
             if shareRoute == nil { shareRoute = route.shareableRoute(name: "") }
         }
-        .task(id: hideEnds) {
+        .task(id: "\(hideEnds)-\(shareOffsetAttempt)") {
             guard hideEnds, shareOffset == nil else { return }
             shareOffsetChecked = false
             shareOffset = await SharePrivacyOffsetStore.shared.currentIfAvailable()
