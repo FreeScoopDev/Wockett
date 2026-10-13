@@ -131,7 +131,7 @@ final class CommunityRouteService {
 
     // MARK: - Publish
 
-    /// Publishes `route` without its first and last 200 m (`SharedRouteTrim`),
+    /// Publishes `route` without at least its first and last 200 m (`SharedRouteTrim`),
     /// so the public copy doesn't give away where its walker starts and ends,
     /// usually home. `route` itself, the copy the user keeps, is not changed.
     func publish(route: CustomRoute) async throws {
@@ -170,12 +170,11 @@ final class CommunityRouteService {
     /// The public record for `route`, before its author is added: the trimmed
     /// path, the distance of that path, and always open (`isLoop` 0), because a
     /// viewer's app closes a loop by routing back to its first point, which
-    /// would draw the trimmed ends back in. Throws `SharedRouteTrim.TooShortError`
-    /// for a route under 600 m.
+    /// would draw the trimmed ends back in. Throws `SharedRouteTrim.CannotShareError`
+    /// for a route that can't be trimmed.
     static func record(for route: CustomRoute) throws -> CKRecord {
-        guard case .trimmed(let trimmed) = SharedRouteTrim.trim(route.waypoints, isLoop: route.isLoop) else {
-            throw SharedRouteTrim.TooShortError()
-        }
+        let outcome = SharedRouteTrim.trim(route)
+        guard case .trimmed(let trimmed) = outcome else { throw SharedRouteTrim.CannotShareError(outcome: outcome) }
         let distance = trimmed.publishedDistance(totalDistance: route.totalDistance)
         let waypointData = try JSONEncoder().encode(trimmed.waypoints)
 

@@ -205,9 +205,20 @@ struct PostToCommunitySheet: View {
     @State private var didPost = false
     @State private var errorMessage: String? = nil
 
-    /// The route as it would be saved, for the privacy note (its name doesn't matter).
-    private var previewRoute: CustomRoute { route.toCustomRoute(name: "") }
-    private var canShare: Bool { RouteSharePrivacyNote.canShare(previewRoute) }
+    /// What a share publishes, made once so the note and the post agree (its
+    /// id fixes the trim); the name is filled in when posting.
+    @State private var shareRoute: CustomRoute
+    @State private var trim: SharedRouteTrim.Outcome
+    private var canShare: Bool { RouteSharePrivacyNote.canShare(trim) }
+
+    init(route: SuggestedRoute, routeStore: CustomRouteStore, onSaved: @escaping () -> Void) {
+        self.route = route
+        self.routeStore = routeStore
+        self.onSaved = onSaved
+        let shareRoute = route.shareableRoute(name: "")
+        _shareRoute = State(initialValue: shareRoute)
+        _trim = State(initialValue: SharedRouteTrim.trim(shareRoute))
+    }
 
     var body: some View {
         NavigationStack {
@@ -250,7 +261,7 @@ struct PostToCommunitySheet: View {
                     .disabled(isPosting || didPost || !canShare
                               || routeName.trimmingCharacters(in: .whitespaces).isEmpty)
 
-                    RouteSharePrivacyNote(route: previewRoute)
+                    RouteSharePrivacyNote(outcome: trim, totalDistance: shareRoute.totalDistance)
 
                     Spacer()
                 }
@@ -284,6 +295,8 @@ struct PostToCommunitySheet: View {
         isPosting = true
         errorMessage = nil
         let customRoute = route.toCustomRoute(name: name)
+        var published = shareRoute
+        published.name = name
         Task {
             let container = CKContainer(identifier: "iCloud.Scoops.PoCSquat")
             let status = try? await container.accountStatus()
@@ -293,7 +306,7 @@ struct PostToCommunitySheet: View {
                 return
             }
             do {
-                try await CommunityRouteService.shared.publish(route: customRoute)
+                try await CommunityRouteService.shared.publish(route: published)
                 routeStore.save(customRoute)
                 onSaved()
                 didPost = true
@@ -302,8 +315,8 @@ struct PostToCommunitySheet: View {
             } catch let access as CommunityAccessError {
                 errorMessage = access.message
                 isPosting = false
-            } catch let tooShort as SharedRouteTrim.TooShortError {
-                errorMessage = tooShort.message
+            } catch let cannot as SharedRouteTrim.CannotShareError {
+                errorMessage = cannot.message
                 isPosting = false
             } catch let ckError as CKError {
                 switch ckError.code {

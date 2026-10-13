@@ -2,14 +2,17 @@ import SwiftUI
 
 /// The line under both Share Route buttons: what a share makes public and what
 /// it leaves off (`SharedRouteTrim`). One view, so the route card's sheet and
-/// My Routes say the same thing.
+/// My Routes say the same thing. Takes the trim's outcome, worked out once by
+/// the screen, so a long recorded walk isn't trimmed again for every part.
 struct RouteSharePrivacyNote: View {
-    let route: CustomRoute
+    let outcome: SharedRouteTrim.Outcome
+    let totalDistance: Double
 
     var body: some View {
+        let tint: Color = Self.canShare(outcome) ? .earthMuted : .earthOrange
         HStack(alignment: .firstTextBaseline, spacing: 6) {
             Image(wkt: .lock).wktIcon(.inline, tint: tint)
-            Text(Self.text(for: route))
+            Text(Self.text(for: outcome, totalDistance: totalDistance))
                 .font(.wktLabel)
                 .foregroundColor(tint)
                 .fixedSize(horizontal: false, vertical: true)
@@ -19,21 +22,15 @@ struct RouteSharePrivacyNote: View {
         .accessibilityIdentifier("routes.sharePrivacyNote")
     }
 
-    private var tint: Color { Self.canShare(route) ? .earthMuted : .earthOrange }
-
-    static func canShare(_ route: CustomRoute) -> Bool {
-        if case .trimmed = SharedRouteTrim.trim(route.waypoints, isLoop: route.isLoop) { return true }
+    static func canShare(_ outcome: SharedRouteTrim.Outcome) -> Bool {
+        if case .trimmed = outcome { return true }
         return false
     }
 
-    static func text(for route: CustomRoute) -> String {
-        switch SharedRouteTrim.trim(route.waypoints, isLoop: route.isLoop) {
-        case .trimmed(let trimmed):
-            let shared = SharedRouteTrim.formatted(trimmed.publishedDistance(totalDistance: route.totalDistance))
-            return "Shared routes are public. The first and last \(SharedRouteTrim.formatted(SharedRouteTrim.trimMeters))"
-                + " are left off, so this one shares as \(shared)."
-        case .tooShort:
-            return SharedRouteTrim.TooShortError().message
-        }
+    static func text(for outcome: SharedRouteTrim.Outcome, totalDistance: Double) -> String {
+        guard case .trimmed(let trimmed) = outcome else { return SharedRouteTrim.message(for: outcome) ?? "" }
+        let shared = SharedRouteTrim.formatted(trimmed.publishedDistance(totalDistance: totalDistance))
+        return "Shared routes are public. At least the first and last "
+            + "\(SharedRouteTrim.formatted(SharedRouteTrim.trimMeters)) are left off, so this one shares as \(shared)."
     }
 }
