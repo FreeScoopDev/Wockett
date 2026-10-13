@@ -275,7 +275,7 @@ final class BundledTrailSource: TrailDataSource {
                 name: col(1) ?? "",
                 attribution: col(2) ?? "",
                 license: col(3) ?? "",
-                url: col(4).flatMap(URL.init(string:)),
+                url: RemoteLink.web(col(4)),
                 requiresAttribution: sqlite3_column_int(stmt, 5) != 0
             ))
         }
