@@ -66,11 +66,16 @@ struct ProEntitlementStoreTests {
     /// plus the refresh Task had to finish inside 250 ms of wall-clock time,
     /// and on a loaded Xcode Cloud runner it sometimes didn't (PR #53, three
     /// failures in a PR that never touched Purchases).
+    ///
+    /// The limit only tells a hang from a slow machine, so it is five minutes.
+    /// 5 s failed on a loaded GitHub runner (2026-09-28), and so did 30 s
+    /// (main push run 38317631251, 2026-10-12): `ledgerCrossingThresholdIsNoticed`
+    /// failed after 41 s in a run where tests that wait for nothing, such as
+    /// `shippedConstants`, took 49 s, because the time counts every other
+    /// main-actor test queued ahead. A correct build returns as soon as the
+    /// condition holds; only a broken one waits the full five minutes.
     @discardableResult
-    /// 30 s, not 5: a GitHub-hosted macOS runner under load took longer than
-    /// 5 s to deliver the debounced refresh (2026-09-28), and a longer wait
-    /// only costs time when the condition never holds.
-    private func eventually(timeout: Duration = .seconds(30),
+    private func eventually(timeout: Duration = .seconds(300),
                             _ condition: () -> Bool) async -> Bool {
         let deadline = ContinuousClock.now + timeout
         while !condition() {
