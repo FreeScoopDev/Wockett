@@ -539,13 +539,16 @@ enum PRType: Identifiable {
         }
     }
 
-    var valueText: String {
+    var valueText: String { valueText(locale: .current) }
+
+    /// Pace follows the locale's units like every other pace in the app
+    /// (min/mi in the US); it used to be fixed per-km.
+    func valueText(locale: Locale) -> String {
         switch self {
         case .longestWalk(let d):
             return MKDistanceFormatter.abbreviated.string(fromDistance: d)
         case .fastestPace(let s):
-            let mins = Int(s) / 60; let secs = Int(s) % 60
-            return String(format: "%d'%02d\"/km", mins, secs)
+            return challengeFormattedPace(s, locale: locale)
         }
     }
 }

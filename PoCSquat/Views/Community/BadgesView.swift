@@ -317,23 +317,6 @@ struct BadgesContentView: View {
     }
 }
 
-// MARK: - Badges View (sheet wrapper — keeps existing callers compiling)
-
-struct BadgesView: View {
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        NavigationStack {
-            BadgesContentView()
-                .toolbar {
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button("Done") { dismiss() }.foregroundColor(.earthGreen)
-                    }
-                }
-        }
-    }
-}
-
 // MARK: - Personal Record model
 
 private struct PersonalRecord {

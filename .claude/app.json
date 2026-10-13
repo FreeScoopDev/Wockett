@@ -25,6 +25,7 @@
     "Session lifecycle: anything touching an active session survives backgrounding, force-quit, and the Live Activity / mini-tile end paths. HealthKit workouts and Live Activities end on every exit path.",
     "Notifications go through NotificationService, and any delivery guard accepts .provisional.",
     "UI-test accessibility identifiers listed in CLAUDE.md keep working; tab bar buttons are addressed by title.",
-    "No NSLocationAlwaysAndWhenInUseUsageDescription unless code calls requestAlwaysAuthorization (Always was rejected 2026-09-09)."
+    "No NSLocationAlwaysAndWhenInUseUsageDescription unless code calls requestAlwaysAuthorization (Always was rejected 2026-09-09).",
+    "No Restore Purchases button or AppStore.sync for consumable tips; restore only for non-consumables (Wockett 1.14 was rejected under 3.1.1)."
   ]
 }

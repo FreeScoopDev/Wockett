@@ -32,12 +32,13 @@ final class StationaryWalkManager: ObservableObject {
             : String(format: "%d:%02d", m, s)
     }
 
-    var paceText: String {
+    var paceText: String { paceText(locale: .current) }
+
+    /// min/mi in the US, min/km elsewhere: the same formatter as other paces.
+    func paceText(locale: Locale) -> String {
         guard elapsedSeconds > 10, steps > 50 else { return "—" }
         let secsPerKm = Double(elapsedSeconds) / (estimatedDistanceMeters / 1000)
-        let mins = Int(secsPerKm) / 60
-        let secs = Int(secsPerKm) % 60
-        return String(format: "%d'%02d\"/km", mins, secs)
+        return challengeFormattedPace(secsPerKm, locale: locale)
     }
 
     var cadenceText: String {

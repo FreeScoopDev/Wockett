@@ -1,6 +1,5 @@
 import SwiftUI
 import SwiftData
-import TipKit
 import BackgroundTasks
 import UserNotifications
 
@@ -30,7 +29,6 @@ struct SquatCounterApp: App {
     init() {
         BackgroundTaskManager.shared.registerTasks()
         UNUserNotificationCenter.current().delegate = AppNotificationDelegate.shared
-        try? Tips.configure([.displayFrequency(.weekly), .datastoreLocation(.applicationDefault)])
         // Construct all shared stores before @StateObject wraps them — same pattern as PetStore.
         _petStore     = StateObject(wrappedValue: PetStore(context: AppModelContainer.shared.mainContext))
         _stepManager  = StateObject(wrappedValue: StepManager())

@@ -809,27 +809,6 @@ struct RouteFinderContentView: View {
     }
 }
 
-// MARK: - Route Finder View (thin modal wrapper with dismiss chrome)
-
-struct RouteFinderView: View {
-    @ObservedObject var routeManager: RouteManager
-    @ObservedObject var historyStore: WalkHistoryStore
-    @ObservedObject var routeStore: CustomRouteStore
-    @ObservedObject var stepManager: StepManager
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        RouteFinderContentView(
-            routeManager: routeManager,
-            historyStore: historyStore,
-            routeStore: routeStore,
-            stepManager: stepManager,
-            onNavigateAway: { dismiss() },
-            onDismiss: { dismiss() }
-        )
-    }
-}
-
 
 // MARK: - WalkIntent persistence helpers
 
