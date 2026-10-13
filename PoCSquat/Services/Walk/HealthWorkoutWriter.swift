@@ -5,10 +5,21 @@ import OSLog
 
 private let log = Logger(subsystem: "com.wockett.app", category: "HealthKit")
 
+/// What a walk does with its Health workout: feed it the route, then end it
+/// one of two ways. `NavigationSessionManager` holds its writer as this, so a
+/// test can hand it a fake and see which end a walk reaches; the app always
+/// uses `HealthWorkoutWriter`.
+protocol WalkWorkoutRecording: AnyObject {
+    func addLocations(_ locations: [CLLocation])
+    func discard()
+    @discardableResult
+    func finish(totalDistanceMeters: Double, endDate: Date) async -> HKWorkout?
+}
+
 // Wraps HKWorkoutBuilder + HKWorkoutRouteBuilder for a single workout session.
 // Silently no-ops if HealthKit write authorization is not granted, so it is
 // safe to create unconditionally regardless of the user's tracking mode.
-final class HealthWorkoutWriter {
+final class HealthWorkoutWriter: WalkWorkoutRecording {
 
     private let healthStore   = HKHealthStore()
     private var builder:       HKWorkoutBuilder?

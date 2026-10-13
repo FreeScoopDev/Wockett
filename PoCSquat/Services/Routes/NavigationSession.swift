@@ -188,7 +188,9 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
     private var arrivalRadius: Double { route.path == nil ? 30 : 60 }
     private(set) var triggeredCheckpoints: Set<Int> = []
     private let checkpointFractions = [0.2, 0.4, 0.6, 0.8]
-    private var workoutWriter: HealthWorkoutWriter?
+    /// The walk's Health workout, set once HealthKit lets Wockett write one.
+    /// Internal, not private, so a test can give it a fake writer.
+    var workoutWriter: (any WalkWorkoutRecording)?
     var isPaused = false
     private var pausedDuration: TimeInterval = 0
     private var pauseStart: Date?
