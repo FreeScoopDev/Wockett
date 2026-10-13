@@ -176,6 +176,8 @@ struct DeleteCommunityDataView: View {
         }
         .navigationTitle("Community data")
         .navigationBarTitleDisplayMode(.inline)
+        // The email's account ID comes from here before any run.
+        .task { await MyAccount.refresh() }
         .interactiveDismissDisabled(isRunning)
         .navigationBarBackButtonHidden(isRunning)
         .alert(CommunityDataDeletion.confirmTitle, isPresented: $confirming) {

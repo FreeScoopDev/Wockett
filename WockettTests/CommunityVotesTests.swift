@@ -134,6 +134,24 @@ struct CommunityVotesTests {
         #expect(CommunityVotes.tally([vote("r1", by: "_x")], me: nil).mine.isEmpty)
     }
 
+    @Test("A vote you deleted is left out of the tally, so it can't mark the item voted again")
+    func deletedVoteNotCounted() async {
+        let store = FakeStore()
+        store.stored = [vote("r1", by: "_me", creator: CKCurrentUserDefaultName), vote("r1", by: "_x")]
+        let deleted = CommunityVotes.recordName(target: "r1", voter: "_me")
+        let t = await CommunityVoteService(store: store, notifications: NotificationCenter(),
+                                           isDeleted: { $0 == deleted }).tally(for: ["r1"])
+        #expect(t.counts == ["r1": 1])
+        #expect(t.mine.isEmpty)
+    }
+
+    @Test("The item is read back out of a vote's record name, for that voter only")
+    func targetFromRecordName() {
+        #expect(CommunityVotes.target(fromRecordName: "vote.r1._me", voter: "_me") == "r1")
+        #expect(CommunityVotes.target(fromRecordName: "vote.r1._x", voter: "_me") == nil)
+        #expect(CommunityVotes.target(fromRecordName: "name.r1._me", voter: "_me") == nil)
+    }
+
     @Test("Only CloudKit's 'already exists' answer means already voted")
     func alreadyVoted() {
         #expect(CommunityVotes.isAlreadyVoted(CKError(.serverRecordChanged)))

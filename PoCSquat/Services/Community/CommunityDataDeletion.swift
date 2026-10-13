@@ -333,7 +333,7 @@ struct CommunityDataDeletionRun {
     /// them from every list at once.
     private func forget(_ gone: [CKRecord.ID], kind: CommunityDataKind, me: String) {
         guard !gone.isEmpty else { return }
-        for id in gone where kind != .votes && kind != .name {
+        for id in gone where kind != .name {
             moderation.markDeleted(id)
         }
         switch kind {
@@ -356,11 +356,7 @@ struct CommunityDataDeletionRun {
             let floor = StreakStore.wockettsGivenFloorKey
             let routeMarks = defaults.stringArray(forKey: CommunityRouteService.votedKey) ?? []
             defaults.set(max(defaults.integer(forKey: floor), routeMarks.count), forKey: floor)
-            let targets = Set(gone.compactMap { id -> String? in
-                let suffix = ".\(me)"
-                guard id.recordName.hasPrefix("vote."), id.recordName.hasSuffix(suffix) else { return nil }
-                return String(id.recordName.dropFirst("vote.".count).dropLast(suffix.count))
-            })
+            let targets = Set(gone.compactMap { CommunityVotes.target(fromRecordName: $0.recordName, voter: me) })
             for key in [AchievementFeedService.likedKey, CommunityRouteService.votedKey] {
                 let kept = (defaults.stringArray(forKey: key) ?? []).filter { !targets.contains($0) }
                 defaults.set(kept, forKey: key)
