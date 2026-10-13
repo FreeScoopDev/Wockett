@@ -40,10 +40,13 @@ enum CommunitySuspensions {
 }
 
 /// What a suspended person is told when they try to post, share, create,
-/// join or give a Wockett. Screens show `message` instead of their usual
-/// "check your connection".
+/// join or give a Wockett, or anyone who hasn't agreed to the current Terms.
+/// Screens show `message` instead of their usual "check your connection".
 enum CommunityAccessError: LocalizedError, Equatable {
     case suspended(until: Date?)
+    /// Every screen asks first (`CommunityTermsGate`), so this is seen only
+    /// when a screen's action skipped its gate.
+    case termsNotAgreed
 
     var errorDescription: String? { message }
 
@@ -54,6 +57,8 @@ enum CommunityAccessError: LocalizedError, Equatable {
             return "Your community access is paused until \(date). You can still walk and track as usual."
         case .suspended(nil):
             return "Your community access is paused. You can still walk and track as usual."
+        case .termsNotAgreed:
+            return "Agree to the Terms of Service before sharing with the community."
         }
     }
 }
@@ -86,7 +91,7 @@ final class NoCommunitySuspensionStore: CommunitySuspensionStore {
 // MARK: - Service
 
 /// Keeps the moderation store's suspension list fresh, and refuses posting
-/// from a suspended account.
+/// from a suspended account, or before the current Terms are agreed to.
 final class SuspensionService {
     static let shared = AppModelContainer.isRunningUnderTests
         ? SuspensionService(store: NoCommunitySuspensionStore(), refreshAccount: {})
@@ -105,6 +110,8 @@ final class SuspensionService {
     private let sleep: OptimisticVote.Sleep
     /// Looks up this phone's own account when it isn't known yet (a fresh install).
     private let refreshAccount: () async -> Void
+    /// Where `CommunityTermsGate` records agreement.
+    private let termsDefaults: UserDefaults
     private let log = Logger(subsystem: "com.wockett.app", category: "Suspensions")
     /// When the next fetch is due; nil fetches now.
     private(set) var nextRefresh: Date?
@@ -114,12 +121,14 @@ final class SuspensionService {
          moderation: CommunityModerationStore = .shared,
          now: @escaping () -> Date = Date.init,
          sleep: @escaping OptimisticVote.Sleep = { try await Task.sleep(for: $0) },
-         refreshAccount: @escaping () async -> Void = { await MyAccount.refresh() }) {
+         refreshAccount: @escaping () async -> Void = { await MyAccount.refresh() },
+         termsDefaults: UserDefaults = .standard) {
         self.store = store
         self.moderation = moderation
         self.now = now
         self.sleep = sleep
         self.refreshAccount = refreshAccount
+        self.termsDefaults = termsDefaults
     }
 
     /// Starts a fetch if one is due, and waits for it at most `deadline`;
@@ -159,9 +168,16 @@ final class SuspensionService {
         }
     }
 
-    /// Throws `CommunityAccessError.suspended` when this account is suspended
-    /// now. An own account still unknown after a lookup is allowed.
-    func ensureCanPost() async throws {
+    /// Throws `CommunityAccessError.termsNotAgreed` when the current Terms
+    /// aren't agreed to (unless `needsTerms` is false), and
+    /// `CommunityAccessError.suspended` when this account is suspended now.
+    /// An own account still unknown after a lookup is allowed. Every public
+    /// write calls this, so an action that skipped its screen's Terms gate is
+    /// refused here rather than published.
+    func ensureCanPost(needsTerms: Bool = true) async throws {
+        if needsTerms, CommunityTerms.needsAgreement(defaults: termsDefaults) {
+            throw CommunityAccessError.termsNotAgreed
+        }
         await refreshIfStale()
         // A fresh install doesn't know its own account until Community is
         // opened; posting from elsewhere must not skip the check.
