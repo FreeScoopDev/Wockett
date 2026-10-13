@@ -115,6 +115,7 @@ enum SharedRouteTrim {
 
         // The longest run of consecutive eligible points, by length.
         var best: Range<Int>?
+        var bestLength = -1.0
         var runStart: Int?
         for i in path.indices.map({ $0 }) + [path.count] {
             if i < path.count, eligible[i] {
@@ -123,7 +124,7 @@ enum SharedRouteTrim {
             }
             if let s = runStart {
                 let run = s..<i
-                if best == nil || length(run, cumulative) > length(best!, cumulative) { best = run }
+                if length(run, cumulative) > bestLength { best = run; bestLength = length(run, cumulative) }
                 runStart = nil
             }
         }
