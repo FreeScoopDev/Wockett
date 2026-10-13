@@ -42,11 +42,20 @@ struct RemoteDataLimitsTests {
     @Test("Only http(s) links with a host are opened",
           arguments: [("https://wockett.app", true), ("http://example.org/a", true), ("HTTPS://example.org", true),
                       ("tel:5551234", false), ("sms:5551234", false), ("mailto:a@b.c", false),
-                      ("wockett://challenge/x", false), ("javascript:alert(1)", false), ("https://", false),
+                      ("wockett://challenge/x", false), ("javascript:alert(1)", false), ("https://", false), ("https://:80", false), ("https://@", false),
                       ("file:///etc/hosts", false)])
     func links(link: String, opens: Bool) {
         #expect((RemoteLink.web(link) != nil) == opens)
         #expect((RemoteLink.web(URL(string: link)) != nil) == opens)
+    }
+
+    @Test("A negative or non-finite distance is refused", arguments: [-1.0, Double.infinity, -Double.infinity, Double.nan])
+    func badDistance(distance: Double) {
+        let r = CKRecord(recordType: "SharedRoute", recordID: CKRecord.ID(recordName: UUID().uuidString))
+        r["name"] = "Loop" as CKRecordValue
+        r["waypointsJSON"] = "[]" as CKRecordValue
+        r["distanceMeters"] = distance as CKRecordValue
+        #expect(SharedRoute(record: r) == nil)
     }
 
     @Test("No link is no link")
