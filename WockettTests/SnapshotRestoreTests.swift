@@ -2,6 +2,7 @@ import Testing
 import Foundation
 import CoreLocation
 import SwiftData
+import HealthKit
 @testable import PoCSquat
 
 // Serialized because several tests write to the same shared file and would race
@@ -610,5 +611,97 @@ struct SnapshotRestoreTests {
         second.writesSnapshots = false
         #expect(store.end(.save) != nil)
         #expect(history.sessions.count == 2)
+    }
+
+    // MARK: - The Live Activity and the Health workout (2026-10-13)
+    //
+    // `end` finishes or discards the Health workout and ends the Live
+    // Activity in a Task it does not wait for, through the shared manager and
+    // a real HealthKit writer. Until these, removing any of those lines left
+    // every test green (break-check W4, 2026-10-13). The fakes count the
+    // calls; `endTask` lets the test wait for the work `end` leaves running.
+
+    @Test @MainActor func end_save_finishesTheWorkoutOnce_andEndsTheLiveActivityOnce() async throws {
+        let history = try inMemoryHistory()
+        let (notifications, _) = try quietNotifications()
+        let live = FakeLiveActivity()
+        let store = ActiveWalkStore(historyStore: history, notifications: notifications, liveActivity: live)
+        let mgr = try #require(store.beginSession(route: outAndBack()))
+        mgr.writesSnapshots = false
+        let writer = FakeWorkoutWriter()
+        mgr.workoutWriter = writer
+        var liveActivityEndsWhenFinished: Int?
+        writer.onFinish = { liveActivityEndsWhenFinished = live.ends.count }
+        mgr.totalDistanceCovered = 820
+        mgr.elapsedTime = 600
+        #expect(store.end(.save) != nil)
+        await store.endTask?.value
+        #expect(liveActivityEndsWhenFinished == 1, "the Live Activity ends before the workout is finished")
+        #expect(writer.finishedDistances == [820], "a saved walk's workout is finished once, with its distance")
+        #expect(writer.discards == 0, "a saved walk's workout is not thrown away")
+        #expect(live.ends.count == 1, "the Live Activity ends once")
+        #expect(live.ends.first?.distance == 820)
+        #expect(live.ends.first?.elapsed == 600, "the Live Activity's last frame shows the walk's time")
+    }
+
+    @Test @MainActor func end_discard_discardsTheWorkoutOnce_andEndsTheLiveActivityOnce() async throws {
+        let history = try inMemoryHistory()
+        let (notifications, _) = try quietNotifications()
+        let live = FakeLiveActivity()
+        let store = ActiveWalkStore(historyStore: history, notifications: notifications, liveActivity: live)
+        let mgr = try #require(store.beginSession(route: outAndBack()))
+        mgr.writesSnapshots = false
+        let writer = FakeWorkoutWriter()
+        mgr.workoutWriter = writer
+        #expect(store.end(.discard) == nil)
+        await store.endTask?.value
+        #expect(writer.discards == 1, "a discarded walk's workout is thrown away once")
+        #expect(writer.finishedDistances.isEmpty, "a discarded walk never reaches Health")
+        #expect(live.ends.count == 1, "the Live Activity ends once")
+        #expect(history.sessions.isEmpty)
+    }
+
+    @Test @MainActor func end_calledAgain_endsTheLiveActivityAndWorkoutOnlyOnce() async throws {
+        let history = try inMemoryHistory()
+        let (notifications, _) = try quietNotifications()
+        let live = FakeLiveActivity()
+        let store = ActiveWalkStore(historyStore: history, notifications: notifications, liveActivity: live)
+        let mgr = try #require(store.beginSession(route: outAndBack()))
+        mgr.writesSnapshots = false
+        let writer = FakeWorkoutWriter()
+        mgr.workoutWriter = writer
+        // Kept for the summary, so the second and third calls reach `end`'s
+        // own once-only guard rather than finding no session.
+        #expect(store.end(.save, releaseSession: false) != nil)
+        await store.endTask?.value
+        #expect(store.end(.discard, releaseSession: false) == nil)
+        #expect(store.end(.save) == nil)
+        await store.endTask?.value
+        #expect(live.ends.count == 1, "the driving banner once ended the Live Activity twice")
+        #expect(writer.finishedDistances.count == 1)
+        #expect(writer.discards == 0)
+    }
+}
+
+/// Counts how often a walk's end reaches the Live Activity.
+@MainActor
+private final class FakeLiveActivity: WalkLiveActivityEnding {
+    private(set) var ends: [(distance: Double, elapsed: Int, paused: Double)] = []
+    func end(distanceCovered: Double, elapsedSeconds: Int, pausedDuration: Double) async {
+        ends.append((distanceCovered, elapsedSeconds, pausedDuration))
+    }
+}
+
+/// Counts which way a walk's Health workout ended. Writes nothing to Health.
+private final class FakeWorkoutWriter: WalkWorkoutRecording {
+    private(set) var discards = 0
+    private(set) var finishedDistances: [Double] = []
+    var onFinish: (() -> Void)?
+    func addLocations(_ locations: [CLLocation]) {}
+    func discard() { discards += 1 }
+    func finish(totalDistanceMeters: Double, endDate: Date) async -> HKWorkout? {
+        finishedDistances.append(totalDistanceMeters)
+        onFinish?()
+        return nil
     }
 }
