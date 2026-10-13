@@ -409,6 +409,16 @@ struct SettingsView: View {
                     }
                     .listRowBackground(Color.earthCard)
 
+                    // The Terms a first community action asks the user to agree
+                    // to (CommunityTermsSheet), readable at any time.
+                    Button {
+                        if let url = CommunityTerms.termsURL { openURL(url) }
+                    } label: {
+                        Label { Text("Terms of Service") } icon: { Image(wkt: .terms).wktIcon(.row, tint: .earthGreen) }
+                            .foregroundColor(.earthGreen)
+                    }
+                    .listRowBackground(Color.earthCard)
+
                     TrailDataCreditsView()
 
                     NavigationLink {

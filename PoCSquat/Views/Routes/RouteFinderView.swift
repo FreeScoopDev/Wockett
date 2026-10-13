@@ -28,6 +28,8 @@ struct RouteFinderContentView: View {
     @State private var isLoadingElevation = false
     @State private var savedRouteIds: Set<UUID> = []
     @State private var savedCommunityIds: Set<String> = []
+    /// Holds a community action until the Terms are agreed to (CommunityTermsGate).
+    @State private var termsGate = CommunityTermsGate()
     @State private var routeForPosting: SuggestedRoute?
 
     // Community
@@ -150,6 +152,7 @@ struct RouteFinderContentView: View {
         } message: {
             Text("You have a session in progress. Return to the home screen to resume or end it first.")
         }
+        .communityTermsSheet($termsGate)
         .sheet(item: $routeForPosting) { route in
             PostToCommunitySheet(route: route, routeStore: routeStore) {
                 savedRouteIds.insert(route.id)
@@ -668,7 +671,7 @@ struct RouteFinderContentView: View {
                             ),
                             hasVoted: communityModel.hasVoted(route.id),
                             isSaved: savedCommunityIds.contains(route.id.recordName),
-                            onWockett: { communityModel.wockett(route.id) },
+                            onWockett: { termsGate.perform { communityModel.wockett(route.id) } },
                             onSave: {
                                 routeStore.save(CustomRoute(
                                     id: UUID(), name: route.name,
