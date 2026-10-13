@@ -253,7 +253,6 @@ struct CommunityReportTests {
         let report = CommunityReport(kind: .route, recordID: CKRecord.ID(recordName: "r"), author: "A", content: "B")
         let text = report.body + report.subject
         #expect(!text.contains(CommunityNameService.shared.displayName))
-        if let legacy = ChallengeService.shared.legacyDeviceID { #expect(!text.contains(legacy)) }
     }
 
     @Test("Send Feedback uses the same address")

@@ -152,17 +152,28 @@ struct ChallengeProgressTests {
         #expect(challenge.localProgressValue(from: sessions) == 1_200)
     }
 
-    @Test func stepsGoal_skipsVehicleAndOutOfWindowAndOtherActivities() throws {
-        let challenge = try #require(makeChallenge(goalType: .steps, activityFilter: "walking",
+    @Test func stepsGoal_skipsVehicleAndOutOfWindow() throws {
+        let challenge = try #require(makeChallenge(goalType: .steps,
                                                    startDate: Date().addingTimeInterval(-86400),
                                                    endDate: Date().addingTimeInterval(86400)))
         let sessions  = [
             session(distance: 1000, elapsed: 600, steps: 1_500),
             session(distance: 1000, elapsed: 600, flagged: true, steps: 2_000),
             session(distance: 1000, elapsed: 600, date: Date().addingTimeInterval(-86400 * 2), steps: 4_000),
-            session(distance: 1000, elapsed: 300, activityType: "running", steps: 8_000),
         ]
         #expect(challenge.localProgressValue(from: sessions) == 1_500)
+    }
+
+    // The create sheet hides the Activity picker for steps but used to publish a
+    // leftover choice; a stray filter must not change a step total (critic, 2026-10-13).
+    @Test func stepsGoal_ignoresActivityFilter() throws {
+        let challenge = try #require(makeChallenge(goalType: .steps, activityFilter: "cycling"))
+        let sessions  = [
+            session(distance: 1000, elapsed: 600, steps: 1_300),
+            session(distance: 1000, elapsed: 300, activityType: "running", steps: 900),
+            session(distance: 9000, elapsed: 1800, activityType: "cycling"),
+        ]
+        #expect(challenge.localProgressValue(from: sessions) == 2_200)
     }
 
     @Test func syncFootnoteNamesTheSource() {

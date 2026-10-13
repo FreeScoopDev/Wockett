@@ -20,14 +20,24 @@ struct ChallengeEntryOwnerTests {
         return try #require(ChallengeParticipant(record: r, creator: CKRecord.ID(recordName: creator)))
     }
 
-    @Test("A new entry publishes an empty device ID, and older apps can still read it")
+    @Test("A new entry publishes the shared placeholder, and older apps can still read it")
     func newEntryHasNoDeviceID() throws {
         let record = ChallengeService.entryRecord(challengeKey: "c1", displayName: "AmberElk", steps: 4_200)
-        #expect(record["deviceID"] as? String == "")
+        #expect(record["deviceID"] as? String == "-")
         #expect(record["challengeRecordName"] as? String == "c1")
         #expect(record["steps"] as? Int == 4_200)
         // 1.14 and 1.15 parse an entry only when deviceID is a String.
         #expect(ChallengeParticipant(record: record) != nil)
+    }
+
+    @Test("Syncing an entry from 1.14 or 1.15 clears its device ID")
+    func updateClearsLegacyDeviceID() {
+        let record = CKRecord(recordType: "ChallengeEntry")
+        record["deviceID"] = "LEGACY-1"
+        record["steps"] = 10
+        let updated = ChallengeService.updated(record, steps: 5_000)
+        #expect(updated["deviceID"] as? String == "-")
+        #expect(updated["steps"] as? Int == 5_000)
     }
 
     @Test("An entry your account created is yours, on any install")
@@ -56,5 +66,7 @@ struct ChallengeEntryOwnerTests {
         let e = try entry(deviceID: "", creator: "_someone")
         #expect(!e.isMine(moderation: moderation(me: "_me"), joinedEntryNames: ["entry-9"], legacyDeviceID: nil))
         #expect(!e.isMine(moderation: moderation(me: "_me"), joinedEntryNames: [], legacyDeviceID: ""))
+        let placeholder = try entry(deviceID: ChallengeService.publishedDeviceID, creator: "_someone")
+        #expect(!placeholder.isMine(moderation: moderation(me: "_me"), joinedEntryNames: [], legacyDeviceID: "LEGACY-1"))
     }
 }

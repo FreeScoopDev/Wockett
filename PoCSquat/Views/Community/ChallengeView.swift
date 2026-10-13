@@ -925,7 +925,8 @@ struct CreateChallengeView: View {
                 title:              title.trimmingCharacters(in: .whitespaces),
                 emoji:              emoji,
                 goalType:           goalType,
-                activityFilter:     activityFilter,
+                // Steps never show the Activity picker; don't publish a leftover choice.
+                activityFilter:     goalType == .steps ? nil : activityFilter,
                 goalSteps:          goalSteps,
                 goalDistanceMeters: goalDistanceMeters,
                 goalPaceSecsPerKm:  goalPaceSecsPerKm,

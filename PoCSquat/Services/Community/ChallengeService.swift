@@ -157,20 +157,22 @@ struct WalkChallenge: Identifiable {
 
     // Returns the value to write into ChallengeEntry.steps, from walks recorded in Wockett.
     //   .steps    → steps of those walks and runs (pedometer count, or distance / 0.762 m
-    //               before 1.7); rides never count. Not Apple Health: the total is public
-    //               (2026-10-12 audit, finding 2).
+    //               before 1.7); rides never count, and any activity filter is ignored: the
+    //               create sheet never offers one for steps, but kept a leftover from another
+    //               goal type, so a stray "cycling" would have pinned everyone at 0. Not Apple
+    //               Health: the total is public (2026-10-12 audit, finding 2).
     //   .distance → total metres walked/run (flaggedPossibleVehicle excluded)
     //   .pace     → count of sessions where pace beat the goalPaceSecsPerKm threshold
     func localProgressValue(from sessions: [WalkSession]) -> Int {
-        let window = sessions.filter {
+        let inWindow = sessions.filter {
             $0.date >= startDate &&
             $0.date <= endDate &&
-            !$0.flaggedPossibleVehicle &&
-            (activityFilter == nil || $0.activityType == activityFilter)
+            !$0.flaggedPossibleVehicle
         }
+        let window = inWindow.filter { activityFilter == nil || $0.activityType == activityFilter }
         switch goalType {
         case .steps:
-            return window
+            return inWindow
                 .filter { $0.activityType != ActivityMode.cycling.rawValue }
                 .reduce(0) { $0 + $1.estimatedSteps }
         case .distance:
@@ -221,7 +223,7 @@ struct ChallengeParticipant: Identifiable {
     let id:          CKRecord.ID
     let displayName: String
     var steps:       Int
-    /// The per-install ID entries carried before 1.16; "" on newer entries.
+    /// The per-install ID entries carried before 1.16; the placeholder "-" on newer ones.
     let deviceID:    String
     let joinedAt:    Date
     /// The account that created the entry (CloudKit's creator), for suspensions.
@@ -285,7 +287,7 @@ struct ChallengeParticipant: Identifiable {
 //   displayName          String
 //   steps                Int64   step challenges: steps; distance: metres; pace: session count
 //                                (all from walks recorded in Wockett since 1.16, never Apple Health)
-//   deviceID             String  "" since 1.16. Still written, because 1.14 and 1.15 drop an
+//   deviceID             String  "-" since 1.16. Still written, because 1.14 and 1.15 drop an
 //                                entry without it; an entry's old value is cleared on its next sync.
 
 final class ChallengeService {
@@ -294,7 +296,8 @@ final class ChallengeService {
 
     private let db            = CKContainer(identifier: "iCloud.Scoops.PoCSquat").publicCloudDatabase
     private let challengeType = "Challenge"
-    private let entryType     = "ChallengeEntry"
+    static let entryType      = "ChallengeEntry"
+    private var entryType: String { Self.entryType }
     /// [challengeRecordName: entryRecordName]. Static: deleting your entry clears it (CommunityDeletion).
     static let joinedKey = "wkt_joinedChallengeEntries_v1"
     private var joinedKey: String { Self.joinedKey }
@@ -305,9 +308,11 @@ final class ChallengeService {
     var legacyDeviceID: String? { UserDefaults.standard.string(forKey: Self.legacyDeviceIDKey) }
     static let legacyDeviceIDKey = "wkt_deviceID"
 
-    /// What a new entry's `deviceID` holds: nothing. The field stays because
-    /// 1.14 and 1.15 skip an entry that lacks it.
-    static let publishedDeviceID = ""
+    /// What every entry's `deviceID` holds since 1.16: the same placeholder on
+    /// every install, so it identifies nobody. The field stays because 1.14 and
+    /// 1.15 skip an entry that lacks it; a placeholder rather than "" so the
+    /// field can't come back from the server as absent.
+    static let publishedDeviceID = "-"
 
     // MARK: - Fetch
 
@@ -449,11 +454,8 @@ final class ChallengeService {
     func joinOrUpdate(_ challenge: WalkChallenge, steps: Int) async throws {
         let key = challenge.id.recordName
         if let existingName = joinedEntries[key] {
-            let record      = try await db.record(for: CKRecord.ID(recordName: existingName))
-            record["steps"] = steps
-            // An entry from 1.14 or 1.15 loses the device ID it was published with.
-            record["deviceID"] = Self.publishedDeviceID
-            _ = try await db.save(record)
+            let record = try await db.record(for: CKRecord.ID(recordName: existingName))
+            _ = try await db.save(Self.updated(record, steps: steps))
         } else {
             // Joining is posting; updating steps on an entry already there
             // isn't blocked (it is hidden anyway while suspended).
@@ -466,10 +468,18 @@ final class ChallengeService {
         }
     }
 
+    /// An existing entry with a new total. An entry from 1.14 or 1.15 also
+    /// loses the device ID it was published with.
+    static func updated(_ record: CKRecord, steps: Int) -> CKRecord {
+        record["steps"]    = steps
+        record["deviceID"] = publishedDeviceID
+        return record
+    }
+
     /// A new leaderboard entry: the challenge, your display name and your
-    /// total, and an empty `deviceID` (see `publishedDeviceID`).
+    /// total, and the placeholder `deviceID` (see `publishedDeviceID`).
     static func entryRecord(challengeKey: String, displayName: String, steps: Int) -> CKRecord {
-        let record                    = CKRecord(recordType: "ChallengeEntry")
+        let record                    = CKRecord(recordType: entryType)
         record["challengeRecordName"] = challengeKey
         record["displayName"]         = displayName
         record["steps"]               = steps
