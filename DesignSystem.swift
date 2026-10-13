@@ -205,10 +205,16 @@ extension Font {
     /// cells, "0..." in the ring). SwiftUI's `.dynamicTypeSize(...)` does not
     /// cap these fonts, because their size is already resolved here.
     static func wktDense(_ size: CGFloat, weight: Font.Weight = .semibold) -> Font {
-        let metrics = UIFontMetrics(forTextStyle: .body)
-        let cap = UITraitCollection(preferredContentSizeCategory: .extraExtraExtraLarge)
-        let s = min(metrics.scaledValue(for: size), metrics.scaledValue(for: size, compatibleWith: cap))
+        let s = wktDenseSize(size, scaled: UIFontMetrics(forTextStyle: .body).scaledValue(for: size))
         return .system(size: s, weight: weight, design: .rounded)
+    }
+
+    /// `scaled` (the size at the current text size), held to the size the same
+    /// text would have at `extraExtraExtraLarge`. A function of its own so a
+    /// test can check the cap.
+    static func wktDenseSize(_ size: CGFloat, scaled: CGFloat) -> CGFloat {
+        let cap = UITraitCollection(preferredContentSizeCategory: .extraExtraExtraLarge)
+        return min(scaled, UIFontMetrics(forTextStyle: .body).scaledValue(for: size, compatibleWith: cap))
     }
 
     // The type scale (2026-09-30 Home redesign). Six named roles instead of

@@ -338,7 +338,7 @@ private struct MonthDayCell: View {
         VStack(spacing: 2) {
             Text("\(cal.component(.day, from: date))")
                 .font(.wktDense(13, weight: .bold))
-                .foregroundColor(isToday ? .earthGreen : isFuture ? .earthMuted.opacity(0.75) : .earthCream)
+                .foregroundColor(isToday ? .earthGreen : isFuture ? .earthMuted : .earthCream)
 
             ZStack {
                 Circle()
@@ -386,7 +386,7 @@ private struct MonthDayCell: View {
             } else if isFuture {
                 Text(goal >= 1_000 ? "\(goal / 1_000)K" : "\(goal)")
                     .font(.wktDense(9))
-                    .foregroundColor(.earthMuted.opacity(0.75))
+                    .foregroundColor(.earthMuted)
             } else {
                 Text("—").font(.wktDense(9)).foregroundColor(.earthMuted.opacity(0.4))
             }

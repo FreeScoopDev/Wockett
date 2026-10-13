@@ -4,9 +4,12 @@
   its dates ("1" over "0") and cut weekdays to "T...", the Sleep, Readiness and
   Active cal labels were cut off, and the month calendar's cells overlapped each
   other. These screens use fixed-size layouts, so their text now stops growing at
-  the largest ordinary size (a new `wktDense` font) instead of overflowing.
+  the largest ordinary size (a new `wktDense` font) instead of overflowing. This
+  covers the weekly strip and month calendar (including their chart labels), the
+  Home ring and the Health metric row.
 - Future days in the month calendar are easier to read: their dates and goal
-  labels were drawn at half strength, which is faint enough to be unreadable.
+  labels were drawn at half strength, which is faint enough to be unreadable. They
+  now use the same grey as future days in the weekly strip.
 
 ### Changed
 - Settings has a large title like Health and Community, so the heading no longer
