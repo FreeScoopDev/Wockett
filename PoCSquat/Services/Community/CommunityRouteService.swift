@@ -46,8 +46,10 @@ struct SharedRoute: Identifiable {
             let name          = record["name"] as? String,
             let waypointsJSON = record["waypointsJSON"] as? String,
             let data          = waypointsJSON.data(using: .utf8),
-            let waypoints     = try? JSONDecoder().decode([WaypointCoord].self, from: data),
-            let distance      = record["distanceMeters"] as? Double
+            let decoded       = try? JSONDecoder().decode([WaypointCoord].self, from: data),
+            let waypoints     = Self.validWaypoints(decoded),
+            let distance      = record["distanceMeters"] as? Double,
+            distance.isFinite, distance >= 0
         else { return nil }
 
         self.id             = record.recordID
@@ -60,6 +62,17 @@ struct SharedRoute: Identifiable {
         self.authorName     = record["authorName"] as? String ?? "Anonymous"
         self.authorAccount = CommunityAuthor.account(of: record, creator: creator)
         self.createdAt      = record.creationDate ?? Date()
+    }
+
+    /// A route anyone could have written: nil when it has more points than the
+    /// app ever publishes (`SharedRouteTrim.maxPublishedPoints`), which would
+    /// only slow a walk that starts it, and without any point that is not a
+    /// real coordinate.
+    static func validWaypoints(_ waypoints: [WaypointCoord]) -> [WaypointCoord]? {
+        guard waypoints.count <= SharedRouteTrim.maxPublishedPoints else { return nil }
+        return waypoints.filter {
+            (-90...90).contains($0.latitude) && (-180...180).contains($0.longitude)
+        }
     }
 }
 

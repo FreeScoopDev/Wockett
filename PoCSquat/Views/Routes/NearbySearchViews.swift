@@ -580,7 +580,7 @@ private struct NearbyPlaceRow: View {
                     }
                 }
             }
-            if let url = item.url {
+            if let url = RemoteLink.web(item.url) {
                 Button { openURL(url) } label: {
                     Label {
                         Text("Visit Website")
