@@ -689,6 +689,7 @@ struct CreateChallengeView: View {
                                 .font(.wktLabel).foregroundColor(.earthOrange)
                                 .multilineTextAlignment(.center)
                                 .frame(maxWidth: .infinity)
+                                .accessibilityIdentifier("challenge.create.error")
                         }
                         createButton
                     }
@@ -715,6 +716,7 @@ struct CreateChallengeView: View {
     private var titleSection: some View {
         formSection(title: "Challenge name") {
             TextField("e.g. Weekend Runfest", text: $title)
+                .accessibilityIdentifier("challenge.create.name")
                 .font(.wktBodyText)
                 .foregroundColor(.earthCream)
                 .padding(.horizontal, WktSpacing.cardPadding)
@@ -916,6 +918,7 @@ struct CreateChallengeView: View {
         }
         .buttonStyle(BounceButtonStyle(scale: 0.98))
         .disabled(blank || isSaving)
+        .accessibilityIdentifier("challenge.create.submit")
     }
 
     // MARK: - Helpers

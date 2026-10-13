@@ -463,4 +463,52 @@ final class SmokeTests: XCTestCase {
         editor.buttons["Cancel"].tap()
         XCTAssertTrue(editor.waitForNonExistence(timeout: 10), "Cancel must close the goal editor")
     }
+
+    // MARK: - 9. Terms before a first community action
+
+    /// Community → Start a challenge → Create Challenge with the Terms not yet
+    /// agreed to. Cancel must close the Terms sheet and leave the form as it
+    /// was, with nothing saved; Agree must close it and run the save. A sheet
+    /// that never presents fails at the first wait, and Agree wired to Cancel
+    /// fails at the last. The name is over the 60-character limit, so the save
+    /// stops at `ContentFilter` before anything reaches CloudKit and shows
+    /// its error offline, on CI and on a signed-in simulator alike.
+    func testCommunityTermsGateOnCreateChallenge() {
+        // Read before the app's own domain, so earlier runs that agreed don't count.
+        app.terminate()
+        app.launchArguments += ["-wkt_termsAcceptedVersion", "none"]
+        app.launch()
+
+        XCTAssertTrue(el("home.statCard").waitForExistence(timeout: 10))
+        selectTab("Community")
+        XCTAssertTrue(el("community.root").waitForExistence(timeout: 30))
+        let start = app.buttons["Start a challenge"]
+        XCTAssertTrue(start.waitForExistence(timeout: 15), "Start a challenge missing from Community")
+        start.tap()
+
+        let name = app.textFields["challenge.create.name"]
+        XCTAssertTrue(name.waitForExistence(timeout: 15), "New Challenge form did not open")
+        let tooLong = String(repeating: "Walk ", count: 13).trimmingCharacters(in: .whitespaces)
+        name.tap()
+        name.typeText(tooLong)
+
+        let create = app.buttons["challenge.create.submit"]
+        let sheet = el("terms.sheet")
+        let error = el("challenge.create.error")
+        create.tap()
+        XCTAssertTrue(sheet.waitForExistence(timeout: 10), "Create Challenge must ask for the Terms first")
+        XCTAssertFalse(error.exists, "the save must wait for the Terms")
+
+        el("terms.cancel").tap()
+        XCTAssertTrue(sheet.waitForNonExistence(timeout: 10), "Cancel must close the Terms sheet")
+        XCTAssertTrue(name.exists, "Cancel must leave the New Challenge form open")
+        XCTAssertEqual(name.value as? String, tooLong, "Cancel must leave the form unchanged")
+        XCTAssertFalse(error.waitForExistence(timeout: 3), "Cancel must not run the save")
+
+        create.tap()
+        XCTAssertTrue(sheet.waitForExistence(timeout: 10), "still not agreed: Create asks again")
+        el("terms.agree").tap()
+        XCTAssertTrue(sheet.waitForNonExistence(timeout: 10), "Agree must close the Terms sheet")
+        XCTAssertTrue(error.waitForExistence(timeout: 10), "Agree must run the held save")
+    }
 }
