@@ -90,6 +90,21 @@ struct TrailPackTests {
         #expect(osm.requiresAttribution)
     }
 
+    @Test("A credit link that is not http(s) is dropped, an https one is kept",
+          arguments: [("tel:5551234", false), ("sms:5551234", false), ("wockett://x", false),
+                      ("https://www.openstreetmap.org/copyright", true)])
+    func attributionLinkScheme(link: String, kept: Bool) throws {
+        let copy = try scratchCopy()
+        defer { try? FileManager.default.removeItem(at: copy) }
+        var db: OpaquePointer?
+        #expect(sqlite3_open(copy.path, &db) == SQLITE_OK)
+        #expect(sqlite3_exec(db, "UPDATE attribution SET url = '\(link)'", nil, nil, nil) == SQLITE_OK)
+        sqlite3_close(db)
+
+        let osm = try #require(try BundledTrailSource(url: copy).attributions.first)
+        #expect(osm.url == (kept ? URL(string: link) : nil))
+    }
+
     @Test("A missing file is a cannotOpen error, not a trap")
     func missingFile() {
         let url = URL(fileURLWithPath: "/nonexistent/\(UUID().uuidString).wktpack")
