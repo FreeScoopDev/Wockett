@@ -11,11 +11,14 @@ final class SmokeTests: XCTestCase {
     // screen is broken, not when a rented machine is having a bad minute.
 
     private var app: XCUIApplication!
+    /// Set when the interruption monitor answers an alert; `selectTab` re-taps
+    /// only then.
+    private var interruptionHandled = false
 
     override func setUp() {
         super.setUp()
         continueAfterFailure = false
-        addUIInterruptionMonitor(withDescription: "System alert") { alert in
+        addUIInterruptionMonitor(withDescription: "System alert") { [weak self] alert in
             // Only permission alerts. A notification banner also arrives here, and
             // tapping one that has already slid away fails the test at the tap
             // ("no matches found for Descendants matching type BannerNotification").
@@ -23,9 +26,14 @@ final class SmokeTests: XCTestCase {
             guard alert.elementType == .alert else { return false }
             for title in ["Don't Allow", "Not Now", "OK", "Allow", "Cancel"] where alert.buttons[title].exists {
                 alert.buttons[title].tap()
+                self?.interruptionHandled = true
                 return true
             }
-            if alert.buttons.count > 0 { alert.buttons.element(boundBy: 0).tap(); return true }
+            if alert.buttons.count > 0 {
+                alert.buttons.element(boundBy: 0).tap()
+                self?.interruptionHandled = true
+                return true
+            }
             return false
         }
         app = XCUIApplication()
@@ -60,15 +68,23 @@ final class SmokeTests: XCTestCase {
     /// for the Health tab, and the tab never changed, so the wait for
     /// `health.root` ran out. That was every `testHealthShowsDisclaimer`
     /// failure (6, 2026-10-11/12), and the same lost tap stopped
-    /// `testGuidedWalkEndedFromLiveActivityReturnsHome` at Routes. Every call
-    /// is still followed by the screen's own wait, so a broken tab still fails.
+    /// `testGuidedWalkEndedFromLiveActivityReturnsHome` at Routes (3 of its 6
+    /// CI failures). It re-taps only when the monitor answered an alert during
+    /// the tap; a tab that ignores a tap with no alert in the way fails here,
+    /// so a tab bar that needs two taps can't pass. Every call is still
+    /// followed by the screen's own wait.
     private func selectTab(_ title: String) {
         let button = tab(title)
         let selected = NSPredicate(format: "selected == true")
         for _ in 0..<3 {
+            interruptionHandled = false
             button.tap()
             let wait = XCTNSPredicateExpectation(predicate: selected, object: button)
-            if XCTWaiter().wait(for: [wait], timeout: 5) == .completed { return }
+            if XCTWaiter().wait(for: [wait], timeout: 10) == .completed { return }
+            guard interruptionHandled else {
+                XCTFail("The \(title) tab did not select on a tap, and no alert was in the way")
+                return
+            }
         }
     }
 
@@ -288,14 +304,19 @@ final class SmokeTests: XCTestCase {
     /// back to Home, not leave them on an empty cover with no way out.
     ///
     /// Skipped on GitHub Actions, run everywhere else. It ends the walk from
-    /// Notification Centre, and the runner's simulator does not show the Live
-    /// Activity there (run 38312665429: "End Walk button must be in
-    /// Notification Centre"). The UI job sets `TEST_RUNNER_WOCKETT_CI=1` in
+    /// Notification Centre through springboard, which the runner does not do
+    /// reliably: since it landed (#201) it failed 6 of the 15 UI jobs that
+    /// finished. 3 were the lost Routes tap `selectTab` now handles; the rest
+    /// were the runner's: no Live Activity in Notification Centre (run
+    /// 38312665429), the End Walk tap not ending the walk (38394086194, on a
+    /// change that passed this test locally), and the route list (38324667161).
+    /// It passed in the other 9, so it is not impossible there, only too
+    /// unreliable to keep the advisory job meaningful. The UI job sets `TEST_RUNNER_WOCKETT_CI=1` in
     /// `.github/workflows/tests.yml`, which xcodebuild passes to this process
     /// as `WOCKETT_CI`; a local run has neither, so the test runs there.
     func testGuidedWalkEndedFromLiveActivityReturnsHome() throws {
         try XCTSkipIf(ProcessInfo.processInfo.environment["WOCKETT_CI"] == "1",
-                      "GitHub's runner can't show the Live Activity in Notification Centre")
+                      "GitHub's runner doesn't drive Notification Centre reliably")
         XCTAssertTrue(el("home.statCard").waitForExistence(timeout: 10))
         selectTab("Routes")
         let findRoutes = app.buttons["routes.findRoutes"]
