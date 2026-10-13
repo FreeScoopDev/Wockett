@@ -39,6 +39,13 @@ h1, h2, h3, summary { font-family: var(--rounded); }
 .button:focus-visible { outline: 3px solid var(--link); outline-offset: 3px; }
 .button small { display: block; font-size: 0.7em; font-weight: 400; }
 
+/* The app icon. iOS rounds icons at about 22.5% of their width; the same here.
+   Its green is the page's green, so a faint cream ring (brandRoad at 16%) shows its edge. */
+.app-icon { display: block; margin: 0 auto 24px; border-radius: 22.5%; box-shadow: 0 0 0 1px rgba(246, 239, 223, 0.16), 0 10px 30px rgba(0, 0, 0, 0.3); }
+.home-link { display: inline-flex; align-items: center; gap: 10px; font-family: var(--rounded); font-weight: 700; font-size: 1.1em; color: var(--ink); margin-bottom: 28px; }
+.home-link:hover { text-decoration: none; }
+.home-link img { width: 40px; height: 40px; border-radius: 22.5%; box-shadow: 0 0 0 1px rgba(246, 239, 223, 0.16); }
+
 .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 28px 24px; }
 
 footer { text-align: center; padding: 40px 20px; border-top: 1px solid var(--line); color: var(--muted); font-size: 0.85em; }
@@ -93,7 +100,6 @@ details p { margin-top: 10px; color: var(--ink-soft); font-size: 0.95em; }
 
 /* Privacy Policy and Terms of Service: long-form text */
 main.doc { max-width: 760px; margin: 0 auto; padding: 48px 20px 64px; line-height: 1.65; }
-.doc .home-link { display: inline-block; font-family: var(--rounded); font-weight: 700; font-size: 1.1em; color: var(--ink); margin-bottom: 28px; }
 .doc h1 { font-size: 2.2em; letter-spacing: -0.5px; line-height: 1.15; margin-bottom: 6px; }
 .doc h2 { font-size: 1.35em; margin-top: 2em; margin-bottom: 0.5em; }
 .doc h3 { font-size: 1.1em; margin-top: 1.5em; margin-bottom: 0.4em; }
