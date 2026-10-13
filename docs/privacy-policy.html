@@ -21,7 +21,7 @@
 <body>
 
 <h1>Privacy Policy</h1>
-<p class="updated">Last updated: October 12, 2026</p>
+<p class="updated">Last updated: October 13, 2026</p>
 
 <p>This Privacy Policy describes how Scoops Dev LLC, a Vermont limited liability company ("Scoops Dev", "we", "us"), the developer and publisher of Wockett ("the App"), handles your information when you use the App. We are committed to being transparent and collecting only what is necessary to make the app work.</p>
 
@@ -59,17 +59,32 @@
     <tr>
         <td>HealthKit (Apple Health)</td>
         <td>Read, with your permission: step count and walking + running distance (goal progress); walking speed, step length, walking asymmetry and double support time (the walking-steadiness and gait views); walking heart rate average, resting heart rate, heart rate variability, sleep, active energy and flights climbed (the recovery and daily summary views). Write, with your permission: completed walks and rides as workouts, with distance, cycling distance, active energy and the GPS route.</td>
-        <td>Health data is read on your device to show it to you. Summaries the App works out from it, such as streaks and badges, sync with your other Wockett data through your private iCloud (see Walk history). Health figures appear in community content only if you choose to share an achievement. Completed walks and rides are written to Apple Health on your device. No Health data is transmitted to Scoops Dev or any third party, and it is never used for advertising. You choose which types to allow, and can change this at any time in the Health app.</td>
+        <td>Health data is read on your device to show it to you. Summaries the App works out from it, such as streaks and badges, sync with your other Wockett data through your private iCloud (see Walk history). Health figures appear in community content only when you choose to publish them: an achievement you share to the feed, or a step challenge entry. When you join or sync a step challenge, the App adds up the steps Apple Health recorded since the challenge began and publishes that total with your entry (see Community content). Completed walks and rides are written to Apple Health on your device. No Health data is transmitted to Scoops Dev or any third party, and it is never used for advertising. You choose which types to allow, and can change this at any time in the Health app.</td>
     </tr>
     <tr>
         <td>Weather (via Apple WeatherKit)</td>
         <td>Display weather conditions for suggested routes</td>
-        <td>Fetched using your approximate location by Apple's WeatherKit service. Governed by <a href="https://www.apple.com/legal/privacy/" target="_blank">Apple's Privacy Policy</a>.</td>
+        <td>Fetched by Apple's WeatherKit service for the place the weather is shown for: your current location, or a point on the route you are looking at or walking. The App sends that location as it is, without rounding it. Governed by <a href="https://www.apple.com/legal/privacy/" target="_blank">Apple's Privacy Policy</a>.</td>
     </tr>
     <tr>
         <td>Community content (optional)</td>
         <td>Share routes with the community, join challenges, and post to the achievement feed</td>
-        <td>Only if you choose to publish: shared route names and paths, challenge entries, and feed posts are stored in Apple's public CloudKit database and are visible to other Wockett users. Nothing is published automatically — every share is an explicit action. You can report or block content from other users, and community text is filtered before publishing. Your walk history, health data, and live location are never part of community content.</td>
+        <td>Only if you choose to publish: shared route names and paths, challenge entries, and feed posts are stored in Apple's public CloudKit database and are visible to other Wockett users. A challenge entry holds your display name, your progress total and the device identifier described below. For a step challenge the total is the step count from Apple Health since the challenge began; for a distance or pace challenge it is worked out from the walks you recorded in Wockett. Nothing is published automatically — every share is an explicit action. You can report or block content from other users, and community text is filtered before publishing. Your live location is never part of community content. Apart from the routes, challenge totals and achievements you choose to share, nothing from your walk history or Apple Health is published.</td>
+    </tr>
+    <tr>
+        <td>Device identifier (challenges)</td>
+        <td>Recognise your own entry on a challenge leaderboard</td>
+        <td>The first time the App needs one for challenges, it creates a random identifier and keeps it on this device. It is not your device's serial number or an advertising identifier, and it does not contain your name. It is saved with every challenge entry you publish from this device, so it is stored in Apple's public CloudKit database with the entry and can be read with it there, although the App does not display it. The same identifier appears on all of this device's entries.</td>
+    </tr>
+    <tr>
+        <td>Motion &amp; Fitness</td>
+        <td>Count your steps with your iPhone's motion sensor; during a walk, run or ride, check that you are still on foot rather than in a vehicle, and notice when you start moving again after an automatic pause; and, if you turn on the untracked walk nudge, look back over the day's motion activity to spot a walk you did not record</td>
+        <td>Read on your device only. Step counts become part of the walks saved in your history (see Walk history). Motion data is not sent to Scoops Dev or any third party.</td>
+    </tr>
+    <tr>
+        <td>Calendar</td>
+        <td>Delete walk reminders that versions 1.7 to 1.10 of the App added to your calendar, when you ask to delete one</td>
+        <td>The App asks for calendar access only when you delete one of those old reminders. It looks up the events it created by their identifiers and deletes them; it does not store or send your calendar. Wockett no longer creates calendar events: walk reminders are now local notifications.</td>
     </tr>
 </table>
 
@@ -89,17 +104,21 @@
 <p>Wockett uses the following Apple platform services, governed by <a href="https://www.apple.com/legal/privacy/" target="_blank">Apple's Privacy Policy</a>, and one non-Apple service, listed last:</p>
 <ul>
     <li><strong>Apple Maps (MapKit)</strong> — used for route generation, on-screen directions, place search and nearby places, and directions to trails. Coordinate data is sent to Apple's servers to power these features.</li>
-    <li><strong>Apple WeatherKit</strong> — provides weather conditions based on your approximate location.</li>
+    <li><strong>Apple WeatherKit</strong> — provides weather conditions for your current location or for a point on a route (see Weather above).</li>
     <li><strong>Apple HealthKit</strong> — the Health data listed above is read from, and completed workouts are written to, your Health app. This data is not shared with any third party.</li>
     <li><strong>Apple iCloud / CloudKit</strong> — syncs your walk history, badges, and streaks between your own devices through your private iCloud database, and stores community content you choose to publish in a shared public database. Scoops Dev cannot read your private database.</li>
     <li><strong>OpenTopoData</strong> (<a href="https://www.opentopodata.org/" target="_blank">opentopodata.org</a>) — provides the elevation chart shown for a selected route. When you pick a route, up to 100 points along its path are sent to OpenTopoData over an encrypted connection to look up ground elevation. No account, identifier, name, or other data is sent with them, and the App does not use a key or token that could tie requests to you. This is the only non-Apple service the App talks to.</li>
 </ul>
 
 <h2>In-App Purchases</h2>
-<p>Optional purchases (tips and Wockett Pro) are processed by Apple through the App Store. We never see your payment details, name or Apple ID; the App only asks the App Store on your device which purchases are active.</p>
+<p>Optional tips are processed by Apple through the App Store. Tips do not unlock features, and there is nothing else to buy in the App. We never see your payment details, name or Apple ID; the App only asks the App Store on your device which purchases you have made.</p>
 
 <h2>Community Content and Moderation</h2>
-<p>Content you publish is stored in Apple's public CloudKit database with the anonymous CloudKit identifier Apple assigns to your iCloud account for Wockett, which lets you manage your own posts and lets others block you. When you block a user, that choice is kept on your device and hides their content from you; it is not sent to us. When you report a post, route or challenge, it is hidden from you on your device, and a report is sent to Scoops Dev as a private record in Apple's public CloudKit database that only Wockett's moderators can read. The report holds the item, its author's display name, a short excerpt of it, the reason you chose and any note you wrote; your name is not included, and CloudKit records only the anonymous identifier described above as its creator. If the report cannot be sent, the App offers to email it to <a href="mailto:support@wockett.app">support@wockett.app</a> instead. You can delete your own routes, feed posts and challenge entries in the App at any time (long-press one and choose Delete from Community), or email us to have content you published removed. Scoops Dev can view and remove published community content, but cannot see your private data. A shared route can show where you started and finished, so consider that before sharing a route that begins at home.</p>
+<p>Content you publish is stored in Apple's public CloudKit database. CloudKit records with each item the anonymous identifier Apple assigns to your iCloud account for Wockett, as its creator. Scoops Dev can view and remove published community content, but cannot see your private data. A shared route can show where you started and finished, so consider that before sharing a route that begins at home.</p>
+<p><strong>Blocking.</strong> When you block a user, that choice is kept on your device and hides their content from you; it is not sent to us. In version 1.14 the App recognises a blocked user by their display name; from version 1.15 it uses the anonymous identifier described above.</p>
+<p><strong>Reporting.</strong> When you report a post, route or challenge, it is hidden from you on your device. In version 1.14 a report is not sent to us; to bring content to our attention, email <a href="mailto:support@wockett.app">support@wockett.app</a>. From version 1.15, the App also opens an email to <a href="mailto:support@wockett.app">support@wockett.app</a> holding the item, its author's display name and its content, which you review and send yourself. From version 1.16, a report is instead sent to Scoops Dev as a private record in Apple's public CloudKit database that only Wockett's moderators can read. That report holds the item, its author's display name, a short excerpt of it, the reason you chose and any note you wrote; your name is not included, and CloudKit records only the anonymous identifier described above as its creator. If it cannot be sent, the App offers to email it to <a href="mailto:support@wockett.app">support@wockett.app</a> instead.</p>
+<p><strong>Removing your content.</strong> Email <a href="mailto:support@wockett.app">support@wockett.app</a> to have content you published removed. From version 1.16, you can also delete your own routes, feed posts and challenge entries in the App at any time (long-press one and choose Delete from Community).</p>
+<p><strong>Moderation records.</strong> When a Wockett moderator removes an item, a copy of it (its text and other fields, shortened if long) is kept with the reason for the decision in a record that only moderators can read, so the decision can be reviewed later.</p>
 
 <h2>Children's Privacy</h2>
 <p>Wockett is not directed at children under 13. We do not knowingly collect personal information from children. If you believe a child has provided personal information through the App, please contact us and we will take steps to address it.</p>
