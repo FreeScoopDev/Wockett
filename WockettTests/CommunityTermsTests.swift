@@ -5,9 +5,13 @@ import Foundation
 /// The Terms gate before a first community action (2026-10-12 audit, finding 6).
 struct CommunityTermsTests {
 
+    /// A throwaway suite; never `.standard`, which would record agreement in the test host.
     private func freshDefaults() -> UserDefaults {
         let name = "CommunityTermsTests-\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: name) ?? .standard
+        guard let defaults = UserDefaults(suiteName: name) else {
+            Issue.record("no UserDefaults suite \(name)")
+            return UserDefaults(suiteName: "CommunityTermsTests-fallback")!
+        }
         defaults.removePersistentDomain(forName: name)
         return defaults
     }
@@ -94,4 +98,29 @@ struct CommunityTermsTests {
         #expect(runs == 0)
         #expect(gate.pending != nil)
     }
+
+    // MARK: The screens use it
+
+    /// Every screen that holds a community action in a gate must also present
+    /// the sheet, or Agree can never be reached and the button is a dead tap.
+    /// Reads the app's sources next to this file (the repo checkout).
+    @Test("Every screen with a Terms gate presents the Terms sheet")
+    func everyGateHasItsSheet() throws {
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .deletingLastPathComponent().appendingPathComponent("PoCSquat")
+        let files = try #require(FileManager.default.enumerator(at: root, includingPropertiesForKeys: nil))
+            .compactMap { $0 as? URL }.filter { $0.pathExtension == "swift" }
+        var gated = 0
+        for file in files {
+            let source = try String(contentsOf: file, encoding: .utf8)
+            let gates = source.components(separatedBy: "= CommunityTermsGate()").count - 1
+            let sheets = source.components(separatedBy: ".communityTermsSheet($termsGate)").count - 1
+            let uses = source.components(separatedBy: "termsGate.perform").count - 1
+            #expect(gates == sheets, "\(file.lastPathComponent): \(gates) gates, \(sheets) sheets")
+            #expect(uses >= gates, "\(file.lastPathComponent): a gate nothing uses")
+            gated += gates
+        }
+        #expect(gated >= 9, "the nine screens with community actions (found \(gated))")
+    }
 }
+

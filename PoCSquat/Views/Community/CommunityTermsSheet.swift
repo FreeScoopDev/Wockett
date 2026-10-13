@@ -21,7 +21,7 @@ struct CommunityTermsSheet: View {
                     VStack(alignment: .leading, spacing: WktSpacing.betweenSections) {
                         VStack(alignment: .leading, spacing: WktSpacing.betweenCards) {
                             ForEach(points, id: \.1) { symbol, text in
-                                HStack(alignment: .top, spacing: 12) {
+                                HStack(alignment: .top, spacing: WktSpacing.betweenCards) {
                                     Image(wkt: symbol).wktIcon(.row, tint: .earthGreen)
                                         .frame(width: 28)
                                         .accessibilityHidden(true)
@@ -34,16 +34,21 @@ struct CommunityTermsSheet: View {
                         }
                         .wktCard()
 
-                        VStack(alignment: .leading, spacing: 4) {
+                        VStack(alignment: .leading, spacing: 0) {
                             link("Terms of Service", url: CommunityTerms.termsURL)
                             link("Privacy Policy", url: CommunityTerms.privacyURL)
                         }
+
+                        Text("Tapping Agree accepts the Terms of Service, including the licence that lets Wockett show what you share.")
+                            .font(.wktLabel)
+                            .foregroundColor(.earthMuted)
+                            .fixedSize(horizontal: false, vertical: true)
 
                         WktPrimaryButton(title: "Agree", symbol: .success, action: onAgree)
                             .accessibilityIdentifier("terms.agree")
                     }
                     .padding(.horizontal, WktSpacing.screen)
-                    .padding(.vertical, 16)
+                    .padding(.vertical, WktSpacing.cardPadding)
                 }
             }
             .navigationTitle("Before you share")
