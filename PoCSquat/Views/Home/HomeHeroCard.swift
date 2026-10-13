@@ -94,8 +94,9 @@ struct HomeHeroCard<Chips: View>: View {
             HStack(spacing: WktSpacing.cardPadding) {
                 WktGoalRing(progress: progress) {
                     Text(WktPercent.text(progress))
-                        .font(.wktHeading(20))
+                        .font(.wktDense(20, weight: .heavy))
                         .foregroundColor(.earthCream)
+                        .lineLimit(1)
                         .minimumScaleFactor(0.6)
                 }
                 .frame(width: 92, height: 92)

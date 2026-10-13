@@ -98,12 +98,12 @@ struct RecoveryCard: View {
             VStack(spacing: 6) {
                 badge
                 Text(value)
-                    .font(.wktRowTitle.monospacedDigit())
+                    .font(Font.wktDense(16, weight: .heavy).monospacedDigit())
                     .foregroundColor(.earthCream)
                     .minimumScaleFactor(0.72)
                     .lineLimit(1)
                 Text(label)
-                    .font(.wktLabel)
+                    .font(.wktDense(13, weight: .bold))
                     .foregroundColor(.earthMuted)
                     .lineLimit(1)
             }

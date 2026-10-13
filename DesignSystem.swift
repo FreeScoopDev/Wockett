@@ -197,6 +197,26 @@ extension Font {
         return .system(size: s, weight: .semibold, design: .rounded)
     }
 
+    /// For a dense, fixed-geometry layout (a seven-column calendar, a ring's
+    /// centre, a three-column metric row): scales with the text size like
+    /// `wktBody`, but stops at the largest non-accessibility size. `wktBody`
+    /// and `wktLabel` scale without limit, and a 64 pt calendar cell or a 92 pt
+    /// ring cannot grow with them (2026-10-13 screenshots: overlapping day
+    /// cells, "0..." in the ring). SwiftUI's `.dynamicTypeSize(...)` does not
+    /// cap these fonts, because their size is already resolved here.
+    static func wktDense(_ size: CGFloat, weight: Font.Weight = .semibold) -> Font {
+        let s = wktDenseSize(size, scaled: UIFontMetrics(forTextStyle: .body).scaledValue(for: size))
+        return .system(size: s, weight: weight, design: .rounded)
+    }
+
+    /// `scaled` (the size at the current text size), held to the size the same
+    /// text would have at `extraExtraExtraLarge`. A function of its own so a
+    /// test can check the cap.
+    static func wktDenseSize(_ size: CGFloat, scaled: CGFloat) -> CGFloat {
+        let cap = UITraitCollection(preferredContentSizeCategory: .extraExtraExtraLarge)
+        return min(scaled, UIFontMetrics(forTextStyle: .body).scaledValue(for: size, compatibleWith: cap))
+    }
+
     // The type scale (2026-09-30 Home redesign). Six named roles instead of
     // a size picked at each call site, all SF Pro Rounded, all sentence case:
     // the all-caps SF Mono labels read as a dashboard readout, not as Wockett.

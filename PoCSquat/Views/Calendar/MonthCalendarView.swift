@@ -167,7 +167,7 @@ struct MonthCalendarView: View {
                             VStack(spacing: 8) {
                                 HStack(spacing: 0) {
                                     ForEach(Array(Calendar.current.veryShortStandaloneWeekdaySymbols.enumerated()), id: \.offset) { _, d in
-                                        Text(d).font(.wktLabel).foregroundColor(.earthMuted)
+                                        Text(d).font(.wktDense(13, weight: .bold)).foregroundColor(.earthMuted)
                                             .frame(maxWidth: .infinity)
                                     }
                                 }
@@ -256,7 +256,7 @@ struct MonthCalendarView: View {
                         .foregroundStyle(Color.earthOrange.opacity(0.5))
                         .annotation(position: .top, alignment: .leading) {
                             Text("Goal")
-                                .font(.wktBody(9))
+                                .font(.wktDense(9))
                                 .foregroundColor(.earthOrange.opacity(0.7))
                         }
                     if let td = pts.first(where: { Calendar.current.isDateInToday($0.date) }), td.steps > 0 {
@@ -272,7 +272,7 @@ struct MonthCalendarView: View {
                     AxisMarks(values: .stride(by: .day, count: 7)) { _ in
                         AxisGridLine().foregroundStyle(Color.earthTrack)
                         AxisValueLabel(format: .dateTime.day())
-                            .font(.wktBody(9))
+                            .font(.wktDense(9))
                             .foregroundStyle(Color.earthMuted)
                     }
                 }
@@ -282,7 +282,7 @@ struct MonthCalendarView: View {
                         AxisValueLabel {
                             if let d = v.as(Double.self) {
                                 Text(formatK(Int(d)))
-                                    .font(.wktBody(9))
+                                    .font(.wktDense(9))
                                     .foregroundStyle(Color.earthMuted)
                             }
                         }
@@ -337,8 +337,8 @@ private struct MonthDayCell: View {
     var body: some View {
         VStack(spacing: 2) {
             Text("\(cal.component(.day, from: date))")
-                .font(.wktLabel)
-                .foregroundColor(isToday ? .earthGreen : isFuture ? .earthMuted.opacity(0.5) : .earthCream)
+                .font(.wktDense(13, weight: .bold))
+                .foregroundColor(isToday ? .earthGreen : isFuture ? .earthMuted : .earthCream)
 
             ZStack {
                 Circle()
@@ -364,7 +364,7 @@ private struct MonthDayCell: View {
                                 .foregroundColor(.earthGreen)
                         } else if let s = steps, s > 0 {
                             Text(WktPercent.text(Double(s) / Double(max(1, goal))))
-                                .font(.wktBody(7))
+                                .font(.wktDense(7))
                                 .foregroundColor(.earthOrange)
                                 .minimumScaleFactor(0.7)
                         } else {
@@ -379,16 +379,16 @@ private struct MonthDayCell: View {
 
             if let label = stepsLabel {
                 Text(label)
-                    .font(.wktBody(9))
+                    .font(.wktDense(9))
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
                     .foregroundColor(goalMet == true ? .earthGreen : .earthMuted)
             } else if isFuture {
                 Text(goal >= 1_000 ? "\(goal / 1_000)K" : "\(goal)")
-                    .font(.wktBody(9))
-                    .foregroundColor(.earthMuted.opacity(0.5))
+                    .font(.wktDense(9))
+                    .foregroundColor(.earthMuted)
             } else {
-                Text("—").font(.wktBody(9)).foregroundColor(.earthMuted.opacity(0.4))
+                Text("—").font(.wktDense(9)).foregroundColor(.earthMuted.opacity(0.4))
             }
         }
         .frame(maxWidth: .infinity)
