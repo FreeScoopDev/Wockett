@@ -204,6 +204,8 @@ struct PostToCommunitySheet: View {
     @State private var isPosting = false
     @State private var didPost = false
     @State private var errorMessage: String? = nil
+    /// Holds a community action until the Terms are agreed to (CommunityTermsGate).
+    @State private var termsGate = CommunityTermsGate()
 
     /// The path a share publishes, made once when the sheet appears; the
     /// name is filled in when posting.
@@ -245,7 +247,7 @@ struct PostToCommunitySheet: View {
                             .multilineTextAlignment(.center)
                     }
 
-                    Button(action: post) {
+                    Button { termsGate.perform(post) } label: {
                         if isPosting {
                             ProgressView().tint(.white)
                                 .frame(maxWidth: .infinity, minHeight: 56)
@@ -283,6 +285,7 @@ struct PostToCommunitySheet: View {
                 }
             }
         }
+        .communityTermsSheet($termsGate)
         .presentationDetents([.large])
         .onAppear {
             routeName = route.label ?? "\(route.directionName) \(route.isLoop ? "Loop" : "Route")"

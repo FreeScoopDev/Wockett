@@ -22,6 +22,8 @@ final class AchievementFeedModel: PostLiking {
 
 struct AchievementFeedContentView: View {
     @State private var feed = AchievementFeedModel()
+    /// Holds a community action until the Terms are agreed to (CommunityTermsGate).
+    @State private var termsGate = CommunityTermsGate()
     @State private var isLoading  = false
     @State private var loadError: String?            = nil
 
@@ -42,7 +44,7 @@ struct AchievementFeedContentView: View {
                         ForEach(feed.posts) { post in
                             AchievementPostCard(post: post,
                                                 isLiked: feed.isLiked(post.id),
-                                                onLike: { feed.like(post.id) },
+                                                onLike: { termsGate.perform { feed.like(post.id) } },
                                                 onHide: { feed.posts = CommunityModerationStore.shared.visible(feed.posts.filter { $0.id != post.id }) })
                         }
                     }
@@ -69,6 +71,7 @@ struct AchievementFeedContentView: View {
         }
         .task { await load() }
         .likeErrorAlert(Bindable(feed).likeError)
+        .communityTermsSheet($termsGate)
     }
 
     private var emptyState: some View {
@@ -207,6 +210,8 @@ struct ShareAchievementSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var message    = ""
     @State private var isPosting  = false
+    /// Holds a community action until the Terms are agreed to (CommunityTermsGate).
+    @State private var termsGate = CommunityTermsGate()
     @State private var didPost    = false
     @State private var postError: String? = nil
 
@@ -258,7 +263,7 @@ struct ShareAchievementSheet: View {
                             .padding(.horizontal, WktSpacing.screen)
                     }
 
-                    Button { post() } label: {
+                    Button { termsGate.perform(post) } label: {
                         if isPosting {
                             ProgressView()
                                 .tint(.white)
@@ -286,6 +291,7 @@ struct ShareAchievementSheet: View {
                 }
             }
         }
+        .communityTermsSheet($termsGate)
         .presentationDetents([.medium])
     }
 

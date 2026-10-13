@@ -99,6 +99,8 @@ struct CommunityRoutesView: View {
 
     @State private var savedIds: Set<String> = []
     @State private var showActiveSessionAlert = false
+    /// Holds a community action until the Terms are agreed to (CommunityTermsGate).
+    @State private var termsGate = CommunityTermsGate()
 
     var body: some View {
         ZStack {
@@ -118,6 +120,7 @@ struct CommunityRoutesView: View {
                 routeList
             }
         }
+        .communityTermsSheet($termsGate)
         .navigationTitle("Community Routes")
         .navigationBarTitleDisplayMode(.inline)
         .task { await model.load() }
@@ -177,7 +180,8 @@ struct CommunityRoutesView: View {
 
     private func handleWockett(at i: Int) {
         guard i < model.routes.count else { return }
-        model.wockett(model.routes[i].id)
+        let id = model.routes[i].id
+        termsGate.perform { model.wockett(id) }
     }
 
     private func handleSave(at i: Int) {
