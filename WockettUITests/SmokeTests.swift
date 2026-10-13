@@ -53,6 +53,25 @@ final class SmokeTests: XCTestCase {
         app.tabBars.buttons[title].firstMatch
     }
 
+    /// Selects a tab, tapping again if XCTest lost the tap. A system alert that
+    /// is up when a tab is tapped goes to the interruption monitor first, and
+    /// XCTest then loses the tap itself: CI run 38282011787 answered a
+    /// location prompt ("Allow Once"), logged "Computed hit point {-1, -1}"
+    /// for the Health tab, and the tab never changed, so the wait for
+    /// `health.root` ran out. That was every `testHealthShowsDisclaimer`
+    /// failure (6, 2026-10-11/12), and the same lost tap stopped
+    /// `testGuidedWalkEndedFromLiveActivityReturnsHome` at Routes. Every call
+    /// is still followed by the screen's own wait, so a broken tab still fails.
+    private func selectTab(_ title: String) {
+        let button = tab(title)
+        let selected = NSPredicate(format: "selected == true")
+        for _ in 0..<3 {
+            button.tap()
+            let wait = XCTNSPredicateExpectation(predicate: selected, object: button)
+            if XCTWaiter().wait(for: [wait], timeout: 5) == .completed { return }
+        }
+    }
+
     /// Taps the centre of an element by coordinate, bypassing XCUITest's
     /// hittability gate. Custom-styled SwiftUI buttons (BounceButtonStyle here)
     /// can report `isHittable == false` while being perfectly tappable.
@@ -92,19 +111,19 @@ final class SmokeTests: XCTestCase {
     func testTabNavigation() {
         XCTAssertTrue(el("home.statCard").waitForExistence(timeout: 10))
 
-        tab("Health").tap()
+        selectTab("Health")
         XCTAssertTrue(el("health.root").waitForExistence(timeout: 15))
 
-        tab("Routes").tap()
+        selectTab("Routes")
         XCTAssertTrue(app.buttons["routes.findRoutes"].waitForExistence(timeout: 30))
 
-        tab("Community").tap()
+        selectTab("Community")
         XCTAssertTrue(el("community.root").waitForExistence(timeout: 30))
 
-        tab("Settings").tap()
+        selectTab("Settings")
         XCTAssertTrue(el("settings.root").waitForExistence(timeout: 30))
 
-        tab("Home").tap()
+        selectTab("Home")
         XCTAssertTrue(el("home.statCard").waitForExistence(timeout: 30),
                       "Stat card must still be present after returning to Home")
     }
@@ -166,7 +185,7 @@ final class SmokeTests: XCTestCase {
         )
         wait(for: [sessionGone], timeout: 25)
 
-        tab("Community").tap()
+        selectTab("Community")
 
         let miniTile = app.buttons["accessory.miniTile"]
         XCTAssertTrue(miniTile.waitForExistence(timeout: 30),
@@ -224,7 +243,7 @@ final class SmokeTests: XCTestCase {
     func testRoutesReachable() {
         XCTAssertTrue(el("home.statCard").waitForExistence(timeout: 10))
 
-        tab("Routes").tap()
+        selectTab("Routes")
 
         let findRoutes = app.buttons["routes.findRoutes"]
         XCTAssertTrue(findRoutes.waitForExistence(timeout: 30))
@@ -267,9 +286,18 @@ final class SmokeTests: XCTestCase {
     /// A guided walk's screen is a full-screen cover on Home. Ending the walk
     /// from the Live Activity while that screen is up must take the person
     /// back to Home, not leave them on an empty cover with no way out.
-    func testGuidedWalkEndedFromLiveActivityReturnsHome() {
+    ///
+    /// Skipped on GitHub Actions, run everywhere else. It ends the walk from
+    /// Notification Centre, and the runner's simulator does not show the Live
+    /// Activity there (run 38312665429: "End Walk button must be in
+    /// Notification Centre"). The UI job sets `TEST_RUNNER_WOCKETT_CI=1` in
+    /// `.github/workflows/tests.yml`, which xcodebuild passes to this process
+    /// as `WOCKETT_CI`; a local run has neither, so the test runs there.
+    func testGuidedWalkEndedFromLiveActivityReturnsHome() throws {
+        try XCTSkipIf(ProcessInfo.processInfo.environment["WOCKETT_CI"] == "1",
+                      "GitHub's runner can't show the Live Activity in Notification Centre")
         XCTAssertTrue(el("home.statCard").waitForExistence(timeout: 10))
-        tab("Routes").tap()
+        selectTab("Routes")
         let findRoutes = app.buttons["routes.findRoutes"]
         XCTAssertTrue(findRoutes.waitForExistence(timeout: 30))
         findRoutes.tap()
@@ -324,7 +352,7 @@ final class SmokeTests: XCTestCase {
     /// -WKTUITest the pack still loads — it is local data, nothing to stub.
     func testSettingsShowsTrailDataCredits() {
         XCTAssertTrue(el("home.statCard").waitForExistence(timeout: 10))
-        tab("Settings").tap()
+        selectTab("Settings")
         XCTAssertTrue(el("settings.root").waitForExistence(timeout: 30))
 
         // About is near the bottom of a long list.
@@ -351,7 +379,7 @@ final class SmokeTests: XCTestCase {
     /// reachable by scrolling to the end of a long screen.
     func testHealthShowsDisclaimer() {
         XCTAssertTrue(el("home.statCard").waitForExistence(timeout: 10))
-        tab("Health").tap()
+        selectTab("Health")
         // 30 s like the other tabs: a loaded CI machine took longer than 15 (PR 186).
         XCTAssertTrue(el("health.root").waitForExistence(timeout: 30))
         let note = app.staticTexts["health.disclaimer"]
@@ -376,7 +404,7 @@ final class SmokeTests: XCTestCase {
     /// app ships.
     func testTrailsList() {
         XCTAssertTrue(el("home.statCard").waitForExistence(timeout: 10))
-        tab("Routes").tap()
+        selectTab("Routes")
         let picker = el("routes.modePicker")
         XCTAssertTrue(picker.waitForExistence(timeout: 30))
         picker.buttons["Trails"].tap()
@@ -402,7 +430,7 @@ final class SmokeTests: XCTestCase {
     /// check that the way in still exists.
     func testStepGoalEditorOpensFromSettings() {
         XCTAssertTrue(el("home.statCard").waitForExistence(timeout: 10))
-        tab("Settings").tap()
+        selectTab("Settings")
         XCTAssertTrue(el("settings.root").waitForExistence(timeout: 30))
 
         let row = app.buttons["settings.stepGoal"]

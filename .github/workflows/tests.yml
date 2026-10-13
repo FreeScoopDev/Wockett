@@ -147,9 +147,16 @@ jobs:
           xcrun simctl boot "$UDID" || true
           xcrun simctl bootstatus "$UDID" -b
 
+      # TEST_RUNNER_WOCKETT_CI reaches the UI test process as WOCKETT_CI
+      # (xcodebuild passes TEST_RUNNER_-prefixed variables to the runner with
+      # the prefix removed). testGuidedWalkEndedFromLiveActivityReturnsHome
+      # skips itself on it: it drives Notification Centre, which this
+      # runner's simulator does not show the Live Activity in. Local runs
+      # don't set it, so the test still runs there.
       - name: Run the UI smoke tests (WockettUITests)
         env:
           TEST_OUTPUT_DIR: ${{ runner.temp }}/wockett-tests
+          TEST_RUNNER_WOCKETT_CI: "1"
           TEST_XCODEBUILD_ARGS: -parallel-testing-enabled NO -maximum-concurrent-test-simulator-destinations 1
         run: bash toolkit/bin/test.sh "$GITHUB_WORKSPACE" --ui-only
 

@@ -58,6 +58,13 @@ struct CommunityNamesTests {
         }
     }
 
+    // Every service here gets its own NotificationCenter, never `.default`.
+    // The test host is the app, and the system posts `.CKAccountChanged` on
+    // `.default` when the simulator's iCloud state settles. A service
+    // listening there forgets its claim mid-test: run 38394086194 (PR 210,
+    // 2026-10-13) failed `concurrentWritesShareClaim` with AccountChanged()
+    // while no test posted to `.default`.
+
     private func defaults(local: String? = nil) -> UserDefaults {
         let suite = "CommunityNamesTests-\(UUID().uuidString)"
         let d = UserDefaults(suiteName: suite) ?? .standard
@@ -124,7 +131,7 @@ struct CommunityNamesTests {
     @Test("An existing user keeps their name when it is free")
     func keepsFreeExistingName() async throws {
         let cloud = FakeCloud()
-        let service = CommunityNameService(store: cloud, defaults: defaults(local: "MistyOak"), makeName: names(["SunnyFox42"]))
+        let service = CommunityNameService(store: cloud, defaults: defaults(local: "MistyOak"), makeName: names(["SunnyFox42"]), notifications: NotificationCenter())
         #expect(try await service.claimedName() == "MistyOak")
         #expect(cloud.claims == ["MistyOak"])
     }
@@ -133,7 +140,7 @@ struct CommunityNamesTests {
     func takenNameReplaced() async throws {
         let cloud = FakeCloud()
         cloud.hold("MistyOak", by: "_other")
-        let service = CommunityNameService(store: cloud, defaults: defaults(local: "MistyOak"), makeName: names(["SunnyFox42"]))
+        let service = CommunityNameService(store: cloud, defaults: defaults(local: "MistyOak"), makeName: names(["SunnyFox42"]), notifications: NotificationCenter())
         #expect(try await service.claimedName() == "SunnyFox42")
         #expect(cloud.claims == ["MistyOak", "SunnyFox42"])
         #expect(service.displayName == "SunnyFox42")
@@ -144,7 +151,7 @@ struct CommunityNamesTests {
         let cloud = FakeCloud()
         cloud.hold("MistyOak", by: "_other")
         cloud.takenError = CKError(.permissionFailure)   // not the code the app might expect
-        let service = CommunityNameService(store: cloud, defaults: defaults(local: "MistyOak"), makeName: names(["SunnyFox42"]))
+        let service = CommunityNameService(store: cloud, defaults: defaults(local: "MistyOak"), makeName: names(["SunnyFox42"]), notifications: NotificationCenter())
         #expect(try await service.claimedName() == "SunnyFox42", "moved on from the held name")
     }
 
@@ -153,7 +160,7 @@ struct CommunityNamesTests {
         let cloud = FakeCloud()
         cloud.loseReply = true
         cloud.lookupMisses = true
-        let service = CommunityNameService(store: cloud, defaults: defaults(local: "MistyOak"), makeName: names(["SunnyFox42"]))
+        let service = CommunityNameService(store: cloud, defaults: defaults(local: "MistyOak"), makeName: names(["SunnyFox42"]), notifications: NotificationCenter())
         #expect(try await service.claimedName() == "MistyOak")
         #expect(cloud.owners.filter { $0.value == "_me" }.count == 1)
     }
@@ -163,7 +170,7 @@ struct CommunityNamesTests {
         let cloud = FakeCloud()
         cloud.hold("MistyOak", by: "_me")
         cloud.lookupMisses = true                    // the index hasn't caught up
-        let service = CommunityNameService(store: cloud, defaults: defaults(local: "MistyOak"), makeName: names(["SunnyFox42"]))
+        let service = CommunityNameService(store: cloud, defaults: defaults(local: "MistyOak"), makeName: names(["SunnyFox42"]), notifications: NotificationCenter())
         #expect(try await service.claimedName() == "MistyOak")
     }
 
@@ -171,7 +178,7 @@ struct CommunityNamesTests {
     func concurrentWritesShareClaim() async throws {
         let cloud = FakeCloud()
         cloud.holdClaims = true
-        let service = CommunityNameService(store: cloud, defaults: defaults(local: "MistyOak"), makeName: names(["SunnyFox42"]))
+        let service = CommunityNameService(store: cloud, defaults: defaults(local: "MistyOak"), makeName: names(["SunnyFox42"]), notifications: NotificationCenter())
         // Waits are for a condition, capped in main-actor turns, never a fixed
         // count or a time limit: on a busy runner 10,000 fixed yields outlasted
         // a 1-minute limit, which also counts time queued for the main actor.
@@ -204,7 +211,7 @@ struct CommunityNamesTests {
         let cloud = FakeCloud()
         for i in 0..<20 { cloud.hold("Taken\(i)", by: "_other") }
         let d = defaults(local: "Taken0")
-        let service = CommunityNameService(store: cloud, defaults: d, makeName: names((1..<20).map { "Taken\($0)" }))
+        let service = CommunityNameService(store: cloud, defaults: d, makeName: names((1..<20).map { "Taken\($0)" }), notifications: NotificationCenter())
         await #expect(throws: CommunityNameService.NameError.self) { try await service.claimedName() }
         #expect(cloud.claims.count == CommunityNameService.maxTries)
         #expect(d.string(forKey: CommunityNameService.claimedKey) == nil)
@@ -215,7 +222,7 @@ struct CommunityNamesTests {
         let cloud = FakeCloud()
         cloud.claimError = CKError(.networkUnavailable)
         let d = defaults()
-        let service = CommunityNameService(store: cloud, defaults: d, makeName: names(["SunnyFox42"]))
+        let service = CommunityNameService(store: cloud, defaults: d, makeName: names(["SunnyFox42"]), notifications: NotificationCenter())
         await #expect(throws: CKError.self) { try await service.claimedName() }
         #expect(cloud.claims.count == 1, "no second name tried")
         #expect(d.string(forKey: CommunityNameService.claimedKey) == nil)
@@ -225,7 +232,7 @@ struct CommunityNamesTests {
     func adoptsExistingClaim() async throws {
         let cloud = FakeCloud()
         cloud.hold("CalmOwl17", by: "_me")
-        let service = CommunityNameService(store: cloud, defaults: defaults(local: "MistyOak"), makeName: names(["SunnyFox42"]))
+        let service = CommunityNameService(store: cloud, defaults: defaults(local: "MistyOak"), makeName: names(["SunnyFox42"]), notifications: NotificationCenter())
         #expect(try await service.claimedName() == "CalmOwl17")
         #expect(cloud.claims.isEmpty)
         #expect(service.displayName == "CalmOwl17")
@@ -234,7 +241,7 @@ struct CommunityNamesTests {
     @Test("Once claimed, later writes don't look the name up again")
     func remembered() async throws {
         let cloud = FakeCloud()
-        let service = CommunityNameService(store: cloud, defaults: defaults(), makeName: names(["SunnyFox42"]))
+        let service = CommunityNameService(store: cloud, defaults: defaults(), makeName: names(["SunnyFox42"]), notifications: NotificationCenter())
         _ = try await service.claimedName()
         _ = try await service.claimedName()
         #expect(cloud.lookups == 1)
@@ -245,9 +252,9 @@ struct CommunityNamesTests {
     func accountSwitchWhileClosed() async throws {
         let cloud = FakeCloud()
         let d = defaults()
-        _ = try await CommunityNameService(store: cloud, defaults: d, makeName: names(["SunnyFox42"])).claimedName()
+        _ = try await CommunityNameService(store: cloud, defaults: d, makeName: names(["SunnyFox42"]), notifications: NotificationCenter()).claimedName()
         cloud.me = "_newOwner"                         // switched while Wockett wasn't running: no notification
-        let service = CommunityNameService(store: cloud, defaults: d, makeName: names(["QuietLark33"]))
+        let service = CommunityNameService(store: cloud, defaults: d, makeName: names(["QuietLark33"]), notifications: NotificationCenter())
         await service.refreshDisplayName()
         #expect(service.displayName != "SunnyFox42", "the old account's name isn't shown either")
         let name = try await service.claimedName()
@@ -261,7 +268,7 @@ struct CommunityNamesTests {
     func refreshShowsRealName() async {
         let cloud = FakeCloud()
         cloud.hold("MistyOak", by: "_other")
-        let service = CommunityNameService(store: cloud, defaults: defaults(local: "MistyOak"), makeName: names(["SunnyFox42"]))
+        let service = CommunityNameService(store: cloud, defaults: defaults(local: "MistyOak"), makeName: names(["SunnyFox42"]), notifications: NotificationCenter())
         await service.refreshDisplayName()
         #expect(service.displayName == "SunnyFox42")
         #expect(cloud.claims.isEmpty)
@@ -271,7 +278,7 @@ struct CommunityNamesTests {
     func refreshAdoptsExisting() async {
         let cloud = FakeCloud()
         cloud.hold("CalmOwl17", by: "_me")
-        let service = CommunityNameService(store: cloud, defaults: defaults(local: "MistyOak"), makeName: names(["SunnyFox42"]))
+        let service = CommunityNameService(store: cloud, defaults: defaults(local: "MistyOak"), makeName: names(["SunnyFox42"]), notifications: NotificationCenter())
         await service.refreshDisplayName()
         #expect(service.displayName == "CalmOwl17")
         #expect(cloud.claims.isEmpty)
@@ -281,7 +288,7 @@ struct CommunityNamesTests {
     func devicesSettleOnOldest() async throws {
         let cloud = FakeCloud()
         let d = defaults(local: "MistyOak")
-        let service = CommunityNameService(store: cloud, defaults: d, makeName: names([]))
+        let service = CommunityNameService(store: cloud, defaults: d, makeName: names([]), notifications: NotificationCenter())
         cloud.lookupMisses = true
         _ = try await service.claimedName()                 // this device: MistyOak
         cloud.oldest = "CalmOwl17"                          // the other device's, claimed first
@@ -313,7 +320,7 @@ struct CommunityNamesTests {
         cloud.ownerAsRealID = true
         cloud.hold("MistyOak", by: "_me")
         cloud.lookupMisses = true
-        let service = CommunityNameService(store: cloud, defaults: defaults(local: "MistyOak"), makeName: names(["SunnyFox42"]))
+        let service = CommunityNameService(store: cloud, defaults: defaults(local: "MistyOak"), makeName: names(["SunnyFox42"]), notifications: NotificationCenter())
         #expect(try await service.claimedName() == "MistyOak")
     }
 }
