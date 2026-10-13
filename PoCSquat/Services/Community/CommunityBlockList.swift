@@ -156,15 +156,22 @@ final class BlockListSync {
     private let log = Logger(subsystem: "com.wockett.app", category: "BlockListSync")
     private var running: Task<Bool, Never>?
     private var again = false
+    private var started = false
 
     init(backend: BlockListBackend, moderation: CommunityModerationStore) {
         self.backend = backend
         self.moderation = moderation
     }
 
-    /// Starts syncing on every block and unblock.
-    func start() {
+    /// Starts syncing on every block and unblock, and when the iCloud
+    /// account changes (the new account's list comes in).
+    func start(notifications: NotificationCenter = .default) {
         moderation.onBlocksChanged = { [weak self] in self?.sync() }
+        guard !started else { return }
+        started = true
+        notifications.addObserver(forName: .CKAccountChanged, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { _ = self?.sync() }
+        }
     }
 
     /// Syncs now, or once more after the sync already running. Returns the
