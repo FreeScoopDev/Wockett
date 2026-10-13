@@ -132,6 +132,8 @@ struct CustomRouteDetailView: View {
     @State private var showMapsAlert      = false
     @State private var isEditing               = false
     @State private var shareState: ShareState  = .idle
+    /// Holds a community action until the Terms are agreed to (CommunityTermsGate).
+    @State private var termsGate = CommunityTermsGate()
     /// Why sharing failed, when it is worth saying (a paused account).
     @State private var shareMessage: String?
     /// Hide start and finish: the user's last choice, off by default.
@@ -305,7 +307,7 @@ struct CustomRouteDetailView: View {
                             }
                             let sharePreparing = (shareRoute == nil && (isLoading || !isClassified))
                                 || (shareRoute != nil && hideEnds && !shareOffsetChecked)
-                            Button {
+                            Button { termsGate.perform {
                                 guard shareState == .idle else { return }
                                 shareState = .sharing
                                 Task {
@@ -321,7 +323,7 @@ struct CustomRouteDetailView: View {
                                         shareState = .failed
                                     }
                                 }
-                            } label: {
+                            } } label: {
                                 switch shareState {
                                 case .idle:
                                     WktSecondaryLabel(title: "Share Route", symbol: .upload)
@@ -360,6 +362,7 @@ struct CustomRouteDetailView: View {
             shareOffset = await SharePrivacyOffsetStore.shared.currentIfAvailable()
             shareOffsetChecked = true
         }
+        .communityTermsSheet($termsGate)
         .navigationTitle(route.name)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {

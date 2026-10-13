@@ -46,7 +46,9 @@ final class AchievementFeedService {
 
     private let db         = CKContainer(identifier: WockettCloud.containerID).publicCloudDatabase
     private let recordType = "WocketAchievement"
-    private let likedKey   = "achievementLikedIds"
+    /// Static: Delete my community data reads it (CommunityDataDeletion).
+    static let likedKey = "achievementLikedIds"
+    private var likedKey: String { Self.likedKey }
 
     init() {}
 

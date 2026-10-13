@@ -117,10 +117,17 @@ final class CommunityModerationStore {
     /// every list at once, and kept out if CloudKit's index still returns
     /// them for a moment.
     @ObservationIgnored private let deletedKey = "communityDeletedIds"
-    /// Names blocked before 2026-10-09, and authors whose account is unknown.
-    @ObservationIgnored private let blockedKey  = "communityBlockedAuthors"
-    /// Accounts blocked since 2026-10-09.
-    @ObservationIgnored private let blockedAccountsKey = "communityBlockedAccounts"
+    /// Before 2026-10-13: names blocked before 2026-10-09, and authors whose
+    /// account is unknown. Migrated into `blockListKey` once, then removed.
+    static let legacyBlockedNamesKey = "communityBlockedAuthors"
+    /// Before 2026-10-13: accounts blocked since 2026-10-09. Migrated likewise.
+    static let legacyBlockedAccountsKey = "communityBlockedAccounts"
+    /// Every block and unblock (BlockList, JSON), synced through your private
+    /// iCloud by BlockListSync.
+    static let blockListKey = "communityBlockList_v1"
+    /// Called after every block and unblock, so the change syncs.
+    @ObservationIgnored var onBlocksChanged: (() -> Void)?
+    @ObservationIgnored private var decodedBlockList: BlockList?
     /// Suspended accounts as last fetched (SuspensionService), JSON. Held so
     /// a load offline still hides them.
     @ObservationIgnored private let suspensionsKey = "communitySuspensions"
@@ -132,16 +139,20 @@ final class CommunityModerationStore {
     @ObservationIgnored private let myAccount: () -> String?
 
     @ObservationIgnored private let accountChangeWork: () async -> Void
+    @ObservationIgnored private let now: () -> Date
 
-    /// `defaults`, `myAccount`, `notifications` and `onAccountChange` are for
-    /// tests, so they don't touch the app's own settings or iCloud.
+    /// `defaults`, `myAccount`, `notifications`, `onAccountChange` and `now`
+    /// are for tests, so they don't touch the app's own settings or iCloud.
     init(defaults: UserDefaults = .standard,
          myAccount: @escaping () -> String? = { MyAccount.recordName },
          notifications: NotificationCenter = .default,
-         onAccountChange: @escaping () async -> Void = { MyAccount.clear(); await MyAccount.refresh() }) {
+         onAccountChange: @escaping () async -> Void = { MyAccount.clear(); await MyAccount.refresh() },
+         now: @escaping () -> Date = Date.init) {
         self.defaults = defaults
         self.myAccount = myAccount
         self.accountChangeWork = onAccountChange
+        self.now = now
+        migrateLegacyBlocks()
         // A different iCloud account on this phone: the saved own ID belongs to
         // the old one. Forget it, look the new one up, and redraw anything that
         // decided "yours" with the old one.
@@ -193,14 +204,15 @@ final class CommunityModerationStore {
 
     // MARK: - Block author
 
-    /// Blocked when the author's account is blocked, or their name is on the
-    /// older list (blocks from before accounts, and authors with no account).
+    /// Blocked when the author's account is blocked, or their name is (blocks
+    /// from before accounts, and authors with no account).
     func isBlocked(_ author: CommunityAuthor) -> Bool {
         // Never your own content: an old name block can match your own name
         // (Block used to be offered on your own posts, and namesakes are common).
         guard !isMine(author) else { return false }
-        if let account = author.account, stored(forKey: blockedAccountsKey).contains(account) { return true }
-        return stored(forKey: blockedKey).contains(author.name)
+        let list = blockList
+        if let account = author.account, list.isBlocked(BlockList.key(account: account)) { return true }
+        return list.isBlocked(BlockList.key(name: author.name))
     }
 
     /// Blocks the author's account, so a name change doesn't get past it and a
@@ -208,11 +220,56 @@ final class CommunityModerationStore {
     /// by name. Never blocks yourself.
     func block(_ author: CommunityAuthor) {
         guard !isMine(author) else { return }
-        if let account = author.account {
-            append(account, toKey: blockedAccountsKey)
-        } else {
-            append(author.name, toKey: blockedKey)
+        let key = author.account.map { BlockList.key(account: $0) } ?? BlockList.key(name: author.name)
+        guard !blockList.isBlocked(key) else { return }
+        var list = blockList
+        list.set(key, blocked: true, at: now(), label: author.name)
+        replaceBlockList(list)
+        onBlocksChanged?()
+    }
+
+    /// Unblocks one entry of `blockList`. Kept as an unblock, not removed,
+    /// so an older block on another device doesn't bring the person back.
+    func unblock(key: String) {
+        guard blockList.isBlocked(key) else { return }
+        var list = blockList
+        list.set(key, blocked: false, at: now())
+        replaceBlockList(list)
+        onBlocksChanged?()
+    }
+
+    /// Every block and unblock this phone knows.
+    var blockList: BlockList {
+        _ = revision
+        if let decodedBlockList { return decodedBlockList }
+        let list = BlockList.decoded(defaults.string(forKey: Self.blockListKey)) ?? BlockList()
+        decodedBlockList = list
+        return list
+    }
+
+    /// Replaces the list held (a sync's merge); redraws only when it changed.
+    func replaceBlockList(_ list: BlockList) {
+        guard list != blockList, let text = list.encoded() else { return }
+        defaults.set(text, forKey: Self.blockListKey)
+        decodedBlockList = list
+        revision += 1
+    }
+
+    /// Blocks kept in the two old UserDefaults lists join the new list once,
+    /// stamped 1970 so any later unblock beats them, and the old lists go.
+    private func migrateLegacyBlocks() {
+        let accounts = defaults.stringArray(forKey: Self.legacyBlockedAccountsKey)
+        let names = defaults.stringArray(forKey: Self.legacyBlockedNamesKey)
+        guard accounts != nil || names != nil else { return }
+        let legacy = BlockList.legacy(accounts: accounts ?? [], names: names ?? [])
+        let merged = BlockList.merge(blockList, legacy)
+        if merged != blockList {
+            guard let text = merged.encoded() else { return }   // keep the old lists if it can't be written
+            defaults.set(text, forKey: Self.blockListKey)
+            decodedBlockList = merged
         }
+        defaults.removeObject(forKey: Self.legacyBlockedAccountsKey)
+        defaults.removeObject(forKey: Self.legacyBlockedNamesKey)
     }
 
     // MARK: - Suspensions

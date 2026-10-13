@@ -179,6 +179,15 @@ final class CommunityNameService {
         revision += 1
     }
 
+    /// After Delete my community data removed the claim: forget it and pick
+    /// a fresh local name, so the next post claims a new name rather than
+    /// the one just deleted.
+    func startOver() {
+        forgetClaim()
+        defaults.set(makeName(), forKey: Self.localKey)
+        revision += 1
+    }
+
     /// Makes `displayName` the name a post would go out under, without
     /// claiming anything: the account's existing name if it has one, and a
     /// fresh local name if the one shown belongs to someone else. For screens

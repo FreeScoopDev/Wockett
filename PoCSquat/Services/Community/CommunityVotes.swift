@@ -56,6 +56,14 @@ enum CommunityVotes {
 
     /// The voter part of a vote's record name, or nil for a name not built by
     /// `recordName(target:voter:)`.
+    /// The item part of `voter`'s vote record name, or nil for a name not
+    /// built by `recordName(target:voter:)` for that voter.
+    static func target(fromRecordName name: String, voter: String) -> String? {
+        let prefix = "vote.", suffix = ".\(voter)"
+        guard name.hasPrefix(prefix), name.hasSuffix(suffix), name.count > prefix.count + suffix.count else { return nil }
+        return String(name.dropFirst(prefix.count).dropLast(suffix.count))
+    }
+
     static func voter(fromRecordName name: String, target: String) -> String? {
         let prefix = "vote.\(target)."
         guard name.hasPrefix(prefix) else { return nil }
@@ -347,7 +355,8 @@ final class CloudKitCommunityVoteStore: CommunityVoteStore {
 
 final class CommunityVoteService {
     static let shared = CommunityVoteService(store: CloudKitCommunityVoteStore(),
-                                             canVote: { try await SuspensionService.shared.ensureCanPost() })
+                                             canVote: { try await SuspensionService.shared.ensureCanPost() },
+                                             isDeleted: { CommunityModerationStore.shared.isDeleted(CKRecord.ID(recordName: $0)) })
 
     private let store: CommunityVoteStore
     private var cachedUser: String?
@@ -357,13 +366,19 @@ final class CommunityVoteService {
     private let sleep: OptimisticVote.Sleep
     /// Throws when this account may not vote (suspended). A seam for tests.
     private let canVote: () async throws -> Void
+    /// Votes you deleted (Delete my community data): left out of every
+    /// tally, since CloudKit's index can still return them for a moment and
+    /// a tally that counts one as yours marks the item voted again.
+    private let isDeleted: (String) -> Bool
 
     init(store: CommunityVoteStore, tallyTimeout: Duration = .seconds(6),
          sleep: @escaping OptimisticVote.Sleep = { try await Task.sleep(for: $0) },
          notifications: NotificationCenter = .default,
-         canVote: @escaping () async throws -> Void = {}) {
+         canVote: @escaping () async throws -> Void = {},
+         isDeleted: @escaping (String) -> Bool = { _ in false }) {
         self.store = store
         self.canVote = canVote
+        self.isDeleted = isDeleted
         self.tallyTimeout = tallyTimeout
         self.sleep = sleep
         // iOS doesn't restart the app when the iCloud account changes; a
@@ -398,8 +413,8 @@ final class CommunityVoteService {
     func tally(for targets: [String]) async -> VoteTally {
         guard !targets.isEmpty else { return VoteTally() }
         do {
-            let result = try await OptimisticVote.withDeadline(tallyTimeout, sleep: sleep) { [store] in
-                let votes = try await store.votes(for: targets)
+            let result = try await OptimisticVote.withDeadline(tallyTimeout, sleep: sleep) { [store, isDeleted] in
+                let votes = try await store.votes(for: targets).filter { !isDeleted($0.recordName) }
                 return CommunityVotes.tally(votes, me: try? await self.me())
             }
             guard let result else {

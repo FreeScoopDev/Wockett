@@ -186,6 +186,13 @@ struct SquatCounterApp: App {
                 handleWalkIntent()
                 handleChallengeLink()
                 ActivityDetectionService.shared.startDetectionIfAuthorized()
+                // Blocks live in your private iCloud too: bring in ones made on
+                // another device or before a reinstall, and sync every change.
+                // Not in the unit-test host: tests sync against a fake backend.
+                if !AppModelContainer.isRunningUnderTests {
+                    BlockListSync.shared.start()
+                    BlockListSync.shared.sync()
+                }
                 // Shows no UI. Done at launch so the Health tab already knows
                 // whether to show its cards or the connect card.
                 Task { await HealthExtrasAccess.shared.refresh() }

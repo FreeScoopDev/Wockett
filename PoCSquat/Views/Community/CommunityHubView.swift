@@ -29,6 +29,8 @@ struct CommunityHubView: View {
     @State private var hubReport: CommunityReport?
     @State private var hubDeletion: CommunityDeletionRequest?
     @State private var hubChallengeDeletion: WalkChallenge?
+    /// Holds a community action until the Terms are agreed to (CommunityTermsGate).
+    @State private var termsGate = CommunityTermsGate()
     @State private var trailFinder = TrailFinder()
 
     @State private var pushBadges       = false
@@ -73,6 +75,7 @@ struct CommunityHubView: View {
         .navigationTitle("Community")
         .navigationBarTitleDisplayMode(.large)
         .likeErrorAlert($model.likeError)
+        .communityTermsSheet($termsGate)
         .communityReporting($hubReport) { report in
             model.hide(report.recordID)
             communityRoutesModel.routes.removeAll { $0.id == report.recordID }
@@ -431,7 +434,7 @@ struct CommunityHubView: View {
                     .lineLimit(2)
             }
             Spacer(minLength: 0)
-            Button { model.markLiked(post) } label: {
+            Button { termsGate.perform { model.markLiked(post) } } label: {
                 HStack(spacing: 4) {
                     Image(wkt: .like).wktIcon(.inline, tint: .accentRun, filled: liked)
                     Text("\(post.likes)")

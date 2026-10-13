@@ -102,7 +102,7 @@ DEFINE SCHEMA
 
     RECORD TYPE Challenge (
         "___createTime"    TIMESTAMP SORTABLE,
-        "___createdBy"     REFERENCE,
+        "___createdBy"     REFERENCE QUERYABLE,
         "___etag"          STRING,
         "___modTime"       TIMESTAMP,
         "___modifiedBy"    REFERENCE,
@@ -126,7 +126,7 @@ DEFINE SCHEMA
 
     RECORD TYPE ChallengeEntry (
         "___createTime"     TIMESTAMP SORTABLE,
-        "___createdBy"      REFERENCE,
+        "___createdBy"      REFERENCE QUERYABLE,
         "___etag"           STRING,
         "___modTime"        TIMESTAMP,
         "___modifiedBy"     REFERENCE,
@@ -139,6 +139,17 @@ DEFINE SCHEMA
         GRANT WRITE TO "_creator",
         GRANT CREATE TO "_icloud",
         GRANT READ TO "_world"
+    );
+
+    RECORD TYPE CommunityBlockList (
+        "___createTime" TIMESTAMP,
+        "___createdBy"  REFERENCE,
+        "___etag"       STRING,
+        "___modTime"    TIMESTAMP,
+        "___modifiedBy" REFERENCE,
+        "___recordID"   REFERENCE,
+        entries         STRING,
+        GRANT WRITE TO "_creator"
     );
 
     RECORD TYPE CommunityName (
@@ -174,7 +185,7 @@ DEFINE SCHEMA
 
     RECORD TYPE CommunityVote (
         "___createTime"  TIMESTAMP SORTABLE,
-        "___createdBy"   REFERENCE,
+        "___createdBy"   REFERENCE QUERYABLE,
         "___etag"        STRING,
         "___modTime"     TIMESTAMP,
         "___modifiedBy"  REFERENCE,
@@ -238,7 +249,7 @@ DEFINE SCHEMA
 
     RECORD TYPE SharedRoute (
         "___createTime" TIMESTAMP SORTABLE,
-        "___createdBy"  REFERENCE,
+        "___createdBy"  REFERENCE QUERYABLE,
         "___etag"       STRING,
         "___modTime"    TIMESTAMP,
         "___modifiedBy" REFERENCE,
@@ -321,7 +332,7 @@ DEFINE SCHEMA
 
     RECORD TYPE WocketAchievement (
         "___createTime" TIMESTAMP SORTABLE,
-        "___createdBy"  REFERENCE,
+        "___createdBy"  REFERENCE QUERYABLE,
         "___etag"       STRING,
         "___modTime"    TIMESTAMP,
         "___modifiedBy" REFERENCE,

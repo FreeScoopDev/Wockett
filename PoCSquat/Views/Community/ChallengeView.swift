@@ -316,6 +316,8 @@ struct ChallengeDetailView: View {
     @State private var myProgressValue: Int    = 0
     @State private var isLoading              = false
     @State private var isSyncing              = false
+    /// Holds a community action until the Terms are agreed to (CommunityTermsGate).
+    @State private var termsGate = CommunityTermsGate()
     @State private var loadError:       String? = nil
     @State private var syncMessage:     String? = nil
 
@@ -339,6 +341,7 @@ struct ChallengeDetailView: View {
                 .padding(.bottom, WktSpacing.betweenSections)
             }
         }
+        .communityTermsSheet($termsGate)
         .navigationTitle(challenge.title)
         .navigationBarTitleDisplayMode(.inline)
         .task {
@@ -415,7 +418,7 @@ struct ChallengeDetailView: View {
 
     private var syncSection: some View {
         VStack(spacing: 10) {
-            Button { Task { await syncProgress() } } label: {
+            Button { termsGate.perform { Task { await syncProgress() } } } label: {
                 if isSyncing {
                     HStack(spacing: 8) {
                         ProgressView().tint(.white).scaleEffect(0.85)
@@ -613,6 +616,8 @@ struct CreateChallengeView: View {
     @State private var emoji    = "🏆"
     @State private var duration = 7
     @State private var isSaving  = false
+    /// Holds a community action until the Terms are agreed to (CommunityTermsGate).
+    @State private var termsGate = CommunityTermsGate()
     @State private var saveError: String? = nil
 
     // Goal type
@@ -700,6 +705,7 @@ struct CreateChallengeView: View {
                 }
             }
         }
+        .communityTermsSheet($termsGate)
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
     }
@@ -893,7 +899,7 @@ struct CreateChallengeView: View {
 
     private var createButton: some View {
         let blank = title.trimmingCharacters(in: .whitespaces).isEmpty
-        return Button { Task { await save() } } label: {
+        return Button { termsGate.perform { Task { await save() } } } label: {
             if isSaving {
                 HStack(spacing: 8) {
                     ProgressView().tint(.white).scaleEffect(0.85)

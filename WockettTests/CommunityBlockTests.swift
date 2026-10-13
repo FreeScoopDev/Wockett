@@ -12,8 +12,12 @@ struct CommunityBlockTests {
     private struct Fixture {
         let store: CommunityModerationStore
         let defaults: UserDefaults
-        var blockedNames: [String] { defaults.stringArray(forKey: "communityBlockedAuthors") ?? [] }
-        var blockedAccounts: [String] { defaults.stringArray(forKey: "communityBlockedAccounts") ?? [] }
+        /// Blocks as the store keeps them since 2026-10-13 (BlockList).
+        var blockedNames: [String] { keys(withPrefix: "name:") }
+        var blockedAccounts: [String] { keys(withPrefix: "account:") }
+        private func keys(withPrefix prefix: String) -> [String] {
+            store.blockList.blockedKeys.filter { $0.hasPrefix(prefix) }.map { String($0.dropFirst(prefix.count)) }
+        }
     }
 
     private func fixture(names: [String] = [], accounts: [String] = [], me: String? = nil) -> Fixture {

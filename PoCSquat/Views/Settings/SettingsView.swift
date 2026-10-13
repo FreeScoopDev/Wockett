@@ -323,6 +323,9 @@ struct SettingsView: View {
                     }
                 } header: { WktListHeader(title: "Motivational quotes") }
 
+                // ── Community ─────────────────────────────────────
+                CommunitySettingsSection()
+
                 // ── Support ───────────────────────────────────────
                 Section {
                     NavigationLink {
@@ -400,11 +403,19 @@ struct SettingsView: View {
                     // App Store Connect should hold; the site is GitHub Pages
                     // serving `docs/` under the wockett.app CNAME.
                     Button {
-                        if let url = URL(string: "https://wockett.app/privacy-policy.html") {
-                            openURL(url)
-                        }
+                        if let url = CommunityTerms.privacyURL { openURL(url) }
                     } label: {
                         Label { Text("Privacy Policy") } icon: { Image(wkt: .lock).wktIcon(.row, tint: .earthGreen) }
+                            .foregroundColor(.earthGreen)
+                    }
+                    .listRowBackground(Color.earthCard)
+
+                    // The Terms a first community action asks the user to agree
+                    // to (CommunityTermsSheet), readable at any time.
+                    Button {
+                        if let url = CommunityTerms.termsURL { openURL(url) }
+                    } label: {
+                        Label { Text("Terms of Service") } icon: { Image(wkt: .terms).wktIcon(.row, tint: .earthGreen) }
                             .foregroundColor(.earthGreen)
                     }
                     .listRowBackground(Color.earthCard)

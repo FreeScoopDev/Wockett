@@ -142,6 +142,7 @@ enum WktSymbol {
     case mapFill            // map.fill (primary CTA)
     case openInMaps         // map (external)
     case lock               // lock (use filled: true for lock.fill)
+    case terms              // doc.text (Terms of Service)
     case lockOpen           // lock.open
     case noteText           // note.text
     case notePlus           // note.text.badge.plus
@@ -268,6 +269,7 @@ enum WktSymbol {
         case .mapFill:        return "map.fill"
         case .openInMaps:     return "map"
         case .lock:           return "lock"
+        case .terms:          return "doc.text"
         case .lockOpen:       return "lock.open"
         case .noteText:       return "note.text"
         case .notePlus:       return "note.text.badge.plus"
