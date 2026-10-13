@@ -1,23 +1,29 @@
+### Added
+- Both Share Route buttons now warn that a route which starts or ends at
+  home shows where you live, and offer **Hide start and finish**. It is off
+  until you turn it on, and Wockett remembers your choice for the next
+  share. Anyone can read a shared route, and most walks start at home, but
+  many shared routes start at a trailhead or a park, so hiding is a choice
+  rather than forced on every route. With it on, everything within at least
+  200 m of the start and finish is left off. The hidden area is a circle
+  whose centre is moved 50-150 m in a random direction by a private offset
+  made once for you and kept in your own iCloud, so it is the same on all
+  your devices; without it, a few loops from the same door would point
+  straight at it. If iCloud can't be reached, a hidden share waits rather
+  than making a different offset on this phone. A route that would have
+  less than 400 m (or a quarter of it) left can't be shared hidden, and a
+  hidden loop is published as an open route so no app draws the missing
+  ends back in. This hides the door, not the neighbourhood.
+
 ### Changed
-- A route shared to Community no longer shows where it starts and finishes.
-  Most walks start and end at home, and anyone can read a shared route.
-  Everything within at least 200 m of the start or the finish is left off,
-  whether measured along the route or in a straight line, so a walk that
-  passes the house again doesn't publish it either. Each end loses a further
-  0-100 m that differs from route to route. Only the line the route follows
-  is published (a recording, or the walking directions for a planned route),
-  never the points a route was planned from: a suggested loop's points are
-  corners around where it was planned. What's left is one unbroken stretch
-  redrawn every 10 m, which other phones follow as a recorded line. A shared
-  loop is published as an open route, so no app draws the missing ends back
-  in. The route kept in My Routes is unchanged, and the published distance
-  is the trimmed route's. A route shorter than 600 m, or one that never gets
-  far enough from its start, can't be shared. This hides the exact start,
-  not the neighbourhood.
-- Both Share Route buttons now say that shared routes are public, that the
-  start and finish are left off, and how long the shared version is; for a
-  route that can't be shared they say why and the button is disabled. In My
-  Routes the button waits until the route's directions have loaded.
+- A shared route publishes the path it follows (the recording, or the
+  walking directions for a planned route), drawn every 10 m, never the few
+  points it was planned from: a suggested loop's points are corners around
+  where it was planned. Other phones follow it as a recorded line. The
+  published distance is the length of what is published; a saved
+  multi-lap suggestion used to publish every lap's distance for one lap.
+  In My Routes the button waits until the route's directions have loaded,
+  and says so if they couldn't be.
 
 ### Fixed
 - Posting a route from a route card while community access is paused no longer

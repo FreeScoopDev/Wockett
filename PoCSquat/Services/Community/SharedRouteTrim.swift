@@ -1,37 +1,94 @@
 import Foundation
 import CoreLocation
-import CryptoKit
 import MapKit
 
-/// What a shared route publishes instead of the whole path. Most walks start
-/// and end at home, and anyone can read a shared route; the route the user
-/// keeps on the phone is never changed. Rules, each from a way the start was
-/// recovered in review (critic, 2026-10-13):
+/// A user's secret shift of the privacy zones (`SharedRouteTrim`): a random
+/// direction and 50-150 m, plus a random 0-100 m added to every zone's radius.
+/// Made once, from the system's random number generator and nothing public,
+/// and kept in the user's private iCloud database (`SharePrivacyOffsetStore`),
+/// so every device the user shares from moves the zones the same way.
+struct SharePrivacyOffset: Equatable {
+    /// The shift of each zone's centre from the end it hides, in metres.
+    let east: Double
+    let north: Double
+    /// Added to every zone's radius, so the radius doesn't give away the
+    /// length of the shift.
+    let extra: Double
+
+    static let shiftRange: ClosedRange<Double> = 50...150
+    static let extraRange: ClosedRange<Double> = 0...100
+
+    var shift: Double { hypot(east, north) }
+
+    /// A value the store would never have written is treated as missing.
+    var isValid: Bool {
+        east.isFinite && north.isFinite && extra.isFinite
+            && Self.shiftRange.contains(shift) && Self.extraRange.contains(extra)
+    }
+
+    static func random() -> SharePrivacyOffset {
+        var rng = SystemRandomNumberGenerator()
+        let bearing = Double.random(in: 0..<(2 * .pi), using: &rng)
+        let shift = Double.random(in: shiftRange, using: &rng)
+        return SharePrivacyOffset(east: shift * sin(bearing), north: shift * cos(bearing),
+                                  extra: Double.random(in: extraRange, using: &rng))
+    }
+
+    /// The centre of the zone that hides `end`.
+    func centre(for end: WaypointCoord) -> WaypointCoord {
+        let metresPerDegree = 111_320.0
+        let eastDegrees = east / (metresPerDegree * max(0.01, cos(end.latitude * .pi / 180)))
+        return WaypointCoord(CLLocationCoordinate2D(latitude: end.latitude + north / metresPerDegree,
+                                                    longitude: end.longitude + eastDegrees))
+    }
+}
+
+/// What a shared route publishes. Anyone can read a shared route, and most
+/// walks start and end at home, so both share buttons warn about that and
+/// offer **Hide start and finish** (`prepare`, off until the user turns it on;
+/// the choice is remembered under `hideEndsKey`). The route the user keeps on
+/// the phone is never changed. Either way:
 ///
 /// - **Only a path, never control points.** The input must be the line the
 ///   route follows (a recording, or walking directions), not the few points a
 ///   route was planned from: a suggested loop's points are three corners of a
 ///   square whose fourth corner is home.
-/// - **A privacy zone, not just a distance along the path.** Every point within
-///   200 m plus a 0-100 m per-route extra *in a straight line* of the start or
-///   the end goes, as does the first and last 200 m plus extra *along the path*,
-///   so a walk that passes the door again publishes nothing there either.
-/// - **One unbroken stretch.** Of what is left, only the longest run of
-///   consecutive points is published, so the line never jumps across a zone.
-/// - **Evenly respaced.** That run is redrawn every 10 m, so a published point
-///   is never a planning corner, and other phones follow it as a recorded
-///   line (`RecordedRoute`) instead of asking for directions between hundreds
-///   of points.
+/// - **Evenly respaced.** Published points are every 10 m along the path, so
+///   other phones follow it as a recorded line (`RecordedRoute`) instead of
+///   asking for directions between hundreds of points.
 ///
-/// This hides the exact start and finish, not the area around them.
+/// With Hide start and finish on (`trim`), each rule answering a way the start
+/// was recovered from an earlier version in review:
+///
+/// - **A privacy zone whose centre is moved by a secret.** Each end is hidden
+///   by a circle centred on that end plus the user's `SharePrivacyOffset`, with
+///   a radius of the shift + 200 m + the user's extra, so the end is at least
+///   200 m inside it. Every published point lies outside both circles. The
+///   published line of a loop starts and ends on one circle, and an observer
+///   can find that circle's centre from a few routes; the centre is the same
+///   false place for all of one user's routes, 50-150 m from home.
+/// - **Tested every 10 m.** The path is redrawn with a point every 10 m before
+///   the zones are applied, so a long straight segment through a zone can't
+///   carry a point into it, and those tested points are what is published.
+/// - **One unbroken stretch, and a real one.** Only the longest run of points
+///   outside the zones is published, so the line never jumps across a zone,
+///   and only if it is at least 400 m and a quarter of the route.
+///
+/// This hides where a route starts and finishes, not the area around it.
 enum SharedRouteTrim {
-    /// The least left off each end, along the path and in a straight line.
+    /// UserDefaults: the user's last Hide start and finish choice. Off by default.
+    static let hideEndsKey = "wkt_routeShareHideEnds"
+    /// Shown above the choice on both share screens.
+    static let homeWarning = "If this route starts or ends at your home, people will be able to see where you live."
+
+    /// The least distance between a published point and either end.
     static let trimMeters: Double = 200
-    /// Up to this much more comes off each end, chosen per route (`extraTrim`).
-    static let maxExtraMeters: Double = 100
-    /// The shortest route that can be shared.
+    /// The shortest route that can be shared at all.
     static let minimumMeters: Double = 600
-    /// Spacing of the published points.
+    /// The kept stretch must be at least this long, and this share of the route.
+    static let minimumKeptMeters: Double = 400
+    static let minimumKeptFraction: Double = 0.25
+    /// Spacing of the tested, and published, points.
     static let spacingMeters: Double = 10
     /// A path has at least this many points, at most this far apart (median).
     /// Planned routes' control points are hundreds of metres apart; walking
@@ -44,27 +101,24 @@ enum SharedRouteTrim {
         let waypoints: [WaypointCoord]
         /// Length along the path before trimming (a loop includes its leg home).
         let fullMeters: Double
-        /// Length of the kept stretch.
+        /// Length of the kept stretch: the distance a shared route publishes.
         let keptMeters: Double
-
-        /// The distance to publish: `totalDistance` scaled by the share of the
-        /// path kept, so it describes the published route, not the private
-        /// one. Falls back to the kept length.
-        func publishedDistance(totalDistance: Double) -> Double {
-            guard totalDistance.isFinite, totalDistance > 0, fullMeters > 0 else { return keptMeters }
-            return totalDistance * keptMeters / fullMeters
-        }
+        /// The start and finish were left off (`trim`).
+        let hidesEnds: Bool
+        /// Published as a loop. Never after `trim`: a viewer's app closes a
+        /// loop by routing back to its first point, which would draw the
+        /// hidden ends back in.
+        let isLoop: Bool
     }
 
     enum Outcome: Equatable {
         case trimmed(Trimmed)
-        /// Shorter than `minimumMeters`: not shared.
+        /// Too short to share, or too little of it lies outside the zones.
         case tooShort(fullMeters: Double)
-        /// Planning points rather than a path: not shared as they are.
+        /// Planning points rather than a path, or no path at all.
         case notAPath
-        /// Nothing long enough is left outside the zones (a route that stays
-        /// near its start): not shared.
-        case tooFewPoints
+        /// The user's `SharePrivacyOffset` isn't available yet.
+        case offsetUnavailable
     }
 
     /// Thrown by `CommunityRouteService.publish` for a route that can't be trimmed.
@@ -80,19 +134,50 @@ enum SharedRouteTrim {
         case .trimmed:
             return nil
         case .tooShort:
-            return "This route is too short to share. Wockett leaves off at least the first and last "
-                + "\(formatted(trimMeters)) of a shared route, so it needs to be \(formatted(minimumMeters)) or longer."
+            return "This route is too short to share with its start and finish hidden. Wockett leaves off everything within at least "
+                + "\(formatted(trimMeters)) of where it starts and finishes, and needs at least "
+                + "\(formatted(minimumKeptMeters)) left over."
         case .notAPath:
-            return "Wockett needs this route's full path to hide where it starts. Try again once the map has loaded."
-        case .tooFewPoints:
-            return "Too little of this route is far enough from where it starts and ends to share it."
+            return "Wockett couldn't load the path this route follows, which it needs to share it. "
+                + "Check your connection, then open the route again."
+        case .offsetUnavailable:
+            return "Sharing needs iCloud to set up your privacy area, so it's the same on all your devices. "
+                + "Check you're signed in to iCloud and online, then try again."
         }
     }
 
+    /// What a share publishes: the whole path respaced, or with `hideEnds`
+    /// the `trim`med one.
+    static func prepare(_ waypoints: [WaypointCoord], isLoop: Bool, hideEnds: Bool,
+                        offset: SharePrivacyOffset?) -> Outcome {
+        hideEnds ? trim(waypoints, isLoop: isLoop, offset: offset) : whole(waypoints, isLoop: isLoop)
+    }
+
+    static func prepare(_ route: CustomRoute, hideEnds: Bool, offset: SharePrivacyOffset?) -> Outcome {
+        prepare(route.waypoints, isLoop: route.isLoop, hideEnds: hideEnds, offset: offset)
+    }
+
+    /// The whole path, as the user drew or walked it, respaced every 10 m.
+    /// Refuses only what isn't a path: no length, or points hundreds of
+    /// metres apart (a planned route's control points).
+    static func whole(_ waypoints: [WaypointCoord], isLoop: Bool) -> Outcome {
+        var cumulative = [0.0]
+        for i in waypoints.indices.dropFirst() {
+            cumulative.append(cumulative[i - 1] + distance(waypoints[i - 1], waypoints[i]))
+        }
+        let full = cumulative.last ?? 0
+        guard waypoints.count >= 2, full > 0 else { return .notAPath }
+        let spacings = zip(waypoints, waypoints.dropFirst()).map { distance($0, $1) }.sorted()
+        guard spacings[spacings.count / 2] <= maxMedianSpacingMeters else { return .notAPath }
+        let points = resample(waypoints, cumulative: cumulative)
+        return .trimmed(Trimmed(waypoints: points, fullMeters: full, keptMeters: full,
+                                hidesEnds: false, isLoop: isLoop))
+    }
+
     /// The trimmed path. A loop is closed first if its points don't already
-    /// return to the start. `extra` is added to `trimMeters` at each end.
-    static func trim(_ waypoints: [WaypointCoord], isLoop: Bool,
-                     extra: (start: Double, end: Double) = (0, 0)) -> Outcome {
+    /// return to the start. Refuses (`offsetUnavailable`) without an offset.
+    static func trim(_ waypoints: [WaypointCoord], isLoop: Bool, offset: SharePrivacyOffset?) -> Outcome {
+        guard let offset, offset.isValid else { return .offsetUnavailable }
         var path = waypoints
         if isLoop, let first = path.first, let last = path.last, first != last {
             path.append(first)
@@ -106,58 +191,52 @@ enum SharedRouteTrim {
         guard isPath(path) else { return .notAPath }
 
         let start = path[0], end = path[path.count - 1]
-        let startCut = trimMeters + min(maxExtraMeters, max(0, extra.start))
-        let endCut = trimMeters + min(maxExtraMeters, max(0, extra.end))
-        let eligible = path.indices.map { i in
-            cumulative[i] >= startCut && cumulative[i] <= full - endCut
-                && distance(path[i], start) >= startCut && distance(path[i], end) >= endCut
-        }
+        let startCentre = offset.centre(for: start), endCentre = offset.centre(for: end)
+        // Measured, not taken from `shift`, so each end is at least `trimMeters`
+        // inside its circle exactly.
+        let startRadius = distance(start, startCentre) + trimMeters + offset.extra
+        let endRadius = distance(end, endCentre) + trimMeters + offset.extra
 
-        // The longest run of consecutive eligible points, by length.
-        var best: Range<Int>?
-        var bestLength = -1.0
+        let points = resample(path, cumulative: cumulative)
+        let eligible = points.map { distance($0, startCentre) >= startRadius && distance($0, endCentre) >= endRadius }
+
+        // The longest run of consecutive eligible points.
+        var best = 0..<0
         var runStart: Int?
-        for i in path.indices.map({ $0 }) + [path.count] {
-            if i < path.count, eligible[i] {
+        for i in points.indices.map({ $0 }) + [points.count] {
+            if i < points.count, eligible[i] {
                 if runStart == nil { runStart = i }
                 continue
             }
             if let s = runStart {
-                let run = s..<i
-                if length(run, cumulative) > bestLength { best = run; bestLength = length(run, cumulative) }
+                if i - s > best.count { best = s..<i }
                 runStart = nil
             }
         }
-        guard let run = best, run.count >= 2, length(run, cumulative) > 0 else { return .tooFewPoints }
-
-        let kept = length(run, cumulative)
-        let points = resample(Array(path[run]), cumulative: run.map { cumulative[$0] - cumulative[run.lowerBound] })
-        return .trimmed(Trimmed(waypoints: points, fullMeters: full, keptMeters: kept))
-    }
-
-    /// The trim for a saved route: `extra` comes from its id, so sharing the
-    /// same route twice cuts it in the same places.
-    static func trim(_ route: CustomRoute) -> Outcome {
-        trim(route.waypoints, isLoop: route.isLoop, extra: extraTrim(for: route.id))
-    }
-
-    /// 0-100 m for each end, fixed by `id`.
-    static func extraTrim(for id: UUID) -> (start: Double, end: Double) {
-        let bytes = id.uuid
-        return (Double(bytes.0) / 255 * maxExtraMeters, Double(bytes.15) / 255 * maxExtraMeters)
-    }
-
-    /// An id that is the same every time for the same points, so a path built
-    /// afresh for each share (a route finder suggestion) keeps one `extraTrim`.
-    static func stableID(for points: [WaypointCoord]) -> UUID {
-        var hasher = SHA256()
-        for p in points {
-            withUnsafeBytes(of: p.latitude.bitPattern) { hasher.update(bufferPointer: $0) }
-            withUnsafeBytes(of: p.longitude.bitPattern) { hasher.update(bufferPointer: $0) }
+        let kept = Array(points[best])
+        let keptMeters = zip(kept, kept.dropFirst()).reduce(0) { $0 + distance($1.0, $1.1) }
+        guard kept.count >= 2, keptMeters >= max(minimumKeptMeters, minimumKeptFraction * full) else {
+            return .tooShort(fullMeters: full)
         }
-        let b = Array(hasher.finalize())
-        return UUID(uuid: (b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7],
-                           b[8], b[9], b[10], b[11], b[12], b[13], b[14], b[15]))
+        return .trimmed(Trimmed(waypoints: kept, fullMeters: full, keptMeters: keptMeters,
+                                hidesEnds: true, isLoop: false))
+    }
+
+    static func trim(_ route: CustomRoute, offset: SharePrivacyOffset?) -> Outcome {
+        trim(route.waypoints, isLoop: route.isLoop, offset: offset)
+    }
+
+    /// The copy of a planned route that a share trims: the walking directions
+    /// of every leg joined into one path, with that path's length as its
+    /// distance (a saved suggestion's `totalDistance` counts every lap of a
+    /// one-lap path). Nil until every leg has directions.
+    static func shareRoute(planned route: CustomRoute, legPaths: [[WaypointCoord]]) -> CustomRoute? {
+        let expected = max(0, route.waypoints.count - 1) + (route.isLoop ? 1 : 0)
+        guard expected > 0, legPaths.count == expected, legPaths.allSatisfy({ !$0.isEmpty }) else { return nil }
+        let path = legPaths.flatMap { $0 }
+        let length = zip(path, path.dropFirst()).reduce(0) { $0 + distance($1.0, $1.1) }
+        return CustomRoute(id: route.id, name: route.name, waypoints: path, totalDistance: length,
+                           isLoop: route.isLoop, createdAt: route.createdAt, activityMode: route.activityMode)
     }
 
     /// `metres` in the user's units, as the share screens show it.
@@ -173,12 +252,8 @@ enum SharedRouteTrim {
         return spacings[spacings.count / 2] <= maxMedianSpacingMeters
     }
 
-    private static func length(_ run: Range<Int>, _ cumulative: [Double]) -> Double {
-        cumulative[run.upperBound - 1] - cumulative[run.lowerBound]
-    }
-
-    /// A point every `spacingMeters` from the first, plus the last.
-    /// `along[i]` is `points[i]`'s distance from `points[0]`.
+    /// A point every `spacingMeters` along `points` from the first, plus the
+    /// last. `along[i]` is `points[i]`'s distance from `points[0]`.
     private static func resample(_ points: [WaypointCoord], cumulative along: [Double]) -> [WaypointCoord] {
         let total = along[along.count - 1]
         var out = [points[0]]
@@ -197,7 +272,7 @@ enum SharedRouteTrim {
         return out
     }
 
-    private static func distance(_ a: WaypointCoord, _ b: WaypointCoord) -> Double {
+    static func distance(_ a: WaypointCoord, _ b: WaypointCoord) -> Double {
         CLLocation(latitude: a.latitude, longitude: a.longitude)
             .distance(from: CLLocation(latitude: b.latitude, longitude: b.longitude))
     }

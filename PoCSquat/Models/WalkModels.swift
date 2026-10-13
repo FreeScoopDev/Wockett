@@ -255,10 +255,9 @@ struct SuggestedRoute: Identifiable {
             let points = polyline.points()
             coords = (0..<count).map { WaypointCoord(points[$0].coordinate) }
         }
-        // The id comes from the path, so posting the same suggestion again
-        // trims it in the same places (`SharedRouteTrim.extraTrim`). With no
-        // path the trim refuses it (`notAPath`); the legs are never shared.
-        return CustomRoute(id: SharedRouteTrim.stableID(for: coords), name: name, waypoints: coords,
+        // With no path the trim refuses it (`notAPath`); the legs are never
+        // shared. The published distance is the trimmed path's own length.
+        return CustomRoute(id: UUID(), name: name, waypoints: coords,
                            totalDistance: totalDistance / Double(max(1, lapCount)),
                            isLoop: isLoop, createdAt: Date())
     }

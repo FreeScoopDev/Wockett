@@ -131,12 +131,14 @@ final class CommunityRouteService {
 
     // MARK: - Publish
 
-    /// Publishes `route` without at least its first and last 200 m (`SharedRouteTrim`),
-    /// so the public copy doesn't give away where its walker starts and ends,
-    /// usually home. `route` itself, the copy the user keeps, is not changed.
-    func publish(route: CustomRoute) async throws {
+    /// Publishes `route`'s path (`SharedRouteTrim.prepare`); with `hideEnds`,
+    /// without anything near where it starts and ends, usually home, and
+    /// nothing at all without the user's privacy offset. `route` itself, the
+    /// copy the user keeps, is not changed.
+    func publish(route: CustomRoute, hideEnds: Bool) async throws {
         try ContentFilter.validate(name: route.name)
-        let record = try Self.record(for: route)
+        let offset = hideEnds ? await SharePrivacyOffsetStore.shared.currentIfAvailable() : nil
+        let record = try Self.record(for: route, hideEnds: hideEnds, offset: offset)
         try await SuspensionService.shared.ensureCanPost()
         record["authorName"]    = try await CommunityNameService.shared.claimedName()
 
@@ -167,21 +169,21 @@ final class CommunityRouteService {
 
     // MARK: - Helpers
 
-    /// The public record for `route`, before its author is added: the trimmed
-    /// path, the distance of that path, and always open (`isLoop` 0), because a
-    /// viewer's app closes a loop by routing back to its first point, which
-    /// would draw the trimmed ends back in. Throws `SharedRouteTrim.CannotShareError`
-    /// for a route that can't be trimmed.
-    static func record(for route: CustomRoute) throws -> CKRecord {
-        let outcome = SharedRouteTrim.trim(route)
+    /// The public record for `route`, before its author is added: the path
+    /// `SharedRouteTrim.prepare` gives, its length, and whether it is a loop
+    /// (never, with the ends hidden). Throws `SharedRouteTrim.CannotShareError`
+    /// for a route that can't be shared, including when `hideEnds` is on and
+    /// `offset` is nil.
+    static func record(for route: CustomRoute, hideEnds: Bool, offset: SharePrivacyOffset?) throws -> CKRecord {
+        let outcome = SharedRouteTrim.prepare(route, hideEnds: hideEnds, offset: offset)
         guard case .trimmed(let trimmed) = outcome else { throw SharedRouteTrim.CannotShareError(outcome: outcome) }
-        let distance = trimmed.publishedDistance(totalDistance: route.totalDistance)
+        let distance = trimmed.keptMeters
         let waypointData = try JSONEncoder().encode(trimmed.waypoints)
 
         let record = CKRecord(recordType: recordType)
         record["name"]           = route.name
         record["waypointsJSON"]  = String(data: waypointData, encoding: .utf8) ?? "[]"
-        record["isLoop"]         = 0
+        record["isLoop"]         = trimmed.isLoop ? 1 : 0
         record["distanceMeters"] = distance
         record["difficultyTag"]  = difficultyTag(for: distance)
         record["upvotes"]        = 0

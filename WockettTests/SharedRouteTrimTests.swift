@@ -4,16 +4,19 @@ import CoreLocation
 import MapKit
 @testable import PoCSquat
 
-/// A shared route goes public without anything within at least 200 m of its
-/// start or finish, along the path or in a straight line, only as a path (never
-/// the points a route was planned from), and respaced every 10 m. Each case
-/// here is a way the start was recovered from an earlier version (critic,
-/// 2026-10-13). Paths run from `home`; a ten-thousandth of a degree of latitude
-/// is about 11.1 m.
+/// A shared route goes public as drawn, unless the user turns on Hide start
+/// and finish: then only outside two privacy zones, circles around its start
+/// and its end, each moved by the user's secret offset, with the real end at
+/// least 200 m inside. Either way only a path is shared (never the points a
+/// route was planned from), published every 10 m. Several cases model
+/// someone trying to find the start from what was published. Paths run
+/// from `home`; a ten-thousandth of a degree of latitude is about 11.1 m.
 @MainActor
 struct SharedRouteTrimTests {
 
     private let home = CLLocationCoordinate2D(latitude: 35.78, longitude: -78.64)
+    /// A fixed offset: 108 m to the east-south-east, radius extra 40 m.
+    private let testOffset = SharePrivacyOffset(east: 90, north: -60, extra: 40)
 
     /// `count` points north from home, `step` degrees apart.
     private func line(_ count: Int, step: Double = 0.0001) -> [WaypointCoord] {
@@ -26,6 +29,12 @@ struct SharedRouteTrimTests {
         WaypointCoord(CLLocationCoordinate2D(
             latitude: home.latitude + north / 111_000,
             longitude: home.longitude + east / (111_000 * cos(home.latitude * .pi / 180))))
+    }
+
+    /// A point's metres east and north of home (the inverse of `offset`).
+    private func xy(_ p: WaypointCoord) -> (east: Double, north: Double) {
+        ((p.longitude - home.longitude) * 111_000 * cos(home.latitude * .pi / 180),
+         (p.latitude - home.latitude) * 111_000)
     }
 
     /// Points every `step` metres along straight lines through `corners`.
@@ -49,120 +58,315 @@ struct SharedRouteTrimTests {
     }
 
     private func trimmed(_ waypoints: [WaypointCoord], isLoop: Bool = false,
-                         extra: (start: Double, end: Double) = (0, 0)) throws -> SharedRouteTrim.Trimmed {
-        let outcome = SharedRouteTrim.trim(waypoints, isLoop: isLoop, extra: extra)
+                         offset: SharePrivacyOffset? = nil) throws -> SharedRouteTrim.Trimmed {
+        let outcome = SharedRouteTrim.trim(waypoints, isLoop: isLoop, offset: offset ?? testOffset)
         guard case .trimmed(let t) = outcome else {
             Issue.record("expected a trimmed route, got \(outcome)"); throw CancellationError()
         }
         return t
     }
 
-    @Test("A straight walk publishes from the first point 200 m out to the last 200 m short, every 10 m")
-    func straightWalk() throws {
-        let path = line(101)                     // about 1,109 m, a point every 11.1 m
+    // MARK: - Hide start and finish off (the default)
+
+    @Test("With Hide start and finish off, the whole path is published as drawn")
+    func toggleOffPublishesWholePath() throws {
+        let path = dense([offset(east: 0, north: 0), offset(east: 0, north: 300), offset(east: 300, north: 300),
+                          offset(east: 300, north: 0), offset(east: 0, north: 0)], step: 23)
+        let route = CustomRoute(id: UUID(), name: "Block", waypoints: path, totalDistance: 3_600,
+                                isLoop: true, createdAt: Date())
+        // No offset needed, and a short loop round home is not refused.
+        let record = try CommunityRouteService.record(for: route, hideEnds: false, offset: nil)
+        let json = try #require(record["waypointsJSON"] as? String)
+        let published = try JSONDecoder().decode([WaypointCoord].self, from: Data(json.utf8))
+        #expect(metres(published[0], path[0]) < 0.01)
+        #expect(metres(published[published.count - 1], path[path.count - 1]) < 0.01)
+        for (a, b) in zip(published, published.dropFirst()) { #expect(metres(a, b) <= 10.001) }
+        #expect(record["isLoop"] as? Int == 1)
+        let distance = try #require(record["distanceMeters"] as? Double)
+        #expect(abs(distance - 1_200) < 5)   // the path's length, not the route's 3,600
+        guard case .trimmed(let t) = SharedRouteTrim.prepare(route, hideEnds: false, offset: nil) else {
+            Issue.record("expected the whole path"); return
+        }
+        #expect(!t.hidesEnds)
+        #expect(RouteSharePrivacyNote.text(for: .trimmed(t)).contains("whole route"))
+        #expect(SharedRouteTrim.homeWarning.contains("where you live"))
+    }
+
+    @Test("With Hide start and finish off, a planned route's corners are still refused")
+    func toggleOffStillNeedsAPath() {
+        let square = [offset(east: 0, north: 0), offset(east: 0, north: 400),
+                      offset(east: 400, north: 400), offset(east: 400, north: 0)]
+        #expect(SharedRouteTrim.prepare(square, isLoop: true, hideEnds: false, offset: nil) == .notAPath)
+        #expect(SharedRouteTrim.prepare([], isLoop: false, hideEnds: false, offset: nil) == .notAPath)
+        let p = line(1)[0]
+        #expect(SharedRouteTrim.prepare([p, p], isLoop: false, hideEnds: false, offset: nil) == .notAPath)
+    }
+
+    @Test("With Hide start and finish on, the offset trim is what is published")
+    func toggleOnUsesTheTrim() {
+        let path = line(136)
+        // Equal to within CLLocation's own rounding, which varies between calls.
+        guard case .trimmed(let viaPrepare) = SharedRouteTrim.prepare(path, isLoop: false, hideEnds: true,
+                                                                       offset: testOffset),
+              case .trimmed(let viaTrim) = SharedRouteTrim.trim(path, isLoop: false, offset: testOffset) else {
+            Issue.record("expected a trimmed route"); return
+        }
+        #expect(viaPrepare.waypoints.count == viaTrim.waypoints.count)
+        for (a, b) in zip(viaPrepare.waypoints, viaTrim.waypoints) { #expect(metres(a, b) < 0.01) }
+        #expect(abs(viaPrepare.keptMeters - viaTrim.keptMeters) < 0.01)
+        #expect(SharedRouteTrim.prepare(path, isLoop: false, hideEnds: true, offset: nil) == .offsetUnavailable)
+        guard case .trimmed(let t) = SharedRouteTrim.prepare(path, isLoop: true, hideEnds: true, offset: testOffset) else {
+            Issue.record("expected a trimmed route"); return
+        }
+        #expect(t.hidesEnds && !t.isLoop)
+    }
+
+    // MARK: - Someone looking for home
+
+    @Test("Several loops from one home point at home + the offset, not at home")
+    func attackerFindsOnlyTheFalseCentre() throws {
+        // Four loops from the same door, one user, one offset. Both published
+        // ends of a loop lie on one circle, so the centre lies on the
+        // perpendicular bisector of the two ends; the least-squares meeting
+        // point of the four bisectors is the attacker's best estimate.
+        let loops: [[(Double, Double)]] = [
+            [(0, 0), (0, 900), (700, 900), (700, 0), (0, 0)],
+            [(0, 0), (-800, 0), (-800, -700), (0, -700), (0, 0)],
+            [(0, 0), (0, 800), (-900, 800), (-900, 0), (0, 0)],
+            [(0, 0), (900, 0), (900, -600), (0, -600), (0, 0)],
+        ]
+        var a11 = 0.0, a12 = 0.0, a22 = 0.0, b1 = 0.0, b2 = 0.0
+        for loop in loops {
+            let t = try trimmed(dense(loop.map { offset(east: $0.0, north: $0.1) }), isLoop: true)
+            let s = xy(t.waypoints[0]), e = xy(t.waypoints[t.waypoints.count - 1])
+            let d = (e.east - s.east, e.north - s.north)
+            let rhs = d.0 * (s.east + e.east) / 2 + d.1 * (s.north + e.north) / 2
+            a11 += d.0 * d.0; a12 += d.0 * d.1; a22 += d.1 * d.1; b1 += d.0 * rhs; b2 += d.1 * rhs
+            #expect(t.waypoints.allSatisfy { metres($0, offset(east: 0, north: 0)) >= 200 })
+        }
+        let det = a11 * a22 - a12 * a12
+        let estimate = ((b1 * a22 - b2 * a12) / det, (a11 * b2 - a12 * b1) / det)
+        // The attacker works: it finds the zones' centre...
+        #expect(hypot(estimate.0 - testOffset.east, estimate.1 - testOffset.north) < 25)
+        // ...and that centre is not home. (Centred on home, as before, it was within 3 m.)
+        #expect(hypot(estimate.0, estimate.1) >= 50)
+    }
+
+    @Test("A long straight segment through the zone publishes nothing inside it")
+    func longSegmentThroughTheZone() throws {
+        // Out north and east in 10 m steps, then one 1.7 km segment straight
+        // back through the door and beyond, then on to the finish.
+        let path = dense([offset(east: 0, north: 0), offset(east: 0, north: 600), offset(east: 600, north: 600)])
+            + [offset(east: -600, north: -600)]
+            + Array(dense([offset(east: -600, north: -600), offset(east: -600, north: -1_800)]).dropFirst())
         let t = try trimmed(path)
-        #expect(metres(t.waypoints[0], path[19]) < 0.001)                    // 210.8 m out
-        #expect(metres(t.waypoints[t.waypoints.count - 1], path[81]) < 0.001) // 210.8 m short
-        #expect(abs(t.keptMeters - 687.9) < 0.5)
-        #expect(t.waypoints.count == 70)
+        let start = path[0], end = path[path.count - 1]
+        #expect(t.waypoints.allSatisfy { metres($0, start) >= 200 && metres($0, end) >= 200 })
         for (a, b) in zip(t.waypoints, t.waypoints.dropFirst()) { #expect(metres(a, b) <= 10.001) }
-        #expect(abs(t.fullMeters - 1109.5) < 1)
     }
 
-    @Test("The per-route extra comes off on top of the 200 m")
-    func extraTrim() throws {
-        let path = line(101)
-        let t = try trimmed(path, extra: (50, 80))
-        #expect(metres(t.waypoints[0], path[23]) < 0.001)                     // 255.2 m out
-        #expect(metres(t.waypoints[t.waypoints.count - 1], path[74]) < 0.001) // 288.5 m short
-    }
-
-    @Test("A route's extra trim is fixed by its id and stays within 0-100 m")
-    func extraFromID() throws {
-        let id = try #require(UUID(uuidString: "00000000-0000-0000-0000-0000000000FF"))
-        let e = SharedRouteTrim.extraTrim(for: id)
-        #expect(e.start == 0)
-        #expect(e.end == 100)
-        let other = SharedRouteTrim.extraTrim(for: UUID())
-        #expect((0...100).contains(other.start) && (0...100).contains(other.end))
+    @Test("The zone is moved by the offset: a line along it loses more at one end")
+    func zoneFollowsTheOffset() throws {
+        let path = line(136)                     // about 1,500 m north
+        let south = SharePrivacyOffset(east: 0, north: -100, extra: 5)
+        let t = try trimmed(path, offset: south)
+        // Start: the centre is 100 m behind the walker, radius 305 m: 205 m off.
+        let first = metres(t.waypoints[0], path[0])
+        #expect(first >= 205 && first < 215)
+        // End: the centre is 100 m back along the line: 405 m off.
+        let last = metres(t.waypoints[t.waypoints.count - 1], path[path.count - 1])
+        #expect(last >= 404 && last < 415)
+        // Sideways: radius 300 m around a point 100 m east, 283 m along the line.
+        let east = try trimmed(path, offset: SharePrivacyOffset(east: 100, north: 0, extra: 0))
+        let firstEast = metres(east.waypoints[0], path[0])
+        #expect(firstEast >= 282 && firstEast < 293)
     }
 
     @Test("A walk that passes the door again publishes nothing near it")
     func twoLapsOfTheBlock() throws {
-        let block = [offset(east: 0, north: 0), offset(east: 0, north: 200), offset(east: 200, north: 200),
-                     offset(east: 200, north: 0), offset(east: 0, north: 0)]
-        let path = dense(block + Array(block.dropFirst()))   // two laps, 1,600 m
+        let block = [offset(east: 0, north: 0), offset(east: 0, north: 500), offset(east: 500, north: 500),
+                     offset(east: 500, north: 0), offset(east: 0, north: 0)]
+        let path = dense(block + Array(block.dropFirst()))   // two laps, 4,000 m
         let t = try trimmed(path)
-        for point in t.waypoints {
-            #expect(metres(point, path[0]) >= 200)
-            #expect(metres(point, path[path.count - 1]) >= 200)
-        }
+        #expect(t.waypoints.allSatisfy { metres($0, path[0]) >= 200 && metres($0, path[path.count - 1]) >= 200 })
     }
 
     @Test("GPS jitter at the door doesn't count toward the 200 m")
     func jitterAtTheDoor() throws {
         let jitter = (0..<12).map { offset(east: $0 % 2 == 0 ? 12 : -12, north: 0) }
-        let path = jitter + dense([offset(east: 0, north: 0), offset(east: 0, north: 1_000)])
+        let path = jitter + dense([offset(east: 0, north: 0), offset(east: 0, north: 1_500)])
         let t = try trimmed(path)
-        #expect(t.waypoints.allSatisfy { metres($0, path[0]) >= 200 })
-        #expect(metres(t.waypoints[0], offset(east: 0, north: 0)) >= 190)
+        #expect(t.waypoints.allSatisfy { metres($0, offset(east: 0, north: 0)) >= 190 })
     }
+
+    @Test("A loop round one 200 m block is refused, not shared as a stub")
+    func blockLoopRefused() {
+        let block = [offset(east: 0, north: 0), offset(east: 0, north: 200), offset(east: 200, north: 200),
+                     offset(east: 200, north: 0), offset(east: 0, north: 0)]
+        let outcome = SharedRouteTrim.trim(dense(block), isLoop: true, offset: testOffset)
+        guard case .tooShort = outcome else { Issue.record("expected tooShort, got \(outcome)"); return }
+        // Three laps don't help: what's left is never 400 m in one stretch.
+        let laps = dense(block + Array(block.dropFirst()) + Array(block.dropFirst()))
+        guard case .tooShort = SharedRouteTrim.trim(laps, isLoop: true, offset: testOffset) else {
+            Issue.record("three laps of the block should be refused"); return
+        }
+    }
+
+    @Test("What's kept is at least 400 m and a quarter of the route, or nothing is")
+    func keptFloor() throws {
+        // 1.6 km out and back along one street: about 1,050 m of it is far enough out.
+        let street = dense([offset(east: 0, north: 0), offset(east: 0, north: 800), offset(east: 0, north: 0)])
+        let t = try trimmed(street)
+        #expect(t.keptMeters >= 400 && t.keptMeters >= t.fullMeters / 4)
+        // 900 m out and back: about 350 m would be left, so it isn't shared.
+        let shorter = dense([offset(east: 0, north: 0), offset(east: 0, north: 450), offset(east: 0, north: 0)])
+        guard case .tooShort = SharedRouteTrim.trim(shorter, isLoop: false, offset: testOffset) else {
+            Issue.record("a stub under 400 m should be refused"); return
+        }
+    }
+
+    // MARK: - The offset
+
+    @Test("No offset, or one the store would never write, publishes nothing")
+    func missingOffsetRefuses() throws {
+        let path = line(136)
+        #expect(SharedRouteTrim.trim(path, isLoop: false, offset: nil) == .offsetUnavailable)
+        #expect(SharedRouteTrim.trim(path, isLoop: false,
+                                     offset: SharePrivacyOffset(east: 10, north: 0, extra: 0)) == .offsetUnavailable)
+        #expect(SharedRouteTrim.trim(path, isLoop: false,
+                                     offset: SharePrivacyOffset(east: 100, north: 0, extra: .nan)) == .offsetUnavailable)
+        let route = CustomRoute(id: UUID(), name: "Lane", waypoints: path, totalDistance: 1_500,
+                                isLoop: false, createdAt: Date())
+        #expect(throws: SharedRouteTrim.CannotShareError(outcome: .offsetUnavailable)) {
+            try CommunityRouteService.record(for: route, hideEnds: true, offset: nil)
+        }
+        #expect(RouteSharePrivacyNote.text(for: .offsetUnavailable).contains("iCloud"))
+    }
+
+    @Test("Random offsets are 50-150 m with a 0-100 m extra, and differ")
+    func randomOffsets() {
+        let offsets = (0..<200).map { _ in SharePrivacyOffset.random() }
+        #expect(offsets.allSatisfy { $0.isValid })
+        #expect(Set(offsets.map(\.east)).count > 190)
+    }
+
+    private final class FakeBackend: SharePrivacyOffsetBackend {
+        var stored: SharePrivacyOffset?
+        var fetchError: Error?
+        var fetches = 0
+        var created: [SharePrivacyOffset] = []
+        /// What another device stored first, returned instead of the new one.
+        var storedElsewhere: SharePrivacyOffset?
+
+        func fetch() async throws -> SharePrivacyOffset? {
+            fetches += 1
+            if let fetchError { throw fetchError }
+            return stored
+        }
+
+        func create(_ offset: SharePrivacyOffset) async throws -> SharePrivacyOffset {
+            created.append(offset)
+            stored = storedElsewhere ?? offset
+            return stored ?? offset
+        }
+    }
+
+    @Test("When iCloud can't be reached, no offset is made on this device")
+    func storeNeverMakesALocalOffset() async {
+        let backend = FakeBackend()
+        backend.fetchError = CKError(.networkUnavailable)
+        let store = SharePrivacyOffsetStore(backend: backend)
+        await #expect(throws: CKError.self) { try await store.current() }
+        #expect(await store.currentIfAvailable() == nil)
+        #expect(backend.created.isEmpty)
+    }
+
+    @Test("The stored offset is used everywhere; one is made only when none is stored")
+    func storeUsesTheStoredOffset() async throws {
+        let backend = FakeBackend()
+        backend.stored = testOffset
+        let store = SharePrivacyOffsetStore(backend: backend)
+        #expect(try await store.current() == testOffset)
+        #expect(try await store.current() == testOffset)
+        #expect(backend.fetches == 1)
+        #expect(backend.created.isEmpty)
+
+        // None stored, and another device stores one at the same moment: its wins.
+        let empty = FakeBackend()
+        let other = SharePrivacyOffset(east: -70, north: 70, extra: 10)
+        empty.storedElsewhere = other
+        let fresh = SharePrivacyOffsetStore(backend: empty)
+        #expect(try await fresh.current() == other)
+        #expect(empty.created.count == 1 && empty.created[0].isValid)
+    }
+
+    @Test("The private record reads back only a valid offset")
+    func offsetRecord() {
+        let record = CKRecord(recordType: CloudKitSharePrivacyOffsetBackend.recordType)
+        record["east"] = 90.0
+        record["north"] = -60.0
+        record["extra"] = 40.0
+        #expect(CloudKitSharePrivacyOffsetBackend.offset(from: record) == testOffset)
+        record["east"] = 0.0
+        record["north"] = 0.0
+        #expect(CloudKitSharePrivacyOffsetBackend.offset(from: record) == nil)
+    }
+
+    // MARK: - Paths
 
     @Test("A planned route's corner points are never published")
     func controlPointsRefused() {
         // RouteManager's suggested loop: home, then three corners of a square.
         let square = [offset(east: 0, north: 0), offset(east: 0, north: 400),
                       offset(east: 400, north: 400), offset(east: 400, north: 0)]
-        #expect(SharedRouteTrim.trim(square, isLoop: true) == .notAPath)
-        #expect(SharedRouteTrim.trim([offset(east: 0, north: 0), offset(east: 0, north: 1_200)], isLoop: false) == .notAPath)
+        #expect(SharedRouteTrim.trim(square, isLoop: true, offset: testOffset) == .notAPath)
+        #expect(SharedRouteTrim.trim([offset(east: 0, north: 0), offset(east: 0, north: 1_200)],
+                                     isLoop: false, offset: testOffset) == .notAPath)
     }
 
-    @Test("Published points are respaced, so none is an original corner of the path")
+    @Test("Published points are every 10 m, so none is an original corner of the path")
     func respaced() throws {
-        let path = dense([offset(east: 0, north: 0), offset(east: 0, north: 503), offset(east: 497, north: 503),
-                          offset(east: 497, north: 0)], step: 37)
+        let path = dense([offset(east: 0, north: 0), offset(east: 0, north: 803), offset(east: 797, north: 803),
+                          offset(east: 797, north: 0)], step: 37)
         let t = try trimmed(path)
-        let corner = offset(east: 497, north: 503)
-        #expect(t.waypoints.allSatisfy { metres($0, corner) > 0.5 || metres($0, t.waypoints[0]) < 0.001 })
+        let corner = offset(east: 797, north: 803)
+        #expect(t.waypoints.allSatisfy { metres($0, corner) > 0.5 })
+        for (a, b) in zip(t.waypoints, t.waypoints.dropFirst()) { #expect(metres(a, b) <= 10.001) }
         // Other phones follow it as a recorded line, not by asking for directions per point.
         #expect(RecordedRoute.isRecorded(t.waypoints.map(\.clCoordinate)))
     }
 
     @Test("A loop is closed first, so its way back is trimmed near home too")
     func loopClosesBeforeTrimming() throws {
-        let out = dense([offset(east: 0, north: 0), offset(east: 0, north: 600), offset(east: 600, north: 600)])
-        let t = try trimmed(out, isLoop: true)                // closes with a 849 m leg home
+        let out = dense([offset(east: 0, north: 0), offset(east: 0, north: 900), offset(east: 900, north: 900)])
+        let t = try trimmed(out, isLoop: true)                // closes with a 1,273 m leg home
         #expect(t.waypoints.allSatisfy { metres($0, out[0]) >= 200 })
-        #expect(abs(t.fullMeters - 2048.5) < 10)   // offset() is a flat-earth approximation
+        #expect(abs(t.fullMeters - 3_073) < 15)   // offset() is a flat-earth approximation
         let open = try trimmed(out, isLoop: false)
-        #expect(t.keptMeters > open.keptMeters + 150)   // about 1,000 m against 800 m
+        #expect(t.keptMeters > open.keptMeters + 500)
     }
 
-    @Test("Too short, or too little outside the zones, is not shared")
-    func shortRoutes() throws {
-        guard case .tooShort(let full) = SharedRouteTrim.trim(line(53), isLoop: false) else {
+    @Test("Too short is not shared")
+    func shortRoutes() {
+        guard case .tooShort(let full) = SharedRouteTrim.trim(line(53), isLoop: false, offset: testOffset) else {
             Issue.record("577 m should be too short"); return
         }
         #expect(abs(full - 577) < 1)
-        // 1.2 km of laps round a 100 m block never leaves the zone.
-        let block = [offset(east: 0, north: 0), offset(east: 0, north: 100), offset(east: 100, north: 100),
-                     offset(east: 100, north: 0), offset(east: 0, north: 0)]
-        let laps = dense(block + Array(block.dropFirst()) + Array(block.dropFirst()))
-        #expect(SharedRouteTrim.trim(laps, isLoop: false) == .tooFewPoints)
+        #expect(RouteSharePrivacyNote.text(for: .tooShort(fullMeters: full)).hasPrefix("This route is too short to share with its start and finish hidden."))
     }
 
     @Test("Empty, one point and all-duplicate routes are too short, not a crash")
     func degenerate() {
         let p = line(1)[0]
-        #expect(SharedRouteTrim.trim([], isLoop: false) == .tooShort(fullMeters: 0))
-        #expect(SharedRouteTrim.trim([p], isLoop: false) == .tooShort(fullMeters: 0))
-        #expect(SharedRouteTrim.trim([p], isLoop: true) == .tooShort(fullMeters: 0))
-        #expect(SharedRouteTrim.trim([p, p, p], isLoop: true) == .tooShort(fullMeters: 0))
+        #expect(SharedRouteTrim.trim([], isLoop: false, offset: testOffset) == .tooShort(fullMeters: 0))
+        #expect(SharedRouteTrim.trim([p], isLoop: false, offset: testOffset) == .tooShort(fullMeters: 0))
+        #expect(SharedRouteTrim.trim([p], isLoop: true, offset: testOffset) == .tooShort(fullMeters: 0))
+        #expect(SharedRouteTrim.trim([p, p, p], isLoop: true, offset: testOffset) == .tooShort(fullMeters: 0))
     }
 
     @Test("Duplicate points change nothing: no NaN, no repeated point")
     func duplicates() throws {
-        let path = line(101)
+        let path = line(136)
         let a = try trimmed(path), b = try trimmed(path.flatMap { [$0, $0] })
         #expect(b.waypoints.count == a.waypoints.count)
         for (x, y) in zip(a.waypoints, b.waypoints) { #expect(metres(x, y) < 0.001) }
@@ -170,21 +374,14 @@ struct SharedRouteTrimTests {
         #expect(zip(b.waypoints, b.waypoints.dropFirst()).allSatisfy { $0 != $1 })
     }
 
-    @Test("The published distance is the kept share of the route's distance")
-    func publishedDistance() {
-        let t = SharedRouteTrim.Trimmed(waypoints: [], fullMeters: 1000, keptMeters: 600)
-        #expect(t.publishedDistance(totalDistance: 2000) == 1200)
-        #expect(t.publishedDistance(totalDistance: 0) == 600)
-        #expect(t.publishedDistance(totalDistance: .nan) == 600)
-    }
+    // MARK: - The public record
 
-    @Test("The public record holds the trimmed path, its distance, and is never a loop")
+    @Test("The public record holds the trimmed path and its length, and is never a loop")
     func publicRecord() throws {
-        let path = dense([offset(east: 0, north: 0), offset(east: 0, north: 600), offset(east: 600, north: 600)])
-        let id = try #require(UUID(uuidString: "00000000-0000-0000-0000-000000000000"))   // no extra trim
-        let route = CustomRoute(id: id, name: "Lake loop", waypoints: path, totalDistance: 2_400,
+        let path = dense([offset(east: 0, north: 0), offset(east: 0, north: 900), offset(east: 900, north: 900)])
+        let route = CustomRoute(id: UUID(), name: "Lake loop", waypoints: path, totalDistance: 9_000,
                                 isLoop: true, createdAt: Date())
-        let record = try CommunityRouteService.record(for: route)
+        let record = try CommunityRouteService.record(for: route, hideEnds: true, offset: testOffset)
         let json = try #require(record["waypointsJSON"] as? String)
         let published = try JSONDecoder().decode([WaypointCoord].self, from: Data(json.utf8))
         let t = try trimmed(path, isLoop: true)
@@ -192,23 +389,30 @@ struct SharedRouteTrimTests {
         for (a, b) in zip(published, t.waypoints) { #expect(metres(a, b) < 0.001) }
         #expect(published.allSatisfy { metres($0, path[0]) >= 200 })
         #expect(record["isLoop"] as? Int == 0)
+        // The length of what is published, whatever the route's own distance says.
+        #expect(record["distanceMeters"] as? Double == t.keptMeters)
+    }
+
+    @Test("A saved three-lap suggestion shares one lap's path and that path's length")
+    func multiLapDistance() throws {
+        // Saved from a 3-lap suggestion: corners of one lap, the distance of three.
+        let corners = [offset(east: 0, north: 0), offset(east: 0, north: 700), offset(east: 700, north: 700),
+                       offset(east: 700, north: 0)]
+        let saved = CustomRoute(id: UUID(), name: "Block x3", waypoints: corners, totalDistance: 8_400,
+                                isLoop: true, createdAt: Date())
+        let legPaths = [dense([corners[0], corners[1]]), dense([corners[1], corners[2]]),
+                        dense([corners[2], corners[3]]), dense([corners[3], corners[0]])]
+        let shared = try #require(SharedRouteTrim.shareRoute(planned: saved, legPaths: legPaths))
+        #expect(abs(shared.totalDistance - 2_800) < 20)
+        let record = try CommunityRouteService.record(for: shared, hideEnds: true, offset: testOffset)
         let distance = try #require(record["distanceMeters"] as? Double)
-        #expect(abs(distance - 2_400 * t.keptMeters / t.fullMeters) < 0.001)
-        #expect(distance < 2_400)
-        #expect(route.waypoints == path, "the copy the user keeps is untouched")
+        #expect(distance < 2_800)
+        // A leg that didn't load: nothing to share yet.
+        #expect(SharedRouteTrim.shareRoute(planned: saved, legPaths: Array(legPaths.dropLast())) == nil)
+        #expect(SharedRouteTrim.shareRoute(planned: saved, legPaths: Array(legPaths.dropLast()) + [[]]) == nil)
     }
 
-    @Test("Publishing a route that can't be trimmed throws before anything is written")
-    func cannotShareThrows() {
-        let route = CustomRoute(id: UUID(), name: "Block", waypoints: line(3), totalDistance: 22,
-                                isLoop: false, createdAt: Date())
-        #expect(throws: SharedRouteTrim.CannotShareError.self) { try CommunityRouteService.record(for: route) }
-        let outcome = SharedRouteTrim.trim(route)
-        #expect(!RouteSharePrivacyNote.canShare(outcome))
-        #expect(RouteSharePrivacyNote.text(for: outcome, totalDistance: 22).hasPrefix("This route is too short to share."))
-    }
-
-    @Test("A suggested route shares one lap of its directions path, with an id from that path")
+    @Test("A suggested route shares one lap of its directions path")
     func suggestedRouteSharesDirectionsPath() {
         func suggestion() -> SuggestedRoute {
             var coords = line(80).map(\.clCoordinate)
@@ -223,8 +427,6 @@ struct SharedRouteTrimTests {
         let shared = suggestion().shareableRoute(name: "Loop")
         #expect(shared.waypoints.count == 80)
         for (a, b) in zip(shared.waypoints, line(80)) { #expect(metres(a, b) < 0.01) }
-        #expect(shared.totalDistance == 1_500)
-        #expect(suggestion().shareableRoute(name: "Again").id == shared.id, "same path, same cut")
         #expect(suggestion().toCustomRoute().waypoints.count == 2, "the private copy keeps its legs")
     }
 }
