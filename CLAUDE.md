@@ -131,6 +131,17 @@ way unless there's a strong reason; adding the first one is a real decision.
   must never hold notification authorization under `-WKTUITest` (launch and
   session start both skip the request), and the monitor ignores non-alerts.
   Cost a CI run on 2026-09-09.
+- **`CLLocation.distance(from:)` is not a pure function.** For points within
+  2° of each other it uses a flat projection whose scale is cached in one
+  process-wide static and reused for any latitude within 0.005° (about
+  550 m) of the cached one, so its answer depends on whatever distance any
+  thread measured last (read from `_LocationEssentials`; reproduced on the
+  iOS 26.5 and 27 simulators). The error is centimetres, which is harmless
+  for display and navigation, but anything that must give the same answer
+  twice cannot use it. `SharedRouteTrim.distance` has its own WGS 84
+  calculation for this reason: two trims of one route disagreed by 1-3 cm in
+  CI on 2026-10-13 (#224). Don't switch it back to `CLLocation`;
+  `SharedRouteTrimTests/independentOfCoreLocationHistory` fails if you do.
 - **The iOS Simulator has no Health app**, so HealthKit is always empty there.
   Step rings read 0. Expected, not a bug.
 
