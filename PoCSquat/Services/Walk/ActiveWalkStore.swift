@@ -10,15 +10,27 @@ final class ActiveWalkStore {
     private(set) var isStarted: Bool = false
     private(set) var historyStore: WalkHistoryStore?
     private let notifications: NotificationService
+    /// Ends the Live Activity when a walk ends. `WalkLiveActivityManager.shared`
+    /// in the app; a test passes a fake to count the calls. Starting and
+    /// updating it (`restoreIfNeeded`) still go to `.shared` directly.
+    private let liveActivity: any WalkLiveActivityEnding
+    /// The work `end` leaves running after it returns: ending the Live
+    /// Activity, then finishing a saved walk's Health workout. Kept so a test
+    /// can await it; nothing in the app waits on it.
+    @ObservationIgnored private(set) var endTask: Task<Void, Never>?
     /// Set by `end`: a walk ends once, however many paths try. Cleared when
     /// the session is released.
     @ObservationIgnored private var sessionEnded = false
 
     /// `shared` is the app's store; tests build their own with an in-memory
-    /// history store.
-    init(historyStore: WalkHistoryStore? = nil, notifications: NotificationService? = nil) {
+    /// history store. `.shared` defaults are resolved in the body, not as
+    /// default arguments, which are evaluated off the main actor.
+    init(historyStore: WalkHistoryStore? = nil,
+         notifications: NotificationService? = nil,
+         liveActivity: (any WalkLiveActivityEnding)? = nil) {
         self.historyStore = historyStore
         self.notifications = notifications ?? .shared
+        self.liveActivity = liveActivity ?? WalkLiveActivityManager.shared
     }
 
     func configure(historyStore: WalkHistoryStore) {
@@ -71,8 +83,9 @@ final class ActiveWalkStore {
         }
         session.stop()
         notifications.cancelWaterBreaks()
-        Task {
-            await WalkLiveActivityManager.shared.end(distanceCovered: distance, elapsedSeconds: elapsed, pausedDuration: paused)
+        let liveActivity = self.liveActivity
+        endTask = Task {
+            await liveActivity.end(distanceCovered: distance, elapsedSeconds: elapsed, pausedDuration: paused)
             if outcome == .save { await session.finishWorkoutSession() }
         }
         if releaseSession { endSession() }

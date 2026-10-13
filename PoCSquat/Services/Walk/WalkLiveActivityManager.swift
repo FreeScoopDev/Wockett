@@ -6,8 +6,16 @@ import Foundation
 // Started when a guided walk begins, updated on each significant distance/pace
 // change, and ended when the walk completes or is stopped.
 
+/// What ending a walk needs from the Live Activity. `ActiveWalkStore.end`
+/// talks to this rather than to `WalkLiveActivityManager.shared`, so a test
+/// can count how often a walk's end reaches it.
 @MainActor
-final class WalkLiveActivityManager {
+protocol WalkLiveActivityEnding: AnyObject {
+    func end(distanceCovered: Double, elapsedSeconds: Int, pausedDuration: Double) async
+}
+
+@MainActor
+final class WalkLiveActivityManager: WalkLiveActivityEnding {
     static let shared = WalkLiveActivityManager()
 
     private var activity: Activity<WalkActivityAttributes>?
