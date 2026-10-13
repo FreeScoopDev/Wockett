@@ -282,8 +282,26 @@ enum SharedRouteTrim {
         return out
     }
 
+    /// Metres between two points on the WGS 84 ellipsoid, on a flat plane at
+    /// their mean latitude. Against an exact geodesic: under 0.1 mm up to
+    /// 1 km, under 3 cm at 10 km, and within 0.03% at 100 km.
+    ///
+    /// Not `CLLocation.distance(from:)`, because that isn't a pure function:
+    /// it keeps one process-wide cache of the scale at a latitude and reuses
+    /// it for any point within 0.005° (about 550 m) of it, so its answer
+    /// depends on whatever distance any thread measured last. Two trims of
+    /// one route differed by centimetres in CI, and could differ by a whole
+    /// point where the 10 m spacing or a zone's edge falls between the two
+    /// answers, so a share's preview could differ from what it publishes.
     static func distance(_ a: WaypointCoord, _ b: WaypointCoord) -> Double {
-        CLLocation(latitude: a.latitude, longitude: a.longitude)
-            .distance(from: CLLocation(latitude: b.latitude, longitude: b.longitude))
+        let semiMajorAxis = 6_378_137.0, eccentricitySquared = 0.006_694_379_990_14
+        let latitude = (a.latitude + b.latitude) / 2 * .pi / 180
+        let w = 1 - eccentricitySquared * sin(latitude) * sin(latitude)
+        let metresPerRadianNorth = semiMajorAxis * (1 - eccentricitySquared) / (w * w.squareRoot())
+        let metresPerRadianEast = semiMajorAxis / w.squareRoot() * cos(latitude)
+        var longitudeDelta = b.longitude - a.longitude
+        if longitudeDelta > 180 { longitudeDelta -= 360 } else if longitudeDelta < -180 { longitudeDelta += 360 }
+        return hypot((b.latitude - a.latitude) * .pi / 180 * metresPerRadianNorth,
+                     longitudeDelta * .pi / 180 * metresPerRadianEast)
     }
 }

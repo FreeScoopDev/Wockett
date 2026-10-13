@@ -424,12 +424,31 @@ struct SharedRouteTrimTests {
         let json = try #require(record["waypointsJSON"] as? String)
         let published = try JSONDecoder().decode([WaypointCoord].self, from: Data(json.utf8))
         let t = try trimmed(path, isLoop: true)
-        #expect(published.count == t.waypoints.count)
-        for (a, b) in zip(published, t.waypoints) { #expect(metres(a, b) < 0.01) }
+        // Exactly the same points: trimming is a pure function, and JSON
+        // round-trips a Double exactly.
+        #expect(published == t.waypoints)
         #expect(published.allSatisfy { metres($0, path[0]) >= 200 })
         #expect(record["isLoop"] as? Int == 0)
         // The length of what is published, whatever the route's own distance says.
         #expect(record["distanceMeters"] as? Double == t.keptMeters)
+    }
+
+    @Test("Trimming doesn't depend on what CoreLocation measured before")
+    func independentOfCoreLocationHistory() throws {
+        // CLLocation.distance(from:) keeps a process-wide cache of the scale
+        // at one latitude and reuses it for any point within 0.005° of it
+        // (iOS 26.5 and 27 simulators), so its answer depends on whichever
+        // distance any thread measured last. Measuring just south, then just
+        // north, of home leaves that cache in two different states.
+        let path = dense([offset(east: 0, north: 0), offset(east: 0, north: 900), offset(east: 900, north: 900)])
+        func afterMeasuring(atLatitude latitude: Double) throws -> SharedRouteTrim.Trimmed {
+            _ = CLLocation(latitude: latitude, longitude: home.longitude)
+                .distance(from: CLLocation(latitude: latitude, longitude: home.longitude + 0.001))
+            return try trimmed(path, isLoop: true)
+        }
+        let south = try afterMeasuring(atLatitude: home.latitude - 0.0049)
+        let north = try afterMeasuring(atLatitude: home.latitude + 0.0049)
+        #expect(south == north)
     }
 
     @Test("A saved three-lap suggestion shares one lap's path and that path's length")

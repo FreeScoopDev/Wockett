@@ -68,8 +68,19 @@ struct CommunitySuspensionTests {
     private static let neverFires: OptimisticVote.Sleep = { _ in try await Task.sleep(for: .seconds(86_400)) }
 
     private func service(_ fake: FakeSuspensions, _ moderation: CommunityModerationStore, clock: Clock,
-                         sleep: @escaping OptimisticVote.Sleep = neverFires) -> SuspensionService {
-        SuspensionService(store: fake, moderation: moderation, now: { clock.now }, sleep: sleep)
+                         sleep: @escaping OptimisticVote.Sleep = neverFires,
+                         terms: UserDefaults? = nil) -> SuspensionService {
+        SuspensionService(store: fake, moderation: moderation, now: { clock.now }, sleep: sleep,
+                          termsDefaults: terms ?? Self.agreedDefaults())
+    }
+
+    /// A throwaway suite, with the current Terms agreed to when `agreed`.
+    private static func agreedDefaults(_ agreed: Bool = true) -> UserDefaults {
+        let name = "CommunitySuspensionTests-terms-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: name) ?? .standard
+        defaults.removePersistentDomain(forName: name)
+        if agreed { CommunityTerms.recordAgreement(defaults: defaults, now: Date()) }
+        return defaults
     }
 
 
@@ -245,7 +256,7 @@ struct CommunitySuspensionTests {
         defaults.removePersistentDomain(forName: name)
         let moderation = CommunityModerationStore(defaults: defaults, myAccount: { known }, notifications: NotificationCenter())
         let s = SuspensionService(store: fake, moderation: moderation, now: { now }, sleep: Self.neverFires,
-                                  refreshAccount: { known = "_me" })
+                                  refreshAccount: { known = "_me" }, termsDefaults: Self.agreedDefaults())
         await #expect(throws: CommunityAccessError.suspended(until: nil)) { try await s.ensureCanPost() }
     }
 
@@ -270,6 +281,53 @@ struct CommunitySuspensionTests {
         let unknown = FakeSuspensions()
         unknown.list = [Suspension(account: "_me", until: nil)]
         try await service(unknown, store(me: nil), clock: Clock(now)).ensureCanPost()
+    }
+
+    // MARK: Terms
+
+    @Test("Before the Terms are agreed to, posting is refused, before any fetch")
+    func termsNotAgreedCantPost() async {
+        let fake = FakeSuspensions()
+        let s = service(fake, store(me: "_me"), clock: Clock(now), terms: Self.agreedDefaults(false))
+        await #expect(throws: CommunityAccessError.termsNotAgreed) { try await s.ensureCanPost() }
+        #expect(fake.calls == 0, "refused on this phone, with no CloudKit call")
+    }
+
+    @Test("Agreeing through the screens' gate is what lets posting through")
+    func gateAgreementUnlocksPosting() async throws {
+        let terms = Self.agreedDefaults(false)
+        let s = service(FakeSuspensions(), store(me: "_me"), clock: Clock(now), terms: terms)
+        var gate = CommunityTermsGate(defaults: terms)
+        gate.perform {}
+        gate.cancel()
+        await #expect(throws: CommunityAccessError.termsNotAgreed) { try await s.ensureCanPost() }
+        gate.perform {}
+        gate.agree()
+        try await s.ensureCanPost()
+    }
+
+    @Test("Agreement to an older Terms version is refused")
+    func olderTermsCantPost() async {
+        let terms = Self.agreedDefaults(false)
+        terms.set("2026-01-01", forKey: CommunityTerms.acceptedVersionKey)
+        let s = service(FakeSuspensions(), store(me: "_me"), clock: Clock(now), terms: terms)
+        await #expect(throws: CommunityAccessError.termsNotAgreed) { try await s.ensureCanPost() }
+    }
+
+    @Test("A write that isn't public (a nomination) skips the Terms, not the suspension")
+    func needsTermsFalse() async throws {
+        let s = service(FakeSuspensions(), store(me: "_me"), clock: Clock(now), terms: Self.agreedDefaults(false))
+        try await s.ensureCanPost(needsTerms: false)
+        let suspended = FakeSuspensions()
+        suspended.list = [Suspension(account: "_me", until: nil)]
+        let t = service(suspended, store(me: "_me"), clock: Clock(now), terms: Self.agreedDefaults(false))
+        await #expect(throws: CommunityAccessError.suspended(until: nil)) { try await t.ensureCanPost(needsTerms: false) }
+    }
+
+    @Test("The Terms message names the Terms")
+    func termsMessage() {
+        #expect(CommunityAccessError.termsNotAgreed.message
+                == "Agree to the Terms of Service before sharing with the community.")
     }
 
     @Test("The message says until when, and that walking still works")

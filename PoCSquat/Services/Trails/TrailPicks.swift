@@ -146,7 +146,9 @@ enum TrailNominationSubmission {
 
     static func submit(_ trail: TrailRef, note: String,
                        store: TrailNominationStore,
-                       canPost: @escaping () async throws -> Void = { try await SuspensionService.shared.ensureCanPost() },
+                       // No Terms: a nomination is read only by moderators, never
+                       // shown to anyone, and the Terms sheet is about what is public.
+                       canPost: @escaping () async throws -> Void = { try await SuspensionService.shared.ensureCanPost(needsTerms: false) },
                        knownNominator: @escaping () -> String? = { MyAccount.recordName },
                        deadline: Duration = deadline,
                        sleep: @escaping OptimisticVote.Sleep = { try await Task.sleep(for: $0) }) async -> TrailNominations.Outcome {
