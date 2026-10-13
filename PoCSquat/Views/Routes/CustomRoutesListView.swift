@@ -291,13 +291,15 @@ struct CustomRouteDetailView: View {
                                     // The name a share would really go out under, checked without claiming.
                                     .task { await CommunityNameService.shared.refreshDisplayName() }
                             }
-                            let shareTrim = SharedRouteTrim.trim(route)
+                            let shareRoute = shareSource
+                            let shareTrim = shareRoute.map { SharedRouteTrim.trim($0) }
                             Button {
                                 guard shareState == .idle else { return }
                                 shareState = .sharing
                                 Task {
                                     do {
-                                        try await CommunityRouteService.shared.publish(route: route)
+                                        guard let shareRoute else { shareState = .idle; return }
+                                        try await CommunityRouteService.shared.publish(route: shareRoute)
                                         shareState = .shared
                                     } catch let cannot as SharedRouteTrim.CannotShareError {
                                         shareMessage = cannot.message
@@ -325,8 +327,9 @@ struct CustomRouteDetailView: View {
                                 }
                             }
                             .buttonStyle(BounceButtonStyle(scale: 0.98))
-                            .disabled(shareState != .idle || !RouteSharePrivacyNote.canShare(shareTrim))
-                            RouteSharePrivacyNote(outcome: shareTrim, totalDistance: route.totalDistance)
+                            .disabled(shareState != .idle || !(shareTrim.map(RouteSharePrivacyNote.canShare) ?? false))
+                            RouteSharePrivacyNote(outcome: shareTrim ?? .notAPath, totalDistance: route.totalDistance,
+                                                  isPreparing: shareTrim == nil && isLoading)
                             if let shareMessage {
                                 Text(shareMessage)
                                     .font(.wktLabel)
@@ -408,6 +411,25 @@ struct CustomRouteDetailView: View {
         }
         .wktCard(padding: 14)
         .accessibilityElement(children: .combine)
+    }
+
+    /// What Share to Community publishes (`SharedRouteTrim` trims it): a
+    /// recorded route's own points, or the walking directions drawn between a
+    /// planned route's points, never those points themselves (a saved
+    /// suggestion's points are corners around where it started). Nil until
+    /// every leg's directions have loaded.
+    private var shareSource: CustomRoute? {
+        if recordedLine != nil { return route }
+        let expected = max(0, route.waypoints.count - 1) + (route.isLoop ? 1 : 0)
+        guard !isLoading, expected > 0, routeLegs.count == expected else { return nil }
+        let path = routeLegs.flatMap { leg -> [WaypointCoord] in
+            let count = leg.polyline.pointCount
+            guard count > 0 else { return [] }
+            let points = leg.polyline.points()
+            return (0..<count).map { WaypointCoord(points[$0].coordinate) }
+        }
+        return CustomRoute(id: route.id, name: route.name, waypoints: path, totalDistance: route.totalDistance,
+                           isLoop: route.isLoop, createdAt: route.createdAt, activityMode: route.activityMode)
     }
 
     private func loadLegs() async {

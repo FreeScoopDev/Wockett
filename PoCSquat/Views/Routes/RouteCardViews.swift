@@ -205,20 +205,10 @@ struct PostToCommunitySheet: View {
     @State private var didPost = false
     @State private var errorMessage: String? = nil
 
-    /// What a share publishes, made once so the note and the post agree (its
-    /// id fixes the trim); the name is filled in when posting.
-    @State private var shareRoute: CustomRoute
-    @State private var trim: SharedRouteTrim.Outcome
-    private var canShare: Bool { RouteSharePrivacyNote.canShare(trim) }
-
-    init(route: SuggestedRoute, routeStore: CustomRouteStore, onSaved: @escaping () -> Void) {
-        self.route = route
-        self.routeStore = routeStore
-        self.onSaved = onSaved
-        let shareRoute = route.shareableRoute(name: "")
-        _shareRoute = State(initialValue: shareRoute)
-        _trim = State(initialValue: SharedRouteTrim.trim(shareRoute))
-    }
+    /// What a share publishes, made once when the sheet appears so the note
+    /// and the post agree; the name is filled in when posting.
+    @State private var share: (route: CustomRoute, trim: SharedRouteTrim.Outcome)?
+    private var canShare: Bool { share.map { RouteSharePrivacyNote.canShare($0.trim) } ?? false }
 
     var body: some View {
         NavigationStack {
@@ -261,7 +251,9 @@ struct PostToCommunitySheet: View {
                     .disabled(isPosting || didPost || !canShare
                               || routeName.trimmingCharacters(in: .whitespaces).isEmpty)
 
-                    RouteSharePrivacyNote(outcome: trim, totalDistance: shareRoute.totalDistance)
+                    if let share {
+                        RouteSharePrivacyNote(outcome: share.trim, totalDistance: share.route.totalDistance)
+                    }
 
                     Spacer()
                 }
@@ -286,17 +278,20 @@ struct PostToCommunitySheet: View {
         .presentationDetents([.medium])
         .onAppear {
             routeName = route.label ?? "\(route.directionName) \(route.isLoop ? "Loop" : "Route")"
+            if share == nil {
+                let shareRoute = route.shareableRoute(name: "")
+                share = (shareRoute, SharedRouteTrim.trim(shareRoute))
+            }
         }
     }
 
     private func post() {
         let name = routeName.trimmingCharacters(in: .whitespaces)
-        guard !name.isEmpty else { return }
+        guard !name.isEmpty, var published = share?.route else { return }
+        published.name = name
         isPosting = true
         errorMessage = nil
         let customRoute = route.toCustomRoute(name: name)
-        var published = shareRoute
-        published.name = name
         Task {
             let container = CKContainer(identifier: "iCloud.Scoops.PoCSquat")
             let status = try? await container.accountStatus()
