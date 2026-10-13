@@ -22,7 +22,7 @@ struct CommunityBlockTests {
         defaults.removePersistentDomain(forName: suite)
         if !names.isEmpty { defaults.set(names, forKey: "communityBlockedAuthors") }
         if !accounts.isEmpty { defaults.set(accounts, forKey: "communityBlockedAccounts") }
-        return Fixture(store: CommunityModerationStore(defaults: defaults, myAccount: { me }), defaults: defaults)
+        return Fixture(store: CommunityModerationStore(defaults: defaults, myAccount: { me }, notifications: NotificationCenter()), defaults: defaults)
     }
 
     private let anyID = CKRecord.ID(recordName: "item")

@@ -26,10 +26,12 @@ final class SharePrivacyOffsetStore {
     private let backend: SharePrivacyOffsetBackend
     private var cached: SharePrivacyOffset?
 
-    init(backend: SharePrivacyOffsetBackend) {
+    /// `notifications` is for tests, so the system's `.CKAccountChanged` on
+    /// `.default` can't reach a store under test.
+    init(backend: SharePrivacyOffsetBackend, notifications: NotificationCenter = .default) {
         self.backend = backend
         // Another iCloud account has another offset: never carry this one over.
-        NotificationCenter.default.addObserver(forName: .CKAccountChanged, object: nil, queue: .main) { [weak self] _ in
+        notifications.addObserver(forName: .CKAccountChanged, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.forget() }
         }
     }

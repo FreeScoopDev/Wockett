@@ -16,7 +16,7 @@ struct CommunityDeletionTests {
     }
 
     private func store(_ d: UserDefaults, me: String? = "_me") -> CommunityModerationStore {
-        CommunityModerationStore(defaults: d, myAccount: { me })
+        CommunityModerationStore(defaults: d, myAccount: { me }, notifications: NotificationCenter())
     }
 
     private final class FakeDeleter: CommunityRecordDeleter {
@@ -30,7 +30,7 @@ struct CommunityDeletionTests {
 
     @Test("Delete is offered on your own content only, signed in or out")
     func onlyYours() {
-        let store = CommunityModerationStore(defaults: defaults(), myAccount: { "_me" })
+        let store = CommunityModerationStore(defaults: defaults(), myAccount: { "_me" }, notifications: NotificationCenter())
         #expect(store.isMine(CommunityAuthor(name: "Me", account: CKCurrentUserDefaultName)))
         #expect(store.isMine(CommunityAuthor(name: "Me", account: "_me")))
         #expect(!store.isMine(CommunityAuthor(name: "Me", account: "_someoneElse")), "a namesake's isn't yours")
