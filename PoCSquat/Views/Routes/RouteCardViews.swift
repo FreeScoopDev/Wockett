@@ -205,7 +205,21 @@ struct PostToCommunitySheet: View {
     @State private var didPost = false
     @State private var errorMessage: String? = nil
 
+    /// The path a share publishes, made once when the sheet appears; the
+    /// name is filled in when posting.
+    @State private var shareRoute: CustomRoute?
+    /// Hide start and finish: the user's last choice, off by default.
+    @AppStorage(SharedRouteTrim.hideEndsKey) private var hideEnds = false
+    /// The user's privacy offset, fetched only once Hide start and finish is on.
+    @State private var shareOffset: SharePrivacyOffset?
+    @State private var shareOffsetChecked = false
+    @State private var shareOffsetAttempt = 0
+
     var body: some View {
+        // Worked out once per render, so the note and the button agree.
+        let outcome = shareRoute.map { SharedRouteTrim.prepare($0, hideEnds: hideEnds, offset: shareOffset) }
+        let isPreparing = outcome == nil || (hideEnds && !shareOffsetChecked)
+        let canShare = !isPreparing && outcome.map(RouteSharePrivacyNote.canShare) ?? false
         NavigationStack {
             ZStack {
                 Color.earthBg.ignoresSafeArea()
@@ -243,7 +257,11 @@ struct PostToCommunitySheet: View {
                         }
                     }
                     .buttonStyle(BounceButtonStyle(scale: 0.98))
-                    .disabled(isPosting || didPost || routeName.trimmingCharacters(in: .whitespaces).isEmpty)
+                    .disabled(isPosting || didPost || !canShare
+                              || routeName.trimmingCharacters(in: .whitespaces).isEmpty)
+
+                    RouteSharePrivacyNote(outcome: outcome ?? .notAPath, hideEnds: $hideEnds,
+                                          isPreparing: isPreparing, onRetry: { shareOffsetAttempt += 1 })
 
                     Spacer()
                 }
@@ -265,15 +283,23 @@ struct PostToCommunitySheet: View {
                 }
             }
         }
-        .presentationDetents([.medium])
+        .presentationDetents([.large])
         .onAppear {
             routeName = route.label ?? "\(route.directionName) \(route.isLoop ? "Loop" : "Route")"
+            if shareRoute == nil { shareRoute = route.shareableRoute(name: "") }
+        }
+        .task(id: "\(hideEnds)-\(shareOffsetAttempt)") {
+            guard hideEnds, shareOffset == nil else { return }
+            shareOffsetChecked = false
+            shareOffset = await SharePrivacyOffsetStore.shared.currentIfAvailable()
+            shareOffsetChecked = true
         }
     }
 
     private func post() {
         let name = routeName.trimmingCharacters(in: .whitespaces)
-        guard !name.isEmpty else { return }
+        guard !name.isEmpty, var published = shareRoute else { return }
+        published.name = name
         isPosting = true
         errorMessage = nil
         let customRoute = route.toCustomRoute(name: name)
@@ -286,7 +312,7 @@ struct PostToCommunitySheet: View {
                 return
             }
             do {
-                try await CommunityRouteService.shared.publish(route: customRoute)
+                try await CommunityRouteService.shared.publish(route: published, hideEnds: hideEnds)
                 routeStore.save(customRoute)
                 onSaved()
                 didPost = true
@@ -294,6 +320,10 @@ struct PostToCommunitySheet: View {
                 dismiss()
             } catch let access as CommunityAccessError {
                 errorMessage = access.message
+                isPosting = false
+            } catch let cannot as SharedRouteTrim.CannotShareError {
+                errorMessage = cannot.message
+                isPosting = false
             } catch let ckError as CKError {
                 switch ckError.code {
                 case .notAuthenticated:

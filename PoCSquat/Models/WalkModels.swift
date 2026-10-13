@@ -243,6 +243,25 @@ struct SuggestedRoute: Identifiable {
         )
     }
 
+    /// The copy a share publishes (`SharedRouteTrim` trims it): one lap of the
+    /// walking directions' own path rather than `legWaypoints`, the corners
+    /// the route was planned from around where it starts, usually home.
+    /// The private copy stays `toCustomRoute`.
+    func shareableRoute(name: String) -> CustomRoute {
+        // `points()` is an unchecked C array: read it only when it has points.
+        let count = polyline.pointCount
+        var coords: [WaypointCoord] = []
+        if count > 0 {
+            let points = polyline.points()
+            coords = (0..<count).map { WaypointCoord(points[$0].coordinate) }
+        }
+        // With no path the trim refuses it (`notAPath`); the legs are never
+        // shared. The published distance is the trimmed path's own length.
+        return CustomRoute(id: UUID(), name: name, waypoints: coords,
+                           totalDistance: totalDistance / Double(max(1, lapCount)),
+                           isLoop: isLoop, createdAt: Date())
+    }
+
     func toCustomRoute(name: String? = nil) -> CustomRoute {
         CustomRoute(
             id: UUID(),

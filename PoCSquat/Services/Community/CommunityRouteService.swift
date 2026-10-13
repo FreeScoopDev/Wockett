@@ -69,7 +69,8 @@ final class CommunityRouteService {
     static let shared = CommunityRouteService()
 
     private let db         = CKContainer(identifier: WockettCloud.containerID).publicCloudDatabase
-    private let recordType = "SharedRoute"
+    static let recordType = "SharedRoute"
+    private var recordType: String { Self.recordType }
     private let votedKey      = "communityVotedRoutes"
     /// Static: deleting your route clears it (CommunityDeletion).
     static let publishedKey = "wkt_publishedRouteIds"
@@ -130,19 +131,15 @@ final class CommunityRouteService {
 
     // MARK: - Publish
 
-    func publish(route: CustomRoute) async throws {
+    /// Publishes `route`'s path (`SharedRouteTrim.prepare`); with `hideEnds`,
+    /// without anything near where it starts and ends, usually home, and
+    /// nothing at all without the user's privacy offset. `route` itself, the
+    /// copy the user keeps, is not changed.
+    func publish(route: CustomRoute, hideEnds: Bool) async throws {
         try ContentFilter.validate(name: route.name)
+        let offset = hideEnds ? await SharePrivacyOffsetStore.shared.currentIfAvailable() : nil
+        let record = try Self.record(for: route, hideEnds: hideEnds, offset: offset)
         try await SuspensionService.shared.ensureCanPost()
-        let waypointData  = try JSONEncoder().encode(route.waypoints)
-        let waypointsJSON = String(data: waypointData, encoding: .utf8) ?? "[]"
-
-        let record = CKRecord(recordType: recordType)
-        record["name"]          = route.name
-        record["waypointsJSON"] = waypointsJSON
-        record["isLoop"]        = route.isLoop ? 1 : 0
-        record["distanceMeters"] = route.totalDistance
-        record["difficultyTag"] = difficultyTag(for: route.totalDistance)
-        record["upvotes"]       = 0
         record["authorName"]    = try await CommunityNameService.shared.claimedName()
 
         let saved = try await db.save(record)
@@ -172,7 +169,28 @@ final class CommunityRouteService {
 
     // MARK: - Helpers
 
-    private func difficultyTag(for distanceMeters: Double) -> String {
+    /// The public record for `route`, before its author is added: the path
+    /// `SharedRouteTrim.prepare` gives, its length, and whether it is a loop
+    /// (never, with the ends hidden). Throws `SharedRouteTrim.CannotShareError`
+    /// for a route that can't be shared, including when `hideEnds` is on and
+    /// `offset` is nil.
+    static func record(for route: CustomRoute, hideEnds: Bool, offset: SharePrivacyOffset?) throws -> CKRecord {
+        let outcome = SharedRouteTrim.prepare(route, hideEnds: hideEnds, offset: offset)
+        guard case .trimmed(let trimmed) = outcome else { throw SharedRouteTrim.CannotShareError(outcome: outcome) }
+        let distance = trimmed.keptMeters
+        let waypointData = try JSONEncoder().encode(trimmed.waypoints)
+
+        let record = CKRecord(recordType: recordType)
+        record["name"]           = route.name
+        record["waypointsJSON"]  = String(data: waypointData, encoding: .utf8) ?? "[]"
+        record["isLoop"]         = trimmed.isLoop ? 1 : 0
+        record["distanceMeters"] = distance
+        record["difficultyTag"]  = difficultyTag(for: distance)
+        record["upvotes"]        = 0
+        return record
+    }
+
+    private static func difficultyTag(for distanceMeters: Double) -> String {
         if distanceMeters < 2000 { return RouteDifficulty.easy.rawValue }
         if distanceMeters < 5000 { return RouteDifficulty.moderate.rawValue }
         return RouteDifficulty.hard.rawValue
