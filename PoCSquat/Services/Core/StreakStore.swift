@@ -80,7 +80,7 @@ struct WalkBadge: Identifiable {
         case .manualEntries(let n):
             return UserDefaults.standard.integer(forKey: "wkt_manualEntries_count") >= n
         case .wockettsGiven(let n):
-            return (UserDefaults.standard.stringArray(forKey: "communityVotedRoutes") ?? []).count >= n
+            return StreakStore.wockettsGiven() >= n
         case .wockettsReceived(let n):
             return UserDefaults.standard.integer(forKey: "wkt_wocketts_received") >= n
         case .challengeShared:
@@ -118,7 +118,7 @@ struct WalkBadge: Identifiable {
         case .manualEntries(let n):
             return min(1.0, Double(UserDefaults.standard.integer(forKey: "wkt_manualEntries_count")) / Double(max(1, n)))
         case .wockettsGiven(let n):
-            let count = (UserDefaults.standard.stringArray(forKey: "communityVotedRoutes") ?? []).count
+            let count = StreakStore.wockettsGiven()
             return min(1.0, Double(count) / Double(max(1, n)))
         case .wockettsReceived(let n):
             return min(1.0, Double(UserDefaults.standard.integer(forKey: "wkt_wocketts_received")) / Double(max(1, n)))
@@ -282,5 +282,20 @@ final class StreakStore {
 
     func totalKm(from sessions: [WalkSession]) -> Double {
         sessions.reduce(0.0) { $0 + $1.totalDistance } / 1000
+    }
+}
+
+// MARK: - Wocketts given
+
+extension StreakStore {
+    /// Set by Delete my community data before it clears the route vote
+    /// marks, so the Wockett Giver badge keeps the count it had reached.
+    static let wockettsGivenFloorKey = "wkt_wockettsGiven_floor"
+
+    /// Wocketts given: this phone's route vote marks, or the count kept
+    /// when they were cleared, whichever is higher.
+    static func wockettsGiven(defaults: UserDefaults = .standard) -> Int {
+        max((defaults.stringArray(forKey: CommunityRouteService.votedKey) ?? []).count,
+            defaults.integer(forKey: wockettsGivenFloorKey))
     }
 }

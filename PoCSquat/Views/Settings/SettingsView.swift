@@ -323,6 +323,9 @@ struct SettingsView: View {
                     }
                 } header: { WktListHeader(title: "Motivational quotes") }
 
+                // ── Community ─────────────────────────────────────
+                CommunitySettingsSection()
+
                 // ── Support ───────────────────────────────────────
                 Section {
                     NavigationLink {
