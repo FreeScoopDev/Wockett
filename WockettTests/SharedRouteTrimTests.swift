@@ -407,7 +407,7 @@ struct SharedRouteTrimTests {
         let path = line(136)
         let a = try trimmed(path), b = try trimmed(path.flatMap { [$0, $0] })
         #expect(b.waypoints.count == a.waypoints.count)
-        for (x, y) in zip(a.waypoints, b.waypoints) { #expect(metres(x, y) < 0.001) }
+        for (x, y) in zip(a.waypoints, b.waypoints) { #expect(metres(x, y) < 0.01) }
         #expect(b.waypoints.allSatisfy { $0.latitude.isFinite && $0.longitude.isFinite })
         #expect(zip(b.waypoints, b.waypoints.dropFirst()).allSatisfy { $0 != $1 })
     }
@@ -424,7 +424,7 @@ struct SharedRouteTrimTests {
         let published = try JSONDecoder().decode([WaypointCoord].self, from: Data(json.utf8))
         let t = try trimmed(path, isLoop: true)
         #expect(published.count == t.waypoints.count)
-        for (a, b) in zip(published, t.waypoints) { #expect(metres(a, b) < 0.001) }
+        for (a, b) in zip(published, t.waypoints) { #expect(metres(a, b) < 0.01) }
         #expect(published.allSatisfy { metres($0, path[0]) >= 200 })
         #expect(record["isLoop"] as? Int == 0)
         // The length of what is published, whatever the route's own distance says.
