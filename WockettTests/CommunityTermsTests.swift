@@ -1,5 +1,6 @@
 import Testing
 import Foundation
+import SwiftUI
 @testable import PoCSquat
 
 /// The Terms gate before a first community action (2026-10-12 audit, finding 6).
@@ -99,11 +100,86 @@ struct CommunityTermsTests {
         #expect(gate.pending != nil)
     }
 
+    // MARK: The sheet's buttons
+
+    /// A gate held in a box, behind a Binding built the way SwiftUI's `$state` is.
+    private final class GateBox {
+        var gate: CommunityTermsGate
+        init(_ gate: CommunityTermsGate) { self.gate = gate }
+        var binding: Binding<CommunityTermsGate> {
+            Binding(get: { self.gate }, set: { self.gate = $0 })
+        }
+    }
+
+    @Test("The sheet's Agree, through a Binding, runs the held action and records agreement")
+    func sheetAgreeThroughBinding() {
+        let defaults = freshDefaults()
+        let box = GateBox(CommunityTermsGate(defaults: defaults))
+        var runs = 0
+        box.gate.perform { runs += 1 }
+        box.binding.sheetAgree()
+        #expect(runs == 1)
+        #expect(box.gate.pending == nil, "the write must reach the state behind the Binding")
+        #expect(defaults.string(forKey: CommunityTerms.acceptedVersionKey) == CommunityTerms.version)
+    }
+
+    @Test("The sheet's Cancel, through a Binding, drops the held action and records nothing")
+    func sheetCancelThroughBinding() {
+        let defaults = freshDefaults()
+        let box = GateBox(CommunityTermsGate(defaults: defaults))
+        var runs = 0
+        box.gate.perform { runs += 1 }
+        box.binding.sheetCancel()
+        #expect(runs == 0)
+        #expect(box.gate.pending == nil)
+        #expect(defaults.string(forKey: CommunityTerms.acceptedVersionKey) == nil)
+    }
+
     // MARK: The screens use it
+
+    /// Splits a source file at each top-level declaration (a line starting at
+    /// column 0 with `struct`, `class`, `enum`, `actor` or `extension`, after
+    /// any access level and `final`), so a gate and its sheet must sit in the
+    /// same type, not merely the same file: a sheet on the wrong view never
+    /// shows for the other view's gate.
+    static func topLevelDeclarations(_ source: String) -> [String] {
+        let start = /^((private|fileprivate|internal|public)\s+)?(final\s+)?(struct|class|enum|actor|extension)\s/
+        var chunks: [String] = [""]
+        for line in source.split(separator: "\n", omittingEmptySubsequences: false) {
+            if line.prefixMatch(of: start) != nil { chunks.append("") }
+            chunks[chunks.count - 1] += line + "\n"
+        }
+        return chunks
+    }
+
+    @Test("The declaration split puts a gate and a sheet in different types apart")
+    func declarationSplit() {
+        let source = """
+        import SwiftUI
+
+        struct A: View {
+            @State private var termsGate = CommunityTermsGate()
+            struct Inner {}
+        }
+
+        private struct B: View {
+            var body: some View { Text("").communityTermsSheet($termsGate) }
+        }
+        extension A {}
+        final class C {}
+        """
+        let chunks = Self.topLevelDeclarations(source)
+        #expect(chunks.count == 5, "preamble, A, B, extension, C (found \(chunks.count))")
+        #expect(chunks[1].contains("CommunityTermsGate()") && chunks[1].contains("struct Inner"))
+        #expect(!chunks[1].contains("communityTermsSheet"))
+        #expect(chunks[2].contains("communityTermsSheet"))
+    }
 
     /// Every screen that holds a community action in a gate must also present
     /// the sheet, or Agree can never be reached and the button is a dead tap.
-    /// Reads the app's sources next to this file (the repo checkout).
+    /// Reads the app's sources next to this file (the repo checkout), and
+    /// counts per top-level declaration, not per file: two screens share
+    /// AchievementFeedView.swift, RouteCardViews.swift and ChallengeView.swift.
     @Test("Every screen with a Terms gate presents the Terms sheet")
     func everyGateHasItsSheet() throws {
         let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
@@ -113,14 +189,17 @@ struct CommunityTermsTests {
         var gated = 0
         for file in files {
             let source = try String(contentsOf: file, encoding: .utf8)
-            let gates = source.components(separatedBy: "= CommunityTermsGate()").count - 1
-            let sheets = source.components(separatedBy: ".communityTermsSheet($termsGate)").count - 1
-            let uses = source.components(separatedBy: "termsGate.perform").count - 1
-            #expect(gates == sheets, "\(file.lastPathComponent): \(gates) gates, \(sheets) sheets")
-            #expect(uses >= gates, "\(file.lastPathComponent): a gate nothing uses")
-            gated += gates
+            for chunk in Self.topLevelDeclarations(source) {
+                let gates = chunk.components(separatedBy: "= CommunityTermsGate()").count - 1
+                let sheets = chunk.components(separatedBy: ".communityTermsSheet($termsGate)").count - 1
+                let uses = chunk.components(separatedBy: "termsGate.perform").count - 1
+                guard gates + sheets + uses > 0 else { continue }
+                let name = chunk.split(separator: "\n").first { $0.prefixMatch(of: /\S/) != nil } ?? ""
+                #expect(gates == sheets, "\(file.lastPathComponent), \(name): \(gates) gates, \(sheets) sheets")
+                #expect(uses >= gates, "\(file.lastPathComponent), \(name): a gate nothing uses")
+                gated += gates
+            }
         }
         #expect(gated >= 9, "the nine screens with community actions (found \(gated))")
     }
 }
-

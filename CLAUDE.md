@@ -197,7 +197,9 @@ way unless there's a strong reason; adding the first one is a real decision.
   `session.confirmFinish`), `summary.root`,
   `summary.done`, `accessory.miniTile`, `health.root`, `community.root`,
   `settings.root`, `routes.findRoutes`, `routes.resultsPanel`,
-  `routes.routeCard`, `routes.startWalk`, `routes.weatherTile`.
+  `routes.routeCard`, `routes.startWalk`, `routes.weatherTile`,
+  `terms.sheet`, `terms.agree`, `terms.cancel`, `challenge.create.name`,
+  `challenge.create.submit`, `challenge.create.error`.
 - **Tab bar buttons are addressed by visible title**, not identifier — iOS 26
   discards `.accessibilityIdentifier` on `Tab`.
 - **Notifications go through `NotificationService`.** It owns permission,

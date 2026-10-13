@@ -83,8 +83,17 @@ extension View {
     /// Presents the Terms sheet while `gate` holds an action.
     func communityTermsSheet(_ gate: Binding<CommunityTermsGate>) -> some View {
         sheet(item: gate.pending) { _ in
-            CommunityTermsSheet(onAgree: { gate.wrappedValue.agree() },
-                                onCancel: { gate.wrappedValue.cancel() })
+            CommunityTermsSheet(onAgree: gate.sheetAgree, onCancel: gate.sheetCancel)
         }
     }
+}
+
+/// The sheet's two buttons, kept out of the view so a unit test can drive
+/// them through a `Binding` exactly as the sheet does. Which button calls
+/// which is covered by the UI test `testCommunityTermsGateOnCreateChallenge`.
+extension Binding where Value == CommunityTermsGate {
+    /// Agree: records agreement, closes the sheet and runs the held action.
+    func sheetAgree() { wrappedValue.agree() }
+    /// Cancel: closes the sheet and drops the held action.
+    func sheetCancel() { wrappedValue.cancel() }
 }
