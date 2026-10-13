@@ -23,6 +23,11 @@
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: var(--body); background: var(--ground); color: var(--ink); line-height: 1.55; -webkit-font-smoothing: antialiased; }
+/* The icon's contour lines across the top of every page, the same texture as
+   scoopsdevstudios.com's header. The gradient fades them into the ground so
+   they never sit behind long text. The image is 1600x700: at least that wide,
+   wider on a bigger screen (43.75vw is its height at full width), never squashed. */
+body { background-image: linear-gradient(to bottom, transparent 55%, var(--ground)), url("topo.svg"); background-size: 100% max(700px, 43.75vw), max(100%, 1600px) auto; background-repeat: no-repeat; background-position: top center; }
 a { color: var(--link); text-decoration: none; text-underline-offset: 3px; }
 a:hover { text-decoration: underline; text-decoration-color: var(--accent); }
 h1, h2, h3, summary { font-family: var(--rounded); }
