@@ -633,6 +633,7 @@ struct SnapshotRestoreTests {
         var liveActivityEndsWhenFinished: Int?
         writer.onFinish = { liveActivityEndsWhenFinished = live.ends.count }
         mgr.totalDistanceCovered = 820
+        mgr.elapsedTime = 600
         #expect(store.end(.save) != nil)
         await store.endTask?.value
         #expect(liveActivityEndsWhenFinished == 1, "the Live Activity ends before the workout is finished")
@@ -640,6 +641,7 @@ struct SnapshotRestoreTests {
         #expect(writer.discards == 0, "a saved walk's workout is not thrown away")
         #expect(live.ends.count == 1, "the Live Activity ends once")
         #expect(live.ends.first?.distance == 820)
+        #expect(live.ends.first?.elapsed == 600, "the Live Activity's last frame shows the walk's time")
     }
 
     @Test @MainActor func end_discard_discardsTheWorkoutOnce_andEndsTheLiveActivityOnce() async throws {
