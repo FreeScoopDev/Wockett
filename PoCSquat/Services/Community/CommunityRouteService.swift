@@ -71,7 +71,9 @@ final class CommunityRouteService {
     private let db         = CKContainer(identifier: WockettCloud.containerID).publicCloudDatabase
     static let recordType = "SharedRoute"
     private var recordType: String { Self.recordType }
-    private let votedKey      = "communityVotedRoutes"
+    /// Static: Delete my community data reads it (CommunityDataDeletion).
+    static let votedKey = "communityVotedRoutes"
+    private var votedKey: String { Self.votedKey }
     /// Static: deleting your route clears it (CommunityDeletion).
     static let publishedKey = "wkt_publishedRouteIds"
     private var publishedKey: String { Self.publishedKey }
