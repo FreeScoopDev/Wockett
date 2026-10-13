@@ -69,9 +69,9 @@ struct CommunitySuspensionTests {
 
     private func service(_ fake: FakeSuspensions, _ moderation: CommunityModerationStore, clock: Clock,
                          sleep: @escaping OptimisticVote.Sleep = neverFires,
-                         terms: UserDefaults = agreedDefaults()) -> SuspensionService {
+                         terms: UserDefaults? = nil) -> SuspensionService {
         SuspensionService(store: fake, moderation: moderation, now: { clock.now }, sleep: sleep,
-                          termsDefaults: terms)
+                          termsDefaults: terms ?? Self.agreedDefaults())
     }
 
     /// A throwaway suite, with the current Terms agreed to when `agreed`.
