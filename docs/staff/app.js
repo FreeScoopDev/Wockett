@@ -812,4 +812,34 @@ async function renderHistory(seq) {
     ...rows, more ? el('p', { class: 'muted small' }, 'Showing the newest 5,000.') : null);
 }
 
-start().catch(fail);
+// MARK: - Frame guard
+//
+// GitHub Pages cannot send the header that forbids framing, so another site
+// could load this dashboard in an invisible frame and trick a signed-in
+// moderator into clicking Remove or Suspend (clickjacking). A framed copy
+// therefore never starts: no sign-in button, no data, no actions. It tries to
+// break out to a top-level tab, and otherwise shows only a link to open it.
+// A Content-Security-Policy meta tag cannot set frame-ancestors (browsers
+// ignore that directive in a meta tag), and a wider CSP risks breaking Apple
+// sign-in, so this check is the guard.
+
+function isFramed() {
+  try {
+    return window.top !== window.self;
+  } catch {
+    return true;
+  }
+}
+
+function refuseFramed() {
+  try {
+    window.top.location.href = window.location.href;
+  } catch { /* a sandboxed frame may not navigate the top window */ }
+  document.body.replaceChildren(
+    el('main', { class: 'card' },
+      el('div', { class: 'title' }, 'Wockett Staff can\'t run inside another page'),
+      el('p', {}, el('a', { href: window.location.href, target: '_top', rel: 'noopener' }, 'Open Wockett Staff in its own tab'))));
+}
+
+if (isFramed()) refuseFramed();
+else start().catch(fail);
