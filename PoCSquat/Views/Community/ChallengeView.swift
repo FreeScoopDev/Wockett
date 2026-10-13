@@ -439,6 +439,11 @@ struct ChallengeDetailView: View {
             .buttonStyle(BounceButtonStyle(scale: 0.98))
             .accessibilityIdentifier("challenge.share")
 
+            Text(ChallengeSyncCopy.footnote(for: challenge.goalType))
+                .font(.wktLabel).foregroundColor(.earthMuted)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+
             if let msg = syncMessage {
                 Text(msg)
                     .font(.wktLabel).foregroundColor(.earthGreen)
@@ -504,13 +509,10 @@ struct ChallengeDetailView: View {
 
     // MARK: - Actions
 
+    /// Every goal type counts walks recorded in Wockett, never Apple Health:
+    /// the total is published on the leaderboard (2026-10-12 audit, finding 2).
     private func loadMyProgress() async {
-        switch challenge.goalType {
-        case .steps:
-            myProgressValue = await ChallengeService.shared.fetchSteps(for: challenge)
-        case .distance, .pace:
-            myProgressValue = challenge.localProgressValue(from: historyStore.sessions)
-        }
+        myProgressValue = challenge.localProgressValue(from: historyStore.sessions)
     }
 
     private func loadLeaderboard() async {
@@ -525,13 +527,7 @@ struct ChallengeDetailView: View {
 
     private func syncProgress() async {
         isSyncing = true; syncMessage = nil
-        let value: Int
-        switch challenge.goalType {
-        case .steps:
-            value = await ChallengeService.shared.fetchSteps(for: challenge)
-        case .distance, .pace:
-            value = challenge.localProgressValue(from: historyStore.sessions)
-        }
+        let value = challenge.localProgressValue(from: historyStore.sessions)
         myProgressValue = value
         do {
             try await ChallengeService.shared.joinOrUpdate(challenge, steps: value)

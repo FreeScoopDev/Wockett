@@ -4,7 +4,7 @@ import Observation
 
 // MARK: - Community hub data
 //
-// The CloudKit and HealthKit reads behind the hub: active challenges (and,
+// The CloudKit reads behind the hub: active challenges (and,
 // for the one you joined, the leaderboard and your live progress), the three
 // latest community posts, and the wocketts your shared routes have received.
 // Loaded once when the tab first appears and again on pull-to-refresh, so
@@ -106,9 +106,7 @@ final class CommunityHubModel: PostLiking {
             standing = nil
             return
         }
-        let value = joined.goalType == .steps
-            ? await ChallengeService.shared.fetchSteps(for: joined)
-            : joined.localProgressValue(from: sessions)
+        let value = joined.localProgressValue(from: sessions)
         yourChallenge = joined
         yourValue = value
         if let board = try? await ChallengeService.shared.fetchLeaderboard(for: joined) {

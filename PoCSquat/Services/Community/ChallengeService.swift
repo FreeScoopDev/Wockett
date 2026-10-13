@@ -1,6 +1,5 @@
 import Foundation
 import CloudKit
-import HealthKit
 
 // MARK: - Challenge Goal Type
 
@@ -37,6 +36,24 @@ func challengeFormattedPace(_ secsPerKm: Double, locale: Locale = .current) -> S
     let mins = Int(displaySecs) / 60
     let secs = Int(displaySecs) % 60
     return String(format: "%d:%02d%@", mins, secs, unit)
+}
+
+// MARK: - Sync copy
+
+/// The line under a challenge's sync button: where its total comes from and
+/// that it is public. Steps used to be Apple Health's; since 1.16 every goal
+/// counts walks recorded in Wockett (2026-10-12 audit, finding 2).
+enum ChallengeSyncCopy {
+    static func footnote(for goalType: ChallengeGoalType) -> String {
+        let counted: String
+        switch goalType {
+        case .steps:    counted = "the steps of walks and runs you recorded in Wockett"
+        case .distance: counted = "the distance of activities you recorded in Wockett"
+        case .pace:     counted = "activities you recorded in Wockett"
+        }
+        return "Counts \(counted) since the challenge began, not Apple Health. "
+            + "Your total and display name show on the public leaderboard."
+    }
 }
 
 // MARK: - Walk Challenge Model
@@ -138,7 +155,10 @@ struct WalkChallenge: Identifiable {
                                           rule: reached ? .toNearestOrAwayFromZero : .down)
     }
 
-    // Returns the value to write into ChallengeEntry.steps for non-step goals.
+    // Returns the value to write into ChallengeEntry.steps, from walks recorded in Wockett.
+    //   .steps    → steps of those walks and runs (pedometer count, or distance / 0.762 m
+    //               before 1.7); rides never count. Not Apple Health: the total is public
+    //               (2026-10-12 audit, finding 2).
     //   .distance → total metres walked/run (flaggedPossibleVehicle excluded)
     //   .pace     → count of sessions where pace beat the goalPaceSecsPerKm threshold
     func localProgressValue(from sessions: [WalkSession]) -> Int {
@@ -149,7 +169,10 @@ struct WalkChallenge: Identifiable {
             (activityFilter == nil || $0.activityType == activityFilter)
         }
         switch goalType {
-        case .steps: return 0
+        case .steps:
+            return window
+                .filter { $0.activityType != ActivityMode.cycling.rawValue }
+                .reduce(0) { $0 + $1.estimatedSteps }
         case .distance:
             return Int(window.reduce(0.0) { $0 + $1.totalDistance })
         case .pace:
@@ -198,12 +221,29 @@ struct ChallengeParticipant: Identifiable {
     let id:          CKRecord.ID
     let displayName: String
     var steps:       Int
+    /// The per-install ID entries carried before 1.16; "" on newer entries.
     let deviceID:    String
     let joinedAt:    Date
     /// The account that created the entry (CloudKit's creator), for suspensions.
     let account:     String?
 
-    var isCurrentDevice: Bool { deviceID == ChallengeService.shared.deviceID }
+    /// Your own entry: on this install's leaderboard as "You", and your rank.
+    var isCurrentDevice: Bool {
+        isMine(moderation: .shared, joinedEntryNames: ChallengeService.shared.joinedEntryNames,
+               legacyDeviceID: ChallengeService.shared.legacyDeviceID)
+    }
+
+    /// Yours when CloudKit says your account created it (the check every
+    /// community type uses), when it is the entry this install joined with, or,
+    /// for an entry written before 1.16, when it carries the device ID this
+    /// install stored then. `deviceID` is no longer written (audit finding 22).
+    func isMine(moderation: CommunityModerationStore, joinedEntryNames: Set<String>,
+                legacyDeviceID: String?) -> Bool {
+        if moderation.isMine(CommunityAuthor(name: displayName, account: account)) { return true }
+        if joinedEntryNames.contains(id.recordName) { return true }
+        guard !deviceID.isEmpty, let legacyDeviceID else { return false }
+        return deviceID == legacyDeviceID
+    }
 
     /// `creator` is a seam for tests (records built in a test have none).
     init?(record: CKRecord, creator: CKRecord.ID? = nil) {
@@ -244,7 +284,9 @@ struct ChallengeParticipant: Identifiable {
 //   challengeRecordName  String  ← queryable index required
 //   displayName          String
 //   steps                Int64   step challenges: steps; distance: metres; pace: session count
-//   deviceID             String  ← queryable index required
+//                                (all from walks recorded in Wockett since 1.16, never Apple Health)
+//   deviceID             String  "" since 1.16. Still written, because 1.14 and 1.15 drop an
+//                                entry without it; an entry's old value is cleared on its next sync.
 
 final class ChallengeService {
     static let shared = ChallengeService()
@@ -257,13 +299,15 @@ final class ChallengeService {
     static let joinedKey = "wkt_joinedChallengeEntries_v1"
     private var joinedKey: String { Self.joinedKey }
 
-    // Stable per-device identifier — never changes, never contains PII.
-    var deviceID: String {
-        if let v = UserDefaults.standard.string(forKey: "wkt_deviceID") { return v }
-        let v = UUID().uuidString
-        UserDefaults.standard.set(v, forKey: "wkt_deviceID")
-        return v
-    }
+    /// The per-install ID that 1.14 and 1.15 wrote on every entry, if this
+    /// install made one. Read only, to recognise those older entries as
+    /// yours; nothing creates one any more, and nothing publishes it.
+    var legacyDeviceID: String? { UserDefaults.standard.string(forKey: Self.legacyDeviceIDKey) }
+    static let legacyDeviceIDKey = "wkt_deviceID"
+
+    /// What a new entry's `deviceID` holds: nothing. The field stays because
+    /// 1.14 and 1.15 skip an entry that lacks it.
+    static let publishedDeviceID = ""
 
     // MARK: - Fetch
 
@@ -407,40 +451,30 @@ final class ChallengeService {
         if let existingName = joinedEntries[key] {
             let record      = try await db.record(for: CKRecord.ID(recordName: existingName))
             record["steps"] = steps
+            // An entry from 1.14 or 1.15 loses the device ID it was published with.
+            record["deviceID"] = Self.publishedDeviceID
             _ = try await db.save(record)
         } else {
             // Joining is posting; updating steps on an entry already there
             // isn't blocked (it is hidden anyway while suspended).
             try await SuspensionService.shared.ensureCanPost()
-            let record                    = CKRecord(recordType: entryType)
-            record["challengeRecordName"] = key
-            record["displayName"]         = try await CommunityNameService.shared.claimedName()
-            record["steps"]               = steps
-            record["deviceID"]            = deviceID
+            let record = Self.entryRecord(challengeKey: key,
+                                          displayName: try await CommunityNameService.shared.claimedName(),
+                                          steps: steps)
             let saved = try await db.save(record)
             storeJoin(challengeKey: key, entryName: saved.recordID.recordName)
         }
     }
 
-    // MARK: - HealthKit step fetch (step-type challenges only)
-
-    func fetchSteps(for challenge: WalkChallenge) async -> Int {
-        guard HKHealthStore.isHealthDataAvailable() else { return 0 }
-        let store = HKHealthStore()
-        let pred  = HKQuery.predicateForSamples(
-            withStart: challenge.startDate,
-            end: min(challenge.endDate, Date())
-        )
-        return await withCheckedContinuation { cont in
-            let q = HKStatisticsQuery(
-                quantityType: HKQuantityType(.stepCount),
-                quantitySamplePredicate: pred,
-                options: .cumulativeSum
-            ) { _, result, _ in
-                cont.resume(returning: Int(result?.sumQuantity()?.doubleValue(for: .count()) ?? 0))
-            }
-            store.execute(q)
-        }
+    /// A new leaderboard entry: the challenge, your display name and your
+    /// total, and an empty `deviceID` (see `publishedDeviceID`).
+    static func entryRecord(challengeKey: String, displayName: String, steps: Int) -> CKRecord {
+        let record                    = CKRecord(recordType: "ChallengeEntry")
+        record["challengeRecordName"] = challengeKey
+        record["displayName"]         = displayName
+        record["steps"]               = steps
+        record["deviceID"]            = publishedDeviceID
+        return record
     }
 
     // MARK: - Persistence helpers
@@ -449,14 +483,14 @@ final class ChallengeService {
         UserDefaults.standard.dictionary(forKey: joinedKey) as? [String: String] ?? [:]
     }
 
+    /// The record names of the entries this install joined with.
+    var joinedEntryNames: Set<String> { Set(joinedEntries.values) }
+
     private func storeJoin(challengeKey: String, entryName: String) {
         var d = joinedEntries
         d[challengeKey] = entryName
         UserDefaults.standard.set(d, forKey: joinedKey)
     }
 }
-
-// Swift doesn't have a built-in min for Date — add one here to avoid ambiguity.
-private func min(_ a: Date, _ b: Date) -> Date { a < b ? a : b }
 
 extension WalkChallenge: CommunityModerated {}

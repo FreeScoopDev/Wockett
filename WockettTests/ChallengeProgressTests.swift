@@ -40,13 +40,14 @@ struct ChallengeProgressTests {
         elapsed: TimeInterval,
         activityType: String = "walking",
         flagged: Bool = false,
-        date: Date = Date()
+        date: Date = Date(),
+        steps: Int = 0
     ) -> WalkSession {
         WalkSession(
             id: UUID(), routeName: "Test", date: date,
             elapsedTime: elapsed, totalDistance: distance,
             waypoints: [], lapCount: 1, isLoop: false,
-            activityType: activityType,
+            activityType: activityType, steps: steps,
             flaggedPossibleVehicle: flagged
         )
     }
@@ -122,11 +123,55 @@ struct ChallengeProgressTests {
 
     // MARK: - Steps goal (regression)
 
-    // Steps challenges use HealthKit, not session data. localProgressValue returns 0.
-    @Test func stepsGoal_alwaysReturnsZeroFromSessions() throws {
+    // Steps challenges count walks recorded in Wockett, never Apple Health: the
+    // total is public (2026-10-12 audit, finding 2). Until 1.16 this returned 0
+    // and the screens asked HealthKit instead.
+    @Test func stepsGoal_countsRecordedSteps() throws {
         let challenge = try #require(makeChallenge(goalType: .steps, goalSteps: 10_000))
-        let sessions  = [session(distance: 5000, elapsed: 1800)]
-        #expect(challenge.localProgressValue(from: sessions) == 0)
+        let sessions  = [
+            session(distance: 5000, elapsed: 1800, steps: 6_400),
+            session(distance: 1000, elapsed: 900, activityType: "running", steps: 900),
+        ]
+        #expect(challenge.localProgressValue(from: sessions) == 7_300)
+    }
+
+    // A walk from before 1.7 has no pedometer count: distance / 0.762 m, as everywhere else.
+    @Test func stepsGoal_estimatesOldWalksFromDistance() throws {
+        let challenge = try #require(makeChallenge(goalType: .steps))
+        #expect(challenge.localProgressValue(from: [session(distance: 762, elapsed: 600)]) == 1_000)
+    }
+
+    // A bike has no steps; the distance estimate would turn 20 km into 26,246.
+    @Test func stepsGoal_neverCountsRides() throws {
+        let challenge = try #require(makeChallenge(goalType: .steps))
+        let sessions  = [
+            session(distance: 20_000, elapsed: 3600, activityType: "cycling"),
+            session(distance: 5_000, elapsed: 900, activityType: "cycling", steps: 300),
+            session(distance: 1_000, elapsed: 600, steps: 1_200),
+        ]
+        #expect(challenge.localProgressValue(from: sessions) == 1_200)
+    }
+
+    @Test func stepsGoal_skipsVehicleAndOutOfWindowAndOtherActivities() throws {
+        let challenge = try #require(makeChallenge(goalType: .steps, activityFilter: "walking",
+                                                   startDate: Date().addingTimeInterval(-86400),
+                                                   endDate: Date().addingTimeInterval(86400)))
+        let sessions  = [
+            session(distance: 1000, elapsed: 600, steps: 1_500),
+            session(distance: 1000, elapsed: 600, flagged: true, steps: 2_000),
+            session(distance: 1000, elapsed: 600, date: Date().addingTimeInterval(-86400 * 2), steps: 4_000),
+            session(distance: 1000, elapsed: 300, activityType: "running", steps: 8_000),
+        ]
+        #expect(challenge.localProgressValue(from: sessions) == 1_500)
+    }
+
+    @Test func syncFootnoteNamesTheSource() {
+        for type in [ChallengeGoalType.steps, .distance, .pace] {
+            let text = ChallengeSyncCopy.footnote(for: type)
+            #expect(text.contains("recorded in Wockett"))
+            #expect(text.contains("not Apple Health"))
+            #expect(text.contains("public leaderboard"))
+        }
     }
 
     // MARK: - Progress cap
