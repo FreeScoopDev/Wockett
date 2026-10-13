@@ -5,7 +5,8 @@
   (now one per mile, matching the spoken cues). The release is US and Canada
   only, so a per-km pace beside miles everywhere else read as a bug. Both
   pace strings use the app's existing pace formatter, so they read `9:39/mi`
-  like every other pace instead of `6'00"/km`. Elevation stays in metres.
+  like every other pace instead of `6'00"/km`; in Canada they now read
+  `6:00/km` for the same reason. Elevation stays in metres.
 
 ### Internal
 - Deleted code nothing called, found by the 2026-10-12 audit and re-checked
