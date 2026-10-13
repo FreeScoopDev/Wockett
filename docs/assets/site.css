@@ -1,0 +1,132 @@
+/* wockett.app styles, shared by every public page (not staff/, the moderation
+   tool, which has its own). Change a colour here and every page picks it up.
+
+   Colours are the app icon's brand palette, copied exactly from
+   DesignSystem.swift (brandForest, brandRoad, brandContour, brandWaypoint);
+   the rest are mixes of those. scoopsdevstudios.com uses the same tokens.
+   Text contrast is noted beside each one; every text pair clears WCAG AA. */
+
+:root {
+    --ground: #22372F;    /* brandForest */
+    --card: #2D4038;      /* forest lifted 5% toward cream, as cards sit above the ground in the app */
+    --raised: #374941;    /* one step above a card: notes inside a card, table headers */
+    --line: #435241;      /* forest toward brandContour: hairlines and dividers */
+    --ink: #F6EFDF;       /* brandRoad. 11.1:1 on ground */
+    --ink-soft: #D0CEBF;  /* secondary text. 7.0:1 on card, 6.1:1 on raised */
+    --muted: #B6B8AA;     /* small print. 6.3:1 on ground */
+    --link: #ECA07E;      /* brandWaypoint halfway to cream. 6.0:1 on ground, 5.2:1 on card */
+    --fill: #C05319;      /* the app's accentRunFill: white on it is 4.7:1 */
+    --accent: #E1511C;    /* brandWaypoint: decoration only (3.3:1 on ground, too low for text) */
+    --body: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --rounded: ui-rounded, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;  /* SF Pro Rounded on Apple devices, as in the app */
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--body); background: var(--ground); color: var(--ink); line-height: 1.55; -webkit-font-smoothing: antialiased; }
+/* The icon's contour lines across the top of every page, the same texture as
+   scoopsdevstudios.com's header. The gradient fades them into the ground so
+   they never sit behind long text. The image is 1600x700: at least that wide,
+   wider on a bigger screen (43.75vw is its height at full width), never squashed. */
+body { background-image: linear-gradient(to bottom, transparent 55%, var(--ground)), url("topo.svg"); background-size: 100% max(700px, 43.75vw), max(100%, 1600px) auto; background-repeat: no-repeat; background-position: top center; }
+a { color: var(--link); text-decoration: none; text-underline-offset: 3px; }
+a:hover { text-decoration: underline; text-decoration-color: var(--accent); }
+h1, h2, h3, summary { font-family: var(--rounded); }
+::selection { background: var(--fill); color: #fff; }
+
+/* The one button: cream on forest, like the icon's road. */
+.button { display: inline-block; background: var(--ink); color: var(--ground); border-radius: 14px; padding: 12px 24px; font-weight: 600; text-decoration: none; }
+.button:hover { background: #fff; text-decoration: none; }
+.button:focus-visible { outline: 3px solid var(--link); outline-offset: 3px; }
+.button small { display: block; font-size: 0.7em; font-weight: 400; }
+
+/* The app icon. iOS rounds icons at about 22.5% of their width; the same here.
+   Its green is the page's green, so a faint cream ring (brandRoad at 16%) shows its edge. */
+.app-icon { display: block; margin: 0 auto 24px; border-radius: 22.5%; box-shadow: 0 0 0 1px rgba(246, 239, 223, 0.16), 0 10px 30px rgba(0, 0, 0, 0.3); }
+.home-link { display: inline-flex; align-items: center; gap: 10px; font-family: var(--rounded); font-weight: 700; font-size: 1.1em; color: var(--ink); margin-bottom: 28px; }
+.home-link:hover { text-decoration: none; }
+.home-link img { width: 40px; height: 40px; border-radius: 22.5%; box-shadow: 0 0 0 1px rgba(246, 239, 223, 0.16); }
+
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 28px 24px; }
+
+footer { text-align: center; padding: 40px 20px; border-top: 1px solid var(--line); color: var(--muted); font-size: 0.85em; }
+footer p + p { margin-top: 8px; }
+
+/* Home and Help: a centred header over a 720px column */
+.hero { text-align: center; padding: 80px 20px 40px; }
+.hero h1 { font-size: 3em; font-weight: 700; letter-spacing: -1px; line-height: 1.1; }
+.hero > p { font-size: 1.25em; color: var(--ink-soft); margin-top: 12px; }
+.hero .lead { font-size: 1.05em; max-width: 560px; margin: 20px auto 0; line-height: 1.5; color: var(--ink); }
+.hero .button { margin-top: 28px; }
+.hero .availability { font-size: 0.85em; margin-top: 10px; color: var(--muted); }
+
+/* Home */
+.features { max-width: 720px; margin: 0 auto; padding: 40px 20px 80px; display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 24px; }
+.feature .icon { font-size: 2em; margin-bottom: 12px; }
+.feature h3 { font-size: 1.05em; font-weight: 600; margin-bottom: 8px; }
+.feature p { font-size: 0.9em; color: var(--ink-soft); line-height: 1.5; }
+
+/* Help */
+nav.toc { max-width: 720px; margin: 0 auto; padding: 0 20px; display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+nav.toc a { background: var(--card); border: 1px solid var(--line); color: var(--ink); padding: 8px 14px; border-radius: 999px; font-size: 0.9em; }
+main.help { max-width: 720px; margin: 0 auto; padding: 40px 20px 80px; }
+.help section { margin-top: 56px; }
+.help section > h2 { font-size: 1.8em; font-weight: 700; letter-spacing: -0.5px; margin-bottom: 8px; }
+.help section > p.lead { color: var(--ink-soft); margin-bottom: 20px; }
+.help .card { margin-top: 20px; }
+.help .card h3 { font-size: 1.2em; font-weight: 600; margin-bottom: 6px; }
+.help .card .sub { color: var(--ink-soft); font-size: 0.95em; margin-bottom: 16px; }
+.shots { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; margin: 16px 0 20px; }
+.shot { aspect-ratio: 9 / 19.5; background: repeating-linear-gradient(45deg, var(--raised), var(--raised) 10px, var(--card) 10px, var(--card) 20px); border: 1px dashed var(--line); border-radius: 18px; display: flex; align-items: center; justify-content: center; text-align: center; padding: 10px; color: var(--muted); font-size: 0.8em; }
+img.shot { display: block; width: 100%; height: auto; aspect-ratio: auto; padding: 0; border: 1px solid var(--line); background: none; object-fit: cover; }
+ol.steps { padding-left: 0; list-style: none; counter-reset: step; }
+ol.steps li { counter-increment: step; position: relative; padding: 0 0 12px 40px; }
+ol.steps li::before { content: counter(step); position: absolute; left: 0; top: 0; width: 26px; height: 26px; border-radius: 50%; background: var(--fill); color: #fff; font-size: 0.8em; font-weight: 600; display: flex; align-items: center; justify-content: center; }
+.ui { font-weight: 600; color: var(--ink); }
+.note { margin-top: 8px; padding: 12px 14px; background: var(--raised); border-radius: 12px; font-size: 0.9em; color: var(--ink-soft); }
+.badge { display: inline-block; font-size: 0.6em; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: var(--fill); color: #fff; vertical-align: middle; margin-left: 6px; }
+.check { margin-top: 8px; padding: 10px 14px; border: 1px dashed var(--link); border-radius: 12px; font-size: 0.85em; color: var(--link); }
+.tips { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-top: 20px; }
+.tip { padding: 22px 20px; }
+.tip .icon { font-size: 1.6em; margin-bottom: 8px; }
+.tip h3 { font-size: 1em; font-weight: 600; margin-bottom: 6px; }
+.tip p { font-size: 0.9em; color: var(--ink-soft); }
+details { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px 20px; margin-top: 12px; }
+details summary { cursor: pointer; font-weight: 600; }
+details p { margin-top: 10px; color: var(--ink-soft); font-size: 0.95em; }
+.release h3 { font-size: 1.1em; margin-bottom: 8px; }
+.release ul { padding-left: 20px; color: var(--ink-soft); }
+.release li { margin-bottom: 6px; }
+.help .more { margin-top: 16px; color: var(--ink-soft); font-size: 0.9em; }
+
+/* Privacy Policy and Terms of Service: long-form text */
+main.doc { max-width: 760px; margin: 0 auto; padding: 48px 20px 64px; line-height: 1.65; }
+.doc h1 { font-size: 2.2em; letter-spacing: -0.5px; line-height: 1.15; margin-bottom: 6px; }
+.doc h2 { font-size: 1.35em; margin-top: 2em; margin-bottom: 0.5em; }
+.doc h3 { font-size: 1.1em; margin-top: 1.5em; margin-bottom: 0.4em; }
+.doc p, .doc li, .doc td { color: var(--ink-soft); }
+.doc p + p { margin-top: 0.9em; }
+.doc strong, .doc th { color: var(--ink); }
+.doc p.updated { color: var(--muted); }
+.doc ul { padding-left: 1.4em; margin: 0.6em 0; }
+.doc li { margin-bottom: 0.4em; }
+.doc .table-wrap { overflow-x: auto; margin: 1em 0; }
+.doc table { border-collapse: collapse; width: 100%; }
+.doc th, .doc td { border: 1px solid var(--line); padding: 10px 14px; text-align: left; vertical-align: top; }
+.doc th { background: var(--raised); }
+.doc td { background: var(--card); }
+
+/* Challenge link (c/) */
+.challenge-page { min-height: 100vh; display: flex; flex-direction: column; }
+main.challenge { flex: 1; max-width: 520px; width: 100%; margin: 0 auto; padding: 72px 16px 40px; text-align: center; }
+.challenge .emoji { font-size: 3.5em; line-height: 1; margin-bottom: 20px; }
+.challenge h1 { font-size: 1.15em; font-weight: 600; color: var(--ink-soft); }
+.challenge h2 { font-size: 2em; font-weight: 700; letter-spacing: -0.5px; margin-top: 8px; overflow-wrap: anywhere; }
+.challenge p.lead { font-size: 1.05em; color: var(--ink-soft); line-height: 1.5; margin-top: 16px; }
+.challenge .button { margin-top: 32px; font-size: 1.05em; padding: 14px 28px; }
+.challenge p.hint { font-size: 0.9em; color: var(--muted); line-height: 1.5; margin-top: 28px; }
+
+@media (max-width: 480px) {
+    .hero { padding: 64px 20px 32px; }
+    .hero h1 { font-size: 2.5em; }
+    .doc h1 { font-size: 1.9em; }
+}
