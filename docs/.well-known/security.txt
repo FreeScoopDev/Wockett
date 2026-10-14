@@ -1,0 +1,4 @@
+Contact: mailto:support@wockett.app
+Expires: 2027-04-14T00:00:00.000Z
+Preferred-Languages: en
+Canonical: https://wockett.app/.well-known/security.txt
