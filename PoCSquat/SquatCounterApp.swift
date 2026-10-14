@@ -137,7 +137,15 @@ struct SquatCounterApp: App {
                 get: { ActiveWalkStore.shared.pendingSummary },
                 set: { ActiveWalkStore.shared.pendingSummary = $0 }
             )) { request in
-                ActivitySummaryView(session: request.session, records: request.records)
+                // As the walk screen does: splits, and Exclude for a saved route.
+                ActivitySummaryView(
+                    session: request.session,
+                    records: request.records,
+                    splits: request.splits,
+                    onExcludeFromRouteStats: request.session.customRouteId != nil ? {
+                        historyStore.updateCountsTowardRouteStats(id: request.session.id, counts: false)
+                    } : nil
+                )
             }
             .environment(ActiveWalkStore.shared)
             .environment(communityRoutesModel)

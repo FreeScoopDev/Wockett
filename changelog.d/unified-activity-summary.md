@@ -1,3 +1,12 @@
+### Fixed
+- Walks with your pets now count toward personal records. Since 1.7 a walk
+  with a pet on it could never set Longest walk or Fastest pace, so for most
+  people in a dog-walking app records never appeared (and nor did the
+  rating prompt that follows one). A rule from 1.6, meant to skip each pet's
+  own credit entry, kept matching the person's walk once 1.7 put the pets on
+  it. Those per-pet entries (an indoor walk still saves one per pet) still
+  never set or block a record.
+
 ### Changed
 - Every activity ends on the same full-screen summary, and any past activity
   can open it again. An indoor walk used to end on a half sheet with three
@@ -12,7 +21,8 @@
 - The summary shows the figures that make sense for the activity: a ride
   shows speed and no step count (it used to claim about 1,300 steps per
   kilometre ridden), and an indoor walk shows steps, time, cadence and an
-  estimated distance, never a pace worked out from that estimate. The share
+  estimated distance, never a pace worked out from that estimate, on the summary or on the live
+  indoor screen, whose Distance now says "Est. distance". The share
   card and its caption follow the same rules ("Just rode…", "Just walked
   4,000 steps indoors…").
 - Personal records are kept per activity: Longest walk, run or ride and
@@ -20,3 +30,6 @@
   a first ride no longer announces a "Longest Walk". Indoor walks set Most
   steps and Longest indoor walk (by time), and no distance or pace record,
   because without GPS their distance is only steps times a stride.
+- An indoor walk of 100 steps or fewer that is not saved no longer leaves its
+  pets' credit entries in Activity History on its own: they are saved with
+  the walk.

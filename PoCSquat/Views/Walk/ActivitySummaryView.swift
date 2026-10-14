@@ -189,7 +189,8 @@ struct ActivitySummaryView: View {
         }
         .mapStyle(.standard(emphasis: .muted))
         .frame(height: 180)
-        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .clipShape(RoundedRectangle.wktCard)
+        .overlay(RoundedRectangle.wktCard.strokeBorder(Color.earthStroke, lineWidth: 1))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Map of this \(mode.noun)'s route")
     }

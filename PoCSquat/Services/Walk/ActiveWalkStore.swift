@@ -8,6 +8,8 @@ struct ActivitySummaryRequest: Identifiable {
     let id = UUID()
     let session: WalkSession
     let records: [PRType]
+    /// Checkpoint splits of a guided walk, read before the session stops.
+    var splits: [(label: String, elapsed: TimeInterval)] = []
 }
 
 @Observable @MainActor
@@ -105,7 +107,8 @@ final class ActiveWalkStore {
                 saved = walk
                 if presentSummary {
                     pendingSummary = ActivitySummaryRequest(
-                        session: walk, records: checkNewPRs(newSession: walk, against: previous))
+                        session: walk, records: checkNewPRs(newSession: walk, against: previous),
+                        splits: session.splitTimes)
                 }
             }
         case .discard:

@@ -399,6 +399,13 @@ struct WalkSession: Identifiable, Codable {
         case id, routeName, date, elapsedTime, totalDistance, waypoints, lapCount, isLoop, activePetIds, activityType, notes, petDistances, steps, isCommunityRoute, customRouteId, countsTowardRouteStats, stopCount, flaggedPossibleVehicle
     }
 
+    /// A pet's share of a walk saved as an entry of its own, not a walk:
+    /// exactly one pet and no time. Indoor walks still save these ("Nala's
+    /// Indoor Walk", `StationaryWalkView`), and 1.6 saved them for every
+    /// walk ("Nala's Walk"). A real walk always has time, and since 1.7 an
+    /// outdoor walk carries its pets on itself (`activePetIds`, `petDistances`).
+    var isPetCreditEntry: Bool { activePetIds.count == 1 && elapsedTime <= 0 }
+
     // Returns actual pedometer steps when available, otherwise estimates from GPS distance.
     var estimatedSteps: Int { steps > 0 ? steps : Int(totalDistance / 0.762) }
 
@@ -618,11 +625,18 @@ let minimumRecordIndoorSteps = Int((200 / 0.762).rounded(.up))
 // Returns any PRs the new session sets against the previous session list.
 // Call BEFORE adding the new session to the store (the session itself is
 // ignored if it is already there).
+//
+// A walk with pets competes like any other. Until 2026-10-13 it never set a
+// record: the guard was `activePetIds.isEmpty`, written in 1.6 to skip each
+// pet's own credit entry, when the person's walk carried no pets. 1.7 put the
+// pets on the walk itself, so every walk with a dog stopped setting records,
+// and stopped asking for a rating after one (`ReviewPrompter`). Pet credit
+// entries (`isPetCreditEntry`) are still neither candidates nor walks to beat.
 func checkNewPRs(newSession: WalkSession, against previousSessions: [WalkSession]) -> [PRType] {
-    guard newSession.activePetIds.isEmpty, !newSession.flaggedPossibleVehicle else { return [] }
+    guard !newSession.isPetCreditEntry, !newSession.flaggedPossibleVehicle else { return [] }
     let mode = ActivityMode(rawValue: newSession.activityType) ?? .walking
     let prev = previousSessions.filter {
-        $0.id != newSession.id && !$0.flaggedPossibleVehicle
+        $0.id != newSession.id && !$0.flaggedPossibleVehicle && !$0.isPetCreditEntry
             && (ActivityMode(rawValue: $0.activityType) ?? .walking) == mode
     }
     if mode == .stationary { return indoorRecords(newSession, against: prev) }
@@ -653,10 +667,9 @@ func checkNewPRs(newSession: WalkSession, against previousSessions: [WalkSession
 private func indoorRecords(_ session: WalkSession, against prev: [WalkSession]) -> [PRType] {
     let steps = session.estimatedSteps
     guard steps >= minimumRecordIndoorSteps else { return [] }
-    // An indoor walk credits each pet as an entry of its own ("Nala's Indoor
-    // Walk", saved first, with the pet's share of the steps). Those are not
-    // walks to beat: with a pet on for the whole walk the entry ties it.
-    let qualifying = prev.filter { $0.activePetIds.isEmpty && $0.estimatedSteps >= minimumRecordIndoorSteps }
+    // `prev` has no pet credit entries (see `checkNewPRs`): with a pet on for
+    // the whole walk, its entry would tie the walk's steps.
+    let qualifying = prev.filter { $0.estimatedSteps >= minimumRecordIndoorSteps }
     var records: [PRType] = []
     if steps > (qualifying.map(\.estimatedSteps).max() ?? 0) {
         records.append(.mostSteps(steps))

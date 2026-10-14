@@ -86,10 +86,27 @@ struct PersonalRecordTests {
         #expect(checkNewPRs(newSession: s, against: []).isEmpty)
     }
 
-    // Sessions with active pets do not earn PRs.
-    @Test func sessionWithPets_neverEarnsPR() {
-        let s = session(distance: 5000, elapsed: 1800, petIds: [UUID()])
-        #expect(checkNewPRs(newSession: s, against: []).isEmpty)
+    // A walk with pets competes like any other (2026-10-13). Since 1.7 the
+    // person's own walk carries its pets, and `activePetIds.isEmpty` kept
+    // every dog walk from setting a record.
+    @Test func walkWithPets_earnsLongestAndFastest() {
+        let prev = session(distance: 3000, elapsed: 1800)                  // 600 s/km
+        let s = session(distance: 5000, elapsed: 2500, petIds: [UUID(), UUID()]) // 500 s/km
+        let prs = checkNewPRs(newSession: s, against: [prev])
+        #expect(prs == [.longestDistance(meters: 5000, mode: .walking), .fastest(secsPerKm: 500, mode: .walking)])
+        let onePet = session(distance: 5000, elapsed: 2500, petIds: [UUID()])
+        #expect(checkNewPRs(newSession: onePet, against: [prev]).count == 2)
+    }
+
+    // A pet's credit entry (one pet, no time: indoor's, and every walk's in
+    // 1.6) is neither a record nor a walk to beat.
+    @Test func petCreditEntry_neverEarnsOrBlocksARecord() {
+        let entry = session(distance: 9000, elapsed: 0, petIds: [UUID()])
+        #expect(entry.isPetCreditEntry)
+        #expect(checkNewPRs(newSession: entry, against: []).isEmpty)
+        let walk = session(distance: 5000, elapsed: 2500)
+        #expect(checkNewPRs(newSession: walk, against: [entry]).contains(where: isLongest))
+        #expect(!session(distance: 5000, elapsed: 2500, petIds: [UUID()]).isPetCreditEntry, "a real walk has time")
     }
 
     // Session below the 200 m distance threshold earns nothing.

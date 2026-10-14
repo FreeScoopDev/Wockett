@@ -32,15 +32,6 @@ final class StationaryWalkManager: ObservableObject {
             : String(format: "%d:%02d", m, s)
     }
 
-    var paceText: String { paceText(locale: .current) }
-
-    /// min/mi in the US, min/km elsewhere: the same formatter as other paces.
-    func paceText(locale: Locale) -> String {
-        guard elapsedSeconds > 10, steps > 50 else { return "—" }
-        let secsPerKm = Double(elapsedSeconds) / (estimatedDistanceMeters / 1000)
-        return challengeFormattedPace(secsPerKm, locale: locale)
-    }
-
     var cadenceText: String {
         guard elapsedSeconds > 5 else { return "—" }
         let spm = Double(steps) / (Double(elapsedSeconds) / 60.0)
@@ -121,6 +112,8 @@ struct StationaryWalkView: View {
     @StateObject private var manager = StationaryWalkManager()
     @State private var finished: FinishedIndoorWalk?
     @State private var finishedSaved = false
+    /// The pets' credit entries for the finished walk, added when it is saved.
+    @State private var pendingPetCredit: [WalkSession] = []
     @State private var petActiveSinceSteps: [UUID: Int] = [:]
 
     /// Indoor's activity colour, for icons only: the step ring is the user's
@@ -172,9 +165,10 @@ struct StationaryWalkView: View {
                 HStack(spacing: 0) {
                     statCell(value: manager.elapsedText,    label: "Time",     icon: .time)
                     columnDivider
-                    statCell(value: manager.distanceText,   label: "Distance", icon: .distance)
-                    columnDivider
-                    statCell(value: manager.paceText,       label: "Pace",     icon: .pace)
+                    // No pace: indoor distance is only steps times a stride,
+                    // so a pace from it would be invented (2026-10-13).
+                    statCell(value: manager.distanceText,   label: SummaryStat.estimatedDistance.label,
+                             icon: .distance)
                     columnDivider
                     statCell(value: manager.cadenceText,    label: "Cadence",  icon: .cadence)
                 }
@@ -258,8 +252,12 @@ struct StationaryWalkView: View {
     /// More than 100 steps saves the walk on Finish, the rule the old summary
     /// sheet had; fewer leaves the choice to the summary's Save button.
     private func finishWalk() {
+        // A second tap before the cover is up must not build a second walk.
+        guard finished == nil else { return }
         let crew = petStore.activePets.map(\.id)
-        flushAllActivePets()
+        // The pets' credit is saved with the walk, never on its own: an
+        // unsaved walk of 100 steps or fewer leaves nothing in history.
+        pendingPetCredit = petCreditEntries()
         manager.stop()
         let session = manager.completedSession()
         if manager.steps > 100 {
@@ -276,19 +274,24 @@ struct StationaryWalkView: View {
     private func save(_ session: WalkSession) -> [PRType] {
         guard !finishedSaved else { return [] }
         let previous = historyStore.sessions
+        pendingPetCredit.forEach(historyStore.add)
+        pendingPetCredit = []
         historyStore.add(session)
         finishedSaved = true
         Task { await manager.finishWorkout() }
         return checkNewPRs(newSession: session, against: previous)
     }
 
-    private func flushAllActivePets() {
+    /// Each pet still on the walk at Finish, as its own credit entry
+    /// (`WalkSession.isPetCreditEntry`). Not saved here: `save` adds them.
+    private func petCreditEntries() -> [WalkSession] {
         let currentSteps = manager.steps
+        var entries: [WalkSession] = []
         for (petId, sinceSteps) in petActiveSinceSteps {
             guard let pet = petStore.pets.first(where: { $0.id == petId }) else { continue }
             let deltaSteps = max(0, currentSteps - sinceSteps)
             guard deltaSteps > 50 else { continue }
-            historyStore.add(WalkSession(
+            entries.append(WalkSession(
                 id: UUID(), routeName: "\(pet.name)'s Indoor Walk",
                 date: manager.startDate, elapsedTime: 0,
                 totalDistance: Double(deltaSteps) * 0.762,
@@ -297,6 +300,7 @@ struct StationaryWalkView: View {
             ))
         }
         petActiveSinceSteps.removeAll()
+        return entries
     }
 
     private var columnDivider: some View {

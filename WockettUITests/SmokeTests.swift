@@ -289,6 +289,42 @@ final class SmokeTests: XCTestCase {
         XCTAssertFalse(finish.exists, "the indoor screen must be gone too")
     }
 
+    // MARK: - 4c. Mini tile's Save & End shows the summary
+
+    /// Save & End on the mini tile ends the walk from outside the walk screen;
+    /// the app root then shows the same summary (2026-10-13; it showed
+    /// nothing). The presentation is the risky part: the tile and its
+    /// confirmation dialog go away in the same tap that asks for it.
+    func testMiniTileSaveAndEndShowsTheSummary() {
+        XCTAssertTrue(el("home.statCard").waitForExistence(timeout: 10))
+        startWalkFromHome()
+        XCTAssertTrue(el("session.root").waitForExistence(timeout: 30))
+        app.buttons["session.minimize"].tap()
+        let sessionGone = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "exists == NO"), object: el("session.root"))
+        wait(for: [sessionGone], timeout: 25)
+
+        // On Community, as in testAccessoryBar: the tile is full size there.
+        selectTab("Community")
+        let end = app.buttons["End walk"]
+        XCTAssertTrue(end.waitForExistence(timeout: 30), "the mini tile's End button must be there")
+        end.tap()
+        let save = app.buttons["Save & End Walk"]
+        XCTAssertTrue(save.waitForExistence(timeout: 10), "End must ask to save or discard")
+        save.tap()
+
+        XCTAssertTrue(el("summary.root").waitForExistence(timeout: 15),
+                      "Save & End must show the summary. \(screenState())")
+        app.buttons["summary.done"].tap()
+        let summaryGone = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "exists == NO"), object: el("summary.root"))
+        let communityHittable = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "hittable == YES"), object: tab("Community"))
+        XCTAssertEqual(XCTWaiter().wait(for: [summaryGone, communityHittable], timeout: 15), .completed,
+                       "Done must close the summary. \(screenState())")
+        XCTAssertFalse(app.buttons["accessory.miniTile"].exists, "the walk must have ended")
+    }
+
     // MARK: - 5. Routes tab reachability
 
     func testRoutesReachable() {
