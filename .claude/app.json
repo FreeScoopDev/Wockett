@@ -26,6 +26,7 @@
     "Notifications go through NotificationService, and any delivery guard accepts .provisional.",
     "UI-test accessibility identifiers listed in CLAUDE.md keep working; tab bar buttons are addressed by title.",
     "No NSLocationAlwaysAndWhenInUseUsageDescription unless code calls requestAlwaysAuthorization (Always was rejected 2026-09-09).",
-    "No Restore Purchases button or AppStore.sync for consumable tips; restore only for non-consumables (Wockett 1.14 was rejected under 3.1.1)."
+    "No Restore Purchases button or AppStore.sync for consumable tips; restore only for non-consumables (Wockett 1.14 was rejected under 3.1.1).",
+    "Any UIActivityViewController or ShareLink that shares an image needs NSPhotoLibraryAddUsageDescription in PoCSquat/Info.plist, or tapping Save Image terminates the app (the walk card shipped without it in 1.15)."
   ]
 }
