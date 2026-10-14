@@ -5,6 +5,593 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [1.16] - 2026-10-13
+
+### Added
+- Wockett Staff, a moderation dashboard at wockett.app/staff. Signed in with
+  the moderator Apple ID, it lists reported posts, routes and challenges
+  grouped by item (with the reasons, notes and a route's shape), removes an
+  item for everyone or dismisses its reports, browses recent community
+  content by author, counts the last 7 and 30 days of activity, and keeps a
+  history of every action with a snapshot of what was removed. Until now a
+  report was an email, and acting on it meant finding the raw record in
+  CloudKit Console. It is a static page with no server and no secret:
+  CloudKit's Moderator role decides what the signed-in Apple ID may do, and
+  the snapshot is saved before anything is deleted. User-written text is
+  only ever shown as text, never run as page code.
+- A moderator can now suspend an account. While it is suspended, its posts,
+  shared routes, challenges and leaderboard entries are hidden for everyone
+  else, and it can't post, share a route, create or join a challenge, or give
+  a Wockett: those say "Your community access is paused" (with the end date,
+  unless it is permanent) and that walking and tracking still work. Removing
+  one item at a time didn't stop someone who posted again a minute later.
+  Suspensions are public `Suspension` records only a Moderator can write,
+  holding just the account and when it ends; the reason stays in the
+  Moderator-only history. Each phone refreshes the list before a community
+  load (at most every 10 minutes, waiting no more than 3 seconds) and keeps
+  it for offline use. Your own content is never hidden from you.
+- Wockett Staff can suspend an account: "Suspend author" on any reported or
+  browsed item asks for 7 days, 30 days or permanent, a reason and a note,
+  and can also remove that account's posts, routes and challenges. A new
+  Suspensions tab lists who is suspended, until when, and their items, with
+  Lift. The history records every suspension and lift. As with removals,
+  the history entry is written before anything changes, and taken back if
+  the change fails. "Their items" only ever includes what the suspended
+  account itself created, never another account using the same name.
+- "Nominate this trail" on a named trail's details: walkers tell the Wockett
+  team which trails are worth it, with an optional note. One nomination per
+  person per trail; it carries the trail (its key, name, one point on it and
+  its length) and nothing about the person beyond CloudKit's own creator
+  reference, and only a moderator can read it.
+- "Featured near you" at the top of the Trails list: trails the team
+  features, with a short note on why, when they are within the list's
+  10 miles. They also stay in "Trails near you". The list of features is
+  fetched at most every 30 minutes, never holds the list up for more than
+  3 seconds, and is kept for offline use.
+- Wockett Staff has Nominations and Featured tabs. Nominations groups the
+  trails people nominate in the app, most nominated first, with their notes
+  and a link to the trail in Maps; Feature puts a trail under "Featured near
+  you" for 30 days, 90 days or until unfeatured, with a note the app shows,
+  and Dismiss clears it until it is nominated again. Featured lists what is
+  featured, with Unfeature. History records each, written before the
+  change and taken back if it fails. Who nominated a trail is never shown.
+- You can delete your own shared routes, feed posts and challenge entries:
+  long-press one and choose "Delete from Community". It asks first ("This
+  removes it for everyone. Routes other people already saved stay with
+  them.") and then removes the public record, so it is gone from every
+  phone. Until now the only way was to email support@wockett.app. It is
+  offered only on content your iCloud account created (the same check that
+  hides Report on your own items), and it works even while your community
+  access is paused. Wocketts other people gave a deleted item stay as their
+  own records but are never shown.
+- The Health screen, each walking-steadiness detail screen and the Sleep,
+  Readiness and Calories details end with one line: "For general information, not medical advice. Wockett isn't a
+  medical device." It came out of the liability review: the gait numbers
+  (walking speed, step length, asymmetry, double support) read like
+  clinical measures, and the screens should say plainly what they are. It
+  is ordinary text VoiceOver reads, with nothing to dismiss.
+- You can delete a challenge you created: long-press it and choose "Delete
+  from Community". If nobody else has joined, it is deleted for everyone,
+  with your entry. If others have joined, deleting it would take their
+  progress with it, so you send the Wockett team a request instead ("Ask to
+  delete this challenge?"); it appears in the staff dashboard's Reports
+  queue as "Owner asked to delete it", where Remove for everyone deletes
+  the challenge and every entry. Follows on from deleting your own routes,
+  posts and entries.
+- **Share a challenge.** A challenge's screen has a Share Challenge button
+  that sends an invitation through the iOS share sheet (Messages, Mail,
+  social apps): the challenge's name, its goal and length in plain words
+  ("run 10 km in 7 days", "3 runs at 8:00/km pace or faster in 14 days"),
+  and the challenge's link (see Challenge links). Until now the only way
+  into a challenge was to come across it in the list, so a challenge could
+  not be used to invite friends. Distance and pace use the sharer's units,
+  and the message says "my" challenge only to the person who created it.
+- **Challenge links.** A shared challenge now carries a link,
+  `https://wockett.app/c/?id=…`, that opens the challenge in Wockett, or,
+  for someone without the app, a page on wockett.app with the challenge's
+  name and a Get Wockett button. Until now the invitation could only say
+  "find it in Community → Challenges", which a friend installing the app
+  for the first time had to remember. A challenge that has ended, was
+  removed, or is hidden by a block opens the Challenges list with a
+  message instead; no signal says so and offers Try Again, rather than
+  calling the challenge gone. A second link opens its own challenge even
+  while the first one's screen is still up. The page reads the name from
+  the challenge itself, never from the link, so a link cannot make
+  wockett.app show words of its own, and it shows no name for a suspended
+  author's challenge, which the app hides too.
+- wockett.app has a Help & Tips page (`help.html`, linked from the home page): getting started, walking your dog, challenges (including sharing one, marked as coming in the next update), making routes, quick tips, an FAQ and what's new. Every step names the buttons and screens as the app shows them, traced from the code, so people can find answers without writing in. Each step has screenshots of the app with the demo data (`docs/help/`), so people can match what they see; `docs/help/SCREENSHOTS.md`, which the site doesn't publish, says how to retake them. On a phone the screenshots sit two to a row, because one per row made each a full screen tall and pushed the step's instructions several screens down.
+- A walk, run or ride now has a layout made for Apple Watch. Since watchOS 11
+  the iPhone's Live Activity also appears in the paired Watch's Smart Stack,
+  but Wockett had no layout for that size, so the watch showed only the
+  Dynamic Island's icon and distance under the app's name. It now shows the
+  walk itself: the activity, distance,
+  the running time (frozen while paused), pace or speed for a ride, and a
+  Pause/Resume button. Ending stays a hold-to-finish on the phone, where a
+  stray tap can't end the walk. The phone still does all the tracking; this
+  is the first step of the Apple Watch plan and needs no Watch app.
+- Both Share Route buttons now warn that a route which starts or ends at
+  home shows where you live, and offer **Hide start and finish**. It is off
+  until you turn it on, and Wockett remembers your choice for the next
+  share. Anyone can read a shared route, and most walks start at home, but
+  many shared routes start at a trailhead or a park, so hiding is a choice
+  rather than forced on every route. With it on, everything within at least
+  200 m of the start and finish is left off. The hidden area is a circle
+  whose centre is moved 50-150 m in a random direction by a private offset
+  made once for you and kept in your own iCloud, so it is the same on all
+  your devices; without it, a few loops from the same door would point
+  straight at it. If iCloud can't be reached, a hidden share waits rather
+  than making a different offset on this phone, with a Try again button.
+  A route that would have
+  less than 400 m (or a quarter of it) left can't be shared hidden, and a
+  hidden loop is published as an open route so no app draws the missing
+  ends back in. This hides the door, not the neighbourhood.
+- Settings > Community > Delete my community data removes everything your
+  iCloud account shared in Community in one go: shared routes, achievement
+  posts, challenge entries, challenges only you are in, your likes and
+  Wocketts, and your community name. It asks once, shows what it is
+  deleting, and says plainly per kind what was deleted and what failed.
+  Until now routes, posts, entries and challenges went one at a time, and
+  your name and votes could only go by email (audit 2026-10-12, finding
+  15). A challenge other people joined is not deleted, since that would
+  take their progress: the Wockett team is asked to remove it, as with
+  Delete on the challenge itself. Reports and trail suggestions you sent
+  can't be deleted from the app (only the Wockett team can read them), so
+  the screen says so and offers an email that carries the account ID a
+  moderator needs. Your walks, pets and routes are not touched.
+- Settings > Community > Blocked people lists everyone you blocked, with
+  Unblock. There was no way to unblock before.
+- Settings → About has a Terms of Service row next to the Privacy Policy.
+- Before your first community action (sharing a route, posting an
+  achievement, creating, joining or syncing a challenge, liking a post or
+  giving a route a Wockett), Wockett shows a short sheet: what you share is
+  public and under your community name, a shared route can show where it
+  starts and finishes, the content rules, and links to the Terms and the
+  Privacy Policy. Agree carries on with what you tapped; Cancel leaves it
+  undone. The agreement is stored on the phone only and is not asked again
+  until the Terms version changes. Why: the Terms were never shown or agreed
+  to in the app, so a user whose content was removed could say they never saw
+  the rules or the content licence, and App Review looks for agreement to
+  terms where users publish content (2026-10-12 audit, finding 6). Reporting
+  and blocking need no agreement.
+
+### Changed
+- Reporting a post, shared route or challenge now asks why (spam, offensive,
+  unsafe, personal info or something else, with an optional note) and sends
+  the report straight to the Wockett team as a private CloudKit record, instead
+  of opening an email the reporter had to send. Reports used to depend on the
+  reporter finishing that email, and each one had to be found by hand in
+  CloudKit Console; as records, the new staff dashboard can list them by item
+  and act on them. Only a Moderator can read a report, and it carries nothing
+  about the reporter beyond CloudKit's own creator reference. If the report
+  can't be saved (signed out of iCloud, offline, any CloudKit error), the sheet
+  offers the old email, prefilled with the reason and note, so a report still
+  always reaches us. A reported item stays hidden even if Wockett is closed
+  while the reporter is in Mail. Report is no longer offered on your own posts, routes
+  or challenges: it could only hide them from you for good.
+- The grey used for secondary text (`earthMuted`) is slightly darker in light
+  mode, everywhere it appears: footnotes, captions, status chips, icons,
+  calendar and chart labels, the widget and the Live Activity. Directly on the
+  page background it measured 4.46:1, just under the 4.5:1 that WCAG AA asks
+  of normal-size text, so footnotes like the gait "Measured by iPhone
+  sensors…" line and the Health disclaimer were marginally too faint. On the
+  grey status chips it was 4.19:1. It is now 4.94:1 on the page, 5.43:1 on a
+  card and 4.63:1 on a chip. Dark mode is unchanged (6.90:1 on the page).
+- The Terms of Service (§5) and the privacy policy now describe community
+  content as it works since in-app deletion and in-app reports: you delete
+  your own routes, posts and challenge entries in the app (a challenge
+  others have joined goes to the team as a request), and a report reaches
+  Scoops Dev as a private record only moderators can read, holding the
+  item, its author's display name, an excerpt, the reason and any note,
+  with email as the fallback. The Terms also say an account's community
+  access can be suspended. Both pages still said removal and reports went
+  by email and that a report "is not sent to us", which stopped being true
+  with those features; a policy that understates what is sent is the kind
+  a review or a user can hold against us.
+- Wockett asks for each permission when you use what it is for, not all at
+  once on first launch. A new user used to see three system prompts in the
+  first seconds: Motion & Fitness (for a small Home banner), a Health sheet of
+  about sixteen switches, and Location (for the Home weather chip). That read
+  as an app grabbing data before showing anything. Now:
+  - **Motion & Fitness** is asked when you start your first walk, run or
+    ride, where it tells moving from driving and resumes a paused session, or when you turn on
+    the untracked-walk nudge, which needs it in the background.
+  - **Health** at first launch asks only for steps and distance, and to save
+    your walks. Sleep, heart rate, HRV, calories, floors and the four gait
+    measures are asked from the Health tab, behind a card that says what is
+    read and why, when you tap **Connect Apple Health**. Anyone already asked
+    sees the Health tab exactly as before.
+  - **Location** is asked when you start a walk, run or ride, or when you tap Home's
+    **Weather** chip, whichever comes first. Routes asks as it always has.
+    Home no longer shows "Location off" before you were ever asked.
+- A future day's **Remind me** in Health's calendar sets a Wockett walk
+  reminder (a notification at 8 AM, listed and deletable in Settings) instead
+  of adding an item to the Reminders app. Adding one item needed full access
+  to every reminder you have, and walk reminders have been notifications
+  everywhere else since 1.11. Wockett no longer asks for Reminders access at
+  all.
+- wockett.app's home page now links to the App Store and to support, and
+  describes the app as it is in 1.14: loops from your door sized to your
+  step goal or a spare 20, 30 or 45 minutes, a daily goal for every pet,
+  trails (North Carolina for now), walk, run, ride or indoor, and step
+  challenges. The page had no way to get the app and still described an
+  older version (the 2026-10-12 design audit, finding 4). Every feature line
+  is taken from the live App Store description.
+- The privacy policy and Terms of Service now describe the live 1.14 app,
+  not the next build. They had said you can delete your own community posts
+  in the app and that a report reaches Scoops Dev; neither is in 1.14, so
+  those sentences now say "from version 1.15" (an emailed report) or "from
+  version 1.16" (in-app deletion, in-app reports). Terms section 6 is
+  tips-only: Wockett Pro has no way to buy it and tips are consumable, so
+  "Restore Purchases" pointed at nothing. The policy now says that a step
+  challenge entry publishes your Apple Health step total, that weather is
+  fetched for an exact location rather than an approximate one, and adds the
+  data it was missing: motion, calendar (only to delete old reminders), the
+  per-install identifier saved on challenge entries, and the copy kept when
+  a moderator removes an item. From the 2026-10-12 security audit (findings
+  3, 14 and 22). A lawyer still needs to read both pages.
+- The privacy policy describes what 1.16 changes about community content:
+  a shared route is published without its first and last 200 m, a step
+  challenge total comes from walks recorded in Wockett rather than Apple
+  Health, and challenge entries no longer carry a per-install device
+  identifier (an older entry loses it when next synced). The 1.14 and 1.15
+  behaviour is still described for those versions, which are what people on
+  the App Store have today. From the 2026-10-12 security audit (findings 1,
+  2, 3 and 22). A lawyer still needs to read the page.
+- Step challenges count the steps of walks and runs recorded in Wockett since
+  the challenge began, the way distance and pace challenges already count
+  Wockett's own walks, instead of the step total from Apple Health. A
+  challenge entry is public, and publishing a Health figure contradicted the
+  privacy policy and Apple's rule against health data in iCloud (2026-10-12
+  audit, finding 2). Rides never count toward steps, and a step challenge no
+  longer carries a leftover activity choice from the create sheet, which
+  never offers one for steps. Each challenge's sync
+  button now says where its total comes from and that it is public.
+- Challenge entries no longer publish a per-install device identifier, which
+  let anyone link one install's entries across challenges (audit finding 22).
+  The field holds the same placeholder on every install, because 1.14 and
+  1.15 skip an entry without it,
+  and an existing entry of yours loses its old value the next time you sync
+  it. Your own entry is recognised by your iCloud account instead, as every
+  other kind of community content already is.
+- wockett.app (home, Help, Privacy Policy, Terms of Service and the challenge
+  link page) uses the app icon's colours: forest green, cream and waypoint
+  orange, copied exactly from `DesignSystem.swift`, the same palette
+  scoopsdevstudios.com now uses. The pages had drifted into three looks
+  (black with Apple blue, plain white, and a green button on the challenge
+  page); they now share one stylesheet, `docs/assets/site.css`, the same
+  footer and the same cream button, so a colour changes in one place. Every
+  text colour clears WCAG AA contrast; the bright orange stays decorative
+  because it is too low-contrast for text on the green. Page wording is
+  unchanged. The staff moderation tool keeps its own styles.
+- Every wockett.app page has the icon's contour lines across its top, the
+  same texture as scoopsdevstudios.com's header, so the site carries the
+  icon's map look and not just its colours. The lines fade into the
+  background within the first screen, so they never sit behind the Privacy
+  Policy, Terms or Help text.
+- Every wockett.app page shows the Wockett app icon: large above the title
+  on Home and Help, and small beside "Wockett" as the link home on the
+  Privacy Policy, Terms and challenge pages. It is also each page's browser
+  tab icon and the icon iPhone uses when someone adds the site to their
+  Home Screen; until now the site had none, so browsers showed a blank
+  page icon. The images are resized from the app's own icon file, so they
+  match what people see on their phone.
+- A shared route publishes the path it follows (the recording, or the
+  walking directions for a planned route), drawn every 10 m, never the few
+  points it was planned from: a suggested loop's points are corners around
+  where it was planned. Other phones follow it as a recorded line. The
+  published distance is the length of what is published; a saved
+  multi-lap suggestion used to publish every lap's distance for one lap.
+  A route too long for one shared record (over about 120 km) is refused
+  with a message instead of failing to save. In My Routes the button waits until the route's directions have loaded,
+  and says so if they couldn't be.
+- The privacy policy now describes how 1.16 actually shares a route. Hiding
+  the start and finish is a choice, off unless you turn it on, so the policy
+  no longer says every shared route is trimmed. It now says a route is
+  published as drawn unless you turn on Hide start and finish, and that with
+  it on the start and finish are hidden inside a privacy area of at least
+  200 m whose centre is moved by a private random offset unique to you, kept
+  in your own iCloud and never published. A lawyer still needs to read the
+  page.
+- Blocks now sync through your private iCloud, so the people you blocked
+  stay blocked after a reinstall and on your other devices. They lived only
+  on the phone before. Blocks made on this phone move over on first launch.
+  Two devices' lists are merged person by person, with the newer change
+  winning, so a block made on one appears on the other and an unblock is not
+  undone by an older block elsewhere.
+- The privacy policy describes two 1.16 changes to community data: your
+  block list is also kept in your private iCloud database, so it survives a
+  reinstall and follows you to your other devices (Scoops Dev cannot read
+  it), and Settings > Community > Delete my community data removes
+  everything you published at once, except reports and trail suggestions,
+  which only moderators can read and which go by email. It also says, for
+  1.14 and 1.15, that blocks were kept only on the device. From the
+  2026-10-12 security audit, finding 15. Retention periods are still for Joe
+  and the lawyer to decide.
+- Settings has a large title like Health and Community, so the heading no longer
+  changes size when you move between tabs.
+- Cancel on the Add Walk Reminder sheet is grey like Cancel on every other sheet
+  (it was the only green one).
+- Every activity ends on the same full-screen summary, and any past activity
+  can open it again. An indoor walk used to end on a half sheet with three
+  tiles and no Share or records, a walk ended from the mini tile showed
+  nothing, and history only had a notes sheet; now indoor walks, mini-tile
+  ends and a guided route finished while minimised all show the summary, and
+  tapping a row in Activity History opens it with its route map, the records
+  it set at the time, and Share. Activities with no route (indoor, logged by
+  hand, saved untracked walks) show no map rather than an empty one, and
+  their share card drops the Map option. Joe's decision, 2026-10-13 (design
+  audit finding 22).
+- The summary shows the figures that make sense for the activity: a ride
+  shows speed and no step count (it used to claim about 1,300 steps per
+  kilometre ridden), and an indoor walk shows steps, time, cadence and an
+  estimated distance, never a pace worked out from that estimate, on the summary or on the live
+  indoor screen, whose Distance now says "Est. distance". The share
+  card and its caption follow the same rules ("Just rode…", "Just walked
+  4,000 steps indoors…").
+- Personal records are kept per activity: Longest walk, run or ride and
+  Fastest pace (a ride's is a speed) compare only with the same activity, so
+  a first ride no longer announces a "Longest Walk". Indoor walks set Most
+  steps and Longest indoor walk (by time), and no distance or pace record,
+  because without GPS their distance is only steps times a stride.
+- An indoor walk of 100 steps or fewer that is not saved no longer leaves its
+  pets' credit entries in Activity History on its own: they are saved with
+  the walk.
+
+### Fixed
+- The 13-mile and 62-mile distance challenges no longer read "12 mi" and
+  "61 mi". The options are stored as 20,921 m and 99,779 m, a hair under 13
+  and 62 miles, and the goal text cut the fraction off instead of rounding it,
+  so the goal, progress and leaderboard all showed one mile less. Goals now
+  round to the nearest mile or kilometre. Progress still rounds down until the
+  goal is reached, so 12.6 of 13 miles reads "12 mi / 13 mi" rather than
+  looking finished early, the same rule as the percentages. A distance just
+  under ten (9.96 mi) now reads "10 mi" rather than "10.0 mi".
+- A challenge you create now appears in the Challenges list as soon as the
+  New Challenge sheet closes. The list reloaded straight away, but iCloud's
+  search takes a few seconds to include a new challenge, so it showed only
+  after leaving the screen and coming back (found testing challenge links,
+  2026-10-12). The list now keeps the one you just made until iCloud's
+  answer includes it.
+- Tapping Done on a walk's summary could close the app (seen once on
+  2026-10-12, after "Save as Custom Route" on a free walk with a pet in the
+  crew). The walk screen read its walk and route from the store with a
+  force-unwrap, on the belief that its `body` always checked the store
+  first. SwiftUI can update one row of a list on its own, without running
+  `body` again: a crew-row pet button was updated after Done had cleared the
+  store, read the route that was no longer there, and trapped. The walk is
+  saved before the summary appears, so the crash lost the app, not the walk.
+  The screen now gets the walk and route as values, handed in only while
+  both exist, so there is no unwrap left to fail.
+- Choosing Distance when creating a challenge in US units now highlights
+  "6 mi" instead of showing five options with none selected. The default was
+  10,000 m in every locale, which is "10 km" in metric but matches none of the
+  mile options (3, 6, 13, 26, 62), so tapping Create without picking made a
+  6.2-mile challenge the user never chose and could not see selected. The
+  default now comes from the option list itself, so it is always one of the
+  choices shown; metric still starts on 10 km.
+- Ending a guided walk from the Live Activity while its screen is open now
+  takes you back to Home. Until now the walk was saved, but the walk screen
+  then started a new free walk in its place, with its own timer, Live
+  Activity and Health workout, so the person was still "walking". The walk
+  screen only remembered having a session if it had started a free walk
+  itself; a guided walk, or any walk reopened from the mini tile, looked to
+  it like a screen that had not started yet. It now remembers any session it
+  has shown, and Home also closes the walk screen whenever the walk ends. A
+  UI test presses the real Live Activity End button and fails on the old
+  code.
+- Locking the phone during a walk, run or ride no longer switches off the
+  driving check and auto-resume. Both read Core Motion's activity updates,
+  and Home stopped those updates whenever the app went to the background, to
+  save battery, with no exception for a session in progress. A session spends
+  most of its time in a pocket, so a walk that auto-paused at a coffee stop
+  stayed paused after you set off again unless you opened the app, and a
+  drive in the middle of a walk was only caught from GPS speed. Updates now
+  keep running in the background while a session is on, and stop as before
+  once it ends.
+- Someone you blocked no longer appears on your challenge leaderboards. Block
+  already hid their posts, routes and challenges everywhere else, but the
+  leaderboard only filtered out suspended accounts and deleted entries, so a
+  blocked person's name and steps stayed on any challenge you shared. As with
+  everything Block hides, it only changes what you see: your place on the
+  board can move up by the blocked people who were ahead of you, and they
+  still see the full board. Your own entry is never hidden.
+- US walkers now see miles in four places that were fixed to kilometres: the
+  Fastest Pace personal record, the indoor walk's pace tile, the elevation
+  chart's distance axis, and the milestone markers on the navigation map
+  (now one per mile, matching the spoken cues). The release is US and Canada
+  only, so a per-km pace beside miles everywhere else read as a bug. Both
+  pace strings use the app's existing pace formatter, so they read `9:39/mi`
+  like every other pace instead of `6'00"/km`; in Canada they now read
+  `6:00/km` for the same reason. Elevation stays in metres.
+- Posting a route from a route card while community access is paused no longer
+  leaves the Post button spinning: the sheet shows the message and lets you
+  close it.
+- A shared route is only opened when it has no more points than the app
+  ever publishes (12,000, the cap `SharedRouteTrim` applies when sharing),
+  and any point that is not a real coordinate is dropped. Anyone with an
+  iCloud account can write a public route record, so a crafted one with
+  millions of points could otherwise slow or hang a walk that started it.
+- Trail data credits and a map result's "Visit Website" open only `http`
+  and `https` links. A tampered trail pack or map entry could otherwise make
+  a tap start a call (`tel:`), a text (`sms:`) or open another app.
+  (2026-10-12 security audit, finding 21.)
+- Hiding a shared route's start and finish gives the same path every time.
+  It measured distances with `CLLocation.distance(from:)`, which keeps one
+  process-wide cache of the scale at a latitude and reuses it for any point
+  within 0.005° of it, so its answer depended on whatever distance any other
+  part of the app had measured last. The share preview and the record
+  `CommunityRouteService` publishes are trimmed separately, and could differ
+  by centimetres, or by a whole point where the 10 m spacing or a privacy
+  zone's edge fell between the two answers. `SharedRouteTrim.distance` is
+  now its own WGS 84 calculation, within 0.1 mm of an exact geodesic up to
+  1 km. Found when `SharedRouteTrimTests/publicRecord()` failed in CI on
+  2026-10-13 with every published point 1-3 cm from a direct trim of the
+  same route, because tests running alongside it moved that cache.
+- Nothing reaches the community without agreement to the current Terms of
+  Service, even if a screen forgets to ask. Until now the agreement was only
+  checked by the sheet each screen shows before its community action, so a
+  button wired around that sheet would have published without agreement, and
+  no test would have noticed (a test audit of #222 found exactly that gap).
+  The check every public write already passes through on its way to CloudKit,
+  the one that refuses suspended accounts, now also refuses one that hasn't
+  agreed, and says so. It covers creating and joining challenges, posting
+  achievements, sharing routes, likes and Wocketts. Trail nominations are
+  left out on purpose: only moderators ever read them, and the Terms sheet
+  is about what everyone can see.
+- At the largest text sizes the Health and Home screens no longer break. The
+  Home step ring showed "0..." instead of "0%", the Health weekly strip wrapped
+  its dates ("1" over "0") and cut weekdays to "T...", the Sleep, Readiness and
+  Active cal labels were cut off, and the month calendar's cells overlapped each
+  other. These screens use fixed-size layouts, so their text now stops growing at
+  the largest ordinary size (a new `wktDense` font) instead of overflowing. This
+  covers the weekly strip and month calendar (including their chart labels), the
+  Home ring and the Health metric row.
+- Future days in the month calendar are easier to read: their dates and goal
+  labels were drawn at half strength, which is faint enough to be unreadable. They
+  now use the same grey as future days in the weekly strip.
+- Walks with your pets now count toward personal records. Since 1.7 a walk
+  with a pet on it could never set Longest walk or Fastest pace, so for most
+  people in a dog-walking app records never appeared (and nor did the
+  rating prompt that follows one). A rule from 1.6, meant to skip each pet's
+  own credit entry, kept matching the person's walk once 1.7 put the pets on
+  it. Those per-pet entries (an indoor walk still saves one per pet) still
+  never set or block a record.
+
+### Internal
+- Tests: "Two writes at once share one claim" no longer depends on how fast the machine is. It failed on GitHub Actions on 2026-10-10 (PR #175, which doesn't touch community names) after hitting its 1-minute time limit. The test yielded the main actor a fixed 10,000 times before letting the held claim go, and every one of those yields waits behind every other main-actor test Swift Testing is running at the same moment. It now waits for what it needs: the first write held at the store, then the second write started, which, everything being on the main actor, means it has already joined the claim in flight. Each wait is capped in main-actor turns, so a broken claim fails instead of hanging. The time limit is gone, as in the vote tests (#171), because it also counts the time spent queued. It also now checks that the account was looked up once: one claim ran, not one per write. With sharing removed from the service on purpose, that check and the existing one-claim check each failed in 20 of 20 runs.
+- `cloudkit/schema.ckdb` is the public database schema as CloudKit exports it,
+  now kept in the repo. It adds the `Moderator` role, the `CommunityReport` and
+  `ModerationAction` record types, Moderator read/write on the community types
+  (so a moderator can remove anyone's item), and the creation-time and
+  record-ID indexes the dashboard sorts and looks up by. Imported into
+  Development on 2026-10-10; Joe deploys it to Production.
+- `node --test tests/staff/*.test.mjs` covers the dashboard's rules, run in CI as
+  "Staff dashboard tests" on the Linux runner. Each rule was break-checked.
+- Wockett Staff has its CloudKit JS API tokens (Development and Production),
+  so wockett.app/staff can sign in. They are public by design: a CloudKit JS
+  token only names the container and environment, and works only from its
+  allowed origins.
+- `cloudkit/schema.ckdb` adds the `Suspension` record type (READ for
+  everyone; READ, CREATE, WRITE for Moderator). Imported into Development on
+  2026-10-10; deploy to Production before a build with this ships.
+- `cloudkit/schema.ckdb` adds `TrailNomination` (create: any signed-in
+  user; read and write: Moderator) and `FeaturedTrail` (read: everyone;
+  write: Moderator). Imported into Development on 2026-10-10.
+- The Trails UI smoke test waits for the trail's directions button instead
+  of checking it the instant the detail opens. It failed on CI with no
+  change to the screen (a docs-only commit on main, then PR 181).
+- Two tests no longer fail on a slow CI machine. The featured-trails
+  deadline test dropped its one-minute time limit (it counted time queued
+  behind other tests) and now fails by itself if the deadline is removed;
+  the Health disclaimer UI test waits 30 seconds for the Health screen, like
+  the other tabs. Both failed on PR 186 with no change to the code they test.
+- The suspension and featured-trail "slow fetch still lands" tests wait for
+  the events themselves (the fetch being held, then finishing) instead of
+  polling with yields, which lost the race on a loaded CI machine (PR 186).
+  Both services gain `fetchInFlight()`, used only by these tests.
+- `TrailNominationSubmission.submit` no longer builds a warning. The app's
+  code runs on the main actor by default, and a default argument is
+  evaluated in the caller's context, so two of its defaults touched the main
+  actor from a nonisolated one (Swift 6 makes both errors): the CloudKit
+  store's initializer and the `deadline` constant. The nomination sheet now
+  owns the store and passes it in, the way the report sheet already does,
+  and `deadline` is `nonisolated`, like the other constants used that way.
+- Wockett's App Store link is one constant (`AppStoreLink`), used by the
+  challenge invitation, the activity share card and Settings' Write a
+  Review, instead of three hand-copied strings that could drift apart.
+- Associated Domains (`applinks:wockett.app`) and
+  `docs/.well-known/apple-app-site-association` for `/c/` paths only. The
+  link's id is checked by the same rule in the app (`ChallengeLink`) and the
+  page (`docs/c/link.js`), and the page's rules run in CI with the staff
+  dashboard's Node tests.
+- The featured-trails deadline test no longer fails on a slow CI machine. Its
+  one-minute hang guard counted time spent queued behind other tests, and on
+  PR 196 it fired on a correct build while every deadline test took over two
+  minutes. The deadline itself was already driven without waiting, so the
+  guard only has to tell a hang from a slow machine; it is now five minutes.
+  Removing the deadline from the code still turns the test red.
+- The suspension "slow fetch still lands" test now fails instead of hanging if
+  the suspension list's deadline is ever removed. It waited on the load
+  directly, so a missing deadline would have stalled the unit-test job until
+  its 45-minute timeout with no failure to read. It gets the same five-minute
+  guard as its featured-trails twin, long enough not to fire on a slow CI
+  machine.
+- The staff dashboard (`docs/staff/`) refuses to run inside another site's
+  frame and tries to break out to its own tab. GitHub Pages cannot send the
+  header that forbids framing, so a hostile page could otherwise load the
+  dashboard invisibly and trick a signed-in moderator into clicking Remove
+  or Suspend (2026-10-12 security audit, finding 30). A Content-Security-Policy
+  meta tag was left out: browsers ignore `frame-ancestors` in a meta tag, and
+  a wider policy risks breaking Apple sign-in.
+- Deleted code nothing called, found by the 2026-10-12 audit and re-checked
+  with `git grep -w` across the app, widget and both test targets:
+  `RouteMapView` (a near-copy of the live navigation map, so a fix could land
+  in the wrong one), `RouteFeedbackStore` and its three types (holding the
+  repo's only TODO), five TipKit tips that no view ever showed plus the
+  `Tips.configure` call that served only them, four sheet wrappers kept "so
+  existing callers compile" after their callers had gone (`BadgesView`,
+  `ChallengesView`, `AchievementFeedView`, `GaitMetricDetailSheet`), the
+  `RouteFinderView` wrapper, `POIEmojiLoader` and `CornerFoldShape`. About
+  450 lines that every session read and reasoned about.
+- `CLAUDE.md` gave about 164 raw `.font(.system(size:))` sites; there are 27,
+  so the migration is nearly done rather than barely started.
+- The critic now checks every PR for a Restore button or `AppStore.sync`
+  offered for consumable tips, the reason 1.14 was rejected under 3.1.1.
+- Ending a walk is now tested for the two steps users would notice first if
+  they broke: the Health workout and the Live Activity. A saved walk finishes
+  its workout once, a discarded one throws it away once, and the Live Activity
+  ends once either way, even if a second path tries to end the walk again.
+  Before this, deleting those lines left every test green (checked on
+  2026-10-13), and those were the steps that went missing when seven screens
+  each ended walks their own way. The Live Activity and the workout writer
+  now sit behind two small protocols so a test can count the calls; the app
+  still uses the same objects as before.
+- Three CI failures on correct builds are gone. A UI test's tab tap could be
+  swallowed when a system alert (a location prompt) arrived at the same
+  moment: XCTest answered the alert, lost the tap, and the test timed out
+  waiting for a screen it never opened. That was every failure of the Health
+  disclaimer test (6) and some of the Live Activity test's. Tabs are now
+  selected through one helper that taps again only when an alert took the
+  tap; a tab that ignores a tap with nothing in the way still fails.
+  The Pro entitlement test's 30 s wait is a five-minute hang guard, because
+  on a loaded runner the wait counts every other test queued ahead of it.
+  The community-name tests listened for iCloud account changes on the
+  app-wide notification centre, where the system itself posts one while the
+  simulator settles; a name claim held open in a test was then dropped as
+  "account changed". Each test now has its own notification centre.
+- The Live Activity UI test is skipped on GitHub's runner only, where driving
+  Notification Centre is unreliable (it failed 6 of 15 UI jobs, passing the
+  other 9); it still runs locally. The UI job sets `TEST_RUNNER_WOCKETT_CI` for this.
+- Every community service a unit test builds (votes, moderation, suspension,
+  blocks, reports, deletion, challenge links and the share-privacy offset) now
+  listens on its own `NotificationCenter`, as `CommunityNamesTests` has since
+  #213. The test host is the app, and the system posts `.CKAccountChanged` on
+  `.default` when the simulator's iCloud state settles; a service listening
+  there forgets its cached user or account mid-test, which is how
+  `concurrentWritesShareClaim` flaked on CI. `SharePrivacyOffsetStore` gains
+  the same `notifications:` parameter the other services have, defaulting to
+  `.default`, so the app behaves exactly as before. Checked by posting
+  `.CKAccountChanged` on `.default` between two votes in `voteSaves`: red
+  (two user lookups) with the service on `.default`, green with its own centre.
+- `cloudkit/schema.ckdb`: new private type `CommunityBlockList` (one
+  `entries` string), and `___createdBy` QUERYABLE on `SharedRoute`,
+  `WocketAchievement`, `ChallengeEntry`, `Challenge` and `CommunityVote`,
+  which the delete needs to find your records. Imported to Development;
+  Production needs a deploy before 1.16. Until then the delete still removes
+  what the phone remembers creating and reports the rest as not found.
+- CLAUDE.md notes that `CLLocation.distance(from:)` depends on distances measured earlier in the process, and why `SharedRouteTrim` keeps its own distance (#224).
+- The Terms gate's tests now fail when the gate is wired wrong, not only when
+  its logic is. A test audit of #222 found four broken versions that stayed
+  green: Agree calling Cancel, a Terms sheet that never presents (every
+  community button a dead tap), a sheet on a different view in the same file
+  as the gate, and an action run outside the gate. The source scan now
+  counts gates and sheets per type rather than per file; the sheet's two
+  buttons are `Binding` helpers with unit tests; and a new UI smoke test
+  creates a challenge with the Terms not agreed to, checks Cancel leaves the
+  form untouched and Agree runs the save. That one name is over the length
+  limit, so the save stops before CloudKit and the test runs offline. An
+  action run outside the gate on some other screen is still not caught.
+
 ## [1.15] - 2026-10-09
 
 ### Added
