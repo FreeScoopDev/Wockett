@@ -219,4 +219,43 @@ struct PersonalRecordTests {
         let s = session(distance: 300, elapsed: 59, activityType: "stationary", steps: 400)
         #expect(checkNewPRs(newSession: s, against: []) == [.mostSteps(400)])
     }
+
+    // MARK: - Pinned values (test-auditor, 2026-10-13)
+
+    // 200 m at the 0.762 m stride is 262.47 steps, rounded up.
+    @Test func indoorStepBar_isThe200mBarInSteps() {
+        #expect(minimumRecordIndoorSteps == 263)
+    }
+
+    // Matching an earlier indoor walk is not a record.
+    @Test func indoorTie_isNotARecord() {
+        let prev = session(distance: 3048, elapsed: 1800, activityType: "stationary", steps: 4000)
+        let s = session(distance: 3048, elapsed: 1800, activityType: "stationary", steps: 4000)
+        #expect(checkNewPRs(newSession: s, against: [prev]).isEmpty)
+    }
+
+    // Earlier indoor walks under the step bar don't count, even long ones.
+    @Test func earlierIndoorWalksUnderTheBar_areNotWalksToBeat() {
+        let prev = session(distance: 76, elapsed: 7200, activityType: "stationary", steps: 100)
+        let s = session(distance: 3048, elapsed: 1800, activityType: "stationary", steps: 4000)
+        #expect(checkNewPRs(newSession: s, against: [prev]) == [.mostSteps(4000), .longestTime(1800)])
+    }
+
+    // The walk itself, already in the list, is not a walk to beat.
+    @Test func theWalkItself_isIgnoredInTheComparison() {
+        let s = session(distance: 5000, elapsed: 2500)
+        #expect(checkNewPRs(newSession: s, against: [s]) == checkNewPRs(newSession: s, against: []))
+    }
+
+    @Test func indoorRecordCases_haveTheirOwnIdsTitlesAndValues() {
+        let all: [PRType] = [.longestDistance(meters: 1, mode: .walking), .fastest(secsPerKm: 1, mode: .walking),
+                             .mostSteps(1), .longestTime(1)]
+        #expect(Set(all.map(\.id)).count == 4)
+        #expect(PRType.mostSteps(4000).title == "Most steps")
+        #expect(PRType.longestTime(60).title == "Longest indoor walk")
+        #expect(PRType.mostSteps(4000).valueText == "\(4000.formatted()) steps")
+        #expect(PRType.longestTime(3545).valueText == "59m 5s")
+        #expect(PRType.longestTime(3720).valueText == "1h 2m")
+    }
 }
+

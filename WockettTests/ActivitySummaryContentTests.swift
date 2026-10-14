@@ -67,11 +67,28 @@ struct ActivitySummaryContentTests {
     }
 
     @Test func shareCaption_followsTheActivity() {
-        #expect(ActivitySummaryContent.shareCaption(for: session("walking")).hasPrefix("Just walked "))
-        #expect(ActivitySummaryContent.shareCaption(for: session("running")).hasPrefix("Just ran "))
-        #expect(ActivitySummaryContent.shareCaption(for: session("cycling")).hasPrefix("Just rode "))
-        let indoor = ActivitySummaryContent.shareCaption(for: session("stationary", steps: 4000))
-        #expect(indoor.hasPrefix("Just walked \(4000.formatted()) steps indoors in "))
+        for (type, verb) in [("walking", "walked"), ("running", "ran"), ("cycling", "rode")] {
+            let s = session(type)
+            #expect(ActivitySummaryContent.shareCaption(for: s)
+                    == "Just \(verb) \(s.distanceText) in \(s.timeText) on Wockett 🐾")
+        }
+        let indoor = session("stationary", steps: 4000)
+        #expect(ActivitySummaryContent.shareCaption(for: indoor)
+                == "Just walked \(4000.formatted()) steps indoors in \(indoor.timeText) on Wockett 🐾")
+    }
+
+    // The pace tile starts just over 100 m, the app's pace rule.
+    @Test func paceTile_startsOver100m() {
+        #expect(ActivitySummaryContent.stats(for: session("walking", distance: 100)) == [.distance, .time, .steps])
+        #expect(ActivitySummaryContent.stats(for: session("walking", distance: 101)) == [.distance, .time, .pace, .steps])
+    }
+
+    // The share card always has a cadence column for indoor: with no time it
+    // must read "—", never "inf spm". Est. distance is the distance, not steps.
+    @Test func cadenceWithNoTime_andEstimatedDistance() {
+        let noTime = session("stationary", distance: 3048, elapsed: 0, steps: 4000)
+        #expect(SummaryStat.cadence.value(for: noTime) == "—")
+        #expect(SummaryStat.estimatedDistance.value(for: noTime) == noTime.distanceText)
     }
 
     @Test func titlesFollowTheActivity() {

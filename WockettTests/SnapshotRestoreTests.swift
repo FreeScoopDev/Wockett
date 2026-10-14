@@ -697,6 +697,24 @@ struct SnapshotRestoreTests {
                 "a first walk over 200 m is the longest")
     }
 
+    // The records come from the walks already in history.
+    @Test @MainActor func miniTileSummary_recordsAreAgainstRealHistory() throws {
+        for (earlier, expectLongest) in [(5000.0, false), (500.0, true)] {
+            let history = try inMemoryHistory()
+            history.add(WalkSession(id: UUID(), routeName: "Earlier", date: Date().addingTimeInterval(-86_400),
+                                    elapsedTime: 1800, totalDistance: earlier, waypoints: [],
+                                    lapCount: 1, isLoop: false))
+            let store = ActiveWalkStore(historyStore: history)
+            let mgr = try #require(store.beginSession(route: outAndBack()))
+            mgr.writesSnapshots = false
+            mgr.totalDistanceCovered = 1200
+            store.end(.save, presentSummary: true)
+            let request = try #require(store.pendingSummary)
+            #expect(request.records.contains { if case .longestDistance = $0 { return true }; return false }
+                    == expectLongest)
+        }
+    }
+
     @Test @MainActor func liveActivityEnd_andDiscard_showNoSummary() throws {
         let store = ActiveWalkStore(historyStore: try inMemoryHistory())
         var mgr = try #require(store.beginSession(route: outAndBack()))
