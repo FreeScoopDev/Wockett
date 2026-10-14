@@ -12,7 +12,10 @@ struct UserStepDetailSheet: View {
         return historyStore.sessions.filter { $0.date >= cutoff }
     }
 
-    private var weeklySteps: Int { recentSessions.reduce(0) { $0 + $1.estimatedSteps } }
+    /// A ride's steps are only its distance over a stride, so rides add none.
+    private var weeklySteps: Int {
+        recentSessions.filter(ActivitySummaryContent.showsSteps).reduce(0) { $0 + $1.estimatedSteps }
+    }
     private var weeklyDistance: Double { recentSessions.reduce(0) { $0 + $1.totalDistance } }
 
     private func distance(_ meters: Double) -> String {
@@ -70,8 +73,10 @@ struct UserStepDetailSheet: View {
                                             VStack(alignment: .trailing, spacing: 2) {
                                                 Text(session.distanceText)
                                                     .font(.wktRowTitle).foregroundColor(.earthGreen)
-                                                Text("\(session.estimatedSteps.formatted()) steps")
-                                                    .font(.wktLabel).foregroundColor(.earthMuted)
+                                                if ActivitySummaryContent.showsSteps(session) {
+                                                    Text("\(session.estimatedSteps.formatted()) steps")
+                                                        .font(.wktLabel).foregroundColor(.earthMuted)
+                                                }
                                             }
                                         }
                                         .padding(.vertical, 10)

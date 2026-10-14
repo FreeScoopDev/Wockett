@@ -406,3 +406,18 @@ struct ActivityStatTiles: View {
         }
     }
 }
+
+extension View {
+    /// The summary an activity ended on, again, from a list of past ones:
+    /// same screen, same Share card, and the records it set at the time.
+    /// Activity History and the day sheet both open it through here.
+    func historySummaryCover(item: Binding<WalkSession?>, history: [WalkSession]) -> some View {
+        fullScreenCover(item: item) { session in
+            ActivitySummaryView(
+                session: session,
+                moment: .history,
+                records: ActivitySummaryContent.recordsSet(by: session, in: history)
+            )
+        }
+    }
+}

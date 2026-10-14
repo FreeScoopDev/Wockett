@@ -75,6 +75,17 @@ enum ActivitySummaryContent {
         session.waypoints.count >= 2
     }
 
+    /// Whether an activity's steps are worth showing anywhere. A ride's are
+    /// only distance / 0.762 m (the pedometer never runs on a ride), so a
+    /// 14 km ride would "take" 18,000 steps.
+    static func showsSteps(for mode: ActivityMode) -> Bool {
+        mode != .cycling
+    }
+
+    static func showsSteps(_ session: WalkSession) -> Bool {
+        showsSteps(for: mode(of: session))
+    }
+
     /// The pace rule `WalkSession.paceOrSpeedText` already applies.
     private static func hasPace(_ session: WalkSession) -> Bool {
         session.totalDistance > 100 && session.elapsedTime > 0
