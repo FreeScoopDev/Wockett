@@ -224,7 +224,7 @@ struct ActivitySummaryView: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 14)
                     .wktCardBackground(fill: .earthCard)
-                    .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .overlay(RoundedRectangle.wktCard
                         .strokeBorder(Color.earthOrange.opacity(0.4), lineWidth: 1))
                     .accessibilityElement(children: .ignore)
                     .accessibilityLabel("\(pr.title): \(pr.valueText)")

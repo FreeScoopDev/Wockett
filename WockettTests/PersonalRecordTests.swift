@@ -201,4 +201,16 @@ struct PersonalRecordTests {
         let shorterLater = session(distance: 1000, elapsed: 600, date: now.addingTimeInterval(60))
         #expect(!ActivitySummaryContent.recordsSet(by: shorterLater, in: all + [shorterLater]).contains(where: isLongest))
     }
+
+    // The entry an indoor walk saves for a pet is the shape the record rules
+    // skip, and none is made for 50 steps or fewer.
+    @Test func indoorPetCreditEntries_areRecognisedAsCredit() throws {
+        #expect(StationaryWalkManager.petCreditEntry(petId: UUID(), name: "Nala", sinceSteps: 10,
+                                                     currentSteps: 60, start: Date()) == nil)
+        let entry = try #require(StationaryWalkManager.petCreditEntry(
+            petId: UUID(), name: "Nala", sinceSteps: 0, currentSteps: 4000, start: Date()))
+        #expect(entry.isPetCreditEntry)
+        #expect(entry.routeName == "Nala's Indoor Walk")
+        #expect(entry.estimatedSteps == 4000)
+    }
 }

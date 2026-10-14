@@ -70,6 +70,22 @@ final class StationaryWalkManager: ObservableObject {
         timer = nil
     }
 
+    /// A pet's share of an indoor walk, saved as its own entry
+    /// (`WalkSession.isPetCreditEntry`: one pet, no time) once the walk is
+    /// saved. Nil under 51 steps.
+    nonisolated static func petCreditEntry(petId: UUID, name: String, sinceSteps: Int,
+                                           currentSteps: Int, start: Date) -> WalkSession? {
+        let deltaSteps = max(0, currentSteps - sinceSteps)
+        guard deltaSteps > 50 else { return nil }
+        return WalkSession(
+            id: UUID(), routeName: "\(name)'s Indoor Walk",
+            date: start, elapsedTime: 0,
+            totalDistance: Double(deltaSteps) * 0.762,
+            waypoints: [], lapCount: 1, isLoop: false,
+            activePetIds: [petId], activityType: ActivityMode.stationary.rawValue
+        )
+    }
+
     /// The Health workout of an indoor walk that was never saved.
     func discardWorkout() {
         workoutWriter?.discard()
@@ -187,17 +203,14 @@ struct StationaryWalkView: View {
                                 if willActivate {
                                     petActiveSinceSteps[pet.id] = currentSteps
                                 } else {
-                                    if let since = petActiveSinceSteps[pet.id] {
-                                        let deltaSteps = max(0, currentSteps - since)
-                                        if deltaSteps > 50, let p = petStore.pets.first(where: { $0.id == pet.id }) {
-                                            historyStore.add(WalkSession(
-                                                id: UUID(), routeName: "\(p.name)'s Indoor Walk",
-                                                date: manager.startDate, elapsedTime: 0,
-                                                totalDistance: Double(deltaSteps) * 0.762,
-                                                waypoints: [], lapCount: 1, isLoop: false,
-                                                activePetIds: [p.id], activityType: ActivityMode.stationary.rawValue
-                                            ))
-                                        }
+                                    // Kept until the walk is saved, like the
+                                    // ones built at Finish: an unsaved or
+                                    // closed walk leaves none behind.
+                                    if let since = petActiveSinceSteps[pet.id],
+                                       let entry = StationaryWalkManager.petCreditEntry(
+                                        petId: pet.id, name: pet.name, sinceSteps: since,
+                                        currentSteps: currentSteps, start: manager.startDate) {
+                                        pendingPetCredit.append(entry)
                                     }
                                     petActiveSinceSteps.removeValue(forKey: pet.id)
                                 }
@@ -257,7 +270,7 @@ struct StationaryWalkView: View {
         let crew = petStore.activePets.map(\.id)
         // The pets' credit is saved with the walk, never on its own: an
         // unsaved walk of 100 steps or fewer leaves nothing in history.
-        pendingPetCredit = petCreditEntries()
+        pendingPetCredit += petCreditEntries()
         manager.stop()
         let session = manager.completedSession()
         if manager.steps > 100 {
@@ -288,16 +301,11 @@ struct StationaryWalkView: View {
         let currentSteps = manager.steps
         var entries: [WalkSession] = []
         for (petId, sinceSteps) in petActiveSinceSteps {
-            guard let pet = petStore.pets.first(where: { $0.id == petId }) else { continue }
-            let deltaSteps = max(0, currentSteps - sinceSteps)
-            guard deltaSteps > 50 else { continue }
-            entries.append(WalkSession(
-                id: UUID(), routeName: "\(pet.name)'s Indoor Walk",
-                date: manager.startDate, elapsedTime: 0,
-                totalDistance: Double(deltaSteps) * 0.762,
-                waypoints: [], lapCount: 1, isLoop: false,
-                activePetIds: [pet.id], activityType: ActivityMode.stationary.rawValue
-            ))
+            guard let pet = petStore.pets.first(where: { $0.id == petId }),
+                  let entry = StationaryWalkManager.petCreditEntry(
+                    petId: pet.id, name: pet.name, sinceSteps: sinceSteps,
+                    currentSteps: currentSteps, start: manager.startDate) else { continue }
+            entries.append(entry)
         }
         petActiveSinceSteps.removeAll()
         return entries
