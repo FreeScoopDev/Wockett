@@ -9,5 +9,11 @@
   "al": {"name": "Alabama",        "geofabrik": "north-america/us/alabama",        "bundled": false, "probe": {"lat": 33.5186, "lon": -86.8104, "place": "Birmingham"}},
   "ky": {"name": "Kentucky",       "geofabrik": "north-america/us/kentucky",       "bundled": false, "probe": {"lat": 38.2527, "lon": -85.7585, "place": "Louisville"}},
   "wv": {"name": "West Virginia",  "geofabrik": "north-america/us/west-virginia",  "bundled": false, "probe": {"lat": 38.3498, "lon": -81.6326, "place": "Charleston"}},
-  "md": {"name": "Maryland",       "geofabrik": "north-america/us/maryland",       "bundled": false, "probe": {"lat": 39.2904, "lon": -76.6122, "place": "Baltimore"}}
+  "md": {"name": "Maryland",       "geofabrik": "north-america/us/maryland",       "bundled": false, "probe": {"lat": 39.2904, "lon": -76.6122, "place": "Baltimore"}},
+  "vt": {"name": "Vermont",        "geofabrik": "north-america/us/vermont",        "bundled": false, "probe": {"lat": 44.4759, "lon": -73.2121, "place": "Burlington"}},
+  "nh": {"name": "New Hampshire",  "geofabrik": "north-america/us/new-hampshire",  "bundled": false, "probe": {"lat": 42.9956, "lon": -71.4548, "place": "Manchester"}},
+  "me": {"name": "Maine",          "geofabrik": "north-america/us/maine",          "bundled": false, "probe": {"lat": 43.6591, "lon": -70.2568, "place": "Portland"}},
+  "ma": {"name": "Massachusetts",  "geofabrik": "north-america/us/massachusetts",  "bundled": false, "probe": {"lat": 42.3601, "lon": -71.0589, "place": "Boston"}},
+  "ct": {"name": "Connecticut",    "geofabrik": "north-america/us/connecticut",    "bundled": false, "probe": {"lat": 41.7658, "lon": -72.6734, "place": "Hartford"}},
+  "ri": {"name": "Rhode Island",   "geofabrik": "north-america/us/rhode-island",   "bundled": false, "probe": {"lat": 41.8240, "lon": -71.4128, "place": "Providence"}}
 }
