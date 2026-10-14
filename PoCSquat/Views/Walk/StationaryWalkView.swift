@@ -32,15 +32,6 @@ final class StationaryWalkManager: ObservableObject {
             : String(format: "%d:%02d", m, s)
     }
 
-    var paceText: String { paceText(locale: .current) }
-
-    /// min/mi in the US, min/km elsewhere: the same formatter as other paces.
-    func paceText(locale: Locale) -> String {
-        guard elapsedSeconds > 10, steps > 50 else { return "—" }
-        let secsPerKm = Double(elapsedSeconds) / (estimatedDistanceMeters / 1000)
-        return challengeFormattedPace(secsPerKm, locale: locale)
-    }
-
     var cadenceText: String {
         guard elapsedSeconds > 5 else { return "—" }
         let spm = Double(steps) / (Double(elapsedSeconds) / 60.0)
@@ -79,6 +70,46 @@ final class StationaryWalkManager: ObservableObject {
         timer = nil
     }
 
+    /// A pet's share of an indoor walk, saved as its own entry
+    /// (`WalkSession.isPetCreditEntry`: one pet, no time) once the walk is
+    /// saved. Nil under 51 steps.
+    nonisolated static func petCreditEntry(petId: UUID, name: String, sinceSteps: Int,
+                                           currentSteps: Int, start: Date) -> WalkSession? {
+        let deltaSteps = max(0, currentSteps - sinceSteps)
+        guard deltaSteps > 50 else { return nil }
+        return WalkSession(
+            id: UUID(), routeName: "\(name)'s Indoor Walk",
+            date: start, elapsedTime: 0,
+            totalDistance: Double(deltaSteps) * 0.762,
+            waypoints: [], lapCount: 1, isLoop: false,
+            activePetIds: [petId], activityType: ActivityMode.stationary.rawValue
+        )
+    }
+
+    /// The Health workout of an indoor walk that was never saved.
+    func discardWorkout() {
+        workoutWriter?.discard()
+        workoutWriter = nil
+    }
+
+    /// The walk as Activity History keeps it. No route: an indoor walk has
+    /// none (CLAUDE.md, "A walk with no route is an established shape").
+    func completedSession() -> WalkSession {
+        WalkSession(
+            id: UUID(),
+            routeName: "Indoor Walk",
+            date: startDate,
+            elapsedTime: TimeInterval(elapsedSeconds),
+            totalDistance: estimatedDistanceMeters,
+            waypoints: [],
+            lapCount: 1,
+            isLoop: false,
+            activePetIds: [],
+            activityType: ActivityMode.stationary.rawValue,
+            steps: steps
+        )
+    }
+
     func finishWorkout() async {
         guard let writer = workoutWriter else { return }
         workoutWriter = nil
@@ -95,7 +126,11 @@ struct StationaryWalkView: View {
     @Environment(\.dismiss) private var dismiss
 
     @StateObject private var manager = StationaryWalkManager()
-    @State private var showSummary = false
+    @State private var finished: FinishedIndoorWalk?
+    @State private var finishedSaved = false
+    @State private var didStart = false
+    /// The pets' credit entries for the finished walk, added when it is saved.
+    @State private var pendingPetCredit: [WalkSession] = []
     @State private var petActiveSinceSteps: [UUID: Int] = [:]
 
     /// Indoor's activity colour, for icons only: the step ring is the user's
@@ -147,9 +182,10 @@ struct StationaryWalkView: View {
                 HStack(spacing: 0) {
                     statCell(value: manager.elapsedText,    label: "Time",     icon: .time)
                     columnDivider
-                    statCell(value: manager.distanceText,   label: "Distance", icon: .distance)
-                    columnDivider
-                    statCell(value: manager.paceText,       label: "Pace",     icon: .pace)
+                    // No pace: indoor distance is only steps times a stride,
+                    // so a pace from it would be invented (2026-10-13).
+                    statCell(value: manager.distanceText,   label: SummaryStat.estimatedDistance.label,
+                             icon: .distance)
                     columnDivider
                     statCell(value: manager.cadenceText,    label: "Cadence",  icon: .cadence)
                 }
@@ -168,17 +204,14 @@ struct StationaryWalkView: View {
                                 if willActivate {
                                     petActiveSinceSteps[pet.id] = currentSteps
                                 } else {
-                                    if let since = petActiveSinceSteps[pet.id] {
-                                        let deltaSteps = max(0, currentSteps - since)
-                                        if deltaSteps > 50, let p = petStore.pets.first(where: { $0.id == pet.id }) {
-                                            historyStore.add(WalkSession(
-                                                id: UUID(), routeName: "\(p.name)'s Indoor Walk",
-                                                date: manager.startDate, elapsedTime: 0,
-                                                totalDistance: Double(deltaSteps) * 0.762,
-                                                waypoints: [], lapCount: 1, isLoop: false,
-                                                activePetIds: [p.id], activityType: ActivityMode.stationary.rawValue
-                                            ))
-                                        }
+                                    // Kept until the walk is saved, like the
+                                    // ones built at Finish: an unsaved or
+                                    // closed walk leaves none behind.
+                                    if let since = petActiveSinceSteps[pet.id],
+                                       let entry = StationaryWalkManager.petCreditEntry(
+                                        petId: pet.id, name: pet.name, sinceSteps: since,
+                                        currentSteps: currentSteps, start: manager.startDate) {
+                                        pendingPetCredit.append(entry)
                                     }
                                     petActiveSinceSteps.removeValue(forKey: pet.id)
                                 }
@@ -202,44 +235,86 @@ struct StationaryWalkView: View {
                 }
 
                 // Finish button
-                WktPrimaryButton(title: "Finish Workout", symbol: .success) {
-                    flushAllActivePets()
-                    manager.stop()
-                    showSummary = true
-                }
+                WktPrimaryButton(title: "Finish Workout", symbol: .success) { finishWalk() }
+                .accessibilityIdentifier("indoor.finish")
                 .padding(.horizontal, WktSpacing.screen)
                 .padding(.bottom, 48)
             }
         }
         .onAppear {
+            // Once per walk. A full-screen cover going away runs onAppear
+            // again, and a second start would begin a second Health workout
+            // that nothing ends.
+            guard !didStart else { return }
+            didStart = true
             manager.start()
             for pet in petStore.activePets {
                 petActiveSinceSteps[pet.id] = 0
             }
         }
         .onDisappear { manager.stop() }
-        .sheet(isPresented: $showSummary) {
-            StationarySummarySheet(manager: manager, historyStore: historyStore) {
-                dismiss()
-            }
+        // The summary every activity ends on, full screen (until 2026-10-13
+        // indoor had a half sheet of its own). Done closes it and this screen.
+        .fullScreenCover(item: $finished, onDismiss: {
+            if !finishedSaved { manager.discardWorkout() }
+            dismiss()
+        }) { walk in
+            ActivitySummaryView(
+                session: walk.session,
+                records: walk.records,
+                petIds: walk.petIds,
+                onSave: walk.saved ? nil : { save(walk.session) }
+            )
         }
     }
 
-    private func flushAllActivePets() {
+    /// More than 100 steps saves the walk on Finish, the rule the old summary
+    /// sheet had; fewer leaves the choice to the summary's Save button.
+    private func finishWalk() {
+        // A second tap before the cover is up must not build a second walk.
+        guard finished == nil else { return }
+        let crew = petStore.activePets.map(\.id)
+        // The pets' credit is saved with the walk, never on its own: an
+        // unsaved walk of 100 steps or fewer leaves nothing in history.
+        pendingPetCredit += petCreditEntries()
+        manager.stop()
+        let session = manager.completedSession()
+        if manager.steps > 100 {
+            let records = save(session)
+            finished = FinishedIndoorWalk(session: session, records: records, saved: true, petIds: crew)
+        } else {
+            finished = FinishedIndoorWalk(session: session, records: [], saved: false, petIds: crew)
+        }
+    }
+
+    /// Saves to Activity History, finishes the Health workout, and returns
+    /// the records the walk set against the history before it.
+    @discardableResult
+    private func save(_ session: WalkSession) -> [PRType] {
+        guard !finishedSaved else { return [] }
+        let previous = historyStore.sessions
+        pendingPetCredit.forEach(historyStore.add)
+        pendingPetCredit = []
+        historyStore.add(session)
+        finishedSaved = true
+        Task { await manager.finishWorkout() }
+        return checkNewPRs(newSession: session, against: previous)
+    }
+
+    /// Each pet still on the walk at Finish, as its own credit entry
+    /// (`WalkSession.isPetCreditEntry`). Not saved here: `save` adds them.
+    private func petCreditEntries() -> [WalkSession] {
         let currentSteps = manager.steps
+        var entries: [WalkSession] = []
         for (petId, sinceSteps) in petActiveSinceSteps {
-            guard let pet = petStore.pets.first(where: { $0.id == petId }) else { continue }
-            let deltaSteps = max(0, currentSteps - sinceSteps)
-            guard deltaSteps > 50 else { continue }
-            historyStore.add(WalkSession(
-                id: UUID(), routeName: "\(pet.name)'s Indoor Walk",
-                date: manager.startDate, elapsedTime: 0,
-                totalDistance: Double(deltaSteps) * 0.762,
-                waypoints: [], lapCount: 1, isLoop: false,
-                activePetIds: [pet.id], activityType: ActivityMode.stationary.rawValue
-            ))
+            guard let pet = petStore.pets.first(where: { $0.id == petId }),
+                  let entry = StationaryWalkManager.petCreditEntry(
+                    petId: pet.id, name: pet.name, sinceSteps: sinceSteps,
+                    currentSteps: currentSteps, start: manager.startDate) else { continue }
+            entries.append(entry)
         }
         petActiveSinceSteps.removeAll()
+        return entries
     }
 
     private var columnDivider: some View {
@@ -263,88 +338,14 @@ struct StationaryWalkView: View {
     }
 }
 
-// MARK: - Stationary Summary Sheet
+// MARK: - Finished indoor walk
 
-private struct StationarySummarySheet: View {
-    @ObservedObject var manager: StationaryWalkManager
-    @ObservedObject var historyStore: WalkHistoryStore
-    @EnvironmentObject var petStore: PetStore
-    let onDone: () -> Void
-
-    @Environment(\.dismiss) private var dismiss
-    @State private var saved = false
-
-    private let purple = Color.accentIndoor
-
-    var body: some View {
-        NavigationStack {
-            ZStack {
-                Color.earthBg.ignoresSafeArea()
-                ScrollView {
-                    VStack(spacing: WktSpacing.betweenSections) {
-                        VStack(spacing: 12) {
-                            WktIconBadge(symbol: .indoor, tint: purple, size: 64)
-                            Text("Workout complete!")
-                                .font(.wktCardTitle).foregroundColor(.earthCream)
-                        }
-                        .padding(.top, 8)
-
-                        HStack(spacing: WktSpacing.betweenCards) {
-                            tile(manager.steps.formatted(),  "Steps",    .steps)
-                            tile(manager.distanceText,       "Distance", .distance)
-                            tile(manager.elapsedText,        "Time",     .time)
-                        }
-
-                        Button { saveSession() } label: {
-                            if saved {
-                                WktSecondaryLabel(title: "Saved to History", symbol: .success)
-                            } else {
-                                WktPrimaryLabel(title: "Save to Walk History", symbol: .history)
-                            }
-                        }
-                        .buttonStyle(BounceButtonStyle(scale: 0.98))
-                        .disabled(saved)
-
-                        Spacer(minLength: 40)
-                    }
-                    .padding(.horizontal, WktSpacing.screen)
-                    .padding(.vertical, WktSpacing.betweenSections)
-                }
-            }
-            .navigationTitle("Indoor Walk")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss(); onDone() }.foregroundColor(.earthGreen)
-                }
-            }
-        }
-        .presentationDetents([.medium, .large])
-        .onAppear {
-            if manager.steps > 100 { saveSession() }
-        }
-    }
-
-    private func saveSession() {
-        guard !saved else { return }
-        let session = WalkSession(
-            id: UUID(),
-            routeName: "Indoor Walk",
-            date: manager.startDate,
-            elapsedTime: TimeInterval(manager.elapsedSeconds),
-            totalDistance: manager.estimatedDistanceMeters,
-            waypoints: [],
-            lapCount: 1,
-            isLoop: false,
-            activePetIds: [],
-            activityType: ActivityMode.stationary.rawValue
-        )
-        historyStore.add(session)
-        saved = true
-        Task { await manager.finishWorkout() }
-    }
-
-    private func tile(_ value: String, _ label: String, _ icon: WktSymbol) -> some View {
-        WktIconStatTile(value: value, label: label, symbol: icon, tint: purple)
-    }
+/// What the indoor summary is shown for.
+struct FinishedIndoorWalk: Identifiable {
+    let id = UUID()
+    let session: WalkSession
+    let records: [PRType]
+    let saved: Bool
+    /// The pets on the walk; their credit is saved as entries of their own.
+    let petIds: [UUID]
 }

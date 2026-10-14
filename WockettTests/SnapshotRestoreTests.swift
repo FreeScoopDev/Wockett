@@ -681,6 +681,64 @@ struct SnapshotRestoreTests {
         #expect(writer.finishedDistances.count == 1)
         #expect(writer.discards == 0)
     }
+
+    // MARK: - The summary for walks ended away from the walk screen (2026-10-13)
+
+    @Test @MainActor func miniTileSave_asksTheRootForTheSummary_withItsRecords() throws {
+        let history = try inMemoryHistory()
+        let store = ActiveWalkStore(historyStore: history)
+        let mgr = try #require(store.beginSession(route: outAndBack()))
+        mgr.writesSnapshots = false
+        mgr.totalDistanceCovered = 1200
+        let saved = try #require(store.end(.save, presentSummary: true))
+        let request = try #require(store.pendingSummary)
+        #expect(request.session.id == saved.id)
+        #expect(request.records.contains { if case .longestDistance = $0 { return true }; return false },
+                "a first walk over 200 m is the longest")
+    }
+
+    // The records come from the walks already in history.
+    @Test @MainActor func miniTileSummary_recordsAreAgainstRealHistory() throws {
+        for (earlier, expectLongest) in [(5000.0, false), (500.0, true)] {
+            let history = try inMemoryHistory()
+            history.add(WalkSession(id: UUID(), routeName: "Earlier", date: Date().addingTimeInterval(-86_400),
+                                    elapsedTime: 1800, totalDistance: earlier, waypoints: [],
+                                    lapCount: 1, isLoop: false))
+            let store = ActiveWalkStore(historyStore: history)
+            let mgr = try #require(store.beginSession(route: outAndBack()))
+            mgr.writesSnapshots = false
+            mgr.totalDistanceCovered = 1200
+            store.end(.save, presentSummary: true)
+            let request = try #require(store.pendingSummary)
+            #expect(request.records.contains { if case .longestDistance = $0 { return true }; return false }
+                    == expectLongest)
+        }
+    }
+
+    @Test @MainActor func liveActivityEnd_andDiscard_showNoSummary() throws {
+        let store = ActiveWalkStore(historyStore: try inMemoryHistory())
+        var mgr = try #require(store.beginSession(route: outAndBack()))
+        mgr.writesSnapshots = false
+        #expect(store.end(.save) != nil)   // the Live Activity's call
+        #expect(store.pendingSummary == nil)
+        mgr = try #require(store.beginSession(route: outAndBack()))
+        mgr.writesSnapshots = false
+        store.end(.discard, presentSummary: true)
+        #expect(store.pendingSummary == nil, "nothing was saved")
+    }
+
+    @Test @MainActor func routeCompletedWhileMinimised_showsTheSummaryOnlyWithTheAppInFront() throws {
+        for active in [true, false] {
+            let store = ActiveWalkStore(historyStore: try inMemoryHistory(), isAppActive: { active })
+            let mgr = try #require(store.beginSession(route: outAndBack()))
+            mgr.writesSnapshots = false
+            mgr.isSessionScreenVisible = false
+            mgr.advanceWaypoint()
+            mgr.advanceWaypoint()
+            #expect(mgr.isCompleted)
+            #expect((store.pendingSummary != nil) == active)
+        }
+    }
 }
 
 /// Counts how often a walk's end reaches the Live Activity.

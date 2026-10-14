@@ -60,6 +60,17 @@ enum ActivityMode: String, Codable {
         }
     }
 
+    /// The activity's name in a sentence-case title: "Walk complete!",
+    /// "Indoor walk complete!". `sessionLabel` stays the short tile label.
+    var displayName: String {
+        switch self {
+        case .walking:    return "Walk"
+        case .running:    return "Run"
+        case .cycling:    return "Ride"
+        case .stationary: return "Indoor walk"
+        }
+    }
+
     /// Lowercase noun for this activity: "walk", "run", "ride".
     var noun: String {
         switch self {
@@ -388,6 +399,13 @@ struct WalkSession: Identifiable, Codable {
         case id, routeName, date, elapsedTime, totalDistance, waypoints, lapCount, isLoop, activePetIds, activityType, notes, petDistances, steps, isCommunityRoute, customRouteId, countsTowardRouteStats, stopCount, flaggedPossibleVehicle
     }
 
+    /// A pet's share of a walk saved as an entry of its own, not a walk:
+    /// exactly one pet and no time. Indoor walks still save these ("Nala's
+    /// Indoor Walk", `StationaryWalkView`), and 1.6 saved them for every
+    /// walk ("Nala's Walk"). A real walk always has time, and since 1.7 an
+    /// outdoor walk carries its pets on itself (`activePetIds`, `petDistances`).
+    var isPetCreditEntry: Bool { activePetIds.count == 1 && elapsedTime <= 0 }
+
     // Returns actual pedometer steps when available, otherwise estimates from GPS distance.
     var estimatedSteps: Int { steps > 0 ? steps : Int(totalDistance / 0.762) }
 
@@ -532,71 +550,134 @@ final class WalkHistoryStore: ObservableObject {
 }
 
 // MARK: - Personal Records
+//
+// Each activity type keeps its own records, compared only with earlier
+// activities of the same type: a ride never beats a walk's distance. Until
+// 2026-10-13 every type shared one "Longest Walk" and one "Fastest Pace", so
+// a first ride announced a walking record in min/km.
+//
+// Indoor walks have no GPS: their distance is steps times a 0.762 m stride.
+// They keep Most steps and Longest (by time). A distance record would restate
+// Most steps, and a pace from that distance would be invented, so they get
+// neither.
 
-enum PRType: Identifiable {
-    case longestWalk(distance: Double)
-    case fastestPace(secsPerKm: Double)
+enum PRType: Identifiable, Equatable {
+    case longestDistance(meters: Double, mode: ActivityMode)
+    /// Shown as a pace for a walk or run and as a speed for a ride.
+    case fastest(secsPerKm: Double, mode: ActivityMode)
+    case mostSteps(Int)
+    case longestTime(TimeInterval)
 
     var id: String {
         switch self {
-        case .longestWalk: return "longest"
-        case .fastestPace: return "fastest"
+        case .longestDistance: return "longest"
+        case .fastest:         return "fastest"
+        case .mostSteps:       return "steps"
+        case .longestTime:     return "time"
         }
     }
 
     var emoji: String {
         switch self {
-        case .longestWalk: return "📏"
-        case .fastestPace: return "⚡️"
+        case .longestDistance: return "📏"
+        case .fastest:         return "⚡️"
+        case .mostSteps:       return "👣"
+        case .longestTime:     return "⏱️"
         }
     }
 
     var title: String {
         switch self {
-        case .longestWalk: return "Longest Walk"
-        case .fastestPace: return "Fastest Pace"
+        case .longestDistance(_, let mode): return "Longest \(mode.noun)"
+        case .fastest(_, let mode):         return mode == .cycling ? "Fastest ride" : "Fastest pace"
+        case .mostSteps:                    return "Most steps"
+        case .longestTime:                  return "Longest indoor walk"
         }
     }
 
     var valueText: String { valueText(locale: .current) }
 
-    /// Pace follows the locale's units like every other pace in the app
-    /// (min/mi in the US); it used to be fixed per-km.
+    /// Pace and speed follow the locale's units like every other pace in the
+    /// app (min/mi and mph in the US).
     func valueText(locale: Locale) -> String {
         switch self {
-        case .longestWalk(let d):
-            return MKDistanceFormatter.abbreviated.string(fromDistance: d)
-        case .fastestPace(let s):
-            return challengeFormattedPace(s, locale: locale)
+        case .longestDistance(let meters, _):
+            return MKDistanceFormatter.abbreviated.string(fromDistance: meters)
+        case .fastest(let secsPerKm, let mode):
+            guard mode == .cycling else { return challengeFormattedPace(secsPerKm, locale: locale) }
+            let kmh = 3600 / secsPerKm
+            return locale.measurementSystem == .us
+                ? String(format: "%.1f mph", kmh / 1.609344)
+                : String(format: "%.1f km/h", kmh)
+        case .mostSteps(let steps):
+            return "\(steps.formatted()) steps"
+        case .longestTime(let seconds):
+            let s = Int(seconds); let m = s / 60
+            return m < 60 ? "\(m)m \(s % 60)s" : "\(m / 60)h \(m % 60)m"
         }
     }
 }
 
+/// The steps an indoor walk needs before it can set a record: the outdoor
+/// 200 m bar in steps at the app's 0.762 m stride.
+let minimumRecordIndoorSteps = Int((200 / 0.762).rounded(.up))
+
 // Returns any PRs the new session sets against the previous session list.
-// Call BEFORE adding the new session to the store.
+// Call BEFORE adding the new session to the store (the session itself is
+// ignored if it is already there).
+//
+// A walk with pets competes like any other. Until 2026-10-13 it never set a
+// record: the guard was `activePetIds.isEmpty`, written in 1.6 to skip each
+// pet's own credit entry, when the person's walk carried no pets. 1.7 put the
+// pets on the walk itself, so every walk with a dog stopped setting records,
+// and stopped asking for a rating after one (`ReviewPrompter`). Pet credit
+// entries (`isPetCreditEntry`) are still neither candidates nor walks to beat.
 func checkNewPRs(newSession: WalkSession, against previousSessions: [WalkSession]) -> [PRType] {
-    guard newSession.totalDistance > 200, newSession.activePetIds.isEmpty,
-          !newSession.flaggedPossibleVehicle else { return [] }
-    let prev = previousSessions.filter { $0.totalDistance > 200 && !$0.flaggedPossibleVehicle }
+    guard !newSession.isPetCreditEntry, !newSession.flaggedPossibleVehicle else { return [] }
+    let mode = ActivityMode(rawValue: newSession.activityType) ?? .walking
+    let prev = previousSessions.filter {
+        $0.id != newSession.id && !$0.flaggedPossibleVehicle && !$0.isPetCreditEntry
+            && (ActivityMode(rawValue: $0.activityType) ?? .walking) == mode
+    }
+    if mode == .stationary { return indoorRecords(newSession, against: prev) }
+
+    guard newSession.totalDistance > 200 else { return [] }
     var records: [PRType] = []
 
-    let prevLongest = prev.map(\.totalDistance).max() ?? 0
+    let prevLongest = prev.filter { $0.totalDistance > 200 }.map(\.totalDistance).max() ?? 0
     if newSession.totalDistance > prevLongest {
-        records.append(.longestWalk(distance: newSession.totalDistance))
+        records.append(.longestDistance(meters: newSession.totalDistance, mode: mode))
     }
 
-    if newSession.totalDistance > 500, newSession.elapsedTime > 0,
-       newSession.activityType != ActivityMode.stationary.rawValue {
+    if newSession.totalDistance > 500, newSession.elapsedTime > 0 {
         let newPace = newSession.elapsedTime / (newSession.totalDistance / 1000)
         let prevBest = prev
-            .filter { $0.totalDistance > 500 && $0.elapsedTime > 0 && $0.activityType != ActivityMode.stationary.rawValue }
+            .filter { $0.totalDistance > 500 && $0.elapsedTime > 0 }
             .map { $0.elapsedTime / ($0.totalDistance / 1000) }
             .min() ?? .infinity
         if newPace < prevBest {
-            records.append(.fastestPace(secsPerKm: newPace))
+            records.append(.fastest(secsPerKm: newPace, mode: mode))
         }
     }
 
+    return records
+}
+
+/// Most steps and longest time; never distance or pace (see above).
+private func indoorRecords(_ session: WalkSession, against prev: [WalkSession]) -> [PRType] {
+    let steps = session.estimatedSteps
+    guard steps >= minimumRecordIndoorSteps else { return [] }
+    // `prev` has no pet credit entries (see `checkNewPRs`): with a pet on for
+    // the whole walk, its entry would tie the walk's steps.
+    let qualifying = prev.filter { $0.estimatedSteps >= minimumRecordIndoorSteps }
+    var records: [PRType] = []
+    if steps > (qualifying.map(\.estimatedSteps).max() ?? 0) {
+        records.append(.mostSteps(steps))
+    }
+    if session.elapsedTime >= 60,
+       session.elapsedTime > (qualifying.map(\.elapsedTime).max() ?? 0) {
+        records.append(.longestTime(session.elapsedTime))
+    }
     return records
 }
 

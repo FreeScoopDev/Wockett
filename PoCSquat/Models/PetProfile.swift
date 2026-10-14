@@ -269,13 +269,6 @@ final class PetStore: ObservableObject {
     }
 }
 
-// MARK: - Pet Completion (walk complete animation data)
-
-struct PetCompletion {
-    let pet: PetProfile
-    let progress: Double   // 0–1, including the just-completed walk
-}
-
 // MARK: - Pet Management View
 
 struct PetManagementView: View {

@@ -1,5 +1,16 @@
 import Foundation
+import UIKit
 import UserNotifications
+
+/// A walk saved from outside the walk screen, waiting for the app root to
+/// show its summary (`ActiveWalkStore.pendingSummary`).
+struct ActivitySummaryRequest: Identifiable {
+    let id = UUID()
+    let session: WalkSession
+    let records: [PRType]
+    /// Checkpoint splits of a guided walk, read before the session stops.
+    var splits: [(label: String, elapsed: TimeInterval)] = []
+}
 
 @Observable @MainActor
 final class ActiveWalkStore {
@@ -21,16 +32,28 @@ final class ActiveWalkStore {
     /// Set by `end`: a walk ends once, however many paths try. Cleared when
     /// the session is released.
     @ObservationIgnored private var sessionEnded = false
+    /// Whether the app is in front. Read when a guided walk completes with
+    /// its screen minimised; a test passes its own answer.
+    @ObservationIgnored private let isAppActive: @MainActor () -> Bool
+
+    /// A walk ended from outside the walk screen while the person is in the
+    /// app (the mini tile's Save & End, a route completed while minimised):
+    /// the app root shows its summary, the same one the walk screen shows,
+    /// and clears this when it goes. Never set by the Live Activity's End or
+    /// a discard: the walk is in Activity History, one tap from its summary.
+    var pendingSummary: ActivitySummaryRequest?
 
     /// `shared` is the app's store; tests build their own with an in-memory
     /// history store. `.shared` defaults are resolved in the body, not as
     /// default arguments, which are evaluated off the main actor.
     init(historyStore: WalkHistoryStore? = nil,
          notifications: NotificationService? = nil,
-         liveActivity: (any WalkLiveActivityEnding)? = nil) {
+         liveActivity: (any WalkLiveActivityEnding)? = nil,
+         isAppActive: (@MainActor () -> Bool)? = nil) {
         self.historyStore = historyStore
         self.notifications = notifications ?? .shared
         self.liveActivity = liveActivity ?? WalkLiveActivityManager.shared
+        self.isAppActive = isAppActive ?? { UIApplication.shared.applicationState == .active }
     }
 
     func configure(historyStore: WalkHistoryStore) {
@@ -57,9 +80,13 @@ final class ActiveWalkStore {
     ///
     /// `releaseSession: false` keeps the stopped session for the walk
     /// screen's summary; the screen calls `endSession()` when it goes away.
+    /// `presentSummary` asks the app root to show the saved walk's summary
+    /// (`pendingSummary`), for a path with no walk screen to show it.
+    ///
     /// Returns the saved walk; nil for a discard or a walk already ended.
     @discardableResult
-    func end(_ outcome: EndOutcome, releaseSession: Bool = true) -> WalkSession? {
+    func end(_ outcome: EndOutcome, releaseSession: Bool = true,
+             presentSummary: Bool = false) -> WalkSession? {
         guard let session, let route = activeRoute, !sessionEnded else { return nil }
         sessionEnded = true
         let distance = session.totalDistanceCovered
@@ -69,6 +96,7 @@ final class ActiveWalkStore {
         switch outcome {
         case .save:
             if let historyStore {
+                let previous = historyStore.sessions
                 var walk = session.completedSession
                 let pets = session.petDistances
                 walk.activePetIds = Array(pets.keys)
@@ -77,6 +105,11 @@ final class ActiveWalkStore {
                 historyStore.add(walk)
                 BackgroundTaskManager.shared.scheduleCloudKitSync()
                 saved = walk
+                if presentSummary {
+                    pendingSummary = ActivitySummaryRequest(
+                        session: walk, records: checkNewPRs(newSession: walk, against: previous),
+                        splits: session.splitTimes)
+                }
             }
         case .discard:
             session.discardWorkoutSession()
@@ -177,7 +210,9 @@ final class ActiveWalkStore {
     /// nothing else would, so it ends here, pet credit included.
     func sessionDidComplete() {
         guard let session, !session.isSessionScreenVisible else { return }
-        end(.save)
+        // Its summary only when the person is in the app to see it; a walk
+        // completed in a pocket is in Activity History.
+        end(.save, presentSummary: isAppActive())
     }
 
     /// Called when the user declines to resume a recovered walk.

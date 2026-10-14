@@ -236,12 +236,13 @@ struct ActivitySummaryCard: View {
                         .lineLimit(1)
                 }
 
+                // Indoor: steps, time, cadence; never a pace from estimated distance.
                 HStack(spacing: 0) {
-                    statCol(value: session.distanceText,      label: "Distance")
-                    separator
-                    statCol(value: session.timeText,          label: "Time")
-                    separator
-                    statCol(value: session.paceOrSpeedText,   label: session.paceOrSpeedLabel)
+                    let stats = ActivitySummaryContent.cardStats(for: session)
+                    ForEach(stats.indices, id: \.self) { i in
+                        if i > 0 { separator }
+                        statCol(value: stats[i].value(for: session), label: stats[i].label)
+                    }
                 }
 
                 if let comparison = routeComparison {
@@ -328,7 +329,9 @@ struct ActivitySummaryShareSheet: View {
                 ScrollView {
                     VStack(spacing: WktSpacing.betweenSections) {
                         cardPreview
-                        stylePickerSection
+                        // No route, no map to choose: the card shows the
+                        // activity's icon instead.
+                        if ActivitySummaryContent.hasRoute(session) { stylePickerSection }
                         appLinkToggleSection
                         shareButton
                     }
@@ -474,16 +477,7 @@ struct ActivitySummaryShareSheet: View {
 
         var items: [Any] = [image]
         if includeAppLink {
-            let verb: String
-            let mode = ActivityMode(rawValue: session.activityType) ?? .walking
-            switch mode {
-            case .cycling:  verb = "rode"
-            case .running:  verb = "ran"
-            default:        verb = "walked"
-            }
-            items.append(
-                "Just \(verb) \(session.distanceText) in \(session.timeText) on Wockett 🐾\n\(AppStoreLink.page)"
-            )
+            items.append("\(ActivitySummaryContent.shareCaption(for: session))\n\(AppStoreLink.page)")
         }
 
         shareItems = items

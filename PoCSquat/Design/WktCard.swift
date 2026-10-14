@@ -12,6 +12,12 @@ import SwiftUI
 // is a sentence-case rounded heading instead of an all-caps mono eyebrow.
 // Changed here rather than beside a new variant, so every screen moved too.
 
+extension RoundedRectangle {
+    /// The app's card shape, radius 22: for content that clips to the card
+    /// (a map) rather than sitting on it.
+    static var wktCard: RoundedRectangle { RoundedRectangle(cornerRadius: 22, style: .continuous) }
+}
+
 extension View {
     /// Content on the app's card: `earthCard`, radius 22, 1 pt `earthStroke`.
     func wktCard(padding: CGFloat = WktSpacing.cardPadding) -> some View {
@@ -24,7 +30,7 @@ extension View {
     /// The card's fill, shape and stroke without its padding or width, for
     /// content that lays itself out (a button label, a fixed-height tile).
     func wktCardBackground(fill: Color = .earthCard) -> some View {
-        let shape = RoundedRectangle(cornerRadius: 22, style: .continuous)
+        let shape = RoundedRectangle.wktCard
         return self
             .background(fill, in: shape)
             .overlay(shape.strokeBorder(Color.earthStroke, lineWidth: 1))

@@ -3,18 +3,39 @@ import MapKit
 
 // MARK: - Activity Summary View
 //
-// Unified post-session summary shown for every in-app session end.
-// Replaces WalkCompleteView (guided) and FreeWalkSummarySheet (free).
+// The one summary for every finished activity, walk, run, ride or indoor, and
+// for any activity opened from Activity History. Until 2026-10-13 an indoor
+// walk ended on a half sheet with three tiles and no Share or records, a walk
+// ended from the mini tile showed nothing, and history offered only a notes
+// sheet (design audit 2026-10-12, finding 22).
+//
+// What it shows comes from `ActivitySummaryContent`: a route map only when
+// there is a route (an indoor or hand-logged walk has none, and gets no empty
+// map), and the figures that make sense for the activity.
 
 struct ActivitySummaryView: View {
+    /// Right after finishing, or opened again from history.
+    enum Moment { case justFinished, history }
+
     let session: WalkSession
-    let newPRs: [PRType]
-    let splits: [(label: String, elapsed: TimeInterval)]
-    let petCompletions: [PetCompletion]
-    let petNames: [String]
-    var onExcludeFromRouteStats: (() -> Void)? = nil
-    @ObservedObject var historyStore: WalkHistoryStore
-    @ObservedObject var routeStore: CustomRouteStore
+    var moment: Moment = .justFinished
+    /// Just finished: the records this activity set. History: the records it
+    /// set at the time (`ActivitySummaryContent.recordsSet`).
+    var records: [PRType] = []
+    var splits: [(label: String, elapsed: TimeInterval)] = []
+    /// The pets on this activity. Nil reads the walk's own `activePetIds`; an
+    /// indoor walk credits its pets as entries of their own, so it passes them.
+    var petIds: [UUID]?
+    var onExcludeFromRouteStats: (() -> Void)?
+    /// An activity not saved yet (an indoor walk of 100 steps or fewer): the
+    /// summary offers to save it. Returns the records the save set.
+    var onSave: (() -> [PRType])?
+
+    // Not private: a private stored property can make the memberwise
+    // initializer private on CI's Xcode 26.6 (CLAUDE.md memory, #202).
+    @EnvironmentObject var historyStore: WalkHistoryStore
+    @EnvironmentObject var routeStore: CustomRouteStore
+    @EnvironmentObject var petStore: PetStore
 
     @Environment(\.dismiss) private var dismiss
 
@@ -25,97 +46,95 @@ struct ActivitySummaryView: View {
     @State private var showActivityShare  = false
     @State private var showScheduleSheet  = false
     @State private var ringProgress: [UUID: Double] = [:]
+    @State private var savedLate          = false
+    @State private var lateRecords: [PRType] = []
 
-    private var mode: ActivityMode { ActivityMode(rawValue: session.activityType) ?? .walking }
+    private var mode: ActivityMode { ActivitySummaryContent.mode(of: session) }
+    private var isJustFinished: Bool { moment == .justFinished }
+    private var shownRecords: [PRType] { records + lateRecords }
+
+    private var crew: [PetProfile] {
+        let ids = petIds ?? session.activePetIds
+        return petStore.pets.filter { ids.contains($0.id) }
+    }
 
     private var canSaveAsRoute: Bool {
         // Free session (no saved-route ID) with enough breadcrumb points.
-        session.customRouteId == nil && session.waypoints.count > 5
+        isJustFinished && session.customRouteId == nil && session.waypoints.count > 5
     }
 
     private var completionMessage: String {
-        switch petNames.count {
+        let names = crew.map(\.name)
+        switch names.count {
         case 0:  return "Nice work on \(session.routeName). Keep the momentum going!"
-        case 1:  return "Nice work! \(petNames[0]) had a great \(mode.noun) too. 🐾"
-        case 2:  return "Nice work! \(petNames[0]) and \(petNames[1]) loved it. 🐾"
+        case 1:  return "Nice work! \(names[0]) had a great \(mode.noun) too. 🐾"
+        case 2:  return "Nice work! \(names[0]) and \(names[1]) loved it. 🐾"
         default: return "Nice work! The whole crew crushed it. 🐾"
         }
+    }
+
+    private static let dateFmt: DateFormatter = {
+        let f = DateFormatter(); f.dateStyle = .full; f.timeStyle = .short; return f
+    }()
+
+    /// History's subtitle: when, and who came along.
+    private var historySubtitle: String {
+        let when = Self.dateFmt.string(from: session.date)
+        let names = crew.map(\.name)
+        guard !names.isEmpty else { return when }
+        return "\(when)\nwith \(ListFormatter.localizedString(byJoining: names))"
     }
 
     var body: some View {
         ZStack {
             Color.earthBg.ignoresSafeArea()
-            ConfettiOverlay()
+            if isJustFinished { ConfettiOverlay() }
 
-            VStack(spacing: 0) {
-                Spacer()
-                // Header
-                VStack(spacing: 12) {
-                    WktIconBadge(symbol: mode.wktSymbol, size: 64)
-                        .padding(.bottom, 4)
-                    Text("\(mode.sessionLabel) complete!")
-                        .font(.wktMetric)
-                        .foregroundColor(.earthCream)
-                        .multilineTextAlignment(.center)
-                    Text(completionMessage)
-                        .font(.wktBodyText)
-                        .foregroundColor(.earthMuted)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 32)
-                }
-                Spacer()
+            ScrollView {
+                VStack(alignment: .leading, spacing: WktSpacing.betweenSections) {
+                    header
+                    if ActivitySummaryContent.hasRoute(session) { routeMap }
+                    ActivityStatTiles(session: session)
 
-                ScrollView {
-                    VStack(alignment: .leading, spacing: WktSpacing.betweenSections) {
-                        // Stats tiles
-                        HStack(spacing: WktSpacing.betweenCards) {
-                            statTile(value: session.distanceText, label: "Distance",
-                                     icon: .distance, color: .earthGreen)
-                            statTile(value: session.timeText, label: "Time",
-                                     icon: .time, color: .earthOrange)
-                            statTile(value: session.estimatedSteps.formatted(), label: "Steps",
-                                     icon: mode.wktSymbol, color: mode.tileColor)
+                    if !shownRecords.isEmpty { prBanner }
+                    if isJustFinished, let line = stopEncouragement {
+                        Text(line)
+                            .font(.wktRowTitle).foregroundColor(.earthGreen)
+                            .transition(.opacity)
+                    }
+                    if isJustFinished, !crew.isEmpty { petRingsSection }
+                    if isJustFinished, !splits.isEmpty { splitsSection }
+                    if isJustFinished, session.customRouteId != nil, onExcludeFromRouteStats != nil { routeStatsPrompt }
+                    if canSaveAsRoute { saveAsRouteSection }
+                    if onSave != nil { saveToHistoryButton }
+
+                    VStack(spacing: WktSpacing.betweenCards) {
+                        WktSecondaryButton(title: "Share this \(mode.noun)", symbol: .share) {
+                            showActivityShare = true
                         }
-
-                        if !newPRs.isEmpty { prBanner }
-                        if let line = stopEncouragement {
-                            Text(line)
-                                .font(.wktRowTitle).foregroundColor(.earthGreen)
-                                .transition(.opacity)
-                        }
-                        if !petCompletions.isEmpty { petRingsSection }
-                        if !splits.isEmpty { splitsSection }
-                        if session.customRouteId != nil { routeStatsPrompt }
-
-                        if canSaveAsRoute { saveAsRouteSection }
-
-                        // Action buttons: Done is the one primary action.
-                        VStack(spacing: WktSpacing.betweenCards) {
-                            WktSecondaryButton(title: "Share this \(mode.noun)", symbol: .share) {
-                                showActivityShare = true
-                            }
-                            WktSecondaryButton(title: "Schedule this \(mode.noun) again", symbol: .calendarAdd) {
-                                showScheduleSheet = true
-                            }
-                            WktPrimaryButton(title: "Done") { dismiss() }
-                                .accessibilityIdentifier("summary.done")
+                        WktSecondaryButton(title: "Schedule this \(mode.noun) again", symbol: .calendarAdd) {
+                            showScheduleSheet = true
                         }
                     }
+                }
+                .padding(.horizontal, WktSpacing.screen)
+                .padding(.top, 24)
+                .padding(.bottom, 16)
+            }
+            // Done is the one primary action, always in reach however long
+            // the summary runs.
+            .safeAreaInset(edge: .bottom) {
+                WktPrimaryButton(title: "Done") { finish() }
+                    .accessibilityIdentifier("summary.done")
                     .padding(.horizontal, WktSpacing.screen)
                     .padding(.top, 8)
-                    .padding(.bottom, 32)
-                }
+                    .padding(.bottom, 8)
+                    .background(Color.earthBg)
             }
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("summary.root")
-        .onAppear {
-            for (i, c) in petCompletions.enumerated() {
-                withAnimation(.spring(duration: 0.9, bounce: 0.25).delay(Double(i) * 0.18)) {
-                    ringProgress[c.pet.id] = c.progress
-                }
-            }
-        }
+        .onAppear { animateRings() }
         .sheet(isPresented: $showActivityShare) {
             ActivitySummaryShareSheet(session: session, historyStore: historyStore)
         }
@@ -124,16 +143,75 @@ struct ActivitySummaryView: View {
         }
     }
 
-    // MARK: - Subviews
-
-    private func statTile(value: String, label: String, icon: WktSymbol, color: Color) -> some View {
-        WktIconStatTile(value: value, label: label, symbol: icon, tint: color)
+    /// Done. A record just set is a pleased moment: the root asks for a
+    /// rating once this has gone (`ReviewPrompter`). Never from history.
+    private func finish() {
+        if isJustFinished, !shownRecords.isEmpty { ReviewPrompter.shared.noteHighlight() }
+        dismiss()
     }
 
+    private func animateRings() {
+        guard isJustFinished else { return }
+        for (i, pet) in crew.enumerated() {
+            let today = petStore.todaySteps(for: pet, in: historyStore.sessions)
+            let progress = min(1.0, Double(today) / Double(max(1, pet.goalSteps)))
+            withAnimation(.spring(duration: 0.9, bounce: 0.25).delay(Double(i) * 0.18)) {
+                ringProgress[pet.id] = progress
+            }
+        }
+    }
+
+    // MARK: - Header and route
+
+    private var header: some View {
+        VStack(spacing: 12) {
+            WktIconBadge(symbol: mode.wktSymbol, tint: mode.tileColor, size: 64)
+                .padding(.bottom, 4)
+            Text(isJustFinished ? "\(mode.displayName) complete!" : session.routeName)
+                .font(isJustFinished ? .wktMetric : .wktCardTitle)
+                .foregroundColor(.earthCream)
+                .multilineTextAlignment(.center)
+                .accessibilityAddTraits(.isHeader)
+            Text(isJustFinished ? completionMessage : historySubtitle)
+                .font(.wktBodyText)
+                .foregroundColor(.earthMuted)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 16)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    /// Only for an activity with a line to draw; one without has no map at all.
+    private var routeMap: some View {
+        Map(initialPosition: .automatic, interactionModes: []) {
+            MapPolyline(coordinates: session.waypoints.map(\.clCoordinate))
+                .stroke(mode.tileColor, style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round))
+        }
+        .mapStyle(.standard(emphasis: .muted))
+        .frame(height: 180)
+        .clipShape(RoundedRectangle.wktCard)
+        .overlay(RoundedRectangle.wktCard.strokeBorder(Color.earthStroke, lineWidth: 1))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Map of this \(mode.noun)'s route")
+    }
+
+    private var saveToHistoryButton: some View {
+        WktSecondaryButton(title: savedLate ? "Saved to Activity History" : "Save to Activity History",
+                           symbol: savedLate ? .success : .history) {
+            guard !savedLate, let onSave else { return }
+            savedLate = true
+            withAnimation { lateRecords = onSave() }
+        }
+        .disabled(savedLate)
+    }
+
+    // MARK: - Subviews
+
     private var prBanner: some View {
-        WktSection(title: "New personal record\(newPRs.count > 1 ? "s" : "")") {
+        let plural = shownRecords.count > 1 ? "s" : ""
+        return WktSection(title: isJustFinished ? "New personal record\(plural)" : "Personal record\(plural) set") {
             HStack(spacing: WktSpacing.betweenCards) {
-                ForEach(newPRs) { pr in
+                ForEach(shownRecords) { pr in
                     VStack(spacing: 4) {
                         Text(pr.emoji).font(.title2) // the record's own emoji (data)
                         Text(pr.title)
@@ -146,7 +224,7 @@ struct ActivitySummaryView: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 14)
                     .wktCardBackground(fill: .earthCard)
-                    .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .overlay(RoundedRectangle.wktCard
                         .strokeBorder(Color.earthOrange.opacity(0.4), lineWidth: 1))
                     .accessibilityElement(children: .ignore)
                     .accessibilityLabel("\(pr.title): \(pr.valueText)")
@@ -159,8 +237,8 @@ struct ActivitySummaryView: View {
     private var petRingsSection: some View {
         WktSection(title: "Your crew's progress today") {
             HStack(spacing: 24) {
-                ForEach(petCompletions, id: \.pet.id) { c in
-                    let progress = ringProgress[c.pet.id] ?? 0
+                ForEach(crew) { pet in
+                    let progress = ringProgress[pet.id] ?? 0
                     VStack(spacing: 6) {
                         ZStack {
                             Circle()
@@ -168,16 +246,16 @@ struct ActivitySummaryView: View {
                                 .frame(width: 72, height: 72)
                             Circle()
                                 .trim(from: 0, to: progress)
-                                .stroke(c.pet.accentColor, style: StrokeStyle(lineWidth: 7, lineCap: .round))
+                                .stroke(pet.accentColor, style: StrokeStyle(lineWidth: 7, lineCap: .round))
                                 .frame(width: 72, height: 72)
                                 .rotationEffect(.degrees(-90))
-                            Text(c.pet.displayEmoji).font(.title2) // the pet's own emoji (data)
+                            Text(pet.displayEmoji).font(.title2) // the pet's own emoji (data)
                         }
-                        Text(c.pet.name).font(.wktLabel).foregroundColor(.earthCream)
-                        Text(WktPercent.text(progress)).font(.wktLabel).foregroundColor(c.pet.accentColor)
+                        Text(pet.name).font(.wktLabel).foregroundColor(.earthCream)
+                        Text(WktPercent.text(progress)).font(.wktLabel).foregroundColor(pet.accentColor)
                     }
                     .accessibilityElement(children: .ignore)
-                    .accessibilityLabel(c.pet.name)
+                    .accessibilityLabel(pet.name)
                     .accessibilityValue("\(WktPercent.text(progress)) of daily step goal")
                 }
             }
@@ -288,5 +366,43 @@ struct ActivitySummaryView: View {
         ))
         savedAsRoute = true
         showRouteNameField = false
+    }
+}
+
+// MARK: - Stat tiles
+
+/// The figures an activity shows (`ActivitySummaryContent.stats`) as icon
+/// tiles: three in a row, or two rows of two. The summary and the history
+/// notes sheet both use it, so a ride never shows steps on either.
+struct ActivityStatTiles: View {
+    let session: WalkSession
+
+    private var stats: [SummaryStat] { ActivitySummaryContent.stats(for: session) }
+    private var mode: ActivityMode { ActivitySummaryContent.mode(of: session) }
+
+    var body: some View {
+        if stats.count == 4 {
+            Grid(horizontalSpacing: WktSpacing.betweenCards, verticalSpacing: WktSpacing.betweenCards) {
+                GridRow { tile(stats[0]); tile(stats[1]) }
+                GridRow { tile(stats[2]); tile(stats[3]) }
+            }
+        } else {
+            HStack(spacing: WktSpacing.betweenCards) {
+                ForEach(stats.indices, id: \.self) { tile(stats[$0]) }
+            }
+        }
+    }
+
+    private func tile(_ stat: SummaryStat) -> some View {
+        WktIconStatTile(value: stat.value(for: session), label: stat.label,
+                        symbol: stat == .steps ? mode.wktSymbol : stat.symbol, tint: tint(stat))
+    }
+
+    private func tint(_ stat: SummaryStat) -> Color {
+        switch stat {
+        case .distance, .estimatedDistance: return .earthGreen
+        case .time:                         return .earthOrange
+        default:                            return mode.tileColor
+        }
     }
 }
