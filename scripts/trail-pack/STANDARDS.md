@@ -105,3 +105,10 @@ Source filters in `make_region.sh`: sidewalks, traffic islands and
   before dog access can be shown for most trails.
 - Road-side paths are 3–31% of a town's named list (Florida highest). Kept on
   purpose (Joe likes "Duck Road Path"); revisit if they crowd out trails.
+
+## Backlog from the New England check (2026-10-14)
+
+- Boston's Freedom Trail lists as a 0.3 mi piece, not the ~2.5 mi trail: the
+  long-trail splitting above, in a city centre.
+- "Childs Park Road B" (a park road, Northampton MA) is the first row of the
+  town's list: a candidate for the generic or road-name rules.
