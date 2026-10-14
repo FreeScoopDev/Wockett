@@ -128,6 +128,7 @@ struct StationaryWalkView: View {
     @StateObject private var manager = StationaryWalkManager()
     @State private var finished: FinishedIndoorWalk?
     @State private var finishedSaved = false
+    @State private var didStart = false
     /// The pets' credit entries for the finished walk, added when it is saved.
     @State private var pendingPetCredit: [WalkSession] = []
     @State private var petActiveSinceSteps: [UUID: Int] = [:]
@@ -241,6 +242,11 @@ struct StationaryWalkView: View {
             }
         }
         .onAppear {
+            // Once per walk. A full-screen cover going away runs onAppear
+            // again, and a second start would begin a second Health workout
+            // that nothing ends.
+            guard !didStart else { return }
+            didStart = true
             manager.start()
             for pet in petStore.activePets {
                 petActiveSinceSteps[pet.id] = 0

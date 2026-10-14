@@ -213,4 +213,10 @@ struct PersonalRecordTests {
         #expect(entry.routeName == "Nala's Indoor Walk")
         #expect(entry.estimatedSteps == 4000)
     }
+
+    // Under a minute, an indoor walk can set Most steps but not Longest.
+    @Test func indoorWalkUnderAMinute_setsNoTimeRecord() {
+        let s = session(distance: 300, elapsed: 59, activityType: "stationary", steps: 400)
+        #expect(checkNewPRs(newSession: s, against: []) == [.mostSteps(400)])
+    }
 }
