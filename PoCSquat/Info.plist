@@ -40,6 +40,8 @@
 		<string>processing</string>
 		<string>remote-notification</string>
 	</array>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Wockett saves your walk card to your photo library when you choose Save Image.</string>
 	<key>NSMotionUsageDescription</key>
 	<string>Wockett counts your steps using the device motion sensor for an accurate step count, and also uses motion data during a walk to check that you're still on foot rather than in a vehicle.</string>
 	<key>NSCalendarsFullAccessUsageDescription</key>
