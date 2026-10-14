@@ -14,6 +14,16 @@ struct CommunityHubSummaryTests {
     /// jumped the badge order (CI, 2026-09-26). Noon earns neither.
     private let now: Date = Calendar.current.date(bySettingHour: 12, minute: 0, second: 0, of: Date()) ?? Date()
 
+    /// Badges also read counters from defaults (`wkt_manualEntries_count`,
+    /// bookmarks, wocketts). A fresh suite per test, so whatever the
+    /// simulator's standard defaults hold cannot change which badges count.
+    private let defaults: UserDefaults = {
+        let name = "CommunityHubSummaryTests.\(UUID().uuidString)"
+        let suite = UserDefaults(suiteName: name) ?? .standard
+        suite.removePersistentDomain(forName: name)
+        return suite
+    }()
+
     private func walk(km: Double, daysAgo: Double = 0, pets: [UUID: Double] = [:],
                       flagged: Bool = false) -> WalkSession {
         WalkSession(id: UUID(), routeName: "Walk", date: now.addingTimeInterval(-daysAgo * 86_400),
@@ -27,9 +37,9 @@ struct CommunityHubSummaryTests {
     @Test("A walk flagged as driven does not earn badges on the hub, as on the Badges screen")
     func flaggedWalksDoNotCount() {
         let driven = [walk(km: 60, flagged: true)]
-        #expect(CommunityHubSummary.earnedCount(walkBadges, sessions: driven, currentStreak: 0) == 0)
+        #expect(CommunityHubSummary.earnedCount(walkBadges, sessions: driven, currentStreak: 0, defaults: defaults) == 0)
         let walked = [walk(km: 60)]
-        #expect(CommunityHubSummary.earnedCount(walkBadges, sessions: walked, currentStreak: 0) >= 3,
+        #expect(CommunityHubSummary.earnedCount(walkBadges, sessions: walked, currentStreak: 0, defaults: defaults) >= 3,
                 "First Steps, Warming Up and On a Roll")
     }
 
@@ -39,12 +49,20 @@ struct CommunityHubSummaryTests {
         // late in the catalogue) is 96% there; On a Roll (50 km, early) is 72%.
         let nala = UUID()
         let sessions = (0..<24).map { walk(km: 1.5, daysAgo: Double($0) * 3, pets: [nala: 1500]) }
-        let next = CommunityHubSummary.nextBadges(walkBadges, sessions: sessions, currentStreak: 0)
+        let next = CommunityHubSummary.nextBadges(walkBadges, sessions: sessions, currentStreak: 0, defaults: defaults)
         #expect(next.map(\.badge.name).prefix(2) == ["Paw Prints", "On a Roll"])
         #expect(abs((next.first?.progress ?? 0) - 0.96) < 0.01)
         #expect(next.count == 3)
         #expect(zip(next, next.dropFirst()).allSatisfy { $0.progress >= $1.progress })
         #expect(!next.contains { $0.badge.name == "First Steps" }, "earned badges are not next")
+    }
+
+    @Test("Badge counters come from the defaults passed in, not the standard ones")
+    func badgeCountersReadTheGivenDefaults() {
+        #expect(CommunityHubSummary.earnedCount(walkBadges, sessions: [], currentStreak: 0, defaults: defaults) == 0)
+        defaults.set(1, forKey: "wkt_manualEntries_count")
+        #expect(CommunityHubSummary.earnedCount(walkBadges, sessions: [], currentStreak: 0, defaults: defaults) == 1,
+                "Historian, from this suite's manual-entry count")
     }
 
     // MARK: Challenge standing

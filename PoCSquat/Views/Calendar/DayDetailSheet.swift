@@ -7,6 +7,7 @@ struct DayDetailSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var showReminderError = false
     @State private var isAddingReminder = false
+    @State private var summarySession: WalkSession?
     // Computed, not stored: a stored private property makes the memberwise
     // initializer private on CI's Xcode 26.6 (it compiled on 27 locally).
     private var notifications: NotificationService { .shared }
@@ -138,6 +139,7 @@ struct DayDetailSheet: View {
             }
         }
         .presentationDetents([.large])
+        .historySummaryCover(item: $summarySession, history: sessions)
     }
 
     /// Derived from the saved reminders, so reopening the day still shows it
@@ -185,7 +187,14 @@ struct DayDetailSheet: View {
         .accessibilityElement(children: .combine)
     }
 
+    /// Opens the activity's summary, as an Activity History row does.
     private func sessionRow(_ session: WalkSession) -> some View {
+        Button { summarySession = session } label: { sessionRowContent(session) }
+            .buttonStyle(.plain)
+            .accessibilityHint("Opens the summary")
+    }
+
+    private func sessionRowContent(_ session: WalkSession) -> some View {
         HStack {
             VStack(alignment: .leading, spacing: 4) {
                 Text(session.routeName)
@@ -197,10 +206,13 @@ struct DayDetailSheet: View {
                 .font(.wktLabel).foregroundColor(.earthMuted)
             }
             Spacer()
-            Text("\(session.estimatedSteps.formatted()) steps")
-                .font(.wktLabel).foregroundColor(.earthGreen)
+            if ActivitySummaryContent.showsSteps(session) {
+                Text("\(session.estimatedSteps.formatted()) steps")
+                    .font(.wktLabel).foregroundColor(.earthGreen)
+            }
         }
         .padding(.vertical, 10)
+        .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
     }
 }

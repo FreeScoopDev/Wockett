@@ -675,7 +675,7 @@ private struct ActiveSessionScreen: View {
                 SessionStatTile(value: session.elapsedText, label: "time")
                     .accessibilityIdentifier("session.elapsed")
                 SessionStatTile(value: session.paceText, label: session.paceLabel)
-                if session.estimatedSteps > 0 {
+                if showsSteps {
                     SessionStatTile(value: session.estimatedSteps.formatted(), label: "steps")
                 }
                 if let cadence = session.cadence, cadence > 0 {
@@ -890,9 +890,14 @@ private struct ActiveSessionScreen: View {
 
     // MARK: - Finishing
 
+    /// A ride's steps are only distance / 0.762 m: not shown.
+    private var showsSteps: Bool {
+        session.estimatedSteps > 0 && ActivitySummaryContent.showsSteps(for: route.activityMode)
+    }
+
     private var finishSummary: String {
         var parts = [session.distanceText(session.totalDistanceCovered), session.elapsedText]
-        if session.estimatedSteps > 0 { parts.append("\(session.estimatedSteps.formatted()) steps") }
+        if showsSteps { parts.append("\(session.estimatedSteps.formatted()) steps") }
         return parts.joined(separator: " · ")
     }
 

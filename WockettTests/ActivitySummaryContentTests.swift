@@ -31,6 +31,15 @@ struct ActivitySummaryContentTests {
         #expect(ActivitySummaryContent.cardStats(for: ride) == [.distance, .time, .speed])
     }
 
+    // The live ride screen and the day, step and pet sheets ask this one rule.
+    @Test func stepsShowForEveryActivityButARide() {
+        #expect(!ActivitySummaryContent.showsSteps(session("cycling")))
+        for type in ["walking", "running", "stationary"] {
+            #expect(ActivitySummaryContent.showsSteps(session(type)), "\(type)")
+        }
+        #expect(!ActivitySummaryContent.showsSteps(for: .cycling))
+    }
+
     @Test func indoor_neverShowsPace() {
         let indoor = session("stationary", distance: 3048, steps: 4000)
         let stats = ActivitySummaryContent.stats(for: indoor)

@@ -26,19 +26,21 @@ enum CommunityHubSummary {
         sessions.filter { !$0.flaggedPossibleVehicle }
     }
 
-    static func earnedCount(_ badges: [WalkBadge], sessions: [WalkSession], currentStreak: Int) -> Int {
+    static func earnedCount(_ badges: [WalkBadge], sessions: [WalkSession], currentStreak: Int,
+                            defaults: UserDefaults = .standard) -> Int {
         let clean = badgeSessions(sessions)
-        return badges.filter { $0.isEarned(sessions: clean, currentStreak: currentStreak) }.count
+        return badges.filter { $0.isEarned(sessions: clean, currentStreak: currentStreak, defaults: defaults) }.count
     }
 
     /// Unearned badges closest to done, most progress first; `limit` of them.
     /// Badges with no progress yet come after any with some, in catalogue order.
     static func nextBadges(_ badges: [WalkBadge], sessions: [WalkSession], currentStreak: Int,
-                           limit: Int = 3) -> [BadgeProgress] {
+                           limit: Int = 3, defaults: UserDefaults = .standard) -> [BadgeProgress] {
         let clean = badgeSessions(sessions)
         let open = badges.enumerated().compactMap { index, badge -> (Int, BadgeProgress)? in
-            guard !badge.isEarned(sessions: clean, currentStreak: currentStreak) else { return nil }
-            return (index, BadgeProgress(badge: badge, progress: badge.progress(sessions: clean, currentStreak: currentStreak)))
+            guard !badge.isEarned(sessions: clean, currentStreak: currentStreak, defaults: defaults) else { return nil }
+            let progress = badge.progress(sessions: clean, currentStreak: currentStreak, defaults: defaults)
+            return (index, BadgeProgress(badge: badge, progress: progress))
         }
         return open
             .sorted { $0.1.progress != $1.1.progress ? $0.1.progress > $1.1.progress : $0.0 < $1.0 }

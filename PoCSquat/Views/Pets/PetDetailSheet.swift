@@ -86,7 +86,9 @@ struct PetDetailSheet: View {
                                             Spacer()
                                             VStack(alignment: .trailing, spacing: 2) {
                                                 Text(session.distanceText).font(.wktRowTitle).foregroundColor(pet.accentColor)
-                                                Text("\(session.estimatedSteps.formatted()) steps").font(.wktLabel).foregroundColor(.earthMuted)
+                                                if ActivitySummaryContent.showsSteps(session) {
+                                                    Text("\(session.estimatedSteps.formatted()) steps").font(.wktLabel).foregroundColor(.earthMuted)
+                                                }
                                             }
                                         }
                                         .padding(.vertical, 10)

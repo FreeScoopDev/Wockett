@@ -42,7 +42,9 @@ struct WalkBadge: Identifiable {
     let emoji: String
     let type: WalkBadgeType
 
-    func isEarned(sessions: [WalkSession], currentStreak: Int) -> Bool {
+    /// `defaults` holds the counters badges read (bookmarks, manual entries,
+    /// wocketts); tests pass a fresh suite so simulator leftovers can't leak in.
+    func isEarned(sessions: [WalkSession], currentStreak: Int, defaults: UserDefaults = .standard) -> Bool {
         switch type {
         case .distance(let km):
             return totalWalkKm(from: sessions) >= km
@@ -54,7 +56,7 @@ struct WalkBadge: Identifiable {
             return sessions.contains { Calendar.current.component(.hour, from: $0.date) >= 20 }
         case .badgeCount(let n):
             let others = walkBadges.filter { $0.id != id }
-            return others.filter { $0.isEarned(sessions: sessions, currentStreak: currentStreak) }.count >= n
+            return others.filter { $0.isEarned(sessions: sessions, currentStreak: currentStreak, defaults: defaults) }.count >= n
         case .rideKm(let km):
             return totalRideKm(from: sessions) >= km
         case .rideStreak(let days):
@@ -68,27 +70,27 @@ struct WalkBadge: Identifiable {
         case .communityRoutesCompleted(let n):
             return sessions.filter { $0.isCommunityRoute }.count >= n
         case .routesBookmarked(let n):
-            return UserDefaults.standard.integer(forKey: "wkt_routesBookmarked_count") >= n
+            return defaults.integer(forKey: "wkt_routesBookmarked_count") >= n
         case .customRouteCreated:
-            return UserDefaults.standard.bool(forKey: "wkt_customRouteCreated")
+            return defaults.bool(forKey: "wkt_customRouteCreated")
         case .customRouteShared:
-            return UserDefaults.standard.bool(forKey: "wkt_customRouteShared")
+            return defaults.bool(forKey: "wkt_customRouteShared")
         case .indoorWalks(let n):
             return sessions.filter { $0.activityType == ActivityMode.stationary.rawValue }.count >= n
         case .walkNotesAdded(let n):
             return sessions.filter { !$0.notes.isEmpty }.count >= n
         case .manualEntries(let n):
-            return UserDefaults.standard.integer(forKey: "wkt_manualEntries_count") >= n
+            return defaults.integer(forKey: "wkt_manualEntries_count") >= n
         case .wockettsGiven(let n):
-            return StreakStore.wockettsGiven() >= n
+            return StreakStore.wockettsGiven(defaults: defaults) >= n
         case .wockettsReceived(let n):
-            return UserDefaults.standard.integer(forKey: "wkt_wocketts_received") >= n
+            return defaults.integer(forKey: "wkt_wocketts_received") >= n
         case .challengeShared:
-            return UserDefaults.standard.bool(forKey: "wkt_challengeShared")
+            return defaults.bool(forKey: "wkt_challengeShared")
         }
     }
 
-    func progress(sessions: [WalkSession], currentStreak: Int) -> Double {
+    func progress(sessions: [WalkSession], currentStreak: Int, defaults: UserDefaults = .standard) -> Double {
         switch type {
         case .distance(let km):
             return min(1.0, totalWalkKm(from: sessions) / max(1, km))
@@ -96,10 +98,10 @@ struct WalkBadge: Identifiable {
             return min(1.0, Double(currentStreak) / Double(max(1, days)))
         case .earlyBird, .nightOwl, .crossTrainDay, .multiPetWalk,
              .customRouteCreated, .customRouteShared, .challengeShared:
-            return isEarned(sessions: sessions, currentStreak: currentStreak) ? 1.0 : 0.0
+            return isEarned(sessions: sessions, currentStreak: currentStreak, defaults: defaults) ? 1.0 : 0.0
         case .badgeCount(let n):
             let others = walkBadges.filter { $0.id != id }
-            let count = others.filter { $0.isEarned(sessions: sessions, currentStreak: currentStreak) }.count
+            let count = others.filter { $0.isEarned(sessions: sessions, currentStreak: currentStreak, defaults: defaults) }.count
             return min(1.0, Double(count) / Double(max(1, n)))
         case .rideKm(let km):
             return min(1.0, totalRideKm(from: sessions) / max(1, km))
@@ -110,18 +112,18 @@ struct WalkBadge: Identifiable {
         case .communityRoutesCompleted(let n):
             return min(1.0, Double(sessions.filter { $0.isCommunityRoute }.count) / Double(max(1, n)))
         case .routesBookmarked(let n):
-            return min(1.0, Double(UserDefaults.standard.integer(forKey: "wkt_routesBookmarked_count")) / Double(max(1, n)))
+            return min(1.0, Double(defaults.integer(forKey: "wkt_routesBookmarked_count")) / Double(max(1, n)))
         case .indoorWalks(let n):
             return min(1.0, Double(sessions.filter { $0.activityType == ActivityMode.stationary.rawValue }.count) / Double(max(1, n)))
         case .walkNotesAdded(let n):
             return min(1.0, Double(sessions.filter { !$0.notes.isEmpty }.count) / Double(max(1, n)))
         case .manualEntries(let n):
-            return min(1.0, Double(UserDefaults.standard.integer(forKey: "wkt_manualEntries_count")) / Double(max(1, n)))
+            return min(1.0, Double(defaults.integer(forKey: "wkt_manualEntries_count")) / Double(max(1, n)))
         case .wockettsGiven(let n):
-            let count = StreakStore.wockettsGiven()
+            let count = StreakStore.wockettsGiven(defaults: defaults)
             return min(1.0, Double(count) / Double(max(1, n)))
         case .wockettsReceived(let n):
-            return min(1.0, Double(UserDefaults.standard.integer(forKey: "wkt_wocketts_received")) / Double(max(1, n)))
+            return min(1.0, Double(defaults.integer(forKey: "wkt_wocketts_received")) / Double(max(1, n)))
         }
     }
 

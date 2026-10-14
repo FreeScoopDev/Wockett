@@ -64,15 +64,7 @@ struct WalkHistoryView: View {
         .sheet(item: $selectedSession) { session in
             WalkSessionDetailSheet(session: session, store: store)
         }
-        // The summary a walk ended on, again: same screen, same Share card,
-        // and the records it set at the time.
-        .fullScreenCover(item: $summarySession) { session in
-            ActivitySummaryView(
-                session: session,
-                moment: .history,
-                records: ActivitySummaryContent.recordsSet(by: session, in: store.sessions)
-            )
-        }
+        .historySummaryCover(item: $summarySession, history: store.sessions)
     }
 
     private var emptyState: some View {
