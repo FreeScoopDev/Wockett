@@ -254,6 +254,41 @@ final class SmokeTests: XCTestCase {
         return marks.joined(separator: " ") + ", alerts=\(app.alerts.count)" + timer
     }
 
+    // MARK: - 4b. Indoor walk ends on the shared summary
+
+    /// Indoor ends on the same full-screen summary as every other activity
+    /// (2026-10-13; it was a half sheet of its own). The simulator has no
+    /// pedometer, so the walk has 0 steps and is not saved: the summary still
+    /// appears, and Done must close it and the indoor screen together. A
+    /// hittable tab, not `exists`, proves both covers went (CLAUDE.md).
+    func testIndoorWalkEndsOnTheSummary() {
+        XCTAssertTrue(el("home.statCard").waitForExistence(timeout: 10))
+        let indoorTile = app.buttons["home.tile.indoor"]
+        XCTAssertTrue(indoorTile.waitForExistence(timeout: 15))
+        forceTap(indoorTile)
+        let start = app.buttons["home.start"]
+        XCTAssertTrue(start.waitForExistence(timeout: 5))
+        XCTAssertEqual(start.label, "Start Indoor")
+        start.tap()
+
+        let finish = app.buttons["indoor.finish"]
+        XCTAssertTrue(finish.waitForExistence(timeout: 15), "Start Indoor must open the indoor screen")
+        finish.tap()
+        XCTAssertTrue(el("summary.root").waitForExistence(timeout: 10),
+                      "Finishing an indoor walk must show the summary")
+        let done = app.buttons["summary.done"]
+        XCTAssertTrue(done.waitForExistence(timeout: 5))
+        done.tap()
+
+        let summaryGone = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "exists == NO"), object: el("summary.root"))
+        let homeHittable = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "hittable == YES"), object: tab("Home"))
+        XCTAssertEqual(XCTWaiter().wait(for: [summaryGone, homeHittable], timeout: 15), .completed,
+                       "Done must close the summary and the indoor screen. \(screenState())")
+        XCTAssertFalse(finish.exists, "the indoor screen must be gone too")
+    }
+
     // MARK: - 5. Routes tab reachability
 
     func testRoutesReachable() {

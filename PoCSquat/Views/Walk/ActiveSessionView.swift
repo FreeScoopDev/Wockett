@@ -112,8 +112,7 @@ private struct ActiveSessionScreen: View {
     @State private var scheduledBreakCount    = 0
     @State private var showHeatBanner         = false
     @State private var walkWeather: RouteWeather? = nil
-    @State private var petCompletions: [PetCompletion] = []
-    @State private var completedPetNames: [String] = []
+    @State private var summaryPetIds: [UUID] = []
     @State private var computedLegs: [RouteLeg] = []
     /// Bumped when the session turns a closed line round, once the legs for
     /// the new direction are ready: the map is rebuilt with its checkpoint pins
@@ -296,22 +295,19 @@ private struct ActiveSessionScreen: View {
             }
         }
         .fullScreenCover(isPresented: $showActivitySummary, onDismiss: {
-            if !summaryPRs.isEmpty { ReviewPrompter.shared.noteHighlight() }
+            // The summary's Done notes a record for the review prompt.
             endSessionOnDismiss = true
             dismiss()
         }) {
             if let s = summarySession {
                 ActivitySummaryView(
                     session: s,
-                    newPRs: summaryPRs,
+                    records: summaryPRs,
                     splits: summarySplits,
-                    petCompletions: petCompletions,
-                    petNames: completedPetNames,
+                    petIds: summaryPetIds,
                     onExcludeFromRouteStats: s.customRouteId != nil ? {
                         historyStore.updateCountsTowardRouteStats(id: s.id, counts: false)
-                    } : nil,
-                    historyStore: historyStore,
-                    routeStore: routeStore
+                    } : nil
                 )
             }
         }
@@ -1009,12 +1005,7 @@ private struct ActiveSessionScreen: View {
 
     private func showSummary(saved: WalkSession?, prList: [PRType]) {
         summaryPRs = prList
-        completedPetNames = petNamesFor(ids: Array(session.sessionPetIds))
-        let walkPets = petStore.pets.filter { session.sessionPetIds.contains($0.id) }
-        petCompletions = walkPets.map { pet in
-            let todaySteps = petStore.todaySteps(for: pet, in: historyStore.sessions)
-            return PetCompletion(pet: pet, progress: min(1.0, Double(todaySteps) / Double(max(1, pet.goalSteps))))
-        }
+        summaryPetIds = Array(session.sessionPetIds)
         summarySession = saved
         endSessionOnDismiss = true
         if saved != nil {
@@ -1051,10 +1042,6 @@ private struct ActiveSessionScreen: View {
     }
 
     // MARK: - Utilities
-
-    private func petNamesFor(ids: [UUID]) -> [String] {
-        ids.compactMap { id in petStore.pets.first { $0.id == id }?.name }
-    }
 
     private func saveCurrentRoute() {
         routeStore.save(CustomRoute(

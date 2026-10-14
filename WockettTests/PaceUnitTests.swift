@@ -11,11 +11,17 @@ struct PaceUnitTests {
     private let canada = Locale(identifier: "en_CA")
 
     @Test func fastestPaceRecord_usesMilesInTheUS() {
-        #expect(PRType.fastestPace(secsPerKm: 360).valueText(locale: us) == "9:39/mi")
+        #expect(PRType.fastest(secsPerKm: 360, mode: .walking).valueText(locale: us) == "9:39/mi")
     }
 
     @Test func fastestPaceRecord_usesKilometresInCanada() {
-        #expect(PRType.fastestPace(secsPerKm: 360).valueText(locale: canada) == "6:00/km")
+        #expect(PRType.fastest(secsPerKm: 360, mode: .walking).valueText(locale: canada) == "6:00/km")
+    }
+
+    // A ride's fastest is a speed: 120 s/km is 30 km/h, 18.6 mph.
+    @Test func fastestRideRecord_isASpeedInTheLocalesUnits() {
+        #expect(PRType.fastest(secsPerKm: 120, mode: .cycling).valueText(locale: canada) == "30.0 km/h")
+        #expect(PRType.fastest(secsPerKm: 120, mode: .cycling).valueText(locale: us) == "18.6 mph")
     }
 
     // 1,000 steps is 762 m; 600 s over 762 m is 787 s/km, 1,267 s/mi.

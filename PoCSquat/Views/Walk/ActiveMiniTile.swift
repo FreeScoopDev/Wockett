@@ -28,7 +28,8 @@ struct ActiveMiniTileContainer: View {
         }
         .confirmationDialog("End \(walkStore.activeRoute?.activityMode.sessionLabel ?? "Walk")?", isPresented: $showEndConfirmation, titleVisibility: .visible) {
             Button("Save & End \(walkStore.activeRoute?.activityMode.sessionLabel ?? "Walk")") {
-                walkStore.end(.save)
+                // The person is in the app: the root shows the summary.
+                walkStore.end(.save, presentSummary: true)
             }
             Button("Discard \(walkStore.activeRoute?.activityMode.sessionLabel ?? "Walk")", role: .destructive) {
                 walkStore.end(.discard)

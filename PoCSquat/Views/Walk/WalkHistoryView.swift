@@ -10,6 +10,7 @@ struct WalkHistoryView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var showManualEntry = false
     @State private var selectedSession: WalkSession?
+    @State private var summarySession: WalkSession?
     @State private var showActiveSessionAlert = false
 
     private var totalWalks: Int { store.sessions.count }
@@ -63,6 +64,15 @@ struct WalkHistoryView: View {
         .sheet(item: $selectedSession) { session in
             WalkSessionDetailSheet(session: session, store: store)
         }
+        // The summary a walk ended on, again: same screen, same Share card,
+        // and the records it set at the time.
+        .fullScreenCover(item: $summarySession) { session in
+            ActivitySummaryView(
+                session: session,
+                moment: .history,
+                records: ActivitySummaryContent.recordsSet(by: session, in: store.sessions)
+            )
+        }
     }
 
     private var emptyState: some View {
@@ -111,16 +121,18 @@ struct WalkHistoryView: View {
                     .listRowSeparator(.hidden)
             }
             ForEach(store.sessions) { session in
-                WalkHistoryRow(session: session) {
+                WalkHistoryRow(session: session, onOpen: {
+                    summarySession = session
+                }, onWalkAgain: {
                     let nav = session.toNavigableRoute()
                     guard ActiveWalkStore.shared.beginSession(route: nav) != nil else {
                         showActiveSessionAlert = true
                         return
                     }
                     dismiss()
-                } onInfo: {
+                }, onInfo: {
                     selectedSession = session
-                }
+                })
                 .listRowBackground(Color.earthCard)
                 .listRowSeparatorTint(Color.earthTrack)
             }
@@ -156,11 +168,8 @@ struct WalkSessionDetailSheet: View {
                             .frame(maxWidth: .infinity)
                             .padding(.top, 4)
 
-                        HStack(spacing: WktSpacing.betweenCards) {
-                            WktIconStatTile(value: session.distanceText, label: "Distance", symbol: .distance)
-                            WktIconStatTile(value: session.timeText, label: "Duration", symbol: .time)
-                            WktIconStatTile(value: "\(session.estimatedSteps.formatted())", label: "Steps", symbol: .walk)
-                        }
+                        // The summary's own tiles, following the type chosen below.
+                        ActivityStatTiles(session: sessionAsTyped)
 
                         WktSection(title: "Activity type") {
                             WktSegmentedPicker(selection: $selectedActivityType, options: [ActivityMode.walking, .running, .cycling, .stationary].map {
@@ -217,13 +226,20 @@ struct WalkSessionDetailSheet: View {
             }
         }
         .sheet(isPresented: $showActivityShare) {
-            ActivitySummaryShareSheet(session: session, historyStore: store)
+            ActivitySummaryShareSheet(session: sessionAsTyped, historyStore: store)
         }
         .presentationDetents([.medium, .large])
         .onAppear {
             notes = session.notes
             selectedActivityType = session.activityType
         }
+    }
+
+    /// The walk with the type chosen below, so the tiles and Share follow it.
+    private var sessionAsTyped: WalkSession {
+        var typed = session
+        if !selectedActivityType.isEmpty { typed.activityType = selectedActivityType }
+        return typed
     }
 
     /// "walk", "run", "ride": the type chosen above, so the copy follows it.
@@ -407,6 +423,8 @@ struct ManualWalkEntrySheet: View {
 
 struct WalkHistoryRow: View {
     let session: WalkSession
+    /// Opens the activity's summary.
+    let onOpen: () -> Void
     let onWalkAgain: () -> Void
     let onInfo: () -> Void
 
@@ -430,6 +448,18 @@ struct WalkHistoryRow: View {
 
     var body: some View {
         HStack(spacing: 14) {
+            Button(action: onOpen) { rowContent }
+                .buttonStyle(.plain)
+                .accessibilityElement(children: .combine)
+                .accessibilityHint("Opens the summary")
+                .accessibilityIdentifier("history.row")
+            actionButtons
+        }
+        .padding(.vertical, 8)
+    }
+
+    private var rowContent: some View {
+        HStack(spacing: 14) {
             WktIconBadge(symbol: rowIcon, tint: rowColor)
             VStack(alignment: .leading, spacing: 4) {
                 Text(session.routeName).font(.wktRowTitle).foregroundColor(.earthCream).lineLimit(1)
@@ -445,26 +475,29 @@ struct WalkHistoryRow: View {
                         .lineLimit(1)
                 }
             }
-            Spacer()
-            VStack(spacing: 8) {
-                Button { onWalkAgain() } label: {
-                    Image(wkt: .refresh)
-                        .wktIcon(.inline, tint: rowColor)
-                        .frame(width: 36, height: 36)
-                        .background(Color.earthRaised, in: Circle())
-                }
-                .buttonStyle(BounceButtonStyle(scale: 0.92))
-                .accessibilityLabel("Do this \((ActivityMode(rawValue: session.activityType) ?? .walking).noun) again")
-                Button { onInfo() } label: {
-                    Image(wkt: session.notes.isEmpty ? .notePlus : .noteText)
-                        .wktIcon(.inline, tint: .earthCream)
-                        .frame(width: 36, height: 36)
-                        .background(Color.earthRaised, in: Circle())
-                }
-                .buttonStyle(BounceButtonStyle(scale: 0.92))
-                .accessibilityLabel(session.notes.isEmpty ? "Add note" : "View note")
-            }
+            Spacer(minLength: 0)
         }
-        .padding(.vertical, 8)
+        .contentShape(Rectangle())
+    }
+
+    private var actionButtons: some View {
+        VStack(spacing: 8) {
+            Button { onWalkAgain() } label: {
+                Image(wkt: .refresh)
+                    .wktIcon(.inline, tint: rowColor)
+                    .frame(width: 36, height: 36)
+                    .background(Color.earthRaised, in: Circle())
+            }
+            .buttonStyle(BounceButtonStyle(scale: 0.92))
+            .accessibilityLabel("Do this \((ActivityMode(rawValue: session.activityType) ?? .walking).noun) again")
+            Button { onInfo() } label: {
+                Image(wkt: session.notes.isEmpty ? .notePlus : .noteText)
+                    .wktIcon(.inline, tint: .earthCream)
+                    .frame(width: 36, height: 36)
+                    .background(Color.earthRaised, in: Circle())
+            }
+            .buttonStyle(BounceButtonStyle(scale: 0.92))
+            .accessibilityLabel(session.notes.isEmpty ? "Add note" : "View note")
+        }
     }
 }

@@ -131,6 +131,14 @@ struct SquatCounterApp: App {
                         .zIndex(1)
                 }
             }
+            // A walk ended from outside the walk screen (the mini tile's
+            // Save & End): the same summary the walk screen ends on.
+            .fullScreenCover(item: Binding(
+                get: { ActiveWalkStore.shared.pendingSummary },
+                set: { ActiveWalkStore.shared.pendingSummary = $0 }
+            )) { request in
+                ActivitySummaryView(session: request.session, records: request.records)
+            }
             .environment(ActiveWalkStore.shared)
             .environment(communityRoutesModel)
             .environmentObject(petStore)
