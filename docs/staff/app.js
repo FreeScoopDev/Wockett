@@ -14,9 +14,12 @@ import {
   isOwnerRequestOnly, reasonLabelFor,
   groupNominations, nominationQueue, FEATURE_LENGTHS, BLURB_LIMIT, mapsLink, featuredRows, formatDistance,
   ACTIVITY_KINDS,
+  tallyWalkerReports, summaryRows, summaryRecordName, summaryStanding, verdictText, factLabel, valueLabel, countsOf,
+  MIN_REPORTERS, RETENTION_MONTHS, WALKER_FACTS,
 } from './logic.js';
 import {
   removeItem, dismissItem, suspendAccount, liftSuspension, itemsOf, OWNED_TYPES, featureTrail, unfeatureTrail, dismissNominations,
+  publishSummary, unpublishSummary, findExpiredReports, deleteExpiredReports,
 } from './actions.js';
 
 // MARK: - Helpers
@@ -65,7 +68,8 @@ function fail(error) {
 }
 
 function show(...nodes) {
-  main.replaceChildren(...nodes);
+  // replaceChildren would write a null or false as the text "null".
+  main.replaceChildren(...nodes.flat().filter((n) => n !== null && n !== undefined && n !== false));
 }
 
 // MARK: - Environment
@@ -172,7 +176,7 @@ function render() {
   renderSeq += 1;
   const seq = renderSeq;
   const screens = {
-    reports: renderReports, browse: renderBrowse, nominations: renderNominations, featured: renderFeatured,
+    reports: renderReports, browse: renderBrowse, nominations: renderNominations, featured: renderFeatured, walker: renderWalkerReports,
     activity: renderActivity, suspensions: renderSuspensions, history: renderHistory,
   };
   screens[view](seq).catch((error) => { if (current(seq)) fail(error); });
@@ -660,6 +664,201 @@ function confirmUnfeature(f) {
   openDialog(form);
 }
 
+// MARK: - Walker reports
+
+/** The summary's record name, or null for a trail key a summary can't be named after. */
+function summaryNameOrNull(trailKey, fact) {
+  try { return summaryRecordName(trailKey, fact); } catch { return null; }
+}
+
+function summaryLine(summary) {
+  if (!summary) return 'Not published';
+  const when = summary.computedAt ? ` on ${new Date(summary.computedAt).toLocaleDateString()}` : '';
+  return `Published: ${valueLabel(summary.fact, summary.value)} (${summary.walkers} walkers)${when}`;
+}
+
+async function renderWalkerReports(seq) {
+  show(el('p', { class: 'muted' }, 'Loading walker reports…'));
+  const [reports, summaries] = await Promise.all([
+    store.query('TrailFactReport', { max: 5000 }),
+    store.query('TrailFactSummary', { max: 5000 }),
+  ]);
+  if (!current(seq)) return;
+  const tally = tallyWalkerReports(reports.records);
+  // The query's index can lag a publish or un-publish by a little; fetching
+  // by name can't, so the summaries for trails with reports are fetched too.
+  const byName = new Map(summaryRows(summaries.records).map((r) => [r.recordName, r]));
+  const names = tally.trails.flatMap((t) => t.facts.map((f) => summaryNameOrNull(t.trailKey, f.fact))).filter(Boolean);
+  try {
+    const fetched = await store.fetch(names);
+    for (const name of names) {
+      if (fetched.has(name)) byName.set(name, summaryRows([fetched.get(name)])[0]);
+      else byName.delete(name);
+    }
+  } catch (error) {
+    say(`Couldn't check the published summaries one by one: ${describeError(error)}`, { error: true });
+  }
+  if (!current(seq)) return;
+
+  const shownNames = new Set();
+  const cards = tally.trails.map((t) => {
+    try {
+      return el('article', { class: 'card' },
+        el('div', {}, el('span', { class: 'chip' }, 'Trail'), el('span', { class: 'chip' }, t.region.toUpperCase())),
+        el('div', { class: 'title' }, `Trail key ${t.trailKey}`),
+        el('div', { class: 'small muted' }, `${t.reports} answer${t.reports === 1 ? '' : 's'}, latest ${ago(t.latestAt)}`),
+        t.facts.map((f) => {
+          const name = summaryNameOrNull(t.trailKey, f.fact);
+          if (name) shownNames.add(name);
+          const summary = name ? byName.get(name) ?? null : null;
+          const standing = summaryStanding(summary, f.verdict);
+          return el('div', { class: 'fact' },
+            el('div', { class: 'fact-head' }, factLabel(f.fact)),
+            el('div', { class: 'reasons' }, f.counts.map((c) => el('span', { class: `chip${c.walkers ? '' : ' faint'}` },
+              `${valueLabel(f.fact, c.value)} ×${c.walkers}`))),
+            el('div', { class: 'small' }, verdictText(f.fact, f.verdict)),
+            f.verdict.status === 'countedOnly' ? null : el('div', { class: `small${standing === 'unsupported' ? ' status error' : ' muted'}` },
+              summaryLine(summary),
+              standing === 'outdated' ? '. The reports now say something different: Publish updates it.' : '',
+              standing === 'unsupported' ? '. The reports no longer clear the rule: consider Un-publish.' : ''),
+            name ? null : el('div', { class: 'small muted' }, 'This trail key can\'t be published (unusual characters).'),
+            el('div', { class: 'actions' },
+              name && f.verdict.publish && standing !== 'current'
+                ? el('button', { class: 'btn primary', onclick: () => confirmPublish(t.trailKey, f, summary) }, summary ? 'Publish update' : 'Publish')
+                : null,
+              summary ? el('button', { class: 'btn', onclick: () => confirmUnpublish(summary) }, 'Un-publish') : null));
+        }));
+    } catch (error) {
+      console.error(error);
+      return el('article', { class: 'card' }, el('div', { class: 'title' }, 'Walker reports this page can\'t show'),
+        el('div', { class: 'small muted' }, t.trailKey));
+    }
+  });
+  // Summaries with no reports left (deleted as old, say): still shown in the app until un-published.
+  const orphans = [...byName.values()].filter((r) => !shownNames.has(r.recordName));
+  const orphanCards = orphans.map((r) => el('article', { class: 'card' },
+    el('div', {}, el('span', { class: 'chip' }, 'Published'), r.known ? null : el('span', { class: 'chip warn' }, 'Unknown fact or value')),
+    el('div', { class: 'title' }, `Trail key ${r.trailKey ?? '?'}`),
+    el('div', {}, `${factLabel(r.fact)}: ${summaryLine(r)}`),
+    el('div', { class: 'small muted' }, 'No walker reports left for this. It stays in the app until you un-publish it.'),
+    el('div', { class: 'actions' }, el('button', { class: 'btn', onclick: () => confirmUnpublish(r) }, 'Un-publish'))));
+
+  show(el('div', { class: 'toolbar' },
+    el('div', { class: 'grow title' }, tally.trails.length
+      ? `${tally.trails.length} trail${tally.trails.length === 1 ? '' : 's'} with walker reports` : 'No walker reports'),
+    el('button', { class: 'btn', onclick: render }, 'Refresh'),
+    el('button', { class: 'btn danger', onclick: (e) => confirmDeleteOld(e.target) }, `Delete reports older than ${RETENTION_MONTHS} months`)),
+  el('p', { class: 'small muted' },
+    `A fact can be published when at least ${MIN_REPORTERS} walkers answered and at least 2/3 of them gave the same answer; `
+    + 'a tie or a split publishes nothing. Each walker counts once per trail and fact. The app shows only what you publish, '
+    + `as the answer and the number of walkers; never who answered. “${WALKER_FACTS.liked.label}” is counted here only: `
+    + 'no summary is published for it and the app doesn\'t show it yet (Joe\'s decision, 2026-10-15).'),
+  tally.ignored || tally.unattributed ? el('p', { class: 'small muted' },
+    tally.ignored ? `${tally.ignored} report${tally.ignored === 1 ? '' : 's'} with an unknown trail, fact or answer ignored. ` : '',
+    tally.unattributed ? `${tally.unattributed} report${tally.unattributed === 1 ? '' : 's'} with no known walker left out.` : '') : null,
+  ...cards,
+  tally.trails.length ? null : el('p', { class: 'muted' }, 'When walkers answer “Help the next walker” after a hike, it shows up here.'),
+  orphanCards.length ? el('div', { class: 'title' }, 'Published, with no reports left') : null,
+  ...orphanCards,
+  reports.more ? el('p', { class: 'muted small' }, 'Showing the newest 5,000 reports; counts may be low for older trails.') : null);
+}
+
+function confirmPublish(trailKey, factRow, summary) {
+  const { verdict, fact } = factRow;
+  const form = el('form', { method: 'dialog' },
+    el('h2', { class: 'title', id: 'dialog-title' }, `Publish “${valueLabel(fact, verdict.value)}” for ${trailKey}?`),
+    el('p', {}, `Everyone sees it on this trail's facts as what walkers say, with “${verdict.walkers} walkers”, after their next daily refresh. `
+      + 'Nothing about who answered is published.'),
+    summary ? el('p', { class: 'small muted' }, `Replaces: ${summaryLine(summary)}.`) : null,
+    el('div', { class: 'actions' },
+      el('button', { class: 'btn', value: 'cancel', formnovalidate: true }, 'Cancel'),
+      el('button', { class: 'btn primary', value: 'publish' }, 'Publish')));
+  form.addEventListener('submit', async (event) => {
+    if (event.submitter?.value !== 'publish') return;
+    event.preventDefault();
+    for (const b of form.querySelectorAll('button')) b.disabled = true;
+    try {
+      await publishSummary(store, { trailKey, fact, counts: countsOf(factRow) });
+      dialog.close();
+      say(`Published ${factLabel(fact)}: ${valueLabel(fact, verdict.value)} for ${trailKey}.`);
+      setTimeout(() => render(), 600);
+    } catch (error) {
+      dialog.close();
+      fail(error);
+    }
+  });
+  openDialog(form);
+}
+
+function confirmUnpublish(summary) {
+  const form = el('form', { method: 'dialog' },
+    el('h2', { class: 'title', id: 'dialog-title' }, `Un-publish ${factLabel(summary.fact)} for ${summary.trailKey}?`),
+    el('p', {}, `${summaryLine(summary)}. Phones drop it at their next refresh. The walker reports stay; you can publish again.`),
+    el('label', {}, 'Note (optional)', el('textarea', { name: 'note', maxlength: 1000 })),
+    el('div', { class: 'actions' },
+      el('button', { class: 'btn', value: 'cancel', formnovalidate: true }, 'Cancel'),
+      el('button', { class: 'btn danger', value: 'unpublish' }, 'Un-publish')));
+  form.addEventListener('submit', async (event) => {
+    if (event.submitter?.value !== 'unpublish') return;
+    event.preventDefault();
+    for (const b of form.querySelectorAll('button')) b.disabled = true;
+    try {
+      await unpublishSummary(store, { trailKey: summary.trailKey, fact: summary.fact, recordName: summary.recordName, note: form.elements.note.value });
+      dialog.close();
+      say(`Un-published ${factLabel(summary.fact)} for ${summary.trailKey}.`);
+      setTimeout(() => render(), 600);
+    } catch (error) {
+      dialog.close();
+      fail(error);
+    }
+  });
+  openDialog(form);
+}
+
+async function confirmDeleteOld(button) {
+  button.disabled = true;
+  say('Counting old walker reports…');
+  let found;
+  try {
+    found = await findExpiredReports(store);
+  } catch (error) {
+    fail(error);
+    return;
+  } finally {
+    button.disabled = false;
+  }
+  say('');
+  const { cutoff, records, more } = found;
+  const date = new Date(cutoff).toLocaleDateString();
+  const n = records.length;
+  const form = el('form', { method: 'dialog' },
+    el('h2', { class: 'title', id: 'dialog-title' }, n
+      ? `Delete ${n} walker report${n === 1 ? '' : 's'} made before ${date}?`
+      : `No walker reports older than ${RETENTION_MONTHS} months`),
+    n ? el('p', {}, `They are older than ${RETENTION_MONTHS} months, how long walker reports are kept (Joe, 2026-10-15). `
+      + 'This can\'t be undone. Published summaries stay until you un-publish them.') : el('p', {}, `Nothing was made before ${date}.`),
+    more ? el('p', { class: 'small muted' }, 'There are more than one load holds: run this again afterwards.') : null,
+    el('div', { class: 'actions' },
+      el('button', { class: 'btn', value: 'cancel', formnovalidate: true }, n ? 'Cancel' : 'Close'),
+      n ? el('button', { class: 'btn danger', value: 'delete' }, `Delete ${n} report${n === 1 ? '' : 's'}`) : null));
+  form.addEventListener('submit', async (event) => {
+    if (event.submitter?.value !== 'delete') return;
+    event.preventDefault();
+    for (const b of form.querySelectorAll('button')) b.disabled = true;
+    try {
+      const out = await deleteExpiredReports(store, { records, cutoff });
+      dialog.close();
+      if (out.error) say(`Deleted ${out.deleted} of ${n} old reports, then: ${describeError(out.error)}. Run it again.`, { error: true });
+      else say(`Deleted ${out.deleted} walker report${out.deleted === 1 ? '' : 's'} made before ${date}.`);
+      setTimeout(() => render(), 600);
+    } catch (error) {
+      dialog.close();
+      fail(error);
+    }
+  });
+  openDialog(form);
+}
+
 // MARK: - Suspensions
 
 async function renderSuspensions(seq) {
@@ -761,7 +960,24 @@ async function renderActivity(seq) {
 
 const ACTION_LABELS = {
   removed: 'Removed', dismissed: 'Dismissed', suspended: 'Suspended', lifted: 'Lifted', featured: 'Featured', unfeatured: 'Unfeatured',
+  published: 'Published', unpublished: 'Un-published', expired: 'Deleted old reports',
 };
+
+const TARGET_LABELS = { account: 'Account', trail: 'Trail', trailFact: 'Walker facts', walkerReports: 'Walker reports' };
+
+/** "nc:w1 · Dogs: Dogs on leash (4 walkers)" from a walker-facts action's snapshot. */
+function walkerSummary(f) {
+  try {
+    const s = JSON.parse(f.snapshot ?? '{}');
+    if (f.targetType === 'walkerReports') {
+      return `${s.count ?? f.reportCount ?? 0} reports made before ${new Date(s.cutoff).toLocaleDateString()}`;
+    }
+    const answer = s.value ? `${valueLabel(s.fact, s.value)} (${s.walkers} walkers)` : '';
+    return [s.trailKey, [factLabel(s.fact), answer].filter(Boolean).join(': ')].filter(Boolean).join(' · ');
+  } catch {
+    return '';
+  }
+}
 
 /** "Lake Loop" from a trail action's snapshot. */
 function trailSummary(snapshot) {
@@ -797,13 +1013,16 @@ async function renderHistory(seq) {
       snapshot = el('details', {}, el('summary', {}, f.action === 'removed' ? 'What was removed' : 'Details'), el('pre', {}, pretty));
     }
     return el('article', { class: 'card' },
-      el('div', {}, el('span', { class: 'chip' }, (Object.hasOwn(TYPES, f.targetType ?? '') ? TYPES[f.targetType].label : (f.targetType === 'account' ? 'Account' : f.targetType === 'trail' ? 'Trail' : (f.targetType || 'Item')))),
+      el('div', {}, el('span', { class: 'chip' }, (Object.hasOwn(TYPES, f.targetType ?? '') ? TYPES[f.targetType].label : (Object.hasOwn(TARGET_LABELS, f.targetType ?? '') ? TARGET_LABELS[f.targetType] : (f.targetType || 'Item')))),
         el('span', { class: `chip${['removed', 'suspended'].includes(f.action) ? ' warn' : ''}` }, (Object.hasOwn(ACTION_LABELS, f.action ?? '') ? ACTION_LABELS[f.action] : 'Action'))),
       f.action === 'suspended' ? el('div', {}, suspensionSummary(f.snapshot)) : null,
       f.targetType === 'trail' ? el('div', {}, trailSummary(f.snapshot)) : null,
+      f.targetType === 'trailFact' || f.targetType === 'walkerReports' ? el('div', {}, walkerSummary(f)) : null,
       f.targetType === 'trail'
         ? (f.reportCount ? el('div', {}, `${f.reportCount} nomination${f.reportCount === 1 ? '' : 's'}`) : null)
-        : el('div', {}, f.reason ? reasonLabel(f.reason) : 'No reason', f.reportCount ? ` · ${f.reportCount} report${f.reportCount === 1 ? '' : 's'}` : ''),
+        : f.targetType === 'trailFact' || f.targetType === 'walkerReports'
+          ? null
+          : el('div', {}, f.reason ? reasonLabel(f.reason) : 'No reason', f.reportCount ? ` · ${f.reportCount} report${f.reportCount === 1 ? '' : 's'}` : ''),
       f.note ? el('div', {}, `“${f.note}”`) : null,
       el('div', { class: 'small muted' }, `${new Date(a.created).toLocaleString()} · ${f.targetRecordName}`),
       snapshot);

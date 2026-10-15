@@ -25,8 +25,17 @@
   (Console → Data → Users → the record → Roles).
 - `TrailPublisher`: writes trail region packs.
 
-`Suspension` is the one type everyone reads but only a Moderator writes:
-every phone needs the list to hide suspended accounts' content.
+`Suspension`, `FeaturedTrail` and `TrailFactSummary` are the types everyone
+reads but only a Moderator writes. `TrailFactReport`, like `TrailNomination`
+and `CommunityReport`, is the reverse: any signed-in user creates one, only a
+Moderator reads it, because grouped by creator, readable reports would list
+the trails one account walked.
+
+A type with grants like these is added to Development by importing this file
+(step 1 above), or by hand in the Console. Not by a Debug build saving a
+record: that creates the type with CloudKit's default grants, under which
+everyone can read it. `cloudkit-schema-check.sh` checks only the `CD_` types;
+compare hand-written types and their grants with a Production export by hand.
 
 `cktool` runs as the developer and ignores roles, so a permission rule is
 proved only from an ordinary account: Console → Act As iCloud Account, or a

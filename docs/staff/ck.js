@@ -68,8 +68,12 @@ export function hasMorePages(response) {
   return Boolean(response?.moreComing ?? response?.moreRecordsComing ?? response?.continuationMarker);
 }
 
-/** The query CloudKit JS is sent: newest first, optional equality and age filters. */
-export function buildQuery(recordType, { equals, sinceMs } = {}) {
+/**
+ * The query CloudKit JS is sent: newest first, optional equality and age
+ * filters. `sinceMs` keeps records created at or after it, `beforeMs` records
+ * created before it.
+ */
+export function buildQuery(recordType, { equals, sinceMs, beforeMs } = {}) {
   const filterBy = [];
   if (equals) {
     filterBy.push({ fieldName: equals[0], comparator: 'EQUALS', fieldValue: { value: equals[1] } });
@@ -77,6 +81,10 @@ export function buildQuery(recordType, { equals, sinceMs } = {}) {
   if (sinceMs !== undefined) {
     filterBy.push({ systemFieldName: 'createdTimestamp', comparator: 'GREATER_THAN_OR_EQUALS',
                     fieldValue: { value: sinceMs, type: 'TIMESTAMP' } });
+  }
+  if (beforeMs !== undefined) {
+    filterBy.push({ systemFieldName: 'createdTimestamp', comparator: 'LESS_THAN',
+                    fieldValue: { value: beforeMs, type: 'TIMESTAMP' } });
   }
   return { recordType, filterBy, sortBy: [{ systemFieldName: 'createdTimestamp', ascending: false }] };
 }
@@ -115,6 +123,20 @@ export function reportedByAuthor(reportRecordName, authorAccount) {
   return Boolean(filer && authorAccount && filer === authorAccount);
 }
 
+/**
+ * Walker reports: who made each one, as a token that means nothing outside
+ * this page load (`walker-1`, `walker-2`, …), so the page can count each
+ * walker once without ever holding the account. The same account gets the
+ * same token for as long as the page is open.
+ */
+const reporterTokens = new Map();
+
+export function reporterToken(account) {
+  if (typeof account !== 'string' || !account) return undefined;
+  if (!reporterTokens.has(account)) reporterTokens.set(account, `walker-${reporterTokens.size + 1}`);
+  return reporterTokens.get(account);
+}
+
 /** Every page of a query, up to `max` records. `more` says some were left out. */
 export async function pagedQuery(db, query, { max = 1000, pageSize = 200 } = {}) {
   const raw = [];
@@ -128,7 +150,15 @@ export async function pagedQuery(db, query, { max = 1000, pageSize = 200 } = {})
     for (const r of raw) if (r.created?.userRecordName) reportFilers.set(r.recordName, r.created.userRecordName);
   }
   const kept = query.recordType === 'TrailNomination' ? onePerNominator(raw) : raw;
-  return { records: kept.slice(0, max).map(plain), more: hasMorePages(response) || raw.length > max };
+  const records = kept.slice(0, max).map((r) => {
+    const out = plain(r);
+    if (r.recordType === 'TrailFactReport') {
+      const token = reporterToken(r.created?.userRecordName);
+      if (token) out.reporter = token;
+    }
+    return out;
+  });
+  return { records, more: hasMorePages(response) || raw.length > max };
 }
 
 /**
@@ -168,10 +198,11 @@ export function connect({ CloudKit, containerIdentifier, apiToken, environment }
 
     /**
      * Records of `recordType`, newest first, following pages up to `max`.
-     * `equals` is [field, value]; `sinceMs` keeps records created since then.
+     * `equals` is [field, value]; `sinceMs` keeps records created since then,
+     * `beforeMs` records created before then.
      */
-    query(recordType, { equals, sinceMs, max = 1000, pageSize = 200 } = {}) {
-      return pagedQuery(db, buildQuery(recordType, { equals, sinceMs }), { max, pageSize });
+    query(recordType, { equals, sinceMs, beforeMs, max = 1000, pageSize = 200 } = {}) {
+      return pagedQuery(db, buildQuery(recordType, { equals, sinceMs, beforeMs }), { max, pageSize });
     },
 
     fetch: (recordNames) => fetchExisting(db, recordNames),

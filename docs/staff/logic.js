@@ -8,6 +8,10 @@
 // Who created a report is never part of it: the dashboard never shows who
 // reported something.
 
+import { WALKER_FACTS } from './walker-facts.js';
+
+export { WALKER_FACTS };
+
 /** The community types a moderator acts on, keyed by the app's `targetType`. */
 export const TYPES = {
   route:     { recordType: 'SharedRoute',       label: 'Route' },
@@ -154,7 +158,7 @@ export function reopenFailedRemovals(groups, live) {
 }
 
 /** Action targets that aren't community items, so never close reports. */
-export const NON_ITEM_TARGETS = ['trail', 'account'];
+export const NON_ITEM_TARGETS = ['trail', 'account', 'trailFact', 'walkerReports'];
 
 /**
  * Open groups, newest report first, or most reported first (ties: newest).
@@ -263,7 +267,7 @@ export function buildSnapshot(item, limit = SNAPSHOT_LIMIT) {
   return json;
 }
 
-export const ACTIONS = ['removed', 'dismissed', 'suspended', 'lifted', 'featured', 'unfeatured'];
+export const ACTIONS = ['removed', 'dismissed', 'suspended', 'lifted', 'featured', 'unfeatured', 'published', 'unpublished', 'expired'];
 
 /** The fields of a `ModerationAction` record. */
 export function actionFields({ target, type, action, reason = '', note = '', reportCount = 0, snapshot = '' }) {
@@ -322,6 +326,7 @@ export const ACTIVITY_KINDS = [
   { key: 'name', label: 'New community names', recordType: 'CommunityName' },
   { key: 'report', label: 'Reports', recordType: 'CommunityReport' },
   { key: 'nomination', label: 'Trail nominations', recordType: 'TrailNomination' },
+  { key: 'walkerReport', label: 'Walker reports', recordType: 'TrailFactReport' },
   { key: 'action', label: 'Moderation actions', recordType: 'ModerationAction' },
 ];
 
@@ -715,4 +720,239 @@ export function featuredRows(records, now) {
       };
     })
     .sort((a, b) => b.created - a.created);
+}
+
+// MARK: - Walker reports (spec feat/trail-walker-reports)
+//
+// After a hike, walkers answer a few chips about the trail (walker-facts.js).
+// Each answer is a `TrailFactReport` that only a Moderator can read: grouped
+// by creator, world-readable reports would be a list of the trails one
+// account walked. Here they are counted per trail and fact, Joe's rule says
+// whether the walkers agree, and Publish writes a `TrailFactSummary` that
+// everyone reads. A summary holds the trail key, its region, the fact, the
+// winning value, the number of walkers and when it was computed. Nothing
+// about who reported.
+//
+// A report record here carries `reporter`: an opaque token ck.js gives each
+// creator for this page load (`walker-1`, …), never the account itself. It
+// is used only to count each walker once.
+
+/** Joe's rule (2026-10-15): at least this many distinct walkers answered the fact… */
+export const MIN_REPORTERS = 3;
+/** …and at least this share of them (2/3, kept as a fraction so 2 of 3 is exact) gave one value. */
+export const AGREEMENT = Object.freeze({ numerator: 2, denominator: 3 });
+/** Reports older than this many months are deleted from the dashboard (Joe, 2026-10-15). */
+export const RETENTION_MONTHS = 12;
+
+/** Whether `fact` is one of the closed vocabulary's facts. */
+export function knownFact(fact) {
+  return typeof fact === 'string' && Object.hasOwn(WALKER_FACTS, fact);
+}
+
+/** Whether `value` is one of `fact`'s values. */
+export function knownValue(fact, value) {
+  return knownFact(fact) && typeof value === 'string' && Object.hasOwn(WALKER_FACTS[fact].values, value);
+}
+
+/** Whether a summary may ever be published for `fact` (`liked` may not). */
+export function isPublishableFact(fact) {
+  return knownFact(fact) && WALKER_FACTS[fact].publish === true;
+}
+
+export function factLabel(fact) {
+  return knownFact(fact) ? WALKER_FACTS[fact].label : String(fact ?? '');
+}
+
+export function valueLabel(fact, value) {
+  return knownValue(fact, value) ? WALKER_FACTS[fact].values[value] : String(value ?? '');
+}
+
+/**
+ * The verdict for one trail and fact from how many distinct walkers gave each
+ * value (`{ value: walkers }`). Pure, and the whole of Joe's rule:
+ * - `countedOnly`: the fact is never published (`liked`);
+ * - `tooFew`: fewer than MIN_REPORTERS walkers answered;
+ * - `tie`: two values share the most walkers (nothing wins a tie);
+ * - `split`: the top value has less than AGREEMENT of the walkers;
+ * - `ready`: publishable, with `value` and `agreeing`.
+ * `walkers` is everyone who answered the fact; it is what a summary states.
+ */
+export function walkerVerdict(fact, counts) {
+  const entries = Object.entries(counts ?? {})
+    .filter(([value, n]) => knownValue(fact, value) && Number.isInteger(n) && n > 0)
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  const walkers = entries.reduce((sum, [, n]) => sum + n, 0);
+  const base = { walkers, value: null, agreeing: entries[0]?.[1] ?? 0 };
+  if (!isPublishableFact(fact)) return { ...base, status: 'countedOnly', publish: false };
+  if (walkers < MIN_REPORTERS) return { ...base, status: 'tooFew', publish: false };
+  if (entries.length > 1 && entries[0][1] === entries[1][1]) return { ...base, status: 'tie', publish: false };
+  const [value, agreeing] = entries[0];
+  // agreeing / walkers >= numerator / denominator, in whole numbers.
+  if (agreeing * AGREEMENT.denominator < walkers * AGREEMENT.numerator) return { ...base, status: 'split', publish: false };
+  return { walkers, value, agreeing, status: 'ready', publish: true };
+}
+
+/** The verdict in words, for the dashboard. */
+export function verdictText(fact, verdict) {
+  switch (verdict.status) {
+    case 'ready':
+      return `Ready to publish: ${valueLabel(fact, verdict.value)} (${verdict.agreeing} of ${verdict.walkers} walkers agree)`;
+    case 'countedOnly':
+      return 'Counted only. No summary is published for this (Joe\'s decision, 2026-10-15); the app doesn\'t show it.';
+    case 'tooFew':
+      return `Not enough walkers yet: ${verdict.walkers} of the ${MIN_REPORTERS} needed`;
+    case 'tie':
+      return 'Walkers are tied, so nothing is published';
+    case 'split':
+      return `Walkers disagree: the most given answer has ${verdict.agreeing} of ${verdict.walkers}, under 2/3`;
+    default:
+      return '';
+  }
+}
+
+/**
+ * Reports counted per trail and fact. Each walker counts once per trail and
+ * fact, with their newest answer: the app names a report so CloudKit refuses a
+ * second, but any client can create records under other names. Reports with
+ * an unknown fact or value, or an impossible trail key, are ignored and
+ * counted in `ignored`; reports whose walker is unknown can't be counted once
+ * each, so they are left out and counted in `unattributed`.
+ * The region is the key's, never the report's own say-so.
+ */
+export function tallyWalkerReports(reports) {
+  const newest = new Map();
+  let ignored = 0;
+  let unattributed = 0;
+  for (const r of reports) {
+    const f = r.fields ?? {};
+    if (!isTrailKey(f.trailKey) || !knownValue(f.fact, f.value)) { ignored += 1; continue; }
+    if (typeof r.reporter !== 'string' || !r.reporter) { unattributed += 1; continue; }
+    const id = `${r.reporter}\n${f.trailKey}\n${f.fact}`;
+    const prev = newest.get(id);
+    if (!prev || r.created > prev.created) newest.set(id, r);
+  }
+  const trails = new Map();
+  for (const r of newest.values()) {
+    const { trailKey, fact, value } = r.fields;
+    let t = trails.get(trailKey);
+    if (!t) {
+      t = { trailKey, region: trailKey.slice(0, 2), latestAt: r.created, reports: 0, facts: new Map() };
+      trails.set(trailKey, t);
+    }
+    t.latestAt = Math.max(t.latestAt, r.created);
+    t.reports += 1;
+    const counts = t.facts.get(fact) ?? {};
+    counts[value] = (counts[value] ?? 0) + 1;
+    t.facts.set(fact, counts);
+  }
+  const factOrder = Object.keys(WALKER_FACTS);
+  return {
+    ignored,
+    unattributed,
+    trails: [...trails.values()].map((t) => ({
+      trailKey: t.trailKey,
+      region: t.region,
+      latestAt: t.latestAt,
+      reports: t.reports,
+      facts: [...t.facts.entries()]
+        .sort((a, b) => factOrder.indexOf(a[0]) - factOrder.indexOf(b[0]))
+        .map(([fact, counts]) => ({
+          fact,
+          counts: Object.keys(WALKER_FACTS[fact].values).map((value) => ({ value, walkers: counts[value] ?? 0 })),
+          verdict: walkerVerdict(fact, counts),
+        })),
+    })).sort((a, b) => b.latestAt - a.latestAt),
+  };
+}
+
+/**
+ * A trail key a summary can be named after: the region, a colon and a plain
+ * ref (`nc:w123`), so turning the colon into a dot can't make two keys one
+ * name. A key with dots, slashes or a second colon is refused, not guessed.
+ */
+export function isSummaryKey(key) {
+  return typeof key === 'string' && /^[a-z]{2}:[A-Za-z0-9_-]{1,80}$/.test(key);
+}
+
+/**
+ * `factsummary.dogs.nc.w123`: one record per trail and fact, so publishing
+ * again replaces it and Un-publish knows what to delete. The app can name it
+ * the same way.
+ */
+export function summaryRecordName(trailKey, fact) {
+  if (!isSummaryKey(trailKey)) throw new Error(`Can't name a summary for the trail key "${trailKey}".`);
+  if (!knownFact(fact)) throw new Error(`Unknown fact: ${fact}`);
+  const name = `factsummary.${fact}.${trailKey.replace(':', '.')}`;
+  if (!isValidRecordName(name)) throw new Error('Not a valid record name.');
+  return name;
+}
+
+/**
+ * The `TrailFactSummary` record's fields from one trail's counts for one
+ * fact (`{ value: walkers }`). The rule is applied here, never trusted from a
+ * caller, and the fields are built only from the key and the verdict:
+ * nothing else can reach them. Refuses anything the rule doesn't allow,
+ * including any `liked` summary.
+ */
+export function summaryFields(trailKey, fact, counts, now) {
+  if (!isSummaryKey(trailKey)) throw new Error(`Can't publish for the trail key "${trailKey}".`);
+  if (!isPublishableFact(fact)) throw new Error(`No summary is published for "${factLabel(fact)}".`);
+  const verdict = walkerVerdict(fact, counts);
+  if (!verdict.publish) throw new Error(`Not publishable: ${verdictText(fact, verdict)}.`);
+  if (!Number.isFinite(now)) throw new Error('Not a time.');
+  return {
+    trailKey,
+    region: trailKey.slice(0, 2),
+    fact,
+    value: verdict.value,
+    walkers: verdict.walkers,
+    computedAt: { value: now, type: 'TIMESTAMP' },
+  };
+}
+
+/** `{ value: walkers }` from a tallied fact's `counts` list. */
+export function countsOf(factRow) {
+  return Object.fromEntries((factRow?.counts ?? []).map((c) => [c.value, c.walkers]));
+}
+
+/** The published summaries, as plain rows keyed by record name. Unknown facts or values are kept, flagged. */
+export function summaryRows(records) {
+  return records.map((r) => ({
+    recordName: r.recordName,
+    trailKey: r.fields.trailKey,
+    fact: r.fields.fact,
+    value: r.fields.value,
+    walkers: r.fields.walkers,
+    computedAt: r.fields.computedAt ?? null,
+    created: r.created,
+    known: knownValue(r.fields.fact, r.fields.value),
+  }));
+}
+
+/**
+ * How a published summary stands against the reports now:
+ * `current` (same value and walkers), `outdated` (still ready, but a different
+ * value or count: Publish updates it), `unsupported` (the reports no longer
+ * clear the rule, or it's for a fact that is never published: Un-publish it).
+ */
+export function summaryStanding(summary, verdict) {
+  if (!summary) return null;
+  if (!verdict || !verdict.publish || !summary.known) return 'unsupported';
+  return summary.value === verdict.value && summary.walkers === verdict.walkers ? 'current' : 'outdated';
+}
+
+/**
+ * When the retention window starts: `months` calendar months before `now`,
+ * in UTC. A day the earlier month lacks rolls over (29 Feb 2028 → 1 Mar 2027).
+ */
+export function retentionCutoff(now, months = RETENTION_MONTHS) {
+  const d = new Date(now);
+  if (!Number.isFinite(d.getTime())) throw new Error('Not a time.');
+  d.setUTCMonth(d.getUTCMonth() - months);
+  return d.getTime();
+}
+
+/** Reports created strictly before `cutoff`: the ones to delete. */
+export function expiredReports(reports, cutoff) {
+  return reports.filter((r) => Number.isFinite(r.created) && r.created < cutoff);
 }

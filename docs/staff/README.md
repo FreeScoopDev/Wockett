@@ -10,7 +10,8 @@ write against the signed-in Apple ID's role.
 | --- | --- |
 | `index.html`, `styles.css` | The page |
 | `app.js` | The screens |
-| `logic.js` | The rules: grouping, open/resolved, snapshots, counts, route line |
+| `logic.js` | The rules: grouping, open/resolved, snapshots, counts, route line, the walker-reports rule |
+| `walker-facts.js` | What walkers can report about a trail: the one copy of the facts and answers |
 | `actions.js` | Remove and Dismiss, in order (snapshot first) |
 | `ck.js` | The only file that calls CloudKit JS |
 | `config.js` | Container and the public API tokens |
@@ -100,6 +101,23 @@ rules need an ordinary account to be proved.
   **Dismiss** clears it until it is nominated again. When nominations
   disagree on a trail's name or place, the card says so: check the map.
 - **Featured**: what is featured, until when, with Change and Unfeature.
+- **Walker reports**: what walkers answered after a hike ("Help the next
+  walker"), grouped by trail and fact, with how many walkers gave each
+  answer. Each walker counts once per trail and fact (their newest answer),
+  and who answered is never shown: the page only ever holds a token like
+  `walker-3` that means nothing outside this page load. A fact is **Ready to
+  publish** when at least 3 walkers answered and at least 2/3 gave the same
+  answer; a tie or split publishes nothing (`MIN_REPORTERS`, `AGREEMENT` in
+  `logic.js`). **Publish** writes a `TrailFactSummary` everyone can read:
+  the trail key, the fact, the answer, how many walkers answered, and when.
+  Publishing again replaces it (`factsummary.<fact>.<region>.<ref>`).
+  **Un-publish** deletes it; phones drop it at their next refresh. "How was
+  it?" (thumbs up or down) is counted but never published (Joe,
+  2026-10-15). **Delete reports older than 12 months** counts them, asks
+  you to confirm, then deletes only those; published summaries stay. Trail
+  keys are shown, not names: a report holds no name.
+  Summaries are keyed by trail key, so a trail whose key changes in a pack
+  rebuild loses its summaries.
 - **Activity**: counts for the last 7 and 30 days.
 - **History**: every action, with what was removed.
 

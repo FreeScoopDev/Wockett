@@ -52,6 +52,9 @@ main { max-width: 860px; margin: 0 auto; padding: 8px 16px 48px; }
   background: var(--raised); color: var(--muted); margin-right: 6px;
 }
 .chip.warn { color: var(--orange); }
+.chip.faint { opacity: .55; }
+.fact { display: grid; gap: 6px; padding-top: 10px; border-top: 1px solid var(--line); }
+.fact-head { font-weight: 800; }
 .title { font-weight: 800; font-size: 17px; overflow-wrap: anywhere; }
 .muted { color: var(--muted); }
 .small { font-size: 13px; }

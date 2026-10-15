@@ -280,6 +280,38 @@ DEFINE SCHEMA
         GRANT READ TO "_world"
     );
 
+    RECORD TYPE TrailFactReport (
+        "___createTime" TIMESTAMP QUERYABLE SORTABLE,
+        "___createdBy"  REFERENCE,
+        "___etag"       STRING,
+        "___modTime"    TIMESTAMP,
+        "___modifiedBy" REFERENCE,
+        "___recordID"   REFERENCE QUERYABLE,
+        fact            STRING,
+        region          STRING,
+        trailKey        STRING QUERYABLE,
+        value           STRING,
+        GRANT READ, WRITE TO Moderator,
+        GRANT CREATE TO "_icloud"
+    );
+
+    RECORD TYPE TrailFactSummary (
+        "___createTime" TIMESTAMP SORTABLE,
+        "___createdBy"  REFERENCE,
+        "___etag"       STRING,
+        "___modTime"    TIMESTAMP,
+        "___modifiedBy" REFERENCE,
+        "___recordID"   REFERENCE QUERYABLE,
+        computedAt      TIMESTAMP,
+        fact            STRING,
+        region          STRING,
+        trailKey        STRING QUERYABLE,
+        value           STRING,
+        walkers         INT64,
+        GRANT READ, CREATE, WRITE TO Moderator,
+        GRANT READ TO "_world"
+    );
+
     RECORD TYPE TrailNomination (
         "___createTime" TIMESTAMP SORTABLE,
         "___createdBy"  REFERENCE,
