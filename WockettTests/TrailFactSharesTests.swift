@@ -93,11 +93,14 @@ struct TrailFactSharesTests {
         #expect(TrailFactShares.read(fromJSON: json) == .invalid)
     }
 
-    @Test("Thousandths that sum to 1 only after rounding still read as valid")
-    func decodesFloatSums() {
-        // 0.1 + 0.2 + 0.7 is 0.9999999999999999 in Double.
-        let json = #"{"facts":{"v":1,"shares":{"smoothness":{"good":0.1,"bad":0.2,"unstated":0.7}}}}"#
-        #expect(TrailFactShares.read(fromJSON: json) != .invalid)
+    @Test("Shares may miss 1 by up to 0.005, not more", arguments: [
+        ("0.496", true), ("0.504", true), ("0.494", false), ("0.506", false)
+    ])
+    func sumTolerance(other: String, valid: Bool) {
+        // Two shares sum the same in either order: 0.5 + other is 0.996,
+        // 1.004 (within 0.005 of 1) or 0.994, 1.006 (outside).
+        let json = #"{"facts":{"v":1,"shares":{"smoothness":{"good":0.5,"bad":\#(other)}}}}"#
+        #expect((TrailFactShares.read(fromJSON: json) != .invalid) == valid)
     }
 
     @Test("Invalid shares make no claim: the card falls back to the row's flat tags")
@@ -171,6 +174,10 @@ struct TrailFactSharesTests {
         #expect(texts([row(1, length: 1_000, json: one)]) == ["Town of Cary"])
         let two = #"{"facts":{"shares":{"operator":{"Town of Cary":0.999,"Wake County":0.001}},"v":1},"operator":"Town of Cary"}"#
         #expect(texts([row(1, length: 1_000, json: two)]).isEmpty)
+        // One name in two casings agrees; the shown spelling is the first in
+        // sorted order, the same on every run ("TOWN…" sorts before "Town…").
+        let cased = #"{"facts":{"shares":{"operator":{"TOWN OF CARY":0.5,"Town of Cary":0.5}},"v":1}}"#
+        #expect(texts([row(1, length: 1_000, json: cased)]) == ["TOWN OF CARY"])
     }
 
     // MARK: 2b. "All sections" is every row of the trail key
@@ -190,6 +197,24 @@ struct TrailFactSharesTests {
         #expect(item.sections.map(\.id) == [1, 2, 3])
         #expect(TrailFacts.facts(for: item).contains { $0.kind == .surface } == false)
         #expect(surface([a]) == "Smooth")
+    }
+
+    @Test("On the bundled pack, a search that reaches one Walnut Creek section lists all 16 of its rows")
+    func groupedItemFromBundledPack() throws {
+        let url = try #require(Bundle.main.url(forResource: "nc", withExtension: "wktpack"))
+        let source = try BundledTrailSource(url: url)
+        let near = try #require(try source.trail(sourceRef: "w275289168"))
+        #expect(near.trailKey == "nc:w130332179")
+        // The same closure shape TrailFinder passes (its library looks the
+        // key up in the region's source).
+        let items = TrailListBuilder.items(from: [(near, 0)], grouped: true, wholeTrail: { section in
+            guard let key = section.trailKey else { return [] }
+            return (try? source.trails(key: key)) ?? []
+        })
+        let item = try #require(items.first)
+        #expect(item.sections.count == 16)
+        #expect(Set(item.sections.map(\.sourceRef)).count == 16)
+        #expect(TrailFacts.facts(for: item).isEmpty, "as the bundledPack test reads the key directly")
     }
 
     // MARK: 4/5. Old packs, mixed trails, and "states nothing"

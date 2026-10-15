@@ -6,8 +6,9 @@
   short smooth stretch: the 24.6 km American Tobacco Trail row said
   "Smooth" and "Lit at night" from ways covering 2% of it (it now reads
   "Uneven in places", and no lighting line, since part of it is mapped unlit),
-  and a 21.8 km Appalachian Trail row said "Walking path" and "Mapped as
-  wheelchair accessible" from 0.9% of it (now "Rough mountain path"). Lower
+  and a 21.8 km Appalachian Trail row said "Walking path" from 0.9% of it
+  and "Mapped as wheelchair accessible" from 0.3% (now "Rough mountain
+  path", and no access line). Lower
   Piney Trail reads "Includes rough mountain path": 12% of it is graded
   mountain_hiking. Joe's rules and thresholds are unchanged; only their input
   is. A trail with any section from a pack built before 1.6.0 keeps the old
