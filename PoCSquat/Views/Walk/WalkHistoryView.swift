@@ -484,7 +484,9 @@ struct WalkHistoryRow: View {
                     .background(Color.earthRaised, in: Circle())
             }
             .buttonStyle(BounceButtonStyle(scale: 0.92))
-            .accessibilityLabel("Do this \(session.wording.noun) again")
+            // Replaying starts a route walk, never a hike (only a trail's own
+            // Start makes one), so this names the activity, not "hike".
+            .accessibilityLabel("Do this \(session.wording.activityMode.noun) again")
             Button { onInfo() } label: {
                 Image(wkt: session.notes.isEmpty ? .notePlus : .noteText)
                     .wktIcon(.inline, tint: .earthCream)

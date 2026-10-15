@@ -211,7 +211,7 @@ struct SessionWording: Equatable {
     /// The Live Activity has its own copy (`WalkActivityAttributes.activityNoun`,
     /// shared with the widget, which cannot see this type): change both.
     var sessionLabel: String { isHike ? "Hike" : activityMode.sessionLabel }
-    /// "Hike complete!", or the activity's `displayName`.
+    /// "Hike" (as in "Hike complete!"), or the activity's `displayName`.
     var displayName: String { isHike ? "Hike" : activityMode.displayName }
     /// "hike", or the activity's `noun`.
     var noun: String { isHike ? "hike" : activityMode.noun }

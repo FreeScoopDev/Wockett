@@ -448,7 +448,7 @@ private struct ActiveSessionScreen: View {
             }
             if let approach = route.approach, session.arrivedAtTrail, !trailArrivalDismissed {
                 TrailArrivalBanner(trailName: approach.trailName,
-                                   activityMode: route.activityMode,
+                                   wording: route.wording,
                                    onStart: startTrailFromApproach,
                                    onDismiss: { trailArrivalDismissed = true })
                     .transition(.move(edge: .top).combined(with: .opacity))

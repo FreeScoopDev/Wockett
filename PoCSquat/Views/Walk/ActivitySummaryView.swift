@@ -117,7 +117,7 @@ struct ActivitySummaryView: View {
                         WktSecondaryButton(title: "Share this \(wording.noun)", symbol: .share) {
                             showActivityShare = true
                         }
-                        WktSecondaryButton(title: "Schedule this \(wording.noun) again", symbol: .calendarAdd) {
+                        WktSecondaryButton(title: "Schedule this \(mode.noun) again", symbol: .calendarAdd) {
                             showScheduleSheet = true
                         }
                     }

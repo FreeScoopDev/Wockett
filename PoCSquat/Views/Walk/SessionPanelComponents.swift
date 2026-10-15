@@ -426,18 +426,18 @@ struct OffTrailBanner: View {
 /// large text sizes.
 struct TrailArrivalBanner: View {
     let trailName: String
-    let activityMode: ActivityMode
+    let wording: SessionWording
     let onStart: () -> Void
     let onDismiss: () -> Void
 
     var body: some View {
         WktBanner(symbol: .routeTrail, tint: .earthGreen,
                   title: "You're at \(trailName)",
-                  detail: "Carry on along the trail from here. This \(activityMode.noun) keeps its time and distance.") {
-            WktPillButton(title: "Start trail \(activityMode.noun)", action: onStart)
+                  detail: "Carry on along the trail from here. This \(wording.noun) keeps its time and distance.") {
+            WktPillButton(title: "Start trail \(wording.noun)", action: onStart)
                 .accessibilityIdentifier("session.trailArrivalStart")
             WktPillButton(title: "Not now", tint: .earthCream, action: onDismiss)
-                .accessibilityHint("Hides this. The trail \(activityMode.noun) stays under More.")
+                .accessibilityHint("Hides this. The trail \(wording.noun) stays under More.")
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("session.trailArrival")

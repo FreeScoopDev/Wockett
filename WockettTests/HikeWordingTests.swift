@@ -40,29 +40,31 @@ struct HikeWordingTests {
     }
 
     private func section(_ id: Int64, _ coords: [CLLocationCoordinate2D], surface: String?,
-                         highway: String = "footway") -> TrailFeature {
+                         highway: String = "footway", difficulty: String? = nil) -> TrailFeature {
         let lats = coords.map(\.latitude), lons = coords.map(\.longitude)
         return TrailFeature(id: id, sourceID: "osm", sourceRef: "w\(id)", name: "Test Trail",
                             encodedPolyline: encode(coords), pointCount: coords.count,
                             lengthMeters: TrailWalkPlanner.length(coords),
                             bounds: TrailBounds(minLatitude: lats.min() ?? 0, minLongitude: lons.min() ?? 0,
                                                 maxLatitude: lats.max() ?? 0, maxLongitude: lons.max() ?? 0),
-                            surface: surface, difficulty: nil, dogAccess: .unknown, dogAccessProvenance: .default,
+                            surface: surface, difficulty: difficulty, dogAccess: .unknown, dogAccessProvenance: .default,
                             allowsFoot: true, allowsBike: highway == "cycleway", allowsHorse: false, isLoop: false,
                             tagsJSON: #"{"highway":"\#(highway)"}"#)
     }
 
     /// A one-section trail ~1 km long.
-    private func trail(surface: String?, highway: String = "footway") -> TrailListItem {
-        TrailListItem(id: "osm:w1", name: "Test Trail", sections: [section(1, line(11), surface: surface, highway: highway)],
+    private func trail(surface: String?, highway: String = "footway", difficulty: String? = nil) -> TrailListItem {
+        TrailListItem(id: "osm:w1", name: "Test Trail",
+                      sections: [section(1, line(11), surface: surface, highway: highway, difficulty: difficulty)],
                       distanceMeters: 0)
     }
 
     /// Two sections that chain end to end, so the planner walks them as one line.
-    private func group(_ a: (String?, String), _ b: (String?, String)) -> TrailListItem {
+    /// `difficulty` goes on the second section only.
+    private func group(_ a: (String?, String), _ b: (String?, String), difficulty: String? = nil) -> TrailListItem {
         TrailListItem(id: "osm:g", name: "Test Trail",
                       sections: [section(1, line(6), surface: a.0, highway: a.1),
-                                 section(2, line(6, offset: 5), surface: b.0, highway: b.1)],
+                                 section(2, line(6, offset: 5), surface: b.0, highway: b.1, difficulty: difficulty)],
                       distanceMeters: 0)
     }
 
@@ -70,24 +72,32 @@ struct HikeWordingTests {
 
     // MARK: Which trails are hikes
 
-    @Test("A trail is a hike unless it is mapped as paved or as a bike path")
+    @Test("A hike needs evidence: an unpaved surface or a hiking difficulty; paved and bike paths are walks")
     func classifier() {
-        #expect(trail(surface: "dirt").isHikeable)
+        #expect(trail(surface: "dirt").isHikeable, "unpaved, no difficulty: a hike")
         #expect(trail(surface: "gravel").isHikeable)
-        #expect(trail(surface: nil).isHikeable, "no surface tag: only a stated paved surface makes it a walk")
-        #expect(trail(surface: "something_new").isHikeable, "an unknown surface is not a stated paved one")
+        #expect(!trail(surface: nil).isHikeable, "no surface, no difficulty: a walk (an untagged urban footway)")
+        #expect(trail(surface: nil, difficulty: "hiking").isHikeable, "no surface but a hiking difficulty: a hike")
+        #expect(trail(surface: nil, difficulty: "mountain_hiking").isHikeable)
+        #expect(!trail(surface: nil, difficulty: "").isHikeable, "an empty difficulty is no evidence")
+        #expect(!trail(surface: "something_new").isHikeable, "an unknown surface is no surface information")
         #expect(!trail(surface: "asphalt").isHikeable, "a paved greenway stays a walk")
+        #expect(!trail(surface: "asphalt", difficulty: "hiking").isHikeable, "paved stays a walk, difficulty or not")
         #expect(!trail(surface: "concrete").isHikeable)
-        #expect(!trail(surface: "dirt", highway: "cycleway").isHikeable, "a bike path stays a walk, whatever its surface")
-        #expect(!trail(surface: nil, highway: "cycleway").isHikeable)
+        #expect(!trail(surface: "dirt", highway: "cycleway").isHikeable, "a bike path stays a walk, unpaved too")
+        #expect(!trail(surface: nil, highway: "cycleway", difficulty: "hiking").isHikeable)
     }
 
-    @Test("A grouped trail: sections that disagree on surface are a hike; all bike path is a walk")
+    @Test("A grouped trail: disagreeing surfaces need a difficulty; all bike path is a walk")
     func groupedClassifier() {
-        #expect(group(("asphalt", "footway"), ("dirt", "footway")).isHikeable, "mixed surfaces state no single paved surface")
-        #expect(!group(("asphalt", "footway"), ("asphalt", "footway")).isHikeable)
-        #expect(!group((nil, "cycleway"), (nil, "cycleway")).isHikeable)
-        #expect(group((nil, "cycleway"), (nil, "footway")).isHikeable, "only partly a bike path")
+        #expect(!group(("asphalt", "footway"), ("dirt", "footway")).isHikeable,
+                "disagreeing surfaces are no surface information, and there is no difficulty")
+        #expect(group(("asphalt", "footway"), ("dirt", "footway"), difficulty: "hiking").isHikeable,
+                "disagreeing surfaces with a difficulty on one section: a hike")
+        #expect(group(("dirt", "footway"), (nil, "footway")).isHikeable, "every stated surface is unpaved")
+        #expect(!group(("asphalt", "footway"), ("asphalt", "footway"), difficulty: "hiking").isHikeable)
+        #expect(!group((nil, "cycleway"), (nil, "cycleway"), difficulty: "hiking").isHikeable)
+        #expect(group(("dirt", "cycleway"), ("dirt", "footway")).isHikeable, "only partly a bike path")
     }
 
     // MARK: From the trail to the session
