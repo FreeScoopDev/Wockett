@@ -171,10 +171,16 @@ final class ActiveWalkStore {
         // Ignore trivial walks — same 50m threshold used by the Free Walk summary auto-save.
         guard completed || snapshot.totalDistanceCovered >= 50 else { return }
 
-        let path = Self.salvagedWaypoints(for: snapshot)
-        let elapsed = ActiveWalkSnapshotStore.salvagedElapsed(for: snapshot)
+        historyStore.add(Self.salvagedSession(from: snapshot))
+    }
 
-        let salvaged = WalkSession(
+    /// The history entry a stale or completed checkpoint becomes. Pure, so a
+    /// test can check what is saved (splits included) without the real
+    /// checkpoint file, which other tests use in parallel.
+    static func salvagedSession(from snapshot: ActiveWalkSnapshot) -> WalkSession {
+        let path = salvagedWaypoints(for: snapshot)
+        let elapsed = ActiveWalkSnapshotStore.salvagedElapsed(for: snapshot)
+        return WalkSession(
             id: UUID(),
             routeName: snapshot.route.name,
             date: snapshot.startTime,
@@ -186,9 +192,8 @@ final class ActiveWalkStore {
             activityType: snapshot.route.activityMode,
             steps: snapshot.liveSteps,
             customRouteId: snapshot.route.customRouteId,
-            unitSplits: Self.salvagedSplits(for: snapshot, elapsed: elapsed)
+            unitSplits: salvagedSplits(for: snapshot, elapsed: elapsed)
         )
-        historyStore.add(salvaged)
     }
 
     /// The splits a salvaged walk or run keeps: the whole units in its

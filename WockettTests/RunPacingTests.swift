@@ -396,4 +396,135 @@ struct RunPacingTests {
         let old = try JSONDecoder().decode(ActiveWalkSnapshot.self, from: JSONSerialization.data(withJSONObject: json))
         #expect(old.unitSplits == nil)
     }
+
+    // MARK: - Gaps from the test audit (2026-10-15)
+    //
+    // Each of these failed under a mutation the first tests let through.
+
+    private func steadyFrom0(_ pace: inout RollingPace, metersPerSecond: Double, to: TimeInterval) {
+        var t: TimeInterval = 0
+        while t <= to { pace.add(elapsed: t, distance: metersPerSecond * t); t += 5 }
+    }
+
+    @Test func minDuration_twentySecondsIsEnough() {
+        var pace = RollingPace()
+        steadyFrom0(&pace, metersPerSecond: 3, to: 20)
+        #expect(pace.secsPerKm(at: 19) == nil)
+        #expect(pace.secsPerKm(at: 21) != nil)
+    }
+
+    @Test func minDistance_thirtyMetresIsEnough() {
+        var pace = RollingPace()
+        steadyFrom0(&pace, metersPerSecond: 0.7, to: 120)   // 31.5 m in 45 s
+        #expect(pace.secsPerKm(at: 120) != nil)
+    }
+
+    @Test func windowStart_isInterpolated_afterManyFixes() throws {
+        // 2 m/s to 60 s, 4 m/s after; fixes every 10 s. At 100 s the window
+        // starts at 55 s, between the 50 s and 60 s fixes: 110 m there, so
+        // 170 m in 45 s. Pruning one fix too many loses the 50 s anchor.
+        var pace = RollingPace()
+        var t: TimeInterval = 0
+        while t <= 100 {
+            pace.add(elapsed: t, distance: t <= 60 ? 2 * t : 120 + 4 * (t - 60))
+            t += 10
+        }
+        let value = try #require(pace.secsPerKm(at: 100))
+        #expect(abs(value - 45 / 0.170) < 0.01)
+    }
+
+    @Test func finished_keepsExactlyATenth() throws {
+        var tracker = SplitTracker(unitMeters: 1000)
+        _ = tracker.add(elapsed: 300, distance: 1000)
+        let kept = try #require(tracker.finished(elapsed: 330, distance: 1100))
+        #expect(kept.splits.count == 2)
+    }
+
+    @Test func restore_keepsTheSavedUnit_andIgnoresAZeroOne() {
+        let miles = UnitSplits(unitMeters: 1609.344, splits: [])
+        #expect(SplitTracker(restoring: miles, unitMeters: 1000, elapsed: 100, distance: 500).unitMeters == 1609.344)
+        let corrupt = UnitSplits(unitMeters: 0, splits: [])
+        #expect(SplitTracker(restoring: corrupt, unitMeters: 1000, elapsed: 100, distance: 500).unitMeters == 1000)
+    }
+
+    @Test func restore_firstFixCrossingAUnit_interpolatesFromTheRestorePoint() {
+        let saved = UnitSplits(unitMeters: 1000, splits: [UnitSplit(distance: 1000, elapsed: 300)])
+        var tracker = SplitTracker(restoring: saved, unitMeters: 1000, elapsed: 400, distance: 1900)
+        #expect(tracker.add(elapsed: 420, distance: 2100) == [UnitSplit(distance: 2000, elapsed: 410)])
+    }
+
+    @Test func splitRows_partUnitPace_andAnHourLongSplit() {
+        let splits = UnitSplits(unitMeters: 1000, splits: [
+            UnitSplit(distance: 1000, elapsed: 3725),
+            UnitSplit(distance: 1500, elapsed: 3725 + 150)
+        ])
+        let rows = ActivitySummaryContent.splitRows(splits)
+        #expect(rows[0].time == "1:02:05")
+        #expect(rows[1].label == "0.50 km")
+        #expect(rows[1].pace == "5:00/km")
+    }
+
+    @Test func walkSession_codableRoundTripKeepsSplits() throws {
+        // AppModelContainer decodes [WalkSession] from JSON when migrating.
+        let splits = UnitSplits(unitMeters: 1000, splits: [UnitSplit(distance: 1000, elapsed: 330)])
+        let session = WalkSession(id: UUID(), routeName: "Run", date: Date(), elapsedTime: 400,
+                                  totalDistance: 1200, waypoints: [], lapCount: 1, isLoop: false,
+                                  activityType: "running", unitSplits: splits)
+        let back = try JSONDecoder().decode(WalkSession.self, from: JSONEncoder().encode(session))
+        #expect(back.unitSplits == splits)
+    }
+
+    @Test @MainActor func paused_hasNoCurrentPace() {
+        let mgr = NavigationSessionManager(route: route(.running))
+        drive(mgr, metersPerSecond: 3, to: 120)
+        #expect(mgr.currentPaceSecsPerKm != nil)
+        mgr.isPaused = true
+        #expect(mgr.currentPaceSecsPerKm == nil)
+        #expect(mgr.liveActivityState.currentPaceSecsPerKm == nil)
+    }
+
+    @Test @MainActor func salvagedSession_isSavedWithItsSplits() throws {
+        let snapshot = try checkpoint(.running, units: 1.5)
+        let unit = try #require(snapshot.unitSplits).unitMeters
+        let saved = ActiveWalkStore.salvagedSession(from: snapshot)
+        #expect(saved.unitSplits?.splits.first?.distance == unit)
+        #expect(saved.unitSplits?.splits.count == 2)
+    }
+
+    @Test func splitCues_sayEachSplitsOwnTime() {
+        // Two miles completed by one fix after a first mile that ended at
+        // 9:12: each cue's "Last mile" is that mile's own time.
+        let mile = WalkAudioCueService.metersPerMile
+        let cues = NavigationSessionManager.splitCues(
+            for: [UnitSplit(distance: 2 * mile, elapsed: 1120), UnitSplit(distance: 3 * mile, elapsed: 1660)],
+            after: 552, unitMeters: mile, mode: .running)
+        #expect(cues.count == 2)
+        #expect(cues[0].hasPrefix("Mile 2. Time 18 minutes 40 seconds. Last mile 9 minutes 28 seconds."))
+        #expect(cues[1].hasPrefix("Mile 3. Time 27 minutes 40 seconds. Last mile 9 minutes."))
+    }
+
+    @Test func splitCues_noneIndoors() {
+        #expect(NavigationSessionManager.splitCues(for: [UnitSplit(distance: 1000, elapsed: 400)], after: 0,
+                                                   unitMeters: 1000, mode: .stationary).isEmpty)
+    }
+
+    @Test @MainActor func liveActivity_sendsCurrentAndAverageSeparately() throws {
+        // A slow start then a faster stretch, so the two paces differ: the
+        // average is not sent in the current pace's place or the other way.
+        let mgr = NavigationSessionManager(route: route(.running))
+        mgr.writesSnapshots = false
+        mgr.speaksSplits = false
+        var t: TimeInterval = 0
+        while t <= 200 {
+            mgr.elapsedTime = t
+            mgr.totalDistanceCovered = t <= 100 ? 1.5 * t : 150 + 3.5 * (t - 100)
+            mgr.recordPacing()
+            t += 5
+        }
+        let state = mgr.liveActivityState
+        let current = try #require(state.currentPaceSecsPerKm)
+        let average = try #require(state.paceSecsPerKm)
+        #expect(abs(current - 1000 / 3.5) < 1)
+        #expect(abs(average - 200 / 0.5) < 1)
+    }
 }

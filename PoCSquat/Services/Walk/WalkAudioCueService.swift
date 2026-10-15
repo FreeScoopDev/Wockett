@@ -96,16 +96,9 @@ final class WalkAudioCueService: NSObject {
         return text
     }
 
-    // MARK: - Called by NavigationSessionManager when a split completes
-
-    /// Announces a completed split. The session's `SplitTracker` reports each
-    /// split once, a restored session included, so this keeps no count.
-    func announceSplit(number: Int, unitMeters: Double, elapsed: TimeInterval,
-                       splitSeconds: TimeInterval, mode: ActivityMode) {
-        guard isEnabled, mode != .stationary else { return }
-        speak(Self.splitCueText(split: number, unitMeters: unitMeters, elapsed: elapsed,
-                                splitSeconds: splitSeconds, mode: mode))
-    }
+    // A split's cue is built by `NavigationSessionManager.splitCues` and
+    // spoken through `announce`. The session's `SplitTracker` reports each
+    // split once, a restored session included, so nothing here keeps a count.
 
     /// One-shot announcements for discrete events (walk complete, PR set, checkpoint).
     func announce(_ message: String) {

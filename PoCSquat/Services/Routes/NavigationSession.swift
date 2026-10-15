@@ -887,15 +887,24 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
         // again (critic, 2026-10-14).
         writeSnapshot()
         guard speaksSplits else { return }
+        for cue in Self.splitCues(for: completed, after: previous,
+                                  unitMeters: splitTracker.unitMeters, mode: route.activityMode) {
+            WalkAudioCueService.shared.announce(cue)
+        }
+    }
+
+    /// What is said for the splits one fix completed: each split's number,
+    /// its own time (from the split before, `previous` for the first) and the
+    /// pace so far. Pure, so tests check the words `recordPacing` speaks.
+    nonisolated static func splitCues(for completed: [UnitSplit], after previous: TimeInterval,
+                                      unitMeters: Double, mode: ActivityMode) -> [String] {
+        guard mode != .stationary else { return [] }
         var start = previous
-        for split in completed {
-            WalkAudioCueService.shared.announceSplit(
-                number: Int((split.distance / splitTracker.unitMeters).rounded()),
-                unitMeters: splitTracker.unitMeters,
-                elapsed: split.elapsed,
-                splitSeconds: split.elapsed - start,
-                mode: route.activityMode)
-            start = split.elapsed
+        return completed.map { split in
+            defer { start = split.elapsed }
+            return WalkAudioCueService.splitCueText(
+                split: Int((split.distance / unitMeters).rounded()), unitMeters: unitMeters,
+                elapsed: split.elapsed, splitSeconds: split.elapsed - start, mode: mode)
         }
     }
 
