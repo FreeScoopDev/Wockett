@@ -755,6 +755,7 @@ private final class FakeWorkoutWriter: WalkWorkoutRecording {
     private(set) var discards = 0
     private(set) var finishedDistances: [Double] = []
     var onFinish: (() -> Void)?
+    func start(at date: Date) async {}
     func addLocations(_ locations: [CLLocation]) {}
     func discard() { discards += 1 }
     func finish(totalDistanceMeters: Double, endDate: Date) async -> HKWorkout? {

@@ -394,7 +394,10 @@ struct TrailDetailView: View {
                 rememberPace()
                 onStart(plan)
             } label: {
-                WktPrimaryLabel(title: "Start \(activityMode.sessionLabel)", symbol: activityMode.wktSymbol)
+                // "Start Hike" on a hikeable trail; the session started gets
+                // the same word from the same plan (`TrailWalkPlan.wording`).
+                WktPrimaryLabel(title: "Start \(plan.wording(activityMode: activityMode).sessionLabel)",
+                                symbol: activityMode.wktSymbol)
             }
             .buttonStyle(BounceButtonStyle(scale: 0.98))
             .accessibilityIdentifier("routes.trailStart")

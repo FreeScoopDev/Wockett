@@ -68,6 +68,7 @@ struct ActiveSessionView: View {
                         routeName: stub.name,
                         totalDistanceMeters: 0,
                         activityMode: activityMode.rawValue,
+                        isHike: false,
                         startDate: session.startTime
                     )
                 }
@@ -184,7 +185,7 @@ private struct ActiveSessionScreen: View {
             }
             .modifier(BreakPromptAlert(
                 isPresented: $showBreakPromptAlert,
-                activityMode: route.activityMode,
+                wording: route.wording,
                 onEnd: {
                     session.dismissBreakPrompt()
                     if session.autoPausedForInactivity { session.resume() }
@@ -236,7 +237,7 @@ private struct ActiveSessionScreen: View {
         }
         .sheet(isPresented: $showFinishConfirm, onDismiss: runPendingFinish) {
             FinishConfirmationView(
-                activityMode: route.activityMode,
+                wording: route.wording,
                 summary: finishSummary,
                 onKeepGoing: { showFinishConfirm = false },
                 onFinish: { pendingFinish = .save; showFinishConfirm = false },
@@ -280,7 +281,7 @@ private struct ActiveSessionScreen: View {
             Button("Head back now") { headBack() }
             Button("Keep going", role: .cancel) {}
         } message: {
-            Text("The rest of your \(route.activityMode.noun) follows \(route.name) back to where you started.")
+            Text("The rest of your \(route.wording.noun) follows \(route.name) back to where you started.")
         }
         .confirmationDialog("Send update to owner", isPresented: .init(
             get: { ownerUpdatePickerPets.count > 1 && !showOwnerUpdateSheet && !ownerUpdatePickerPets.isEmpty },
@@ -420,7 +421,7 @@ private struct ActiveSessionScreen: View {
         VStack(spacing: 0) {
             if showDrivingBanner {
                 DrivingSuspectedBanner(
-                    activityMode: route.activityMode,
+                    wording: route.wording,
                     onStillWalking: {
                         session.clearDrivingSuspicion()
                         showDrivingBanner = false
@@ -472,7 +473,7 @@ private struct ActiveSessionScreen: View {
 
             if session.isPaused {
                 PauseResumeControl(
-                    sessionLabel: route.activityMode.sessionLabel,
+                    sessionLabel: route.wording.sessionLabel,
                     onResume: { session.resume() }
                 )
             }
@@ -556,10 +557,13 @@ private struct ActiveSessionScreen: View {
                 Image(wkt: route.activityMode.wktSymbol)
                     .wktIcon(.inline, tint: .earthGreen)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(isGuided ? route.name : route.activityMode.sessionLabel)
+                    Text(isGuided ? route.name : route.wording.sessionLabel)
                         .font(.wktRowTitle).foregroundColor(.earthCream).lineLimit(1)
                     if isGuided {
-                        Text(session.progressText)
+                        // The activity's word first ("Hike · On the trail"):
+                        // a guided title is the route's name, so this is
+                        // where a walk, run, ride or hike says which it is.
+                        Text("\(route.wording.sessionLabel) · \(session.progressText)")
                             .font(.wktLabel).foregroundColor(.earthGreen)
                     }
                 }
@@ -629,7 +633,7 @@ private struct ActiveSessionScreen: View {
                     .accessibilityIdentifier("session.headBackExpanded")
             }
             if let approach = route.approach, session.arrivedAtTrail {
-                WktPrimaryButton(title: "Start the \(approach.trailName) \(route.activityMode.noun)",
+                WktPrimaryButton(title: "Start the \(approach.trailName) \(route.wording.noun)",
                                  symbol: .routeTrail, action: startTrailFromApproach)
                     .accessibilityIdentifier("session.startTrail")
             }
@@ -738,7 +742,7 @@ private struct ActiveSessionScreen: View {
 
     private var crewSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Crew on this \(route.activityMode.noun)")
+            Text("Crew on this \(route.wording.noun)")
                 .font(.wktRowTitle)
                 .foregroundColor(.earthCream)
             ScrollView(.horizontal, showsIndicators: false) {
@@ -756,8 +760,8 @@ private struct ActiveSessionScreen: View {
                             .background(pet.isActiveOnWalk ? Color.earthGreenFill : Color.earthRaised, in: Capsule())
                         }
                         .accessibilityLabel(pet.isActiveOnWalk
-                            ? "Remove \(pet.name) from \(route.activityMode.noun)"
-                            : "Add \(pet.name) to \(route.activityMode.noun)")
+                            ? "Remove \(pet.name) from \(route.wording.noun)"
+                            : "Add \(pet.name) to \(route.wording.noun)")
                         .accessibilityAddTraits(pet.isActiveOnWalk ? .isSelected : [])
                     }
                 }
@@ -776,11 +780,11 @@ private struct ActiveSessionScreen: View {
             }
             .buttonStyle(BounceButtonStyle(scale: 0.98))
             .accessibilityLabel(session.isPaused
-                ? "Resume \(route.activityMode.noun)"
-                : "Pause \(route.activityMode.noun)")
+                ? "Resume \(route.wording.noun)"
+                : "Pause \(route.wording.noun)")
             .accessibilityIdentifier("session.pause")
 
-            HoldToFinishButton(activityMode: route.activityMode) { showFinishConfirm = true }
+            HoldToFinishButton(wording: route.wording) { showFinishConfirm = true }
                 .frame(width: 140)
                 .accessibilityIdentifier("session.finish")
         }
@@ -816,6 +820,7 @@ private struct ActiveSessionScreen: View {
                 routeName: next.name,
                 totalDistanceMeters: cap.liveActivityTotalMeters,
                 activityMode: next.activityMode.rawValue,
+                isHike: next.isHike,
                 startDate: cap.startTime
             )
             await WalkLiveActivityManager.shared.update(cap.liveActivityState)
@@ -838,6 +843,7 @@ private struct ActiveSessionScreen: View {
                 routeName: next.name,
                 totalDistanceMeters: cap.liveActivityTotalMeters,
                 activityMode: next.activityMode.rawValue,
+                isHike: next.isHike,
                 startDate: cap.startTime
             )
             await WalkLiveActivityManager.shared.update(cap.liveActivityState)
@@ -949,6 +955,7 @@ private struct ActiveSessionScreen: View {
             routeName: route.name,
             totalDistanceMeters: session.liveActivityTotalMeters,
             activityMode: route.activityMode.rawValue,
+            isHike: route.isHike,
             startDate: session.startTime
         )
         computedLegs = await computeWalkingLegs()
@@ -1025,7 +1032,7 @@ private struct ActiveSessionScreen: View {
         let dist = MKDistanceFormatter.abbreviated.string(fromDistance: session.totalDistanceCovered)
         let petDist = MKDistanceFormatter.abbreviated.string(fromDistance: session.petDistances[pet.id] ?? 0)
         let ownerFirst = pet.ownerName?.components(separatedBy: " ").first ?? "there"
-        ownerUpdateBody = "Hi \(ownerFirst)! Currently \(route.activityMode.gerund) with \(pet.name) 🐾\n\n📏 \(petDist) so far (total: \(dist))\n\nSent from Wockett"
+        ownerUpdateBody = "Hi \(ownerFirst)! Currently \(route.wording.gerund) with \(pet.name) 🐾\n\n📏 \(petDist) so far (total: \(dist))\n\nSent from Wockett"
         ownerUpdateRecipient = phone
         ownerUpdatePickerPets = []
         showOwnerUpdateSheet = true
@@ -1041,8 +1048,8 @@ private struct ActiveSessionScreen: View {
     private func scheduleHydrationNudge(distanceMeters: Double) {
         let distKm = distanceMeters / 1000
         let body = distKm >= 5
-            ? "Great \(String(format: "%.1f", distKm))km \(route.activityMode.noun) — drink at least 500ml of water to recover well."
-            : "Good \(route.activityMode.noun) — remember to drink some water to keep your energy up."
+            ? "Great \(String(format: "%.1f", distKm))km \(route.wording.noun) — drink at least 500ml of water to recover well."
+            : "Good \(route.wording.noun) — remember to drink some water to keep your energy up."
         Task {
             await NotificationService.shared.schedule(.hydration, title: "Time to rehydrate! 💧", body: body,
                                                       trigger: UNTimeIntervalNotificationTrigger(timeInterval: 300, repeats: false))

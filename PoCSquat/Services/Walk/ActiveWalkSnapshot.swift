@@ -30,6 +30,9 @@ struct ActiveWalkSnapshot: Codable {
         let approach: TrailApproach?
         /// Out and back: where to turn round. Optional for the same reason.
         let turnaroundMeters: Double?
+        /// A hike (`NavigableRoute.isHike`). Optional for the same reason;
+        /// absent means a walk, as every session was before hikes.
+        let isHike: Bool?
 
         init(_ route: NavigableRoute) {
             name = route.name
@@ -45,6 +48,7 @@ struct ActiveWalkSnapshot: Codable {
             pathIsRecording = route.pathIsRecording
             approach = route.approach
             turnaroundMeters = route.turnaroundMeters
+            isHike = route.isHike
         }
 
         /// Written out so a trail destination that no longer decodes (a later
@@ -66,6 +70,7 @@ struct ActiveWalkSnapshot: Codable {
             pathIsRecording = try c.decodeIfPresent(Bool.self, forKey: .pathIsRecording)
             approach = (try? c.decodeIfPresent(TrailApproach.self, forKey: .approach)) ?? nil
             turnaroundMeters = try c.decodeIfPresent(Double.self, forKey: .turnaroundMeters)
+            isHike = try c.decodeIfPresent(Bool.self, forKey: .isHike)
         }
 
         var navigableRoute: NavigableRoute {
@@ -82,7 +87,8 @@ struct ActiveWalkSnapshot: Codable {
                 path: path?.map(\.clCoordinate),
                 pathIsRecording: pathIsRecording ?? false,
                 approach: approach,
-                turnaroundMeters: turnaroundMeters
+                turnaroundMeters: turnaroundMeters,
+                isHike: isHike ?? false
             )
         }
     }

@@ -185,6 +185,40 @@ enum ActivityMode: String, Codable {
     }
 }
 
+// MARK: - Session Wording
+//
+// What one session is called (feat/hike-wording, Joe 2026-10-15, option B):
+// its activity's words, except that a walk started from a trail in the
+// Trails list is a hike, unless the trail is mapped as paved or as a bike
+// path (`TrailListItem.isHikeable`). A hike is still `activityType`
+// "walking" everywhere Wockett counts things (history filters, challenges,
+// badges, the widget's numbers); only its words and its Health workout
+// type differ. Whether a session is a hike is stored on it (`isHike` on
+// `NavigableRoute`, `WalkSession` and `WalkSessionRecord`), never inferred
+// from its name or distance.
+
+struct SessionWording: Equatable {
+    let activityMode: ActivityMode
+    /// True only for a walk: a run or ride on a trail keeps its own words.
+    let isHike: Bool
+
+    init(_ activityMode: ActivityMode, isHike: Bool = false) {
+        self.activityMode = activityMode
+        self.isHike = isHike && activityMode == .walking
+    }
+
+    /// "Hike", or the activity's `sessionLabel`: "Walk", "Run", "Ride", "Indoor".
+    var sessionLabel: String { isHike ? "Hike" : activityMode.sessionLabel }
+    /// "Hike complete!", or the activity's `displayName`.
+    var displayName: String { isHike ? "Hike" : activityMode.displayName }
+    /// "hike", or the activity's `noun`.
+    var noun: String { isHike ? "hike" : activityMode.noun }
+    /// "hiking", or the activity's `gerund`.
+    var gerund: String { isHike ? "hiking" : activityMode.gerund }
+    /// The Apple Health workout type: Hiking for a hike, otherwise the activity's.
+    var hkActivityType: HKWorkoutActivityType { isHike ? .hiking : activityMode.hkActivityType }
+}
+
 // MARK: - Suggested Route Model
 
 struct SuggestedRoute: Identifiable {
@@ -363,6 +397,7 @@ struct WalkSession: Identifiable, Codable {
     var flaggedPossibleVehicle: Bool // driving was suspected and user didn't affirm; default false
     var unitSplits: UnitSplits?      // per-mile/km splits of an outdoor walk or run; nil before 1.17, rides, indoor
     var elevation: ElevationTotals?  // GPS ascent/descent of an outdoor walk, run or ride; nil before 1.17, indoor, or no usable altitude
+    var isHike: Bool                 // started from a hikeable trail (`SessionWording`); false before 1.17 and for everything else
 
     init(id: UUID, routeName: String, date: Date, elapsedTime: TimeInterval,
          totalDistance: Double, waypoints: [WaypointCoord], lapCount: Int,
@@ -371,7 +406,7 @@ struct WalkSession: Identifiable, Codable {
          isCommunityRoute: Bool = false, customRouteId: UUID? = nil,
          countsTowardRouteStats: Bool = true, stopCount: Int? = nil,
          flaggedPossibleVehicle: Bool = false, unitSplits: UnitSplits? = nil,
-         elevation: ElevationTotals? = nil) {
+         elevation: ElevationTotals? = nil, isHike: Bool = false) {
         self.id = id; self.routeName = routeName; self.date = date
         self.elapsedTime = elapsedTime; self.totalDistance = totalDistance
         self.waypoints = waypoints; self.lapCount = lapCount
@@ -385,6 +420,7 @@ struct WalkSession: Identifiable, Codable {
         self.flaggedPossibleVehicle = flaggedPossibleVehicle
         self.unitSplits = unitSplits
         self.elevation = elevation
+        self.isHike = isHike
     }
 
     init(from decoder: Decoder) throws {
@@ -409,10 +445,17 @@ struct WalkSession: Identifiable, Codable {
         flaggedPossibleVehicle  = (try? c.decode(Bool.self,          forKey: .flaggedPossibleVehicle)) ?? false
         unitSplits              = try? c.decode(UnitSplits.self,      forKey: .unitSplits)
         elevation               = try? c.decode(ElevationTotals.self, forKey: .elevation)
+        isHike                  = (try? c.decode(Bool.self,          forKey: .isHike)) ?? false
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, routeName, date, elapsedTime, totalDistance, waypoints, lapCount, isLoop, activePetIds, activityType, notes, petDistances, steps, isCommunityRoute, customRouteId, countsTowardRouteStats, stopCount, flaggedPossibleVehicle, unitSplits, elevation
+        case id, routeName, date, elapsedTime, totalDistance, waypoints, lapCount, isLoop, activePetIds, activityType, notes, petDistances, steps, isCommunityRoute, customRouteId, countsTowardRouteStats, stopCount, flaggedPossibleVehicle, unitSplits, elevation, isHike
+    }
+
+    /// What this session is called: a hike, or its activity type's words.
+    /// A hike changed to Run in Past Walks reads as a run.
+    var wording: SessionWording {
+        SessionWording(ActivityMode(rawValue: activityType) ?? .walking, isHike: isHike)
     }
 
     /// A pet's share of a walk saved as an entry of its own, not a walk:
@@ -726,6 +769,14 @@ struct NavigableRoute: Identifiable, Hashable {
     /// session says so there (`NavigationSessionManager`), and "Head back
     /// now" ends the out leg early. Nil for every other route.
     var turnaroundMeters: Double? = nil
+    /// Started from a hikeable trail's own Start button
+    /// (`TrailWalkPlan.navigableRoute`): the session says "Hike" and is saved
+    /// to Health as Hiking. Fixed when the session starts, because its Health
+    /// workout type is.
+    var isHike: Bool = false
+
+    /// What this session is called.
+    var wording: SessionWording { SessionWording(activityMode, isHike: isHike) }
 
     /// What the line is called in off-line guidance: a trail, or the route
     /// someone recorded.

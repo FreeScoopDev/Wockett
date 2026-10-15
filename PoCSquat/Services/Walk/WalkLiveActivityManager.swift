@@ -34,7 +34,8 @@ final class WalkLiveActivityManager: WalkLiveActivityEnding {
         activity = nil
     }
 
-    func start(routeName: String, totalDistanceMeters: Double, activityMode: String, startDate: Date) async {
+    func start(routeName: String, totalDistanceMeters: Double, activityMode: String, isHike: Bool,
+               startDate: Date) async {
         guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
         // Reap any orphan activities left from a previous process before starting a new one.
         await endAllActivities()
@@ -43,6 +44,7 @@ final class WalkLiveActivityManager: WalkLiveActivityEnding {
             routeName: routeName,
             totalDistanceMeters: totalDistanceMeters,
             activityMode: activityMode,
+            isHike: isHike,
             startDate: startDate
         )
         let initialState = WalkActivityAttributes.ContentState(

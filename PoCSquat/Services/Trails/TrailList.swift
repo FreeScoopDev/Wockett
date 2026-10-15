@@ -130,6 +130,13 @@ struct TrailListItem: Identifiable, Hashable {
         return kinds.count == 1 ? kinds.first : nil
     }
 
+    /// A walk started on this trail is a hike (Joe, 2026-10-15, option B):
+    /// every trail except one mapped as paved or as a bike path, which stays
+    /// a walk (a paved greenway is not a hike). A trail with no surface tag,
+    /// or sections that disagree, counts as a hike: only a stated paved
+    /// surface or a bike path makes it a walk.
+    var isHikeable: Bool { !isBikePath && surfaceKind != .paved }
+
     /// The dog rule worth showing, or nil. Only a tagged value is confident
     /// (see `DogAccessProvenance`); across sections the strictest tagged rule
     /// wins, because "no dogs" on one section is what an owner needs to know.

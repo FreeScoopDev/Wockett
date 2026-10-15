@@ -50,6 +50,8 @@ struct ActivitySummaryView: View {
     @State private var lateRecords: [PRType] = []
 
     private var mode: ActivityMode { ActivitySummaryContent.mode(of: session) }
+    /// "Hike complete!" for a hike; the activity's words otherwise.
+    private var wording: SessionWording { session.wording }
     private var isJustFinished: Bool { moment == .justFinished }
     private var shownRecords: [PRType] { records + lateRecords }
 
@@ -67,7 +69,7 @@ struct ActivitySummaryView: View {
         let names = crew.map(\.name)
         switch names.count {
         case 0:  return "Nice work on \(session.routeName). Keep the momentum going!"
-        case 1:  return "Nice work! \(names[0]) had a great \(mode.noun) too. 🐾"
+        case 1:  return "Nice work! \(names[0]) had a great \(wording.noun) too. 🐾"
         case 2:  return "Nice work! \(names[0]) and \(names[1]) loved it. 🐾"
         default: return "Nice work! The whole crew crushed it. 🐾"
         }
@@ -112,10 +114,10 @@ struct ActivitySummaryView: View {
                     if onSave != nil { saveToHistoryButton }
 
                     VStack(spacing: WktSpacing.betweenCards) {
-                        WktSecondaryButton(title: "Share this \(mode.noun)", symbol: .share) {
+                        WktSecondaryButton(title: "Share this \(wording.noun)", symbol: .share) {
                             showActivityShare = true
                         }
-                        WktSecondaryButton(title: "Schedule this \(mode.noun) again", symbol: .calendarAdd) {
+                        WktSecondaryButton(title: "Schedule this \(wording.noun) again", symbol: .calendarAdd) {
                             showScheduleSheet = true
                         }
                     }
@@ -170,7 +172,7 @@ struct ActivitySummaryView: View {
         VStack(spacing: 12) {
             WktIconBadge(symbol: mode.wktSymbol, tint: mode.tileColor, size: 64)
                 .padding(.bottom, 4)
-            Text(isJustFinished ? "\(mode.displayName) complete!" : session.routeName)
+            Text(isJustFinished ? "\(wording.displayName) complete!" : session.routeName)
                 .font(isJustFinished ? .wktMetric : .wktCardTitle)
                 .foregroundColor(.earthCream)
                 .multilineTextAlignment(.center)
@@ -195,7 +197,7 @@ struct ActivitySummaryView: View {
         .clipShape(RoundedRectangle.wktCard)
         .overlay(RoundedRectangle.wktCard.strokeBorder(Color.earthStroke, lineWidth: 1))
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Map of this \(mode.noun)'s route")
+        .accessibilityLabel("Map of this \(wording.noun)'s route")
     }
 
     private var saveToHistoryButton: some View {
@@ -388,7 +390,7 @@ struct ActivitySummaryView: View {
 
     private func saveAsRoute() {
         let name = routeName.trimmingCharacters(in: .whitespaces).isEmpty
-            ? "My \(mode.sessionLabel)" : routeName
+            ? "My \(wording.sessionLabel)" : routeName
         routeStore.save(CustomRoute(
             id: UUID(),
             name: name,

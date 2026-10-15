@@ -146,6 +146,7 @@ final class ActiveWalkStore {
                 routeName: route.name,
                 totalDistanceMeters: capturedMgr.liveActivityTotalMeters,
                 activityMode: route.activityMode.rawValue,
+                isHike: route.isHike,
                 startDate: snapshot.startTime
             )
             await WalkLiveActivityManager.shared.update(capturedMgr.liveActivityState)
@@ -193,7 +194,8 @@ final class ActiveWalkStore {
             steps: snapshot.liveSteps,
             customRouteId: snapshot.route.customRouteId,
             unitSplits: salvagedSplits(for: snapshot, elapsed: elapsed),
-            elevation: salvagedElevation(for: snapshot)
+            elevation: salvagedElevation(for: snapshot),
+            isHike: snapshot.route.isHike ?? false
         )
     }
 
