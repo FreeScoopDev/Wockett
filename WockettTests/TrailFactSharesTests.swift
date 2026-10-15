@@ -168,6 +168,24 @@ struct TrailFactSharesTests {
         #expect(texts([row(1, length: 1_000, json: clean)]) == ["Lit at night"])
     }
 
+    @Test("Shared use from shares: foot=destination or permissive neither vetoes nor counts as yes; foot=no vetoes")
+    func sharedUseConditionalFootFromShares() {
+        func cycleway(_ foot: String) -> [String] {
+            // Flat foot=designated everywhere: only the shares can say otherwise.
+            texts([row(1, length: 1_000,
+                       json: #"{"facts":{"shares":{"foot":{\#(foot)}},"v":1},"foot":"designated","highway":"cycleway"}"#)])
+        }
+        // Walnut Creek's shape: designated on nearly all, destination on a sliver.
+        #expect(cycleway(#""designated":0.996,"destination":0.004"#) == ["Shared with cyclists"])
+        #expect(cycleway(#""designated":0.9,"permissive":0.1"#) == ["Shared with cyclists"])
+        // Under 80% yes/designated: the conditional part is not a yes.
+        #expect(cycleway(#""designated":0.79,"destination":0.21"#).isEmpty)
+        #expect(cycleway(#""permissive":1.0"#).isEmpty)
+        // An explicit no, however short, still vetoes; so does private.
+        #expect(cycleway(#""designated":0.996,"no":0.004"#).isEmpty)
+        #expect(cycleway(#""designated":0.996,"private":0.004"#).isEmpty)
+    }
+
     @Test("Maintainer from shares: one name everywhere stated shows, two names show nothing")
     func maintainerFromShares() {
         let one = #"{"facts":{"shares":{"operator":{"Town of Cary":0.6,"unstated":0.4}},"v":1},"operator":"Town of Cary"}"#
@@ -214,7 +232,8 @@ struct TrailFactSharesTests {
         let item = try #require(items.first)
         #expect(item.sections.count == 16)
         #expect(Set(item.sections.map(\.sourceRef)).count == 16)
-        #expect(TrailFacts.facts(for: item).isEmpty, "as the bundledPack test reads the key directly")
+        #expect(TrailFacts.facts(for: item).map(\.text) == ["Shared with cyclists"],
+                "as the bundledPack test reads the key directly")
     }
 
     // MARK: 4/5. Old packs, mixed trails, and "states nothing"
