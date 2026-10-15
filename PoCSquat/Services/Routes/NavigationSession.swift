@@ -383,7 +383,8 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
     /// Starts the walk's Health workout, typed by the session's words: a hike
     /// is saved to Health as Hiking, everything else as its activity
     /// (`SessionWording.hkActivityType`). Separate from `beginTracking` so a
-    /// test can start the workout without starting location and motion.
+    /// test can start the workout without starting location and motion; one
+    /// other test does start a session, to prove `beginTracking` calls this.
     func startWorkout(at date: Date) async {
         let writer = makeWorkoutWriter(route.wording.hkActivityType)
         await writer.start(at: date)
@@ -1006,8 +1007,10 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
     private func applyLocationAction() {
         switch Self.locationAction(status: locationAuthorization, tracking: isTrackingLocation, paused: isPaused) {
         // Never under UI tests: a system alert mid-walk breaks the taps that
-        // follow it (they fake location through RouteManager instead).
-        case .ask:          if !isWKTUITestMode { locationManager.requestWhenInUseAuthorization() }
+        // follow it (they fake location through RouteManager instead). Nor
+        // under unit tests, one of which starts a session (#239) and must not
+        // leave an alert on the test host.
+        case .ask:          if !AppModelContainer.isRunningUnderTests { locationManager.requestWhenInUseAuthorization() }
         case .startUpdates: locationManager.startUpdatingLocation()
         case .nothing:      break
         }
