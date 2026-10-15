@@ -1,2 +1,2 @@
-### Fixed
-- Choosing Save Image from the walk card's share sheet no longer closes the app. iOS requires an app to explain why it adds to the photo library, and Wockett had no such text, so iOS ended the app the moment the option was tapped. It now says: "Wockett saves your walk card to your photo library when you choose Save Image."
+### Added
+- **Save Image** on the walk card's share sheet, so a walk card can go straight to Photos. iOS only offers Save Image to an app that explains why it adds to the photo library, and Wockett had no such text, so the option was simply missing (Copy, Save to Files and the rest were there). It now says: "Wockett saves your walk card to your photo library when you choose Save Image." This entry first said the change stopped a crash; checked on the simulator on 2026-10-14, the 1.16 build never offers Save Image at all, not even under Edit Actions, and the build with this text offers it, asks for photo access, and saves the card.
