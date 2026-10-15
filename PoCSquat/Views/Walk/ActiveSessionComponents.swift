@@ -19,17 +19,17 @@ struct PauseResumeControl: View {
 
 struct BreakPromptAlert: ViewModifier {
     @Binding var isPresented: Bool
-    let activityMode: ActivityMode
+    let wording: SessionWording
     let onEnd: () -> Void
     let onKeepTracking: () -> Void
 
     func body(content: Content) -> some View {
         content
-            .alert("Still \(activityMode.gerund.capitalized)?", isPresented: $isPresented) {
-                Button("End \(activityMode.sessionLabel)") { onEnd() }
+            .alert("Still \(wording.gerund.capitalized)?", isPresented: $isPresented) {
+                Button("End \(wording.sessionLabel)") { onEnd() }
                 Button("Keep Tracking", role: .cancel) { onKeepTracking() }
             } message: {
-                Text("You haven't moved in a few minutes. End the \(activityMode.noun) or keep tracking?")
+                Text("You haven't moved in a few minutes. End the \(wording.noun) or keep tracking?")
             }
     }
 }
@@ -37,17 +37,17 @@ struct BreakPromptAlert: ViewModifier {
 // MARK: - Driving Suspected Banner
 
 struct DrivingSuspectedBanner: View {
-    let activityMode: ActivityMode
+    let wording: SessionWording
     let onStillWalking: () -> Void
     let onEndWalk: () -> Void
 
     var body: some View {
         WktBanner(symbol: .vehicle, tint: .red,
-                  title: "This looks faster than a \(activityMode.noun)",
-                  detail: "Still \(activityMode.gerund), or are you driving?") {
-            WktPillButton(title: "Still \(activityMode.gerund)", action: onStillWalking)
+                  title: "This looks faster than a \(wording.noun)",
+                  detail: "Still \(wording.gerund), or are you driving?") {
+            WktPillButton(title: "Still \(wording.gerund)", action: onStillWalking)
                 .accessibilityHint("Dismisses the alert and continues your session")
-            WktPillButton(title: "End \(activityMode.noun)", tint: .red, action: onEndWalk)
+            WktPillButton(title: "End \(wording.noun)", tint: .red, action: onEndWalk)
                 .accessibilityHint("Stops and saves this session")
         }
     }

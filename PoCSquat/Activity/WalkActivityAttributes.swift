@@ -38,11 +38,28 @@ public struct WalkActivityAttributes: ActivityAttributes {
     public let totalDistanceMeters: Double
     public let activityMode: String   // "walking", "cycling", "stationary"
     public let startDate: Date        // fixed reference point for the live-ticking timer
+    /// A walk started from a hikeable trail says "Hike" (feat/hike-wording);
+    /// `activityMode` stays "walking". Optional so an activity started by an
+    /// earlier version still decodes (as a walk) after an update.
+    public let isHike: Bool?
 
-    public init(routeName: String, totalDistanceMeters: Double, activityMode: String, startDate: Date) {
+    public init(routeName: String, totalDistanceMeters: Double, activityMode: String,
+                isHike: Bool = false, startDate: Date) {
         self.routeName            = routeName
         self.totalDistanceMeters  = totalDistanceMeters
         self.activityMode         = activityMode
+        self.isHike               = isHike
         self.startDate            = startDate
+    }
+
+    /// The activity's word on the Lock Screen and in the Dynamic Island:
+    /// "Hike", "Walk", "Run" or "Ride". Here, not in the widget, so a test in
+    /// the app target covers it; this file is in both targets. It mirrors
+    /// `SessionWording.sessionLabel` (WalkModels.swift, app target only),
+    /// except that indoor says "Walk" here as it always has: change both.
+    public var activityNoun: String {
+        if activityMode == "running" { return "Run" }
+        if activityMode == "cycling" { return "Ride" }
+        return activityMode == "walking" && isHike == true ? "Hike" : "Walk"
     }
 }

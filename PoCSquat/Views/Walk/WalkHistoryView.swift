@@ -234,9 +234,9 @@ struct WalkSessionDetailSheet: View {
         return typed
     }
 
-    /// "walk", "run", "ride": the type chosen above, so the copy follows it.
+    /// "walk", "hike", "run", "ride": the type chosen above, so the copy follows it.
     private var activityNoun: String {
-        (ActivityMode(rawValue: selectedActivityType) ?? .walking).noun
+        sessionAsTyped.wording.noun
     }
 }
 
@@ -455,7 +455,10 @@ struct WalkHistoryRow: View {
             WktIconBadge(symbol: rowIcon, tint: rowColor)
             VStack(alignment: .leading, spacing: 4) {
                 Text(session.routeName).font(.wktRowTitle).foregroundColor(.earthCream).lineLimit(1)
-                Text(session.formattedDate).font(.wktLabel).foregroundColor(.earthMuted)
+                // "Hike · 15 Oct 2026 at 09:12", "Indoor walk · …": the row's title is the
+                // route's name, so this says which activity it was.
+                Text("\(session.wording.displayName) · \(session.formattedDate)")
+                    .font(.wktLabel).foregroundColor(.earthMuted)
                 HStack(spacing: 10) {
                     Label { Text(session.distanceText) } icon: { Image(wkt: .distance).wktIcon(.inline, tint: .earthMuted) }
                     Label { Text(session.timeText) } icon: { Image(wkt: .time).wktIcon(.inline, tint: .earthMuted) }
@@ -481,7 +484,9 @@ struct WalkHistoryRow: View {
                     .background(Color.earthRaised, in: Circle())
             }
             .buttonStyle(BounceButtonStyle(scale: 0.92))
-            .accessibilityLabel("Do this \((ActivityMode(rawValue: session.activityType) ?? .walking).noun) again")
+            // Replaying starts a route walk, never a hike (only a trail's own
+            // Start makes one), so this names the activity, not "hike".
+            .accessibilityLabel("Do this \(session.wording.activityMode.noun) again")
             Button { onInfo() } label: {
                 Image(wkt: session.notes.isEmpty ? .notePlus : .noteText)
                     .wktIcon(.inline, tint: .earthCream)

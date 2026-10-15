@@ -41,6 +41,11 @@ final class WalkSessionRecord {
     // it. A new CloudKit field (CD_elevationData): it must be deployed to
     // Production before the release that adds it, like CD_unitSplitsData.
     var elevationData: Data = Data()
+    // Started from a hikeable trail: says "Hike", saved to Health as Hiking
+    // (feat/hike-wording, 1.17). False for every walk before it. A new
+    // CloudKit field (CD_isHike): it must be deployed to Production before
+    // the release that adds it, like CD_elevationData.
+    var isHike: Bool = false
 
     init(from session: WalkSession) {
         id               = session.id
@@ -60,6 +65,7 @@ final class WalkSessionRecord {
         flaggedPossibleVehicle  = session.flaggedPossibleVehicle
         unitSplitsData          = session.unitSplits.flatMap { try? JSONEncoder().encode($0) } ?? Data()
         elevationData           = session.elevation.flatMap { try? JSONEncoder().encode($0) } ?? Data()
+        isHike                  = session.isHike
         activePetIdsData  = (try? JSONEncoder().encode(session.activePetIds.map(\.uuidString))) ?? Data()
         waypointsData     = (try? JSONEncoder().encode(session.waypoints)) ?? Data()
         let distStrings   = Dictionary(uniqueKeysWithValues: session.petDistances.map { (k, v) in (k.uuidString, v) })
@@ -94,7 +100,8 @@ final class WalkSessionRecord {
             stopCount:              stopCount >= 0 ? stopCount : nil,
             flaggedPossibleVehicle: flaggedPossibleVehicle,
             unitSplits:             try? JSONDecoder().decode(UnitSplits.self, from: unitSplitsData),
-            elevation:              try? JSONDecoder().decode(ElevationTotals.self, from: elevationData)
+            elevation:              try? JSONDecoder().decode(ElevationTotals.self, from: elevationData),
+            isHike:                 isHike
         )
     }
 }

@@ -68,6 +68,7 @@ extension NavigableRoute {
         return NavigableRoute(name: name, waypoints: line.checkpoints, lapCount: lapCount, isLoop: isLoop,
                               totalDistance: totalDistance, isCustomRoute: isCustomRoute,
                               isCommunityRoute: isCommunityRoute, activityMode: activityMode,
-                              customRouteId: customRouteId, path: line.path, pathIsRecording: true)
+                              customRouteId: customRouteId, path: line.path, pathIsRecording: true,
+                              turnaroundMeters: turnaroundMeters, isHike: isHike)
     }
 }

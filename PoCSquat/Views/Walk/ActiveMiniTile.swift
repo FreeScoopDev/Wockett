@@ -26,17 +26,17 @@ struct ActiveMiniTileContainer: View {
                 )
             }
         }
-        .confirmationDialog("End \(walkStore.activeRoute?.activityMode.sessionLabel ?? "Walk")?", isPresented: $showEndConfirmation, titleVisibility: .visible) {
-            Button("Save & End \(walkStore.activeRoute?.activityMode.sessionLabel ?? "Walk")") {
+        .confirmationDialog("End \(walkStore.activeRoute?.wording.sessionLabel ?? "Walk")?", isPresented: $showEndConfirmation, titleVisibility: .visible) {
+            Button("Save & End \(walkStore.activeRoute?.wording.sessionLabel ?? "Walk")") {
                 // The person is in the app: the root shows the summary.
                 walkStore.end(.save, presentSummary: true)
             }
-            Button("Discard \(walkStore.activeRoute?.activityMode.sessionLabel ?? "Walk")", role: .destructive) {
+            Button("Discard \(walkStore.activeRoute?.wording.sessionLabel ?? "Walk")", role: .destructive) {
                 walkStore.end(.discard)
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Save this \(walkStore.activeRoute?.activityMode.noun ?? "walk") to your history, or discard it?")
+            Text("Save this \(walkStore.activeRoute?.wording.noun ?? "walk") to your history, or discard it?")
         }
     }
 }
@@ -80,7 +80,7 @@ struct ActiveMiniTile: View {
             }
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Active \(route.activityMode.noun): \(distText(session.totalDistanceCovered)), \(timeText(session.elapsedTime))")
+        .accessibilityLabel("Active \(route.wording.noun): \(distText(session.totalDistanceCovered)), \(timeText(session.elapsedTime))")
         .accessibilityIdentifier("accessory.miniTile")
     }
 
@@ -127,7 +127,7 @@ struct ActiveMiniTile: View {
             }
             .buttonStyle(.plain)
             .padding(.horizontal, 14)
-            .accessibilityLabel("End \(route.activityMode.noun)")
+            .accessibilityLabel("End \(route.wording.noun)")
         }
     }
 

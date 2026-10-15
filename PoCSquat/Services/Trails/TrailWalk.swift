@@ -41,11 +41,23 @@ struct TrailWalkPlan: Equatable {
     /// An out-and-back that reached the trail's end before its target: it
     /// turns there, so it is shorter than asked.
     var turnsAtTrailEnd = false
+    /// Planned from a trail in the Trails list (`plan(for: TrailListItem…)`)
+    /// that is `isHikeable`: a walk on it is a hike. False for every other
+    /// plan, including the one a session heading to a trail turns into on
+    /// arrival, whose Health workout began as a walk.
+    var isHikeable = false
+
+    /// What a session of this plan is called: the Start button's word and the
+    /// session's are the same value.
+    func wording(activityMode: ActivityMode) -> SessionWording {
+        SessionWording(activityMode, isHike: isHikeable)
+    }
 
     func navigableRoute(activityMode: ActivityMode) -> NavigableRoute {
         NavigableRoute(name: name, waypoints: waypoints, lapCount: 1, isLoop: isLoop,
                        totalDistance: distanceMeters, activityMode: activityMode, path: path,
-                       turnaroundMeters: turnaroundMeters)
+                       turnaroundMeters: turnaroundMeters,
+                       isHike: wording(activityMode: activityMode).isHike)
     }
 
     static func == (lhs: TrailWalkPlan, rhs: TrailWalkPlan) -> Bool {
@@ -94,7 +106,9 @@ enum TrailWalkPlanner {
                      target: TrailWalkTarget = .whole) -> TrailWalkPlan? {
         guard let location else { return nil }
         if item.isGroup, let line = TrailChain.stitch(item.sections.map(\.coordinates)) {
-            return plan(along: line.path, isLoop: line.isClosed, name: item.name, from: location, target: target)
+            var plan = plan(along: line.path, isLoop: line.isClosed, name: item.name, from: location, target: target)
+            plan?.isHikeable = item.isHikeable
+            return plan
         }
         let inReach = item.sections
             .map { ($0, BundledTrailSource.distanceMeters(from: location, to: $0)) }
@@ -104,6 +118,7 @@ enum TrailWalkPlanner {
             if var plan = plan(along: section.coordinates, isLoop: section.isLoop, name: item.name,
                                from: location, target: target) {
                 plan.isSectionOnly = item.isGroup
+                plan.isHikeable = item.isHikeable
                 return plan
             }
         }
@@ -253,6 +268,9 @@ extension NavigableRoute {
                               activityMode: activityMode, customRouteId: customRouteId,
                               path: back, pathIsRecording: pathIsRecording,
                               // An out-and-back is symmetric; any turnaround mirrors.
-                              turnaroundMeters: turnaroundMeters.map { length - $0 })
+                              turnaroundMeters: turnaroundMeters.map { length - $0 },
+                              // Still the same session: a hike set off round a
+                              // loop the other way is still a hike.
+                              isHike: isHike)
     }
 }

@@ -34,17 +34,13 @@ final class WalkLiveActivityManager: WalkLiveActivityEnding {
         activity = nil
     }
 
-    func start(routeName: String, totalDistanceMeters: Double, activityMode: String, startDate: Date) async {
+    func start(route: NavigableRoute, totalDistanceMeters: Double, startDate: Date) async {
         guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
         // Reap any orphan activities left from a previous process before starting a new one.
         await endAllActivities()
 
-        let attributes = WalkActivityAttributes(
-            routeName: routeName,
-            totalDistanceMeters: totalDistanceMeters,
-            activityMode: activityMode,
-            startDate: startDate
-        )
+        let attributes = WalkActivityAttributes(route: route, totalDistanceMeters: totalDistanceMeters,
+                                                startDate: startDate)
         let initialState = WalkActivityAttributes.ContentState(
             distanceCoveredMeters: 0,
             elapsedSeconds: 0,
@@ -85,5 +81,16 @@ final class WalkLiveActivityManager: WalkLiveActivityEnding {
             await stray.end(content, dismissalPolicy: dismissal)
         }
         self.activity = nil
+    }
+}
+
+extension WalkActivityAttributes {
+    /// The Live Activity for a session's route: its name, activity and
+    /// whether it is a hike all come from the route, so no caller can pass a
+    /// hike's activity without its flag. App target only (the widget has no
+    /// `NavigableRoute`).
+    init(route: NavigableRoute, totalDistanceMeters: Double, startDate: Date) {
+        self.init(routeName: route.name, totalDistanceMeters: totalDistanceMeters,
+                  activityMode: route.activityMode.rawValue, isHike: route.isHike, startDate: startDate)
     }
 }

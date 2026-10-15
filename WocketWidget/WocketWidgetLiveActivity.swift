@@ -79,10 +79,6 @@ private func activityIcon(_ mode: String) -> String {
     }
 }
 
-private func activityNoun(_ mode: String) -> String {
-    mode == "running" ? "Run" : mode == "cycling" ? "Ride" : "Walk"
-}
-
 // MARK: - Color palette (mirrors main app earth palette)
 
 // Colors now come from the shared DesignSystem.swift (earthXXX tokens) --
@@ -181,7 +177,7 @@ private struct WalkLockScreenView: View {
                 .tint(.earthGreenFill)
 
                 Button(intent: EndWalkLiveActivityIntent()) {
-                    Label("End \(activityNoun(attrs.activityMode))", systemImage: WS.stop)
+                    Label("End \(attrs.activityNoun)", systemImage: WS.stop)
                         .font(.wktLabel)
                 }
                 .tint(.red)
@@ -256,7 +252,7 @@ private struct WalkWristView: View {
                 Image(systemName: activityIcon(attrs.activityMode))
                     .foregroundColor(.earthGreen)
                 // The paused state is the last thing to lose to truncation.
-                Text(state.isPaused ? "Paused" : activityNoun(attrs.activityMode))
+                Text(state.isPaused ? "Paused" : attrs.activityNoun)
                     .foregroundColor(state.isPaused ? .earthOrange : .earthCream)
                     .layoutPriority(1)
                 Spacer(minLength: 0)
@@ -419,7 +415,7 @@ struct WocketWalkLiveActivity: Widget {
                             .tint(.earthGreenFill)
 
                             Button(intent: EndWalkLiveActivityIntent()) {
-                                Label("End \(activityNoun(context.attributes.activityMode))", systemImage: WS.stop)
+                                Label("End \(context.attributes.activityNoun)", systemImage: WS.stop)
                                     .font(.wktLabel)
                             }
                             .tint(.red)

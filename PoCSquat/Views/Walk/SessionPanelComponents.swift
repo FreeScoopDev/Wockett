@@ -157,7 +157,7 @@ struct MapOrientationControls: View {
 /// accidental brush of the screen must never end a session (Joe, 2026-09-24).
 /// VoiceOver's activate goes straight to the confirmation, which still guards it.
 struct HoldToFinishButton: View {
-    let activityMode: ActivityMode
+    let wording: SessionWording
     let onComplete: () -> Void
 
     static let holdSeconds = 1.0
@@ -224,7 +224,7 @@ struct HoldToFinishButton: View {
             }
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Finish \(activityMode.noun)")
+        .accessibilityLabel("Finish \(wording.noun)")
         .accessibilityHint("Press and hold for one second, then confirm")
         .accessibilityAddTraits(.isButton)
         .accessibilityAction { onComplete() }
@@ -323,7 +323,7 @@ struct SessionToggleRow: View {
 /// The second step after the hold: keep going is the default action, so the
 /// least destructive choice is the easiest to hit.
 struct FinishConfirmationView: View {
-    let activityMode: ActivityMode
+    let wording: SessionWording
     let summary: String
     let onKeepGoing: () -> Void
     let onFinish: () -> Void
@@ -334,7 +334,7 @@ struct FinishConfirmationView: View {
     var body: some View {
         VStack(spacing: 12) {
             VStack(spacing: 4) {
-                Text("Finish your \(activityMode.noun)?")
+                Text("Finish your \(wording.noun)?")
                     .font(.wktCardTitle)
                     .foregroundColor(.earthCream)
                 Text(summary)
@@ -344,7 +344,7 @@ struct FinishConfirmationView: View {
             }
             .padding(.bottom, 6)
 
-            WktPrimaryButton(title: "Keep \(activityMode.gerund)", action: onKeepGoing)
+            WktPrimaryButton(title: "Keep \(wording.gerund)", action: onKeepGoing)
                 .accessibilityIdentifier("session.keepGoing")
 
             Button(action: onFinish) {
@@ -369,7 +369,7 @@ struct FinishConfirmationView: View {
             }
 
             Button(role: .destructive, action: onDiscard) {
-                Text("Discard this \(activityMode.noun)")
+                Text("Discard this \(wording.noun)")
                     .font(.wktBodyText)
                     .frame(maxWidth: .infinity, minHeight: 44)
             }
@@ -426,18 +426,18 @@ struct OffTrailBanner: View {
 /// large text sizes.
 struct TrailArrivalBanner: View {
     let trailName: String
-    let activityMode: ActivityMode
+    let wording: SessionWording
     let onStart: () -> Void
     let onDismiss: () -> Void
 
     var body: some View {
         WktBanner(symbol: .routeTrail, tint: .earthGreen,
                   title: "You're at \(trailName)",
-                  detail: "Carry on along the trail from here. This \(activityMode.noun) keeps its time and distance.") {
-            WktPillButton(title: "Start trail \(activityMode.noun)", action: onStart)
+                  detail: "Carry on along the trail from here. This \(wording.noun) keeps its time and distance.") {
+            WktPillButton(title: "Start trail \(wording.noun)", action: onStart)
                 .accessibilityIdentifier("session.trailArrivalStart")
             WktPillButton(title: "Not now", tint: .earthCream, action: onDismiss)
-                .accessibilityHint("Hides this. The trail \(activityMode.noun) stays under More.")
+                .accessibilityHint("Hides this. The trail \(wording.noun) stays under More.")
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("session.trailArrival")

@@ -143,9 +143,8 @@ final class ActiveWalkStore {
         let capturedMgr = mgr
         Task {
             await WalkLiveActivityManager.shared.start(
-                routeName: route.name,
+                route: route,
                 totalDistanceMeters: capturedMgr.liveActivityTotalMeters,
-                activityMode: route.activityMode.rawValue,
                 startDate: snapshot.startTime
             )
             await WalkLiveActivityManager.shared.update(capturedMgr.liveActivityState)
@@ -193,7 +192,8 @@ final class ActiveWalkStore {
             steps: snapshot.liveSteps,
             customRouteId: snapshot.route.customRouteId,
             unitSplits: salvagedSplits(for: snapshot, elapsed: elapsed),
-            elevation: salvagedElevation(for: snapshot)
+            elevation: salvagedElevation(for: snapshot),
+            isHike: snapshot.route.isHike ?? false
         )
     }
 
