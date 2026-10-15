@@ -3,11 +3,11 @@ import Observation
 
 // MARK: - WalkAudioCueService
 //
-// Speaks distance and pace milestones during a walk so users can leave their
+// Speaks each split during a walk, run or ride so users can leave their
 // phone in their pocket.
 //
-// Units: a milestone is every whole mile in the US and every whole kilometre
-// elsewhere, the rule every other screen uses, and the pace is spoken in the
+// Units: a split is every whole mile in the US and every whole kilometre
+// elsewhere, the rule every other screen uses, and pace is spoken in the
 // same unit. Until 2026-09-28 the counter ticked every kilometre and then
 // named the unit by locale, so a US phone heard "1 mile completed" after one
 // kilometre, and pace was always "per kilometer".
@@ -29,9 +29,6 @@ final class WalkAudioCueService: NSObject {
 
     private let synth   = AVSpeechSynthesizer()
     private let udKey   = "audioCues_enabled"
-
-    // The last whole unit (mile or kilometre) announced, so each is said once.
-    private var lastAnnouncedUnits: Int = 0
 
     // Utterances handed to the synthesizer that it has not finished or
     // cancelled yet. The audio session is released when this reaches zero;
@@ -64,40 +61,50 @@ final class WalkAudioCueService: NSObject {
         Int(meters / (usesMiles ? metersPerMile : 1000))
     }
 
-    /// "2 miles completed." / "1 kilometer completed."
-    nonisolated static func milestoneText(units: Int, usesMiles: Bool) -> String {
-        let unit = usesMiles ? "mile" : "kilometer"
-        return "\(units) \(units == 1 ? unit : unit + "s") completed."
+    /// "1 hour 2 minutes 5 seconds", "9 minutes", "40 seconds": whole seconds,
+    /// with the parts that are zero left out.
+    nonisolated static func spokenDuration(_ seconds: TimeInterval) -> String {
+        let total = max(0, Int(seconds.rounded()))
+        let h = total / 3600, m = (total % 3600) / 60, s = total % 60
+        var parts: [String] = []
+        if h > 0 { parts.append("\(h) \(h == 1 ? "hour" : "hours")") }
+        if m > 0 { parts.append("\(m) \(m == 1 ? "minute" : "minutes")") }
+        if s > 0 || parts.isEmpty { parts.append("\(s) \(s == 1 ? "second" : "seconds")") }
+        return parts.joined(separator: " ")
     }
 
-    /// "Current pace: 9 minutes 39 seconds per mile." The pace arrives per
-    /// kilometre whatever the locale, and is converted for the spoken unit.
-    nonisolated static func paceText(secsPerKm: Double, usesMiles: Bool) -> String {
-        let secsPerUnit = usesMiles ? secsPerKm * metersPerMile / 1000 : secsPerKm
-        let mins = Int(secsPerUnit) / 60
-        let secs = Int(secsPerUnit) % 60
+    /// What is said when a split completes (`feat/run-pace-splits`). A walk
+    /// or run hears the unit, the moving time, that split's pace and the
+    /// average pace, each named for what it is: "Mile 2. Time 18 minutes 40
+    /// seconds. Last mile 9 minutes 12 seconds. Average pace 9 minutes 20
+    /// seconds per mile." Until 2026-10-14 it said "Current pace" for the
+    /// average. A ride hears its average speed instead of a pace.
+    nonisolated static func splitCueText(split number: Int, unitMeters: Double,
+                                         elapsed: TimeInterval, splitSeconds: TimeInterval,
+                                         mode: ActivityMode) -> String {
+        let usesMiles = unitMeters != 1000
         let unit = usesMiles ? "mile" : "kilometer"
-        return secs == 0
-            ? "Current pace: \(mins) minutes per \(unit)."
-            : "Current pace: \(mins) minutes \(secs) seconds per \(unit)."
-    }
-
-    // MARK: - Called by NavigationSessionManager on each location update
-
-    /// Announces each whole mile or kilometre, with the pace. Call whenever
-    /// distance or pace changes.
-    func update(distanceCoveredMeters: Double, paceSecsPerKm: Double?, activityMode: ActivityMode) {
-        guard isEnabled else { return }
-        let usesMiles = Self.usesMiles
-        let covered = Self.unitsCovered(meters: distanceCoveredMeters, usesMiles: usesMiles)
-        guard covered > lastAnnouncedUnits else { return }
-        lastAnnouncedUnits = covered
-
-        var message = Self.milestoneText(units: covered, usesMiles: usesMiles)
-        if let pace = paceSecsPerKm, activityMode != .stationary {
-            message += " " + Self.paceText(secsPerKm: pace, usesMiles: usesMiles)
+        let units = Double(number)
+        var text = "\(unit.capitalized) \(number). Time \(spokenDuration(elapsed))."
+        if mode == .cycling {
+            let perHour = units / (elapsed / 3600)
+            text += String(format: " Average speed %.1f %@ per hour.", perHour, usesMiles ? "miles" : "kilometers")
+        } else {
+            text += " Last \(unit) \(spokenDuration(splitSeconds))."
+            text += " Average pace \(spokenDuration(elapsed / units)) per \(unit)."
         }
-        speak(message)
+        return text
+    }
+
+    // MARK: - Called by NavigationSessionManager when a split completes
+
+    /// Announces a completed split. The session's `SplitTracker` reports each
+    /// split once, a restored session included, so this keeps no count.
+    func announceSplit(number: Int, unitMeters: Double, elapsed: TimeInterval,
+                       splitSeconds: TimeInterval, mode: ActivityMode) {
+        guard isEnabled, mode != .stationary else { return }
+        speak(Self.splitCueText(split: number, unitMeters: unitMeters, elapsed: elapsed,
+                                splitSeconds: splitSeconds, mode: mode))
     }
 
     /// One-shot announcements for discrete events (walk complete, PR set, checkpoint).
@@ -107,7 +114,6 @@ final class WalkAudioCueService: NSObject {
     }
 
     func reset() {
-        lastAnnouncedUnits = 0
         pendingUtterances = 0
         synth.stopSpeaking(at: .immediate)
         releaseAudioSession()

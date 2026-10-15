@@ -120,6 +120,11 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
     var elapsedTime: TimeInterval = 0
     var isCompleted = false
     var splitTimes: [(label: String, elapsed: TimeInterval)] = []
+    /// Current pace and per-mile/km splits (`RunPacing.swift`), fed from each
+    /// accepted fix. The split unit follows the locale when the session starts.
+    private var rollingPace = RollingPace()
+    private(set) var splitTracker = SplitTracker(
+        unitMeters: WalkAudioCueService.usesMiles ? WalkAudioCueService.metersPerMile : 1000)
     var liveSteps: Int = 0
     var cadence: Double? = nil  // steps/min; nil until pedometer warms up
     var trackPoints: [CLLocationCoordinate2D] = []
@@ -229,6 +234,7 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
 
     func start() {
         startTime = Date()
+        rollingPace.add(elapsed: 0, distance: 0)
         beginTracking()
         writeSnapshot()
     }
@@ -289,6 +295,14 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
         isPaused   = false
         pauseStart = nil
         elapsedTime = Date().timeIntervalSince(startTime) - pausedDuration
+
+        // Splits carry on from the checkpoint, so no unit is recorded or
+        // announced twice; a checkpoint from before 1.17 has none. Current
+        // pace starts afresh from here.
+        splitTracker = SplitTracker(restoring: snapshot.unitSplits, unitMeters: splitTracker.unitMeters,
+                                    elapsed: elapsedTime, distance: totalDistanceCovered)
+        rollingPace.reset()
+        rollingPace.add(elapsed: elapsedTime, distance: totalDistanceCovered)
 
         trackPoints = (snapshot.trackPoints ?? []).map { $0.clCoordinate }
         legStartDistance = snapshot.legStartDistance ?? 0
@@ -474,22 +488,36 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
 
     /// The Live Activity cannot rely on the walk screen's onChange, which only
     /// runs while the screen renders; an auto-pause usually happens pocketed.
-    private func pushLiveActivityState() {
-        let dist = totalDistanceCovered
-        let elapsed = elapsedTime
-        let paused = isPaused
-        let pace = dist > 100 && elapsed > 10 ? elapsed / (dist / 1000) : nil
-        let pausedTotal = totalPausedDuration
-        Task {
-            await WalkLiveActivityManager.shared.update(
-                distanceCovered: dist,
-                elapsedSeconds: Int(elapsed),
-                isPaused: paused,
-                paceSecsPerKm: pace,
-                pausedDuration: pausedTotal,
-                pauseTime: paused ? Date() : nil
-            )
-        }
+    /// Everything that updates the Live Activity comes through here.
+    func pushLiveActivityState() {
+        let state = liveActivityState
+        Task { await WalkLiveActivityManager.shared.update(state) }
+    }
+
+    /// What the Live Activity shows now: the one place its paces are worked out.
+    var liveActivityState: WalkActivityAttributes.ContentState {
+        WalkActivityAttributes.ContentState(
+            distanceCoveredMeters: totalDistanceCovered,
+            elapsedSeconds: Int(elapsedTime),
+            isPaused: isPaused,
+            paceSecsPerKm: averagePaceSecsPerKm,
+            currentPaceSecsPerKm: currentPaceSecsPerKm,
+            pausedDuration: totalPausedDuration,
+            pauseTime: isPaused ? Date() : nil
+        )
+    }
+
+    /// Average pace since the start, in seconds per km (for a ride, its
+    /// average speed expressed the same way); nil until there is enough.
+    var averagePaceSecsPerKm: Double? {
+        totalDistanceCovered > 100 && elapsedTime > 10 ? elapsedTime / (totalDistanceCovered / 1000) : nil
+    }
+
+    /// Smoothed current pace (`RollingPace`) for a walk or run; nil for a
+    /// ride, which shows its average speed, and while paused.
+    var currentPaceSecsPerKm: Double? {
+        guard route.activityMode == .walking || route.activityMode == .running, !isPaused else { return nil }
+        return rollingPace.secsPerKm(at: elapsedTime)
     }
 
     func resume() {
@@ -547,6 +575,9 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
     /// tests and would otherwise write into the file those tests check.
     var writesSnapshots = true
 
+    /// Off in unit tests, so feeding a session splits doesn't speak them.
+    var speaksSplits = true
+
     /// Set by stopTracking(). A late event (a location fix in flight, the
     /// write at the end of advanceWaypoint()) must not put a checkpoint back
     /// after stop() deleted it: until 2026-09-28 every completed guided walk
@@ -580,7 +611,8 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
             trackPoints: thinned.map { WaypointCoord($0) },
             trailAlong: trailProgress?.along,
             legStartDistance: legStartDistance,
-            isCompleted: isCompleted
+            isCompleted: isCompleted,
+            unitSplits: splitTracker.isTracking ? splitTracker.state : nil
         )
     }
 
@@ -657,16 +689,25 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
             return String(format: "%.1f %@", value, useMetric ? "km/h" : "mph")
         }
         guard totalDistanceCovered > 50, elapsedTime > 5 else { return "--:--" }
-        let useMetric = Locale.current.measurementSystem != .us
-        let divisor   = useMetric ? 1000.0 : 1609.34
-        let unit      = useMetric ? "/km" : "/mi"
-        let minPerUnit = (elapsedTime / 60.0) / (totalDistanceCovered / divisor)
-        let mins      = Int(minPerUnit)
-        let secs      = Int((minPerUnit - Double(mins)) * 60)
-        return String(format: "%d:%02d%@", mins, secs, unit)
+        return Self.paceText(secsPerKm: elapsedTime / (totalDistanceCovered / 1000))
     }
 
-    var paceLabel: String { route.activityMode == .cycling ? "speed" : "pace" }
+    /// The smoothed current pace, "--:--" until there is enough or while stopped.
+    var currentPaceText: String {
+        currentPaceSecsPerKm.map { Self.paceText(secsPerKm: $0) } ?? "--:--"
+    }
+
+    /// "9:12/mi" in the US, "5:43/km" elsewhere.
+    nonisolated static func paceText(secsPerKm: Double, locale: Locale = .current) -> String {
+        let useMetric = locale.measurementSystem != .us
+        let secsPerUnit = useMetric ? secsPerKm : secsPerKm * 1.609344
+        let total = Int(secsPerUnit.rounded())
+        return String(format: "%d:%02d%@", total / 60, total % 60, useMetric ? "/km" : "/mi")
+    }
+
+    /// Average pace's label: "avg pace" for a walk or run, which also shows a
+    /// current pace; a ride shows only its average "speed".
+    var paceLabel: String { route.activityMode == .cycling ? "speed" : "avg pace" }
 
     var elapsedText: String {
         let s = Int(elapsedTime); let m = s / 60
@@ -743,7 +784,8 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
             steps: liveSteps,
             customRouteId: route.customRouteId,
             stopCount: stopTracker.stopCount,
-            flaggedPossibleVehicle: drivingEverDetected && !drivingAffirmedByUser
+            flaggedPossibleVehicle: drivingEverDetected && !drivingAffirmedByUser,
+            unitSplits: finishedSplits
         )
     }
 
@@ -772,30 +814,42 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
             self.workoutWriter?.addLocations(locations)
             self.checkArrival(at: loc)
             if !self.route.isCustomRoute { self.checkDistanceCheckpoints() }
-            let paceSecsPerKm: Double? = self.totalDistanceCovered > 100 && self.elapsedTime > 10
-                ? self.elapsedTime / (self.totalDistanceCovered / 1000)
-                : nil
-            WalkAudioCueService.shared.update(
-                distanceCoveredMeters: self.totalDistanceCovered,
-                paceSecsPerKm: paceSecsPerKm,
-                activityMode: self.route.activityMode
-            )
+            self.recordPacing()
             // Push the Live Activity directly from here too — don't rely on
             // WalkNavigationView's onChange, which only fires while the view is
             // actively rendering. This is what keeps the lock screen's distance/
             // pace/timer moving during a normal backgrounded walk, not just when
-            // Pause/Resume happens to push an update.
-            // isPaused: false is intentional — fixes that arrive while paused
-            // (an auto-pause keeps location running) returned above.
-            await WalkLiveActivityManager.shared.update(
-                distanceCovered: self.totalDistanceCovered,
-                elapsedSeconds: Int(self.elapsedTime),
-                isPaused: false,
-                paceSecsPerKm: paceSecsPerKm,
-                pausedDuration: self.totalPausedDuration,
-                pauseTime: nil
-            )
+            // Pause/Resume happens to push an update. Fixes that arrive while
+            // paused (an auto-pause keeps location running) returned above.
+            await WalkLiveActivityManager.shared.update(self.liveActivityState)
         }
+    }
+
+    /// Feeds the current pace and the split tracker from an accepted fix, and
+    /// speaks each split completed. Internal so tests can drive it without
+    /// CoreLocation. Indoor walks never get here: they have no GPS session.
+    func recordPacing() {
+        rollingPace.add(elapsed: elapsedTime, distance: totalDistanceCovered)
+        let previous = splitTracker.splits.last?.elapsed ?? 0
+        let completed = splitTracker.add(elapsed: elapsedTime, distance: totalDistanceCovered)
+        guard speaksSplits else { return }
+        var start = previous
+        for split in completed {
+            WalkAudioCueService.shared.announceSplit(
+                number: Int((split.distance / splitTracker.unitMeters).rounded()),
+                unitMeters: splitTracker.unitMeters,
+                elapsed: split.elapsed,
+                splitSeconds: split.elapsed - start,
+                mode: route.activityMode)
+            start = split.elapsed
+        }
+    }
+
+    /// The splits a walk or run is saved with; none for a ride (it keeps its
+    /// one average speed) or an indoor walk.
+    var finishedSplits: UnitSplits? {
+        guard route.activityMode == .walking || route.activityMode == .running else { return nil }
+        return splitTracker.finished(elapsed: elapsedTime, distance: totalDistanceCovered)
     }
 
     /// Internal, not private, so tests can check the 20/40/60/80% markers.

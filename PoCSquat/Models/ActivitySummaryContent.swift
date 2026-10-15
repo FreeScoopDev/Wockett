@@ -135,4 +135,47 @@ enum ActivitySummaryContent {
     static func recordsSet(by session: WalkSession, in history: [WalkSession]) -> [PRType] {
         checkNewPRs(newSession: session, against: history.filter { $0.date < session.date })
     }
+
+    /// One row of the summary's Splits: "Mile 2", that split's own time,
+    /// and its pace.
+    struct SplitRow: Equatable {
+        let label: String
+        let time: String
+        let pace: String
+    }
+
+    /// The summary's Splits (`feat/run-pace-splits`): a row per whole mile or
+    /// kilometre, "Mile 1" / "Km 1", and a final part-unit labelled by its
+    /// length, "0.43 mi" / "0.43 km". Each row's time and pace are that
+    /// split's own. Empty for an activity saved without splits (a ride, an
+    /// indoor walk, or anything from before 1.17).
+    static func splitRows(_ splits: UnitSplits?) -> [SplitRow] {
+        guard let splits else { return [] }
+        let unit = splits.unitMeters
+        var rows: [SplitRow] = []
+        var from = UnitSplit(distance: 0, elapsed: 0)
+        for (i, split) in splits.splits.enumerated() {
+            let meters = split.distance - from.distance
+            let seconds = split.elapsed - from.elapsed
+            let whole = abs(split.distance - Double(i + 1) * unit) < 0.5
+            let label = whole
+                ? "\(splits.usesMiles ? "Mile" : "Km") \(i + 1)"
+                : String(format: "%.2f %@", meters / unit, splits.usesMiles ? "mi" : "km")
+            let pace = meters > 0
+                ? NavigationSessionManager.paceText(
+                    secsPerKm: seconds / (meters / 1000),
+                    locale: Locale(identifier: splits.usesMiles ? "en_US" : "en_CA"))
+                : "—"
+            rows.append(SplitRow(label: label, time: splitTime(seconds), pace: pace))
+            from = split
+        }
+        return rows
+    }
+
+    /// "9:12", or "1:02:05" for a split over an hour.
+    private static func splitTime(_ seconds: TimeInterval) -> String {
+        let total = max(0, Int(seconds.rounded()))
+        let h = total / 3600, m = (total % 3600) / 60, s = total % 60
+        return h > 0 ? String(format: "%d:%02d:%02d", h, m, s) : String(format: "%d:%02d", m, s)
+    }
 }

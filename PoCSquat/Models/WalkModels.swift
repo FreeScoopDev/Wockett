@@ -352,6 +352,7 @@ struct WalkSession: Identifiable, Codable {
     var countsTowardRouteStats: Bool // user can exclude a session from route history; default true
     var stopCount: Int?       // stops detected during guided session; nil for pre-existing or free walks
     var flaggedPossibleVehicle: Bool // driving was suspected and user didn't affirm; default false
+    var unitSplits: UnitSplits?      // per-mile/km splits of an outdoor walk or run; nil before 1.17, rides, indoor
 
     init(id: UUID, routeName: String, date: Date, elapsedTime: TimeInterval,
          totalDistance: Double, waypoints: [WaypointCoord], lapCount: Int,
@@ -359,7 +360,7 @@ struct WalkSession: Identifiable, Codable {
          notes: String = "", petDistances: [UUID: Double] = [:], steps: Int = 0,
          isCommunityRoute: Bool = false, customRouteId: UUID? = nil,
          countsTowardRouteStats: Bool = true, stopCount: Int? = nil,
-         flaggedPossibleVehicle: Bool = false) {
+         flaggedPossibleVehicle: Bool = false, unitSplits: UnitSplits? = nil) {
         self.id = id; self.routeName = routeName; self.date = date
         self.elapsedTime = elapsedTime; self.totalDistance = totalDistance
         self.waypoints = waypoints; self.lapCount = lapCount
@@ -371,6 +372,7 @@ struct WalkSession: Identifiable, Codable {
         self.countsTowardRouteStats = countsTowardRouteStats
         self.stopCount = stopCount
         self.flaggedPossibleVehicle = flaggedPossibleVehicle
+        self.unitSplits = unitSplits
     }
 
     init(from decoder: Decoder) throws {
@@ -393,10 +395,11 @@ struct WalkSession: Identifiable, Codable {
         countsTowardRouteStats  = (try? c.decode(Bool.self,          forKey: .countsTowardRouteStats)) ?? true
         stopCount               = try? c.decode(Int.self,             forKey: .stopCount)
         flaggedPossibleVehicle  = (try? c.decode(Bool.self,          forKey: .flaggedPossibleVehicle)) ?? false
+        unitSplits              = try? c.decode(UnitSplits.self,      forKey: .unitSplits)
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, routeName, date, elapsedTime, totalDistance, waypoints, lapCount, isLoop, activePetIds, activityType, notes, petDistances, steps, isCommunityRoute, customRouteId, countsTowardRouteStats, stopCount, flaggedPossibleVehicle
+        case id, routeName, date, elapsedTime, totalDistance, waypoints, lapCount, isLoop, activePetIds, activityType, notes, petDistances, steps, isCommunityRoute, customRouteId, countsTowardRouteStats, stopCount, flaggedPossibleVehicle, unitSplits
     }
 
     /// A pet's share of a walk saved as an entry of its own, not a walk:

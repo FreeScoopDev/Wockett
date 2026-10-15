@@ -159,53 +159,13 @@ private struct ActiveSessionScreen: View {
                 guard completed, isGuided else { return }
                 handleWalkComplete()
             }
-            .onChange(of: session.totalDistanceCovered) { _, dist in
-                let elapsed = session.elapsedTime
-                let isPaused = session.isPaused
-                let pace = dist > 100 && elapsed > 10 ? elapsed / (dist / 1000) : nil
-                Task {
-                    await WalkLiveActivityManager.shared.update(
-                        distanceCovered: dist,
-                        elapsedSeconds: Int(elapsed),
-                        isPaused: isPaused,
-                        paceSecsPerKm: pace,
-                        pausedDuration: session.totalPausedDuration,
-                        pauseTime: isPaused ? Date() : nil
-                    )
-                }
-            }
+            .onChange(of: session.totalDistanceCovered) { _, _ in session.pushLiveActivityState() }
             .onChange(of: Int(session.elapsedTime)) { _, elapsed in
                 // Free sessions use elapsed-time ticks as an additional LA heartbeat.
                 guard !isGuided, elapsed > 0, elapsed % 10 == 0 else { return }
-                let dist = session.totalDistanceCovered
-                let paused = session.isPaused
-                let pace: Double? = dist > 50 ? Double(elapsed) / (dist / 1_000) : nil
-                Task {
-                    await WalkLiveActivityManager.shared.update(
-                        distanceCovered: dist,
-                        elapsedSeconds: elapsed,
-                        isPaused: paused,
-                        paceSecsPerKm: pace,
-                        pausedDuration: session.totalPausedDuration,
-                        pauseTime: paused ? Date() : nil
-                    )
-                }
+                session.pushLiveActivityState()
             }
-            .onChange(of: session.isPaused) { _, paused in
-                let dist = session.totalDistanceCovered
-                let elapsed = session.elapsedTime
-                let pace = dist > 100 && elapsed > 10 ? elapsed / (dist / 1000) : nil
-                Task {
-                    await WalkLiveActivityManager.shared.update(
-                        distanceCovered: dist,
-                        elapsedSeconds: Int(elapsed),
-                        isPaused: paused,
-                        paceSecsPerKm: pace,
-                        pausedDuration: session.totalPausedDuration,
-                        pauseTime: paused ? Date() : nil
-                    )
-                }
-            }
+            .onChange(of: session.isPaused) { _, _ in session.pushLiveActivityState() }
             .onChange(of: petStore.activePets.count) { _, count in handlePetCountChange(count) }
             .onChange(of: session.showBreakPrompt) { _, show in
                 // False when an auto-resume cleared the prompt.
@@ -639,7 +599,13 @@ private struct ActiveSessionScreen: View {
                                 label: "distance", prominent: true)
                 SessionStatTile(value: session.elapsedText, label: "time", prominent: true)
                     .accessibilityIdentifier("session.elapsed")
-                SessionStatTile(value: session.paceText, label: session.paceLabel, prominent: true)
+                // A walk or run glances at its current pace; a ride at its speed.
+                if showsCurrentPace {
+                    SessionStatTile(value: session.currentPaceText, label: "current pace", prominent: true)
+                        .accessibilityIdentifier("session.currentPace")
+                } else {
+                    SessionStatTile(value: session.paceText, label: session.paceLabel, prominent: true)
+                }
             }
             if isGuided { routeProgress }
             if session.canHeadBack {
@@ -674,7 +640,11 @@ private struct ActiveSessionScreen: View {
                 }
                 SessionStatTile(value: session.elapsedText, label: "time")
                     .accessibilityIdentifier("session.elapsed")
+                if showsCurrentPace {
+                    SessionStatTile(value: session.currentPaceText, label: "current pace")
+                }
                 SessionStatTile(value: session.paceText, label: session.paceLabel)
+                    .accessibilityIdentifier("session.averagePace")
                 if showsSteps {
                     SessionStatTile(value: session.estimatedSteps.formatted(), label: "steps")
                 }
@@ -692,7 +662,7 @@ private struct ActiveSessionScreen: View {
 
             VStack(spacing: 2) {
                 SessionToggleRow(icon: .speakerOn, tint: .earthGreen, title: "Voice cues",
-                                 detail: "Announces each \(WalkAudioCueService.usesMiles ? "mile" : "kilometer") and your pace",
+                                 detail: "Announces each \(WalkAudioCueService.usesMiles ? "mile" : "kilometer"), its time and your average",
                                  isOn: Binding(get: { WalkAudioCueService.shared.isEnabled },
                                                set: { WalkAudioCueService.shared.isEnabled = $0 }))
                 SessionToggleRow(icon: .hydration, tint: .accentInfo, title: "Water breaks",
@@ -848,14 +818,7 @@ private struct ActiveSessionScreen: View {
                 activityMode: next.activityMode.rawValue,
                 startDate: cap.startTime
             )
-            await WalkLiveActivityManager.shared.update(
-                distanceCovered: cap.totalDistanceCovered,
-                elapsedSeconds: Int(cap.elapsedTime),
-                isPaused: cap.isPaused,
-                paceSecsPerKm: nil,
-                pausedDuration: cap.totalPausedDuration,
-                pauseTime: cap.isPaused ? Date() : nil
-            )
+            await WalkLiveActivityManager.shared.update(cap.liveActivityState)
         }
     }
 
@@ -877,18 +840,17 @@ private struct ActiveSessionScreen: View {
                 activityMode: next.activityMode.rawValue,
                 startDate: cap.startTime
             )
-            await WalkLiveActivityManager.shared.update(
-                distanceCovered: cap.totalDistanceCovered,
-                elapsedSeconds: Int(cap.elapsedTime),
-                isPaused: cap.isPaused,
-                paceSecsPerKm: nil,
-                pausedDuration: cap.totalPausedDuration,
-                pauseTime: cap.isPaused ? Date() : nil
-            )
+            await WalkLiveActivityManager.shared.update(cap.liveActivityState)
         }
     }
 
     // MARK: - Finishing
+
+    /// Walks and runs show a smoothed current pace beside the average; a ride
+    /// shows one average speed (`feat/run-pace-splits`).
+    private var showsCurrentPace: Bool {
+        route.activityMode == .walking || route.activityMode == .running
+    }
 
     /// A ride's steps are only distance / 0.762 m: not shown.
     private var showsSteps: Bool {
