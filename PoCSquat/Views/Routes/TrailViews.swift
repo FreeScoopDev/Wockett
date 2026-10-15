@@ -366,6 +366,8 @@ struct TrailDetailView: View {
 
                 TrailTagRow(item: item, activityMode: activityMode)
 
+                TrailFactsCard(facts: TrailFacts.facts(for: item))
+
                 dogRule
 
                 // Named trails only: a nomination is about a trail people can find again.
@@ -450,6 +452,47 @@ struct TrailDetailView: View {
         .accessibilityElement(children: .combine)
     }
 
+}
+
+// MARK: - Facts
+
+/// What the map data states about a trail (`TrailFacts`): one row per stated
+/// fact, and the provenance caption under the card. No facts, no card: most
+/// trails state none, and the screen must look complete without it.
+struct TrailFactsCard: View {
+    let facts: [TrailFacts.Fact]
+
+    var body: some View {
+        if !facts.isEmpty {
+            WktSection(title: "Trail facts") {
+                VStack(alignment: .leading, spacing: 12) {
+                    ForEach(facts, id: \.kind) { fact in
+                        HStack(alignment: .center, spacing: 12) {
+                            WktIconBadge(symbol: fact.symbol)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(fact.label)
+                                    .font(.wktLabel)
+                                    .foregroundColor(.earthMuted)
+                                Text(fact.text)
+                                    .font(.wktBodyText)
+                                    .foregroundColor(.earthCream)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                    }
+                }
+                .wktCard()
+                Text(TrailFacts.caption)
+                    .font(.wktLabel)
+                    .foregroundColor(.earthMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            // One element, caption included, so VoiceOver never reads a fact
+            // without the line saying it is map data, not a report.
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("routes.trailFacts")
+        }
+    }
 }
 
 // MARK: - Credit

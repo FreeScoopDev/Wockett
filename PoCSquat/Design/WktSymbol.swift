@@ -56,6 +56,13 @@ enum WktSymbol {
     case mountain           // mountain.2 (use filled: true for mountain.2.fill)
     case cadence            // waveform.path (steps per minute)
 
+    // Trail facts (trail detail, from the map data)
+    case trailSurface       // shoeprints.fill (smoothness)
+    case trailMarking       // signpost.right (trail_visibility)
+    case wheelchair         // figure.roll (wheelchair=yes)
+    case lit                // lightbulb (lit=yes)
+    case maintainer         // building.2 (operator)
+
     // Health
     case sleep              // bed.double
     case readiness          // waveform.path.ecg
@@ -202,6 +209,11 @@ enum WktSymbol {
         case .hiking:         return "figure.hiking"
         case .mountain:       return "mountain.2"
         case .cadence:        return "waveform.path"
+        case .trailSurface:   return "shoeprints.fill"
+        case .trailMarking:   return "signpost.right"
+        case .wheelchair:     return "figure.roll"
+        case .lit:            return "lightbulb"
+        case .maintainer:     return "building.2"
         case .sleep:          return "bed.double"
         case .readiness:      return "waveform.path.ecg"
         case .calories:       return "flame"
