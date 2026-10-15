@@ -54,7 +54,7 @@ struct TrailFactsTests {
 
     @Test("Surface from smoothness", arguments: [
         ("excellent", "Smooth"), ("good", "Smooth"),
-        ("intermediate", "Uneven"),
+        ("intermediate", "Uneven in places"),
         ("bad", "Rough"), ("very_bad", "Rough"), ("horrible", "Rough"), ("very_horrible", "Rough"),
         ("impassable", "May be impassable")
     ])
@@ -64,7 +64,7 @@ struct TrailFactsTests {
 
     @Test("Marking from trail_visibility", arguments: [
         ("excellent", "Well marked"), ("good", "Well marked"),
-        ("intermediate", "Faint or unmarked"), ("bad", "Faint or unmarked"),
+        ("intermediate", "Faint or unmarked in places"), ("bad", "Faint or unmarked"),
         ("horrible", "Faint or unmarked"), ("no", "Faint or unmarked")
     ])
     func marking(value: String, expected: String) {
@@ -291,14 +291,23 @@ struct TrailFactsTests {
                 == "Includes steep, demanding path")
         #expect(text(.pathType, [section(1, difficulty: "alpine_hiking", length: 100), section(2, length: 900)])
                 == "Includes alpine route, for experienced hikers")
-        #expect(text(.pathType, [section(1, difficulty: "hiking", length: 100), section(2, length: 900)])
+        #expect(text(.pathType, [section(1, difficulty: "hiking", length: 250), section(2, length: 750)])
                 == "Walking path in places")
+        #expect(text(.pathType, [section(1, difficulty: "hiking", length: 249), section(2, length: 751)]) == nil,
+                "the easiest grade, like a good thing, needs 25% (critic run 3)")
     }
 
     @Test("Wheelchair and lit need sections covering 80% of the length to say yes")
     func positiveClaimsByLength() {
         #expect(text(.wheelchair, [section(1, length: 800, tags: ["wheelchair": "yes"]),
-                                   section(2, length: 200, tags: ["wheelchair": "no"])]) != nil)
+                                   section(2, length: 200)]) != nil, "80% yes, the rest silent")
+        #expect(text(.wheelchair, [section(1, length: 900, tags: ["wheelchair": "yes"]),
+                                   section(2, length: 100, tags: ["wheelchair": "no"])]) == nil,
+                "an explicit no is never outvoted (critic run 3)")
+        #expect(text(.wheelchair, [section(1, length: 900, tags: ["wheelchair": "designated"]),
+                                   section(2, length: 100, tags: ["wheelchair": "limited"])]) == nil)
+        #expect(text(.lit, [section(1, length: 950, tags: ["lit": "yes"]), section(2, length: 50, tags: ["lit": "no"])])
+                == nil)
         #expect(text(.wheelchair, [section(1, length: 799, tags: ["wheelchair": "designated"]),
                                    section(2, length: 201)]) == nil, "silence counts against a claim")
         #expect(text(.lit, [section(1, length: 800, tags: ["lit": "yes"]), section(2, length: 200)]) == "Lit at night")
@@ -350,6 +359,8 @@ struct TrailFactsTests {
         #expect(text(.sharedUse, [cycleway(1, length: 800, foot: "designated"), cycleway(2, length: 200)])
                 == "Shared with cyclists")
         #expect(text(.sharedUse, [cycleway(1, length: 799, foot: "designated"), cycleway(2, length: 201)]) == nil)
+        #expect(text(.sharedUse, [cycleway(1, length: 900, foot: "designated"), cycleway(2, length: 100, foot: "no")])
+                == nil, "foot=no on any section vetoes it")
     }
 
     @Test("A trail that is only partly cycleway keeps its path type")
@@ -367,7 +378,7 @@ struct TrailFactsTests {
         let a = TrailFeature.tags(fromJSON: #"{"bicycle":"no","foot":"designated","highway":"footway","horse":"no","merged_ways":7,"operator":"Nantahala Hiking Club","sac_scale":"mountain_hiking","smoothness":"intermediate","surface":"paving_stones","trail_visibility":"excellent","wheelchair":"limited"}"#)
         let b = TrailFeature.tags(fromJSON: #"{"bicycle":"no","foot":"designated","highway":"path","horse":"no","merged_ways":7,"operator":"Smoky Mountain Hiking Club","sac_scale":"mountain_hiking","surface":"ground","trail_visibility":"excellent","wheelchair":"no"}"#)
         let one = TrailFacts.facts(for: item([section(1, difficulty: "mountain_hiking", tags: a)]))
-        #expect(one.map(\.text) == ["Rough mountain path", "Uneven", "Well marked", "Nantahala Hiking Club"])
+        #expect(one.map(\.text) == ["Rough mountain path", "Uneven in places", "Well marked", "Nantahala Hiking Club"])
         let both = TrailFacts.facts(for: item([section(1, difficulty: "mountain_hiking", tags: a),
                                                section(2, difficulty: "mountain_hiking", tags: b)]))
         #expect(both.map(\.text) == ["Rough mountain path", "Uneven in places", "Well marked"],
@@ -417,6 +428,17 @@ struct TrailFactsTests {
         // (41% of the length says designated): nothing about walkers.
         let littleRock = try source.trails(key: "nc:w1086215060")
         #expect(TrailFacts.facts(for: item(littleRock)).isEmpty)
+
+        // Tanawha Trail: wheelchair=designated on 84% of 20 km of mountain
+        // path, wheelchair=no on the rest. Never "accessible" (critic run 3).
+        let tanawha = try source.trails(key: "nc:w1075221863")
+        #expect(!tanawha.isEmpty)
+        #expect(TrailFacts.facts(for: item(tanawha)).contains { $0.kind == .wheelchair } == false)
+
+        // Bolin Creek Trail: lit=yes on 88%, lit=no on three sections.
+        let bolin = try source.trails(key: "nc:w1197735362")
+        #expect(!bolin.isEmpty)
+        #expect(TrailFacts.facts(for: item(bolin)).contains { $0.kind == .lit } == false)
     }
 
     @Test("Every fact's icon exists in SF Symbols")

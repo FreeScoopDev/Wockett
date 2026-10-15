@@ -24,7 +24,9 @@ import Foundation
 // - Path type is the hardest grade any section states; under `mostOfTrail`
 //   it reads "Includes …".
 // - Wheelchair, lighting and a cycleway's shared use are positive claims: shown
-//   only when sections covering `mostOfTrail` say so.
+//   only when sections covering `mostOfTrail` say so and none says otherwise.
+// - Intermediate smoothness and marking always read "… in places"; the
+//   easiest path grade, like a good thing, needs `somePlaces`.
 // - The maintainer shows only when every section that names one agrees.
 
 enum TrailFacts {
@@ -183,6 +185,10 @@ enum TrailFacts {
         guard let hardest = sections.compactMap({ normalized($0.value).flatMap { pathTypeRank[$0] } }).max()
         else { return nil }
         let covered = share(sections) { (pathTypeRank[$0] ?? 0) >= hardest }
+        // The easiest grade is a good thing, not a warning: like "Smooth", it
+        // needs `somePlaces` (critic run 3: one hiking section in sixteen
+        // read "Walking path in places").
+        if hardest <= 1 && covered < somePlaces { return nil }
         return Wording.pathType(rank: hardest, throughout: covered >= mostOfTrail)
     }
 
@@ -197,29 +203,34 @@ enum TrailFacts {
 
     static func surface(_ sections: [Stated]) -> String? {
         graded(sections, ranks: smoothnessRank, good: Wording.smooth,
-               warnings: [2: Wording.uneven, 3: Wording.rough, 4: Wording.impassable])
+               warnings: [2: Wording.uneven, 3: Wording.rough, 4: Wording.impassable], partialOnly: [2])
     }
 
+    /// `intermediate` is OSM's "mostly visible, sometimes need for
+    /// orientation", milder than bad, horrible or no.
     static let visibilityRank: [String: Int] = [
-        "excellent": 1, "good": 1, "intermediate": 2, "bad": 2, "horrible": 2, "no": 2
+        "excellent": 1, "good": 1, "intermediate": 2, "bad": 3, "horrible": 3, "no": 3
     ]
 
     static func marking(_ sections: [Stated]) -> String? {
-        graded(sections, ranks: visibilityRank, good: Wording.wellMarked, warnings: [2: Wording.faint])
+        graded(sections, ranks: visibilityRank, good: Wording.wellMarked,
+               warnings: [2: Wording.faint, 3: Wording.faint], partialOnly: [2])
     }
 
     /// Rank 1 is the good value; higher ranks are warnings. The worst warning
-    /// any section states wins, bare when it covers `mostOfTrail`.
+    /// any section states wins, bare when it covers `mostOfTrail`; a grade
+    /// in `partialOnly` (intermediate, "uneven in places" by its own OSM
+    /// meaning) always reads "in places" (critic run 3).
     /// With no warning, the good value is bare over `mostOfTrail`, "in places"
     /// from `somePlaces`, and nothing below. A value the table does not know
     /// adds nothing.
     private static func graded(_ sections: [Stated], ranks: [String: Int], good: String,
-                               warnings: [Int: String]) -> String? {
+                               warnings: [Int: String], partialOnly: Set<Int> = []) -> String? {
         let known = sections.compactMap { normalized($0.value).flatMap { ranks[$0] } }
         guard let worst = known.max() else { return nil }
         if worst > 1, let word = warnings[worst] {
             let covered = share(sections) { ranks[$0] == worst }
-            return covered >= mostOfTrail ? word : word + Wording.inPlaces
+            return covered >= mostOfTrail && !partialOnly.contains(worst) ? word : word + Wording.inPlaces
         }
         let covered = share(sections) { ranks[$0] == 1 }
         if covered >= mostOfTrail { return good }
@@ -230,22 +241,31 @@ enum TrailFacts {
     // MARK: Positive claims: most of the trail must say so
 
     /// "Mapped as wheelchair accessible" when sections covering `mostOfTrail`
-    /// say `yes` or `designated` (a stronger yes).
+    /// say `yes` or `designated` (a stronger yes) and none says otherwise.
     static func wheelchair(_ sections: [Stated]) -> String? {
-        share(sections) { ["yes", "designated"].contains($0) } >= mostOfTrail ? Wording.wheelchair : nil
+        claimed(sections, accepting: ["yes", "designated"]) ? Wording.wheelchair : nil
     }
 
-    /// "Lit at night" when sections covering `mostOfTrail` say `lit=yes`.
+    /// "Lit at night" when sections covering `mostOfTrail` say `lit=yes` and
+    /// none says otherwise.
     static func lit(_ sections: [Stated]) -> String? {
-        share(sections) { $0 == "yes" } >= mostOfTrail ? Wording.lit : nil
+        claimed(sections, accepting: ["yes"]) ? Wording.lit : nil
     }
 
-    /// On a cycleway: who else uses it, from the `foot` tag, only when
-    /// sections covering `mostOfTrail` say `yes` or `designated`. No tag, or
-    /// anything else, says nothing about walkers.
+    /// On a cycleway: who else uses it, from the `foot` tag, under the same
+    /// rule. No tag, or anything else, says nothing about walkers.
     static func sharedUse(_ sections: [Stated], activityMode: ActivityMode) -> String? {
-        guard share(sections, where: { ["yes", "designated"].contains($0) }) >= mostOfTrail else { return nil }
+        guard claimed(sections, accepting: ["yes", "designated"]) else { return nil }
         return activityMode == .cycling ? Wording.sharedWithWalkers : Wording.sharedWithCyclists
+    }
+
+    /// A positive claim needs sections covering `mostOfTrail` to make it, and
+    /// no section to state anything else: 80% is a floor, not a vote that
+    /// outweighs an explicit "no" (critic run 3: Tanawha Trail, wheelchair
+    /// designated on 84% and no on the rest).
+    private static func claimed(_ sections: [Stated], accepting: Set<String>) -> Bool {
+        let contradicted = sections.contains { normalized($0.value).map { !accepting.contains($0) } ?? false }
+        return !contradicted && share(sections, where: accepting.contains) >= mostOfTrail
     }
 
     // MARK: Maintainer
