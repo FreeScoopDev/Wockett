@@ -372,6 +372,8 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
                 }
             }
         }
+        // Through `startWorkout`, never a writer built here: a test starts a
+        // hike and checks Health is asked for Hiking (test-auditor, #239).
         let capturedStartTime = startTime
         Task { @MainActor [weak self] in
             await self?.startWorkout(at: capturedStartTime)
@@ -596,7 +598,9 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
 
     /// Everything `stop()` does except deleting the checkpoint. `finish()`
     /// uses it: the walk is over but not yet saved.
-    private func stopTracking() {
+    /// Internal, not private, so a test that starts a session can stop its
+    /// sensors without `stop()` deleting the shared checkpoint file.
+    func stopTracking() {
         stopped = true
         isTrackingLocation = false
         autoPausedForInactivity = false

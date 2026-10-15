@@ -143,10 +143,8 @@ final class ActiveWalkStore {
         let capturedMgr = mgr
         Task {
             await WalkLiveActivityManager.shared.start(
-                routeName: route.name,
+                route: route,
                 totalDistanceMeters: capturedMgr.liveActivityTotalMeters,
-                activityMode: route.activityMode.rawValue,
-                isHike: route.isHike,
                 startDate: snapshot.startTime
             )
             await WalkLiveActivityManager.shared.update(capturedMgr.liveActivityState)

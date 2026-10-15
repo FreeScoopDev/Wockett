@@ -5,9 +5,9 @@ import HealthKit
 import SwiftData
 @testable import PoCSquat
 
-/// A walk started from a trail in the Trails list is a hike, unless the trail
-/// is mapped as paved or as a bike path (feat/hike-wording, Joe 2026-10-15,
-/// option B). A hike says "Hike" and is saved to Health as Hiking; its
+/// A walk started from a trail in the Trails list that
+/// `TrailListItem.isHikeable` accepts is a hike (feat/hike-wording, Joe
+/// 2026-10-15, option B, refined the same day). A hike says "Hike" and is saved to Health as Hiking; its
 /// `activityType` stays "walking". Whether a session is a hike is stored on
 /// it, so these tests follow the flag from the trail to the saved walk.
 @MainActor
@@ -230,6 +230,37 @@ struct HikeWordingTests {
         #expect(await workoutType(for: hike.navigableRoute(activityMode: .cycling)) == .cycling)
         let free = NavigableRoute(name: "Free Walk", waypoints: [], lapCount: 1, isLoop: false, totalDistance: 0)
         #expect(await workoutType(for: free) == .walking)
+    }
+
+    @Test("Starting a hike's session asks Health for a Hiking workout, through startWorkout")
+    func startedSessionAsksForHiking() async throws {
+        let hike = try #require(TrailWalkPlanner.plan(for: trail(surface: "dirt"), from: atStart))
+        let mgr = NavigationSessionManager(route: hike.navigableRoute(activityMode: .walking))
+        mgr.writesSnapshots = false
+        var asked: [HKWorkoutActivityType] = []
+        let fake = TypedFakeWriter()
+        mgr.makeWorkoutWriter = { asked.append($0); return fake }
+        mgr.start()
+        defer { mgr.stopTracking() }
+        for _ in 0..<100 where mgr.workoutWriter == nil {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(asked == [.hiking], "a real session start must build its writer through makeWorkoutWriter")
+        #expect(mgr.workoutWriter === fake)
+    }
+
+    @Test("The Live Activity takes its name, activity and hike flag from the session's route")
+    func liveActivityFromRoute() throws {
+        let hike = try #require(TrailWalkPlanner.plan(for: trail(surface: "dirt"), from: atStart))
+        let start = Date()
+        let attrs = WalkActivityAttributes(route: hike.navigableRoute(activityMode: .walking),
+                                           totalDistanceMeters: 1_500, startDate: start)
+        #expect(attrs.isHike == true && attrs.activityNoun == "Hike")
+        #expect(attrs.activityMode == "walking" && attrs.routeName == "Test Trail")
+        #expect(attrs.totalDistanceMeters == 1_500 && attrs.startDate == start)
+        let ride = WalkActivityAttributes(route: hike.navigableRoute(activityMode: .cycling),
+                                          totalDistanceMeters: 0, startDate: start)
+        #expect(ride.isHike == false && ride.activityNoun == "Ride")
     }
 
     // MARK: Stored on the session

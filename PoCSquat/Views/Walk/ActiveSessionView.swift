@@ -65,10 +65,8 @@ struct ActiveSessionView: View {
                     session.start()
                     for pet in petStore.activePets { session.petJoined(pet.id) }
                     await WalkLiveActivityManager.shared.start(
-                        routeName: stub.name,
+                        route: stub,
                         totalDistanceMeters: 0,
-                        activityMode: activityMode.rawValue,
-                        isHike: false,
                         startDate: session.startTime
                     )
                 }
@@ -817,10 +815,8 @@ private struct ActiveSessionScreen: View {
         let cap = session
         Task {
             await WalkLiveActivityManager.shared.start(
-                routeName: next.name,
+                route: next,
                 totalDistanceMeters: cap.liveActivityTotalMeters,
-                activityMode: next.activityMode.rawValue,
-                isHike: next.isHike,
                 startDate: cap.startTime
             )
             await WalkLiveActivityManager.shared.update(cap.liveActivityState)
@@ -840,10 +836,8 @@ private struct ActiveSessionScreen: View {
         let cap = session
         Task {
             await WalkLiveActivityManager.shared.start(
-                routeName: next.name,
+                route: next,
                 totalDistanceMeters: cap.liveActivityTotalMeters,
-                activityMode: next.activityMode.rawValue,
-                isHike: next.isHike,
                 startDate: cap.startTime
             )
             await WalkLiveActivityManager.shared.update(cap.liveActivityState)
@@ -952,10 +946,8 @@ private struct ActiveSessionScreen: View {
             UINotificationFeedbackGenerator().notificationOccurred(off ? .warning : .success)
         }
         await WalkLiveActivityManager.shared.start(
-            routeName: route.name,
+            route: route,
             totalDistanceMeters: session.liveActivityTotalMeters,
-            activityMode: route.activityMode.rawValue,
-            isHike: route.isHike,
             startDate: session.startTime
         )
         computedLegs = await computeWalkingLegs()

@@ -189,8 +189,7 @@ enum ActivityMode: String, Codable {
 //
 // What one session is called (feat/hike-wording, Joe 2026-10-15, option B):
 // its activity's words, except that a walk started from a trail in the
-// Trails list is a hike, unless the trail is mapped as paved or as a bike
-// path (`TrailListItem.isHikeable`). A hike is still `activityType`
+// Trails list that `TrailListItem.isHikeable` accepts is a hike. A hike is still `activityType`
 // "walking" everywhere Wockett counts things (history filters, challenges,
 // badges, the widget's numbers); only its words and its Health workout
 // type differ. Whether a session is a hike is stored on it (`isHike` on
