@@ -6,12 +6,12 @@ import { readFileSync } from 'node:fs';
 import {
   WALKER_FACTS, MIN_REPORTERS, AGREEMENT, RETENTION_MONTHS, walkerVerdict, tallyWalkerReports, summaryRecordName,
   summaryFields, summaryStanding, summaryRows, retentionCutoff, expiredReports, isPublishableFact, countsOf,
-  groupReports, queue, groupNominations, nominationQueue, ACTIVITY_KINDS, DAY, walkerId,
+  groupReports, queue, ACTIVITY_KINDS, DAY, walkerId,
 } from '../../docs/staff/logic.js';
 import {
   publishSummary, unpublishSummary, findExpiredReports, deleteExpiredReports, findReportsBy, deleteReportsBy,
 } from '../../docs/staff/actions.js';
-import { pagedQuery, buildQuery, plain, reporterToken } from '../../docs/staff/ck.js';
+import { pagedQuery, buildQuery, plain, reporterToken, deleteAll } from '../../docs/staff/ck.js';
 
 const NOW = Date.UTC(2026, 9, 15, 12, 0, 0);
 let seq = 0;
@@ -21,7 +21,7 @@ const rep = (reporter, value, { fact = 'dogs', trailKey = 'nc:w1', created = ++s
 });
 const counts = (obj) => obj;
 
-function fakeStore({ exists = false, failSave = false, failDeleteAt = null, found = [] } = {}) {
+function fakeStore({ exists = false, failSave = false, failDeleteAt = null, partly = undefined, found = [] } = {}) {
   const calls = [];
   let deletes = 0;
   return {
@@ -36,7 +36,7 @@ function fakeStore({ exists = false, failSave = false, failDeleteAt = null, foun
       calls.push(['delete', names]);
       if (names[0] === 'act1') return;
       deletes += 1;
-      if (failDeleteAt !== null && deletes >= failDeleteAt) throw { ckErrorCode: 'NETWORK_ERROR' };
+      if (failDeleteAt !== null && deletes >= failDeleteAt) throw { ckErrorCode: 'NETWORK_ERROR', ...(partly === undefined ? {} : { deleted: partly }) };
     },
   };
 }
@@ -247,6 +247,7 @@ test('Un-publish writes History, then deletes the summary; a failed delete takes
   await unpublishSummary(ok, { trailKey: 'nc:w1', fact: 'dogs' });
   assert.deepEqual(ok.calls.map((c) => c[0]), ['create', 'delete']);
   assert.equal(ok.calls[0][2].action, 'unpublished');
+  assert.equal(ok.calls[0][2].targetType, 'trailFact', 'never a trail action: that would close nominations');
   assert.deepEqual(ok.calls[1][1], ['factsummary.dogs.nc.w1']);
   const byName = fakeStore();
   await unpublishSummary(byName, { trailKey: 'nc:w1', fact: 'dogs', recordName: 'made-by-hand' });
@@ -265,12 +266,18 @@ test('a published summary is current, outdated or no longer supported', () => {
   assert.equal(summaryStanding(null, walkerVerdict('dogs', { noDogs: 3 })), null);
 });
 
-test('publishing or un-publishing never closes reports or nominations under the same name', () => {
-  const published = { created: 200, fields: { targetRecordName: 'nc:w1', action: 'published', targetType: 'trailFact' } };
-  const report = { recordName: 'r', created: 100, fields: { targetRecordName: 'nc:w1', targetType: 'route', reason: 'spam' } };
-  assert.equal(queue(groupReports([report], [published])).length, 1);
-  const nom = { recordName: 'n', created: 100, fields: { trailKey: 'nc:w1', trailName: 'Loop', latitude: 35, longitude: -78 } };
-  assert.equal(nominationQueue(groupNominations([nom], [published])).length, 1);
+test('walker-report actions never close a community report naming the same target', () => {
+  // A report is written by any iCloud user, so it can name any target, including these.
+  const cases = [
+    { targetRecordName: 'factsummary.dogs.nc.w1', action: 'published', targetType: 'trailFact' },
+    { targetRecordName: 'factsummary.dogs.nc.w1', action: 'unpublished', targetType: 'trailFact' },
+    { targetRecordName: 'TrailFactReport', action: 'expired', targetType: 'walkerReports' },
+    { targetRecordName: 'TrailFactReport', action: 'erased', targetType: 'walkerReports' },
+  ];
+  for (const fields of cases) {
+    const report = { recordName: 'r', created: 100, fields: { targetRecordName: fields.targetRecordName, targetType: 'route', reason: 'spam' } };
+    assert.equal(queue(groupReports([report], [{ created: 200, fields }])).length, 1, `${fields.action} closed a report`);
+  }
 });
 
 // MARK: Retention
@@ -332,6 +339,9 @@ test('deleting nothing writes nothing; a first failure takes History back; a lat
   assert.equal(out.deleted, 200);
   assert.equal(out.error.ckErrorCode, 'NETWORK_ERROR');
   assert.ok(!later.calls.some((c) => c[0] === 'delete' && c[1][0] === 'act1'), 'History stays: 200 are gone');
+  const fixed = later.calls.find((c) => c[0] === 'replaceNamed');
+  assert.deepEqual([fixed[1], fixed[2], fixed[3].reportCount, JSON.parse(fixed[3].snapshot).count], ['ModerationAction', 'act1', 200, 200],
+    'History corrected to what was really deleted');
   await assert.rejects(deleteExpiredReports(fakeStore(), { records: old }), /No cutoff/);
 });
 
@@ -395,6 +405,30 @@ test('deleting a walker\'s reports writes History with the count only, then dele
   const failing = fakeStore({ failDeleteAt: 1 });
   await assert.rejects(deleteReportsBy(failing, { records }));
   assert.deepEqual(failing.calls.at(-1), ['delete', ['act1']]);
+});
+
+test('a batch that fails part-way keeps History, with the number really deleted', async () => {
+  const cutoff = retentionCutoff(NOW);
+  const old = Array.from({ length: 200 }, (_, i) => ({ recordName: `old${i}`, recordType: 'TrailFactReport', created: cutoff - 1 }));
+  const store = fakeStore({ failDeleteAt: 1, partly: 150 });
+  const out = await deleteReportsBy(store, { records: old });
+  assert.equal(out.deleted, 150);
+  assert.ok(!store.calls.some((c) => c[0] === 'delete' && c[1][0] === 'act1'), '150 are gone: History must not be taken back');
+  assert.equal(store.calls.find((c) => c[0] === 'replaceNamed')[3].reportCount, 150);
+});
+
+test('ck.js counts what a failed delete batch did delete; records already gone count as deleted', async () => {
+  const names = Array.from({ length: 250 }, (_, i) => `r${i}`);
+  let call = 0;
+  const db = { async deleteRecords(chunk) {
+    call += 1;
+    if (call === 1) return { records: chunk.map((recordName) => ({ recordName })), errors: [{ ckErrorCode: 'NOT_FOUND' }] };
+    return { records: [], errors: [{ ckErrorCode: 'THROTTLED' }, { ckErrorCode: 'THROTTLED' }] };
+  } };
+  await assert.rejects(deleteAll(db, names), (error) => error.ckErrorCode === 'THROTTLED' && error.deleted === 248);
+  call = 0;
+  const fine = { async deleteRecords() { return { records: [], errors: [{ ckErrorCode: 'UNKNOWN_ITEM' }] }; } };
+  assert.equal(await deleteAll(fine, names), 250);
 });
 
 test('Activity counts walker reports', () => {

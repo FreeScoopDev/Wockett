@@ -15,7 +15,7 @@ import {
   groupNominations, nominationQueue, FEATURE_LENGTHS, BLURB_LIMIT, mapsLink, featuredRows, formatDistance,
   ACTIVITY_KINDS,
   tallyWalkerReports, summaryRows, summaryRecordName, summaryStanding, verdictText, factLabel, valueLabel, countsOf,
-  MIN_REPORTERS, RETENTION_MONTHS, WALKER_FACTS,
+  MIN_REPORTERS, AGREEMENT, RETENTION_MONTHS, WALKER_FACTS,
 } from './logic.js';
 import {
   removeItem, dismissItem, suspendAccount, liftSuspension, itemsOf, OWNED_TYPES, featureTrail, unfeatureTrail, dismissNominations,
@@ -750,7 +750,7 @@ async function renderWalkerReports(seq) {
     el('button', { class: 'btn', onclick: () => askDeleteByIdentifier() }, 'Delete one walker\'s reports'),
     el('button', { class: 'btn danger', onclick: (e) => confirmDeleteOld(e.target) }, `Delete reports older than ${RETENTION_MONTHS} months`)),
   el('p', { class: 'small muted' },
-    `A fact can be published when at least ${MIN_REPORTERS} walkers answered and at least 2/3 of them gave the same answer; `
+    `A fact can be published when at least ${MIN_REPORTERS} walkers answered and at least ${AGREEMENT.numerator}/${AGREEMENT.denominator} of them gave the same answer; `
     + 'a tie or a split publishes nothing. Each walker counts once per trail and fact. The app shows only what you publish, '
     + `as the answer and the number of walkers; never who answered. “${WALKER_FACTS.liked.label}” is counted here only: `
     + 'no summary is published for it and the app doesn\'t show it yet (Joe\'s decision, 2026-10-15).'),
@@ -838,7 +838,7 @@ async function confirmDeleteOld(button) {
       : `No walker reports older than ${RETENTION_MONTHS} months`),
     n ? el('p', {}, `They are older than ${RETENTION_MONTHS} months, how long walker reports are kept (Joe, 2026-10-15). `
       + 'This can\'t be undone. Published summaries stay until you un-publish them.') : el('p', {}, `Nothing was made before ${date}.`),
-    more ? el('p', { class: 'small muted' }, 'There are more than one load holds: run this again afterwards.') : null,
+    more ? el('p', { class: 'small muted' }, 'There are more than one load can hold (5,000): run this again afterwards for the rest.') : null,
     el('div', { class: 'actions' },
       el('button', { class: 'btn', value: 'cancel', formnovalidate: true }, n ? 'Cancel' : 'Close'),
       n ? el('button', { class: 'btn danger', value: 'delete' }, `Delete ${n} report${n === 1 ? '' : 's'}`) : null));
@@ -897,7 +897,7 @@ function confirmDeleteByIdentifier({ records, more }) {
     n ? el('p', {}, 'This can\'t be undone. History keeps the count, not the identifier. Published summaries hold no one\'s answers and stay; '
       + 'check the trails they reported if a summary now rests on fewer than 3 walkers.')
       : el('p', {}, 'Check the identifier was pasted whole. Reports deleted already, or older than 12 months, won\'t be found.'),
-    more ? el('p', { class: 'small muted' }, 'There are more than one load holds: run this again afterwards.') : null,
+    more ? el('p', { class: 'small muted' }, 'There are more than one load can hold (5,000): run this again afterwards for the rest.') : null,
     el('div', { class: 'actions' },
       el('button', { class: 'btn', value: 'cancel', formnovalidate: true }, n ? 'Cancel' : 'Close'),
       n ? el('button', { class: 'btn danger', value: 'delete' }, `Delete ${n} report${n === 1 ? '' : 's'}`) : null));

@@ -35,10 +35,25 @@ function check(response) {
   return response;
 }
 
-/** Errors for records that are already gone are not failures when deleting. */
-function onlyRealErrors(response) {
-  const errors = (response?.errors ?? []).filter((e) => !isGone(e));
-  if (errors.length) throw errors[0];
+/**
+ * Deletes `recordNames`, 200 per call. A call is not all-or-nothing: on a
+ * real error, the error thrown carries `deleted`, how many were deleted
+ * (calls before it, plus the records in its call that didn't fail).
+ */
+export async function deleteAll(db, recordNames) {
+  let deleted = 0;
+  for (let i = 0; i < recordNames.length; i += 200) {
+    const chunk = recordNames.slice(i, i + 200);
+    const response = await db.deleteRecords(chunk);
+    const errors = (response?.errors ?? []).filter((e) => !isGone(e));
+    if (errors.length) {
+      const error = errors[0];
+      try { error.deleted = deleted + Math.max(0, chunk.length - errors.length); } catch { /* a frozen error just has no count */ }
+      throw error;
+    }
+    deleted += chunk.length;
+  }
+  return deleted;
 }
 
 /**
@@ -254,11 +269,11 @@ export function connect({ CloudKit, containerIdentifier, apiToken, environment }
       return plain(response.records[0]);
     },
 
-    /** Deletes records by name; ones already gone count as deleted. */
-    async delete(recordNames) {
-      for (let i = 0; i < recordNames.length; i += 200) {
-        onlyRealErrors(await db.deleteRecords(recordNames.slice(i, i + 200)));
-      }
-    },
+    /**
+     * Deletes records by name; ones already gone count as deleted. A batch is
+     * not all-or-nothing, so a failure carries `deleted`: how many of
+     * `recordNames` were deleted before it (`deletedBefore`).
+     */
+    delete: (recordNames) => deleteAll(db, recordNames),
   };
 }

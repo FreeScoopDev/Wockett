@@ -804,7 +804,7 @@ export function verdictText(fact, verdict) {
     case 'tie':
       return 'Walkers are tied, so nothing is published';
     case 'split':
-      return `Walkers disagree: the most given answer has ${verdict.agreeing} of ${verdict.walkers}, under 2/3`;
+      return `Walkers disagree: the most given answer has ${verdict.agreeing} of ${verdict.walkers}, under ${AGREEMENT.numerator}/${AGREEMENT.denominator}`;
     default:
       return '';
   }

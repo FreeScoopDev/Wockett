@@ -291,9 +291,11 @@ export async function deleteExpiredReports(store, { records, cutoff }) {
 }
 
 /**
- * Deletes `names` 200 at a time after the action `written`. If nothing
- * could be deleted, the action is taken back and the error thrown; a failure
- * part-way returns how many were deleted and the error, and the action stays.
+ * Deletes `names` 200 at a time after the action `written`. A batch can fail
+ * part-way (the store's error says how many of it were deleted, `deleted`).
+ * If nothing was deleted, the action is taken back and the error thrown.
+ * Otherwise the action stays, corrected to the number really deleted, and
+ * that number is returned with the error.
  */
 async function deleteInChunks(store, names, written) {
   let deleted = 0;
@@ -303,10 +305,19 @@ async function deleteInChunks(store, names, written) {
       await store.delete(chunk);
       deleted += chunk.length;
     } catch (error) {
+      const partly = Number.isInteger(error?.deleted) ? Math.min(Math.max(error.deleted, 0), chunk.length) : 0;
+      deleted += partly;
       if (deleted === 0) {
         try { await store.delete([written.recordName]); } catch { /* the error below is what matters */ }
         throw error;
       }
+      try {
+        await store.replaceNamed('ModerationAction', written.recordName, {
+          ...written.fields, reportCount: deleted,
+          note: `Stopped part-way: ${deleted} of ${names.length} deleted.`,
+          snapshot: JSON.stringify({ ...JSON.parse(written.fields?.snapshot || '{}'), count: deleted, planned: names.length }),
+        });
+      } catch { /* History keeps the planned count; the error below is what matters */ }
       return { deleted, error };
     }
   }
