@@ -23,6 +23,9 @@ final class BundledTrailSource: TrailDataSource {
     /// Whether the pack has a `trail_key` column (builder 1.3.0 and later).
     /// Asking an older pack for it would be a SQL error, not an empty result.
     let hasTrailKeys: Bool
+    /// Whether the pack writes fact shares wherever a row states a fact
+    /// (meta `fact_shares`, builder 1.6.0); see `TrailFactShares`.
+    let hasFactShares: Bool
     let attributions: [TrailAttribution]
 
     private let db: OpaquePointer
@@ -62,6 +65,7 @@ final class BundledTrailSource: TrailDataSource {
             )
             attributions = try Self.readAttributions(db)
             hasTrailKeys = meta["trail_keys"] == "1"
+            hasFactShares = meta["fact_shares"] == String(TrailFactShares.format)
         } catch {
             sqlite3_close(handle)
             throw error
@@ -237,7 +241,8 @@ final class BundledTrailSource: TrailDataSource {
                 allowsHorse: int("allows_horse") != 0,
                 isLoop: int("is_loop") != 0,
                 tagsJSON: text("tags_json"),
-                trailKey: text("trail_key").flatMap { $0.isEmpty ? nil : $0 }
+                trailKey: text("trail_key").flatMap { $0.isEmpty ? nil : $0 },
+                packHasFactShares: hasFactShares
             ))
         }
         return rows

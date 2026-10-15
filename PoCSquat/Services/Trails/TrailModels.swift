@@ -121,6 +121,12 @@ struct TrailFeature: Identifiable, Hashable {
     /// whole trail rather than the pieces within the search radius. Nil for
     /// unnamed paths and in packs built before 1.3.0.
     var trailKey: String?
+    /// Whether this row's pack writes fact shares wherever a row states a
+    /// fact (meta `fact_shares=1`, pack builder 1.6.0), so a row without
+    /// `facts` states none of them (`TrailFactShares`). Nil or false: an
+    /// older pack, where a missing `facts` says nothing. Optional so a
+    /// feature saved before this field (`TrailApproach`) still decodes.
+    var packHasFactShares: Bool?
 
     /// `tagsJSON` as strings, parsed on each call. Read for labelling only;
     /// every filterable fact has its own column. Unreadable JSON is no tags.

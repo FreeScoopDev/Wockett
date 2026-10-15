@@ -28,6 +28,15 @@ import Foundation
 // - Intermediate smoothness and marking always read "… in places"; the
 //   easiest path grade, like a good thing, needs `somePlaces`.
 // - The maintainer shows only when every section that names one agrees.
+//
+// Since pack builder 1.6.0 a section is often several OSM ways, and its flat
+// tags are one way's. Where every section of the trail carries the builder's
+// fact shares (`TrailFactShares`), the rules above run on how much of each
+// section states each value instead, so "section" above reads "stretch the
+// map data describes" (spec feat/trail-facts-from-shares, 2026-10-15). Where
+// any section cannot say (a pack built before 1.6.0, unreadable shares), that
+// fact keeps the per-section rule for the whole trail: a missing share is
+// never read as "unstated".
 
 enum TrailFacts {
 
@@ -107,7 +116,22 @@ enum TrailFacts {
     static func facts(for item: TrailListItem, activityMode: ActivityMode = .walking) -> [Fact] {
         let tags = item.sections.map(\.tags)
         let meters = item.sections.map(\.lengthMeters)
-        func stated(_ key: String) -> [Stated] { zip(tags.map { $0[key] }, meters).map { ($0, $1) } }
+        let shares = item.sections.map(\.factShares)
+        /// Every section's stretches for `key` from its fact shares, or nil
+        /// when any section cannot say (the per-section rule then decides).
+        func fromShares(_ key: String) -> [Stated]? {
+            var stretches: [Stated] = []
+            for (section, reading) in zip(item.sections, shares) {
+                guard let pieces = TrailFactShares.pieces(of: key, reading: reading, lengthMeters: section.lengthMeters,
+                                                          packStatesShares: section.packHasFactShares == true)
+                else { return nil }
+                stretches += pieces
+            }
+            return stretches
+        }
+        func stated(_ key: String) -> [Stated] {
+            fromShares(key) ?? zip(tags.map { $0[key] }, meters).map { ($0, $1) }
+        }
 
         var facts: [Fact] = []
         if item.isBikePath {
@@ -118,11 +142,13 @@ enum TrailFacts {
                                   symbol: activityMode == .cycling ? .walk : .ride))
             }
         } else {
-            // Both the column and the row's own sac_scale: the pack builder
-            // fills `difficulty` with the majority grade of the ways it merged
-            // into one row, and `tags_json` with the first way's tags, so either
-            // can be the harder one (critic run 1: Lower Piney Trail).
-            let grades: [Stated] = item.sections.indices.map { i in
+            // The shares when every section has them: they say how much of
+            // the trail is at each grade. Otherwise both the column and the
+            // row's own sac_scale: the pack builder fills `difficulty` with the
+            // majority grade of the ways it merged into one row, and
+            // `tags_json` with the first way's tags, so either can be the
+            // harder one (critic run 1: Lower Piney Trail).
+            let grades: [Stated] = fromShares("sac_scale") ?? item.sections.indices.map { i in
                 (harder(item.sections[i].difficulty, tags[i]["sac_scale"]), meters[i])
             }
             if let text = pathType(grades) {
@@ -141,7 +167,8 @@ enum TrailFacts {
         if let text = lit(stated("lit")) {
             facts.append(Fact(kind: .lit, label: "Lighting", text: text, symbol: .lit))
         }
-        if let text = maintainer(tags.map { $0["operator"] }) {
+        let operators = fromShares("operator").map { $0.map(\.value) } ?? tags.map { $0["operator"] }
+        if let text = maintainer(operators) {
             facts.append(Fact(kind: .maintainedBy, label: "Maintained by", text: text, symbol: .maintainer))
         }
         return facts
