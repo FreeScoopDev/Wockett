@@ -328,6 +328,17 @@ struct HikeWordingTests {
         #expect(mgr.completedSession.isHike)
     }
 
+    @Test("A route rebuilt to follow a recorded line keeps its hike flag")
+    func recordedLineKeepsHike() throws {
+        // 20 points ~5 m apart: what RecordedRoute recognises as a recording.
+        let points = (0..<20).map { CLLocationCoordinate2D(latitude: 35.78, longitude: -78.64 + Double($0) * 0.000055) }
+        let route = NavigableRoute(name: "Recorded", waypoints: points, lapCount: 1, isLoop: false,
+                                   totalDistance: 100, isHike: true)
+        let following = route.followingRecordedLine()
+        #expect(following.pathIsRecording, "the fixture must be recognised as a recording")
+        #expect(following.isHike)
+    }
+
     @Test("A hike survives the crash checkpoint and its salvage; an older checkpoint restores as a walk")
     func snapshotKeepsHike() throws {
         let plan = try #require(TrailWalkPlanner.plan(for: trail(surface: "dirt"), from: atStart))
