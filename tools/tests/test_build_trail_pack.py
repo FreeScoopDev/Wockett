@@ -845,12 +845,9 @@ class CurationTests(unittest.TestCase):
         btp.build_pack([(src, "osm")], out, "t", "Test", 0.00002, 30.0, built_at="2026-01-01T00:00:00Z")
         meta = dict(sqlite3.connect(out).execute("SELECT key, value FROM meta"))
         self.assertEqual(meta["trail_keys"], "1")
-        self.assertEqual(meta["builder_version"], "1.5.0")
+        self.assertEqual(meta["builder_version"], "1.6.0")
         self.assertTrue(btp.verify_pack(out))
 
-
-if __name__ == "__main__":
-    unittest.main()
 
 
 class ListingRulesTests(unittest.TestCase):
@@ -1072,3 +1069,332 @@ class NumberedTrailTests(unittest.TestCase):
     def test_access_trails_keep_their_names(self):
         rows = self.build([feature("w1", [[-83.0, 35.0], [-83.0, 35.01]], name="Hazel Creek Access Trail", highway="path")])
         self.assertEqual(rows[0][1], "Hazel Creek Access Trail")
+
+
+# Lower Piney Trail (nc:w171710443) as OSM maps it, North Carolina extract of
+# 2026-09-09: a 1,569 m way graded hiking and a 216 m way graded
+# mountain_hiking, end to end, both smoothness=bad. Laid on a line of
+# longitude here at the same lengths (0.001 deg of latitude is ~111 m).
+PINEY = dict(highway="path", surface="ground", smoothness="bad", trail_visibility="excellent",
+             wheelchair="no", foot="designated", bicycle="no", horse="no", dog="leashed")
+
+
+def piney(order=(0, 1)):
+    ways = [
+        feature("w171710443", [[-81.5, 36.0], [-81.5, 36.01410]], name="Lower Piney Trail",
+                sac_scale="hiking", **PINEY),
+        feature("w430789106", [[-81.5, 36.01410], [-81.5, 36.01604]], name="Lower Piney Trail",
+                sac_scale="mountain_hiking", **PINEY),
+    ]
+    return [ways[i] for i in order]
+
+
+class FactShareTests(unittest.TestCase):
+    """Builder 1.6.0: what every merged way states about the card's facts,
+    as length-weighted shares in tags_json (spec feat/trail-builder-tag-preservation)."""
+
+    def build(self, features, **kw):
+        d = tempfile.mkdtemp()
+        src = os.path.join(d, "in.geojsonseq")
+        out = os.path.join(d, "out.wktpack")
+        write_seq(src, features)
+        self.stats = btp.build_pack([(src, "osm")], out, "t", "Test", 0.00002, 30.0,
+                                    built_at="2026-01-01T00:00:00Z", **kw)
+        conn = sqlite3.connect(out)
+        rows = conn.execute("SELECT source_ref, name, length_m, difficulty, tags_json, trail_key "
+                            "FROM trails ORDER BY id").fetchall()
+        meta = dict(conn.execute("SELECT key, value FROM meta"))
+        conn.close()
+        return rows, meta, out
+
+    @staticmethod
+    def facts(row):
+        return json.loads(row[4]).get("facts")
+
+    def assertSumsToOne(self, facts):
+        for tag, shares in facts["shares"].items():
+            self.assertEqual(round(sum(shares.values()) * 1000), 1000, (tag, shares))
+            self.assertTrue(all(v > 0 for v in shares.values()), (tag, shares))
+
+    def test_lower_piney_shares_follow_length_not_the_first_way(self):
+        rows, meta, _ = self.build(piney())
+        self.assertEqual(len(rows), 1)
+        facts = self.facts(rows[0])
+        self.assertEqual(facts["v"], 1)
+        # 1,569 m of 1,785 m is 0.879; the 216 m way is 0.121.
+        self.assertEqual(facts["shares"]["sac_scale"], {"hiking": 0.879, "mountain_hiking": 0.121})
+        self.assertEqual(facts["shares"]["smoothness"], {"bad": 1.0})
+        self.assertEqual(facts["shares"]["wheelchair"], {"no": 1.0})
+        self.assertEqual(facts["shares"]["foot"], {"designated": 1.0})
+        self.assertEqual(facts["worst"]["sac_scale"], "mountain_hiking")
+        self.assertEqual(facts["best"]["sac_scale"], "hiking")
+        self.assertEqual(meta["fact_shares"], "1")
+        self.assertSumsToOne(facts)
+
+    def test_flat_tags_and_columns_are_left_as_they_were(self):
+        rows, _, _ = self.build(piney())
+        source_ref, name, _, difficulty, tags_json, key = rows[0]
+        tags = json.loads(tags_json)
+        self.assertEqual((source_ref, name, key), ("w171710443", "Lower Piney Trail", "t:w171710443"))
+        # 1.5.0's answers, unchanged: the column is the way-count vote (a tie,
+        # alphabetical), the flat tags are one way's.
+        self.assertEqual(difficulty, "hiking")
+        # The first way of the chain as laid out here (south to north). In
+        # the real data the chain runs the other way and the row says
+        # mountain_hiking; the NC rebuild compared every row with 1.5.0's.
+        self.assertEqual(tags["sac_scale"], "hiking")
+        for k in ("highway", "surface", "smoothness", "trail_visibility", "wheelchair",
+                  "foot", "bicycle", "horse", "dog"):
+            self.assertIn(k, tags, "a kept tag survives beside the shares")
+        self.assertEqual(tags["merged_ways"], 2)
+
+    def test_way_order_does_not_change_the_shares(self):
+        forward, _, _ = self.build(piney((0, 1)))
+        backward, _, _ = self.build(piney((1, 0)))
+        flipped = piney()
+        flipped[0] = feature("w171710443", [[-81.5, 36.01410], [-81.5, 36.0]], name="Lower Piney Trail",
+                             sac_scale="hiking", **PINEY)
+        reversed_way, _, _ = self.build(flipped)
+        self.assertEqual(self.facts(forward[0]), self.facts(backward[0]))
+        self.assertEqual(self.facts(forward[0]), self.facts(reversed_way[0]))
+
+    def test_input_order_does_not_move_the_rounding(self):
+        # An unnamed corridor's members are taken in input order, and three
+        # equal thirds leave one unit to place: it must land on the same value
+        # whichever way the input runs.
+        ways = [north("w1", 36.0, 36.01, highway="cycleway", surface="asphalt", lit="yes"),
+                north("w2", 36.01, 36.02, highway="cycleway", surface="asphalt", lit="no"),
+                north("w3", 36.02, 36.03, highway="cycleway", surface="asphalt", lit="limited")]
+        a, _, _ = self.build(ways)
+        # Reversed in the input and in direction, so the corridor is walked
+        # from its other end and its ways are summed in the other order.
+        flipped = [dict(w, geometry=dict(w["geometry"], coordinates=w["geometry"]["coordinates"][::-1]))
+                   for w in reversed(ways)]
+        b, _, _ = self.build(flipped)
+        self.assertEqual((len(a), len(b)), (1, 1))
+        self.assertEqual(self.facts(a[0]), self.facts(b[0]))
+        self.assertEqual(sorted(self.facts(a[0])["shares"]["lit"].values()), [0.333, 0.333, 0.334])
+
+    def test_a_crossing_inside_a_row_is_unstated_length(self):
+        # A lit sidepath, 15 m of crosswalk across a side street, more lit
+        # sidepath (the Duck shape, 2026-09-26). The crosswalk states no
+        # lighting, so its length is unstated; it does state wheelchair=yes
+        # (crossings often carry it), and that counts like any way's: unlike
+        # the access vote, a crossing's own data is not left out.
+        rows, _, _ = self.build([
+            north("w1", 36.0, 36.0045, highway="cycleway", surface="asphalt", lit="yes", wheelchair="yes"),
+            north("w2", 36.0045, 36.00463, highway="footway", footway="crossing", wheelchair="yes"),
+            north("w3", 36.00463, 36.00913, highway="cycleway", surface="asphalt", lit="yes", wheelchair="yes"),
+        ])
+        self.assertEqual(len(rows), 1)
+        shares = self.facts(rows[0])["shares"]
+        self.assertAlmostEqual(shares["lit"]["unstated"], 14.5 / rows[0][2], delta=0.002)
+        self.assertGreater(shares["lit"]["unstated"], 0)
+        self.assertEqual(shares["wheelchair"], {"yes": 1.0})
+
+    def test_an_unstated_section_counts_as_unstated(self):
+        # 700 m says smooth, the 300 m after it says nothing.
+        rows, _, _ = self.build([
+            north("w1", 36.0, 36.0063, highway="path", name="Creek Trail", smoothness="good"),
+            north("w2", 36.0063, 36.0090, highway="path", name="Creek Trail"),
+        ])
+        shares = self.facts(rows[0])["shares"]["smoothness"]
+        self.assertAlmostEqual(shares["good"], 0.7, delta=0.002)
+        self.assertAlmostEqual(shares["unstated"], 0.3, delta=0.002)
+        self.assertSumsToOne(self.facts(rows[0]))
+
+    def test_the_worst_value_is_kept_however_short(self):
+        # 5 km of good surface and 3 m mapped impassable (a washout): the card
+        # warns on any section, so the 3 m must not round away.
+        rows, _, _ = self.build([
+            north("w1", 36.0, 36.045, highway="path", name="River Trail", smoothness="good"),
+            north("w2", 36.045, 36.04503, highway="path", name="River Trail", smoothness="impassable"),
+        ])
+        facts = self.facts(rows[0])
+        self.assertEqual(facts["shares"]["smoothness"], {"good": 0.999, "impassable": 0.001})
+        self.assertEqual(facts["worst"]["smoothness"], "impassable")
+        self.assertEqual(facts["best"]["smoothness"], "good")
+
+    def test_worst_and_best_follow_the_osm_scale_not_the_alphabet(self):
+        rows, _, _ = self.build([
+            north("w1", 36.0, 36.01, highway="path", name="Ridge Trail", trail_visibility="good"),
+            north("w2", 36.01, 36.02, highway="path", name="Ridge Trail", trail_visibility="bad"),
+            north("w3", 36.02, 36.03, highway="path", name="Ridge Trail", trail_visibility="excellent"),
+        ])
+        facts = self.facts(rows[0])
+        self.assertEqual(facts["worst"]["trail_visibility"], "bad")
+        self.assertEqual(facts["best"]["trail_visibility"], "excellent")
+
+    def test_thirds_sum_to_exactly_one(self):
+        rows, _, _ = self.build([
+            north("w1", 36.0, 36.01, highway="path", name="Three Trail", smoothness="good"),
+            north("w2", 36.01, 36.02, highway="path", name="Three Trail", smoothness="intermediate"),
+            north("w3", 36.02, 36.03, highway="path", name="Three Trail", smoothness="bad"),
+        ])
+        shares = self.facts(rows[0])["shares"]["smoothness"]
+        self.assertEqual(sorted(shares.values()), [0.333, 0.333, 0.334])
+        self.assertSumsToOne(self.facts(rows[0]))
+
+    def test_a_bridged_gap_is_unstated(self):
+        # Two pieces 40 m apart, facing each other: one row since 1.3.0. No
+        # way covers the gap, so ~40 m of the ~2.26 km row states nothing.
+        rows, _, _ = self.build([
+            north("w1", 36.0, 36.01, highway="path", name="Gap Trail", lit="yes"),
+            north("w2", 36.01036, 36.02036, highway="path", name="Gap Trail", lit="yes"),
+        ])
+        self.assertEqual(len(rows), 1)
+        self.assertIn("bridged_gaps", json.loads(rows[0][4]))
+        shares = self.facts(rows[0])["shares"]["lit"]
+        self.assertAlmostEqual(shares["unstated"], 40 / rows[0][2], delta=0.002)
+        self.assertSumsToOne(self.facts(rows[0]))
+
+    def test_a_bridged_piece_that_is_itself_a_merge_keeps_all_its_ways(self):
+        # bridge_named_gaps merges rows merge_named_ways already merged: A1
+        # lit=yes and A2 lit=no end to end, a 40 m gap, then B lit=yes. Each
+        # way's metres must survive both merges (critic run 1: reading each
+        # member's flat tags instead changed 69 NC rows).
+        a1 = north("w1", 36.0, 36.005, highway="path", name="Creek Trail", lit="yes")
+        a2 = north("w2", 36.005, 36.010, highway="path", name="Creek Trail", lit="no")
+        b = north("w3", 36.01036, 36.02036, highway="path", name="Creek Trail", lit="yes")
+        rows, _, _ = self.build([a1, a2, b])
+        self.assertEqual(len(rows), 1)
+        tags = json.loads(rows[0][4])
+        self.assertEqual((tags["merged_ways"], tags["bridged_gaps"]), (3, 1))
+        metres = {v: s * rows[0][2] for v, s in tags["facts"]["shares"]["lit"].items()}
+        length = btp.line_length_m
+        self.assertAlmostEqual(metres["yes"], length(a1["geometry"]["coordinates"]) + length(b["geometry"]["coordinates"]), delta=3)
+        self.assertAlmostEqual(metres["no"], length(a2["geometry"]["coordinates"]), delta=3)
+        self.assertAlmostEqual(metres["unstated"], 40, delta=3)
+
+    def test_an_off_scale_value_has_a_share_but_is_neither_worst_nor_best(self):
+        rows, _, _ = self.build([
+            north("w1", 36.0, 36.01, highway="path", name="Scale Trail", sac_scale="T3"),
+            north("w2", 36.01, 36.02, highway="path", name="Scale Trail", sac_scale="hiking"),
+        ])
+        facts = self.facts(rows[0])
+        self.assertIn("t3", facts["shares"]["sac_scale"])
+        self.assertEqual((facts["worst"]["sac_scale"], facts["best"]["sac_scale"]), ("hiking", "hiking"))
+
+    def test_tags_off_any_scale_get_no_worst_or_best(self):
+        rows, _, _ = self.build([
+            north("w1", 36.0, 36.006, highway="cycleway", surface="asphalt", lit="yes"),
+            north("w2", 36.006, 36.010, highway="cycleway", surface="asphalt", lit="no"),
+        ])
+        facts = self.facts(rows[0])
+        self.assertNotIn("worst", facts)
+        self.assertNotIn("best", facts)
+
+    def test_a_literal_unstated_value_states_nothing(self):
+        rows, _, _ = self.build([
+            north("w1", 36.0, 36.01, highway="path", name="Odd Trail", smoothness="good"),
+            north("w2", 36.01, 36.02, highway="path", name="Odd Trail", smoothness="unstated"),
+            north("w3", 36.02, 36.03, highway="path", name="Odd Trail"),
+        ])
+        shares = self.facts(rows[0])["shares"]["smoothness"]
+        self.assertAlmostEqual(shares["good"], 1 / 3, delta=0.002)
+        self.assertAlmostEqual(shares["unstated"], 2 / 3, delta=0.002)
+
+    def test_the_build_counts_rows_with_facts_and_mixed_rows(self):
+        self.build(piney() + [
+            north("w5", 36.1, 36.11, highway="path", name="Smooth Trail", smoothness="good"),
+            north("w6", 36.2, 36.21, highway="path", name="Plain Trail", surface="dirt"),
+        ])
+        self.assertEqual((self.stats.fact_rows, self.stats.fact_rows_mixed), (2, 1))
+
+    def test_an_unnamed_corridor_counts_every_way_not_its_longest(self):
+        rows, _, _ = self.build([
+            north("w1", 36.0, 36.006, highway="cycleway", surface="asphalt", lit="yes"),
+            north("w2", 36.006, 36.010, highway="cycleway", surface="asphalt", lit="no"),
+        ])
+        self.assertEqual(len(rows), 1)
+        shares = self.facts(rows[0])["shares"]["lit"]
+        self.assertAlmostEqual(shares["yes"], 0.6, delta=0.002)
+        self.assertAlmostEqual(shares["no"], 0.4, delta=0.002)
+
+    def test_shares_times_length_add_up_to_the_whole_trail(self):
+        # Two rows of one trail key (300 m apart, so not merged): the app adds
+        # share x length over a key's rows to judge the whole trail.
+        a = north("w1", 36.0, 36.01, highway="path", name="Long Trail", smoothness="good")
+        b = north("w2", 36.0127, 36.0227, highway="path", name="Long Trail", smoothness="bad")
+        c = north("w3", 36.0227, 36.0327, highway="path", name="Long Trail")
+        rows, _, _ = self.build([a, b, c])
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(len({r[5] for r in rows}), 1, "one trail key")
+        metres: dict = {}
+        for r in rows:
+            for value, share in self.facts(r)["shares"]["smoothness"].items():
+                metres[value] = metres.get(value, 0.0) + share * r[2]
+        way = btp.line_length_m(a["geometry"]["coordinates"])
+        self.assertAlmostEqual(metres["good"], way, delta=3)
+        self.assertAlmostEqual(metres["bad"], way, delta=3)
+        self.assertAlmostEqual(metres["unstated"], way, delta=3)
+
+    def test_a_row_stating_no_fact_has_no_facts(self):
+        rows, meta, _ = self.build([north("w1", 36.0, 36.01, highway="path", name="Plain Trail", surface="dirt")])
+        self.assertNotIn("facts", json.loads(rows[0][4]))
+        self.assertEqual(meta["fact_shares"], "1", "absent facts in a 1.6.0 pack means none stated")
+
+    def test_values_are_normalised_and_operator_keeps_its_case(self):
+        rows, _, _ = self.build([
+            north("w1", 36.0, 36.01, highway="path", name="Mixed Trail", smoothness=" Good ",
+                  operator="Nantahala  Hiking Club"),
+            north("w2", 36.01, 36.02, highway="path", name="Mixed Trail", smoothness="good",
+                  operator="Nantahala Hiking Club", wheelchair=""),
+        ])
+        facts = self.facts(rows[0])
+        self.assertEqual(facts["shares"]["smoothness"], {"good": 1.0})
+        self.assertEqual(facts["shares"]["operator"], {"Nantahala Hiking Club": 1.0})
+        self.assertNotIn("wheelchair", facts["shares"], "an empty value states nothing")
+
+    def test_verify_refuses_shares_that_do_not_sum_to_one(self):
+        _, _, out = self.build(piney())
+        self.assertTrue(btp.verify_pack(out))
+        conn = sqlite3.connect(out)
+        tags = json.loads(conn.execute("SELECT tags_json FROM trails").fetchone()[0])
+        tags["facts"]["shares"]["sac_scale"]["hiking"] = 0.8
+        conn.execute("UPDATE trails SET tags_json = ?", (json.dumps(tags),))
+        conn.commit()
+        conn.close()
+        self.assertFalse(btp.verify_pack(out))
+
+    def test_verify_refuses_a_zero_share(self):
+        _, _, out = self.build(piney())
+        conn = sqlite3.connect(out)
+        tags = json.loads(conn.execute("SELECT tags_json FROM trails").fetchone()[0])
+        tags["facts"]["shares"]["sac_scale"]["unstated"] = 0.0  # still sums to 1
+        conn.execute("UPDATE trails SET tags_json = ?", (json.dumps(tags),))
+        conn.commit()
+        conn.close()
+        self.assertFalse(btp.verify_pack(out))
+
+
+class AllocateTests(unittest.TestCase):
+
+    def test_rounding_noise_is_not_an_unstated_stretch(self):
+        # Up to 1 m more geometry than stated length is rounding; past it, unstated.
+        self.assertEqual(btp._allocate({"good": 1000}, 1010), {"good": 1000})
+        self.assertEqual(btp._allocate({"good": 1000}, 1011), {"good": 989, "unstated": 11})
+        self.assertEqual(btp._allocate({"a": 47}, 57), {"a": 1000})
+        self.assertEqual(btp._allocate({"good": 50000}, 50015), {"good": 1000}, "no zero-unit entry")
+
+    def test_more_stated_than_geometry_shares_the_stated_length(self):
+        self.assertEqual(btp._allocate({"a": 11, "b": 1}, 7), {"a": 917, "b": 83})
+
+    def test_a_raised_value_takes_no_remainder_unit(self):
+        # a is 0.9 units, raised to 1; the spare unit is v's (499.6), not a's
+        # (critic run 1).
+        self.assertEqual(btp._allocate({"a": 9, "u": 4995, "v": 4996}, 10000), {"a": 1, "u": 499, "v": 500})
+
+    def test_giving_back_units_does_not_depend_on_order(self):
+        one = btp._allocate({"a": 100000, "b": 100000, "c": 1, "d": 1, "e": 1}, 200003)
+        two = btp._allocate({"e": 1, "d": 1, "c": 1, "b": 100000, "a": 100000}, 200003)
+        self.assertEqual(one, two)
+        self.assertEqual(sum(one.values()), 1000)
+
+    def test_tiny_values_keep_one_unit_and_the_total_stays_exact(self):
+        units = btp._allocate({"good": 100000, "bad": 1, "horrible": 1}, 100002)
+        self.assertEqual(units, {"good": 998, "bad": 1, "horrible": 1})
+
+
+if __name__ == "__main__":
+    unittest.main()
