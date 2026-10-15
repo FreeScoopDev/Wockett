@@ -29,7 +29,8 @@ function fakeStore({ exists = false, failSave = false, failDeleteAt = null, part
   let deletes = 0;
   return {
     calls,
-    async create(recordType, fields) { calls.push(['create', recordType, fields]); return { recordName: 'act1', recordType, created: 1, fields }; },
+    // Like a save response that leaves fields out: History must be rebuilt from what was sent.
+    async create(recordType, fields) { calls.push(['create', recordType, fields]); return { recordName: 'act1', recordType, created: 1, fields: {} }; },
     // `exists` is the one record name that exists (or true for any).
     async fetch(names) {
       calls.push(['fetch', names]);
@@ -349,6 +350,13 @@ test('deleting nothing writes nothing; a first failure takes History back; a lat
   const fixed = later.calls.find((c) => c[0] === 'replaceNamed');
   assert.deepEqual([fixed[1], fixed[2], fixed[3].reportCount, JSON.parse(fixed[3].snapshot).count], ['ModerationAction', 'act1', 200, 200],
     'History corrected to what was really deleted');
+  // A replace keeps nothing it isn't sent: the whole action must be there.
+  assert.equal(fixed[3].action, 'expired');
+  assert.equal(fixed[3].targetType, 'walkerReports');
+  assert.equal(fixed[3].targetRecordName, 'TrailFactReport');
+  assert.equal(JSON.parse(fixed[3].snapshot).cutoff, cutoff);
+  assert.equal(JSON.parse(fixed[3].snapshot).planned, 300);
+  assert.equal(fixed[3].note, 'Stopped part-way: 200 of 300 deleted.');
   await assert.rejects(deleteExpiredReports(fakeStore(), { records: old }), /No cutoff/);
 });
 
@@ -422,7 +430,8 @@ test('a batch that fails part-way keeps History, with the number really deleted'
   const out = await deleteReportsBy(store, { records: old });
   assert.equal(out.deleted, 150);
   assert.ok(!store.calls.some((c) => c[0] === 'delete' && c[1][0] === 'act1'), '150 are gone: History must not be taken back');
-  assert.equal(store.calls.find((c) => c[0] === 'replaceNamed')[3].reportCount, 150);
+  const fixed = store.calls.find((c) => c[0] === 'replaceNamed')[3];
+  assert.deepEqual([fixed.reportCount, fixed.action, fixed.targetType], [150, 'erased', 'walkerReports']);
 });
 
 test('ck.js counts what a failed delete batch did delete; records already gone count as deleted', async () => {
@@ -430,10 +439,13 @@ test('ck.js counts what a failed delete batch did delete; records already gone c
   let call = 0;
   const db = { async deleteRecords(chunk) {
     call += 1;
-    if (call === 1) return { records: chunk.map((recordName) => ({ recordName })), errors: [{ ckErrorCode: 'NOT_FOUND' }] };
-    return { records: [], errors: [{ ckErrorCode: 'THROTTLED' }, { ckErrorCode: 'THROTTLED' }] };
+    if (call === 1) return { records: chunk.map((recordName) => ({ recordName })), errors: [{ ckErrorCode: 'NOT_FOUND', recordName: 'r0' }] };
+    return { records: [], errors: [{ ckErrorCode: 'THROTTLED', recordName: 'r200' }, { ckErrorCode: 'THROTTLED', recordName: 'r201' }] };
   } };
   await assert.rejects(deleteAll(db, names), (error) => error.ckErrorCode === 'THROTTLED' && error.deleted === 248);
+  // An error naming no record may be about the whole call: that call deleted nothing, as far as anyone can tell.
+  const whole = { async deleteRecords() { return { records: [], errors: [{ ckErrorCode: 'SERVICE_UNAVAILABLE' }] }; } };
+  await assert.rejects(deleteAll(whole, names.slice(0, 200)), (error) => error.deleted === 0);
   call = 0;
   const fine = { async deleteRecords() { return { records: [], errors: [{ ckErrorCode: 'UNKNOWN_ITEM' }] }; } };
   assert.equal(await deleteAll(fine, names), 250);

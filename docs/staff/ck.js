@@ -38,7 +38,9 @@ function check(response) {
 /**
  * Deletes `recordNames`, 200 per call. A call is not all-or-nothing: on a
  * real error, the error thrown carries `deleted`, how many were deleted
- * (calls before it, plus the records in its call that didn't fail).
+ * (calls before it, plus the records in its call that didn't fail). An error
+ * that names no record may be about the whole call, so it counts that call
+ * as deleting nothing: under-counting only means a re-run finds the rest.
  */
 export async function deleteAll(db, recordNames) {
   let deleted = 0;
@@ -48,7 +50,11 @@ export async function deleteAll(db, recordNames) {
     const errors = (response?.errors ?? []).filter((e) => !isGone(e));
     if (errors.length) {
       const error = errors[0];
-      try { error.deleted = deleted + Math.max(0, chunk.length - errors.length); } catch { /* a frozen error just has no count */ }
+      const failed = new Set(errors.map((e) => e?.recordName));
+      const inCall = failed.has(undefined) || failed.has(null) || failed.has('')
+        ? 0
+        : chunk.filter((name) => !failed.has(name)).length;
+      try { error.deleted = deleted + inCall; } catch { /* a frozen error just has no count */ }
       throw error;
     }
     deleted += chunk.length;
@@ -270,9 +276,9 @@ export function connect({ CloudKit, containerIdentifier, apiToken, environment }
     },
 
     /**
-     * Deletes records by name; ones already gone count as deleted. A batch is
+     * Deletes records by name; ones already gone count as deleted. A call is
      * not all-or-nothing, so a failure carries `deleted`: how many of
-     * `recordNames` were deleted before it (`deletedBefore`).
+     * `recordNames` were deleted, including any in the failing call (`deleteAll`).
      */
     delete: (recordNames) => deleteAll(db, recordNames),
   };

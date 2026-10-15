@@ -262,7 +262,7 @@ export async function unpublishSummary(store, { trailKey, fact, recordName: give
 /**
  * The walker reports older than the retention window (12 months before
  * `now`), for the confirm dialog to count. `more` says there were more than
- * one load holds: run the delete again afterwards.
+ * one load can hold: run the delete again afterwards for the rest.
  */
 export async function findExpiredReports(store, { now = Date.now(), max = 5000 } = {}) {
   const cutoff = retentionCutoff(now);
@@ -283,21 +283,22 @@ export async function deleteExpiredReports(store, { records, cutoff }) {
   if (!Number.isFinite(cutoff)) throw new Error('No cutoff.');
   const names = expiredReports(records, cutoff).map((r) => r.recordName);
   if (!names.length) return { deleted: 0, error: null };
-  const written = await store.create('ModerationAction', actionFields({
+  const fields = actionFields({
     target: 'TrailFactReport', type: 'walkerReports', action: 'expired', reportCount: names.length,
     snapshot: JSON.stringify({ cutoff, count: names.length }),
-  }));
-  return deleteInChunks(store, names, written);
+  });
+  const written = await store.create('ModerationAction', fields);
+  return deleteInChunks(store, names, written, fields);
 }
 
 /**
- * Deletes `names` 200 at a time after the action `written`. A batch can fail
+ * Deletes `names` 200 at a time after the action `written` (sent as `fields`). A batch can fail
  * part-way (the store's error says how many of it were deleted, `deleted`).
  * If nothing was deleted, the action is taken back and the error thrown.
  * Otherwise the action stays, corrected to the number really deleted, and
  * that number is returned with the error.
  */
-async function deleteInChunks(store, names, written) {
+async function deleteInChunks(store, names, written, fields) {
   let deleted = 0;
   for (let i = 0; i < names.length; i += 200) {
     const chunk = names.slice(i, i + 200);
@@ -312,10 +313,12 @@ async function deleteInChunks(store, names, written) {
         throw error;
       }
       try {
+        // Rebuilt from what was sent, not the server's copy: a replace keeps
+        // no field it isn't given.
         await store.replaceNamed('ModerationAction', written.recordName, {
-          ...written.fields, reportCount: deleted,
+          ...fields, reportCount: deleted,
           note: `Stopped part-way: ${deleted} of ${names.length} deleted.`,
-          snapshot: JSON.stringify({ ...JSON.parse(written.fields?.snapshot || '{}'), count: deleted, planned: names.length }),
+          snapshot: JSON.stringify({ ...JSON.parse(fields.snapshot), count: deleted, planned: names.length }),
         });
       } catch { /* History keeps the planned count; the error below is what matters */ }
       return { deleted, error };
@@ -345,9 +348,10 @@ export async function findReportsBy(store, { identifier, max = 5000 }) {
 export async function deleteReportsBy(store, { records }) {
   const names = records.filter((r) => r?.recordType === 'TrailFactReport').map((r) => r.recordName);
   if (!names.length) return { deleted: 0, error: null };
-  const written = await store.create('ModerationAction', actionFields({
+  const fields = actionFields({
     target: 'TrailFactReport', type: 'walkerReports', action: 'erased', reportCount: names.length,
     snapshot: JSON.stringify({ count: names.length }),
-  }));
-  return deleteInChunks(store, names, written);
+  });
+  const written = await store.create('ModerationAction', fields);
+  return deleteInChunks(store, names, written, fields);
 }
