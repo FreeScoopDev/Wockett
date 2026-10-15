@@ -192,7 +192,8 @@ final class ActiveWalkStore {
             activityType: snapshot.route.activityMode,
             steps: snapshot.liveSteps,
             customRouteId: snapshot.route.customRouteId,
-            unitSplits: salvagedSplits(for: snapshot, elapsed: elapsed)
+            unitSplits: salvagedSplits(for: snapshot, elapsed: elapsed),
+            elevation: salvagedElevation(for: snapshot)
         )
     }
 
@@ -205,6 +206,13 @@ final class ActiveWalkStore {
         return SplitTracker(restoring: saved, unitMeters: saved.unitMeters,
                             elapsed: elapsed, distance: snapshot.totalDistanceCovered)
             .finished(elapsed: elapsed, distance: snapshot.totalDistanceCovered)
+    }
+
+    /// The climb a salvaged activity keeps: its checkpoint's, as it stood.
+    /// None for an indoor walk (it has no GPS) or an older checkpoint.
+    static func salvagedElevation(for snapshot: ActiveWalkSnapshot) -> ElevationTotals? {
+        guard ActivityMode(rawValue: snapshot.route.activityMode)?.recordsElevation == true else { return nil }
+        return snapshot.elevation
     }
 
     /// The points a salvaged walk keeps: the breadcrumbs of a free walk, and

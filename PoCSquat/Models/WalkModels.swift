@@ -38,6 +38,10 @@ enum ActivityMode: String, Codable {
     /// (`feat/run-pace-splits`).
     var hasPaceAndSplits: Bool { self == .walking || self == .running }
 
+    /// Every outdoor activity records its climb from GPS altitude, rides
+    /// included; indoor has no GPS (`feat/walk-elevation-gain`).
+    var recordsElevation: Bool { self != .stationary }
+
     var icon: String {
         switch self {
         case .walking:    return "figure.walk"
@@ -358,6 +362,7 @@ struct WalkSession: Identifiable, Codable {
     var stopCount: Int?       // stops detected during guided session; nil for pre-existing or free walks
     var flaggedPossibleVehicle: Bool // driving was suspected and user didn't affirm; default false
     var unitSplits: UnitSplits?      // per-mile/km splits of an outdoor walk or run; nil before 1.17, rides, indoor
+    var elevation: ElevationTotals?  // GPS ascent/descent of an outdoor walk, run or ride; nil before 1.17, indoor, or no usable altitude
 
     init(id: UUID, routeName: String, date: Date, elapsedTime: TimeInterval,
          totalDistance: Double, waypoints: [WaypointCoord], lapCount: Int,
@@ -365,7 +370,8 @@ struct WalkSession: Identifiable, Codable {
          notes: String = "", petDistances: [UUID: Double] = [:], steps: Int = 0,
          isCommunityRoute: Bool = false, customRouteId: UUID? = nil,
          countsTowardRouteStats: Bool = true, stopCount: Int? = nil,
-         flaggedPossibleVehicle: Bool = false, unitSplits: UnitSplits? = nil) {
+         flaggedPossibleVehicle: Bool = false, unitSplits: UnitSplits? = nil,
+         elevation: ElevationTotals? = nil) {
         self.id = id; self.routeName = routeName; self.date = date
         self.elapsedTime = elapsedTime; self.totalDistance = totalDistance
         self.waypoints = waypoints; self.lapCount = lapCount
@@ -378,6 +384,7 @@ struct WalkSession: Identifiable, Codable {
         self.stopCount = stopCount
         self.flaggedPossibleVehicle = flaggedPossibleVehicle
         self.unitSplits = unitSplits
+        self.elevation = elevation
     }
 
     init(from decoder: Decoder) throws {
@@ -401,10 +408,11 @@ struct WalkSession: Identifiable, Codable {
         stopCount               = try? c.decode(Int.self,             forKey: .stopCount)
         flaggedPossibleVehicle  = (try? c.decode(Bool.self,          forKey: .flaggedPossibleVehicle)) ?? false
         unitSplits              = try? c.decode(UnitSplits.self,      forKey: .unitSplits)
+        elevation               = try? c.decode(ElevationTotals.self, forKey: .elevation)
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, routeName, date, elapsedTime, totalDistance, waypoints, lapCount, isLoop, activePetIds, activityType, notes, petDistances, steps, isCommunityRoute, customRouteId, countsTowardRouteStats, stopCount, flaggedPossibleVehicle, unitSplits
+        case id, routeName, date, elapsedTime, totalDistance, waypoints, lapCount, isLoop, activePetIds, activityType, notes, petDistances, steps, isCommunityRoute, customRouteId, countsTowardRouteStats, stopCount, flaggedPossibleVehicle, unitSplits, elevation
     }
 
     /// A pet's share of a walk saved as an entry of its own, not a walk:

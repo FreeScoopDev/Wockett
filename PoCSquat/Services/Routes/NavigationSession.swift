@@ -124,6 +124,9 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
     /// accepted fix. The split unit follows the locale when the session starts.
     private var rollingPace = RollingPace()
     private(set) var splitTracker = SplitTracker(unitMeters: NavigationSessionManager.splitUnitMeters())
+    /// Ascent and descent from the altitude of each accepted fix
+    /// (`ElevationTracker`); nothing new is asked of CoreLocation.
+    private(set) var elevationTracker = ElevationTracker()
 
     /// A mile in the US, a kilometre elsewhere: the rule every screen uses.
     nonisolated static func splitUnitMeters(locale: Locale = .current) -> Double {
@@ -307,6 +310,8 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
                                     elapsed: elapsedTime, distance: totalDistanceCovered)
         rollingPace.reset()
         rollingPace.add(elapsed: elapsedTime, distance: totalDistanceCovered)
+        // The climb so far carries on; its level re-anchors at the next fix.
+        elevationTracker = ElevationTracker(restoring: snapshot.elevation)
 
         trackPoints = (snapshot.trackPoints ?? []).map { $0.clCoordinate }
         legStartDistance = snapshot.legStartDistance ?? 0
@@ -650,7 +655,8 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
             trailAlong: trailProgress?.along,
             legStartDistance: legStartDistance,
             isCompleted: isCompleted,
-            unitSplits: splitTracker.isTracking ? splitTracker.state : nil
+            unitSplits: splitTracker.isTracking ? splitTracker.state : nil,
+            elevation: elevationTracker.totals
         )
     }
 
@@ -827,7 +833,8 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
             customRouteId: route.customRouteId,
             stopCount: stopTracker.stopCount,
             flaggedPossibleVehicle: drivingEverDetected && !drivingAffirmedByUser,
-            unitSplits: finishedSplits
+            unitSplits: finishedSplits,
+            elevation: finishedElevation
         )
     }
 
@@ -838,11 +845,15 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
             // fixes are not part of the walk.
             guard let self, !self.isPaused else { return }
             self.elapsedTime = Date().timeIntervalSince(self.startTime) - self.pausedDuration
+            var continuous = false
             if let last = self.lastLocation {
                 let delta = loc.distance(from: last)
-                if delta < 100 { self.totalDistanceCovered += delta }
+                continuous = delta < 100
+                if continuous { self.totalDistanceCovered += delta }
             }
             self.lastLocation = loc
+            self.recordElevation(altitude: loc.altitude, verticalAccuracy: loc.verticalAccuracy,
+                                 at: loc.timestamp, continuous: continuous)
             self.trackPoints.append(loc.coordinate)
             // Splits first, before anything below can write a checkpoint or
             // finish the walk (a waypoint, the trail's end, the turnaround):
@@ -906,6 +917,23 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
                 split: Int((split.distance / unitMeters).rounded()), unitMeters: unitMeters,
                 elapsed: split.elapsed, splitSeconds: split.elapsed - start, mode: mode)
         }
+    }
+
+    /// Feeds the climb from an accepted fix. Internal so tests can drive it
+    /// without CoreLocation. A stretch the distance skipped (continuous
+    /// false) is not counted as climb either.
+    func recordElevation(altitude: Double, verticalAccuracy: Double, at time: Date, continuous: Bool) {
+        guard route.activityMode.recordsElevation else { return }
+        elevationTracker.add(altitude: altitude, verticalAccuracy: verticalAccuracy,
+                             at: time, continuous: continuous)
+    }
+
+    /// The climb an outdoor activity is saved with, as it stands when the
+    /// activity ends; nothing recomputes it afterwards. Nil when no fix had a
+    /// usable altitude.
+    var finishedElevation: ElevationTotals? {
+        guard route.activityMode.recordsElevation else { return nil }
+        return elevationTracker.totals
     }
 
     /// The splits a walk or run is saved with; none for a ride (it keeps its
