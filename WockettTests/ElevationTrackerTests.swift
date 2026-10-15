@@ -196,6 +196,29 @@ struct ElevationTrackerTests {
         #expect(old.elevation == nil)
     }
 
+    @Test func walkSession_roundTripsClimb_throughItsRecord() {
+        let climb = ElevationTotals(ascentMeters: 123.5, descentMeters: 98.25)
+        let session = WalkSession(id: UUID(), routeName: "Hill", date: start, elapsedTime: 1800,
+                                  totalDistance: 4000, waypoints: [], lapCount: 1, isLoop: false,
+                                  activityType: "cycling", elevation: climb)
+        let record = WalkSessionRecord(from: session)
+        #expect(!record.elevationData.isEmpty)
+        #expect(record.toWalkSession().elevation == climb)
+    }
+
+    @Test func recordFromBeforeElevation_hasNoClimb() {
+        let session = WalkSession(id: UUID(), routeName: "Walk", date: start, elapsedTime: 400,
+                                  totalDistance: 1200, waypoints: [], lapCount: 1, isLoop: false,
+                                  elevation: ElevationTotals(ascentMeters: 30, descentMeters: 30))
+        let record = WalkSessionRecord(from: session)
+        record.elevationData = Data()   // the field's default on an old record
+        #expect(record.toWalkSession().elevation == nil)
+        // A walk saved with no usable altitude stores the default too.
+        let flat = WalkSession(id: UUID(), routeName: "Walk", date: start, elapsedTime: 400,
+                               totalDistance: 1200, waypoints: [], lapCount: 1, isLoop: false)
+        #expect(WalkSessionRecord(from: flat).elevationData.isEmpty)
+    }
+
     // MARK: - Summary tile
 
     private func session(_ type: String, ascent: Double?, descent: Double = 0) -> WalkSession {
