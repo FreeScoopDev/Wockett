@@ -10,13 +10,17 @@
   summary holds the trail, the fact, the answer, how many walkers and when,
   never who. Un-publish withdraws one. "How was it?" is counted but not
   published until Joe decides how to use it. Reports older than 12 months
-  can be deleted from the tab, with a count and a confirm. The facts and
+  can be deleted from the tab, with a count and a confirm, and so can one
+  walker's reports when they email asking: the privacy text will offer that,
+  so the tab finds a person's reports by the identifier the app will show
+  them, counts them, and deletes them on confirm. The facts and
   answers are written down once, in `docs/staff/walker-facts.js`, for the app
   to mirror. History records each publish, un-publish and deletion.
 
 ### Internal
 - `cloudkit/schema.ckdb` gains `TrailFactReport` (create: any signed-in
-  user; read and write: Moderator) and `TrailFactSummary` (read: everyone;
+  user; read and write: Moderator; its creator is QUERYABLE, so one
+  person's reports can be found) and `TrailFactSummary` (read: everyone;
   create and write: Moderator). Not yet in CloudKit: they need importing to
   Development and deploying to Production before the app version that writes
   reports ships. A test reads the schema file and fails if a report becomes

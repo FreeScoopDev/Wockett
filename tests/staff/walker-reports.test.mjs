@@ -6,10 +6,10 @@ import { readFileSync } from 'node:fs';
 import {
   WALKER_FACTS, MIN_REPORTERS, AGREEMENT, RETENTION_MONTHS, walkerVerdict, tallyWalkerReports, summaryRecordName,
   summaryFields, summaryStanding, summaryRows, retentionCutoff, expiredReports, isPublishableFact, countsOf,
-  groupReports, queue, groupNominations, nominationQueue, ACTIVITY_KINDS, DAY,
+  groupReports, queue, groupNominations, nominationQueue, ACTIVITY_KINDS, DAY, walkerId,
 } from '../../docs/staff/logic.js';
 import {
-  publishSummary, unpublishSummary, findExpiredReports, deleteExpiredReports,
+  publishSummary, unpublishSummary, findExpiredReports, deleteExpiredReports, findReportsBy, deleteReportsBy,
 } from '../../docs/staff/actions.js';
 import { pagedQuery, buildQuery, plain, reporterToken } from '../../docs/staff/ck.js';
 
@@ -31,6 +31,7 @@ function fakeStore({ exists = false, failSave = false, failDeleteAt = null, foun
     async createNamed(recordType, recordName, fields) { calls.push(['createNamed', recordType, recordName, fields]); if (failSave) throw { ckErrorCode: 'ACCESS_DENIED' }; },
     async replaceNamed(recordType, recordName, fields) { calls.push(['replaceNamed', recordType, recordName, fields]); if (failSave) throw { ckErrorCode: 'ACCESS_DENIED' }; },
     async query(recordType, options) { calls.push(['query', recordType, options]); return { records: found, more: false }; },
+    async queryByCreator(recordType, account, options) { calls.push(['queryByCreator', recordType, account, options]); return { records: found, more: false }; },
     async delete(names) {
       calls.push(['delete', names]);
       if (names[0] === 'act1') return;
@@ -334,6 +335,68 @@ test('deleting nothing writes nothing; a first failure takes History back; a lat
   await assert.rejects(deleteExpiredReports(fakeStore(), { records: old }), /No cutoff/);
 });
 
+// MARK: Deleting one walker's reports on request
+
+const ID = '_0123456789abcdef0123456789abcdef';
+
+test('a walker\'s identifier is their user record name; anything else is refused', () => {
+  assert.equal(walkerId(`  ${ID}\n`), ID);
+  assert.equal(walkerId('__defaultOwner__'), null);
+  assert.equal(walkerId('0123456789abcdef0123456789abcdef'), null, 'no leading underscore');
+  assert.equal(walkerId('_short'), null);
+  assert.equal(walkerId(`${ID} OR 1=1`), null);
+  assert.equal(walkerId(undefined), null);
+});
+
+test('the creator query asks CloudKit for one account\'s records', () => {
+  const q = buildQuery('TrailFactReport', { createdBy: ID });
+  assert.deepEqual(q.filterBy, [{ systemFieldName: 'createdUserRecordName', comparator: 'EQUALS',
+    fieldValue: { value: { recordName: ID }, type: 'REFERENCE' } }]);
+});
+
+test('records from anyone else never come back, even if CloudKit ignores the filter, and the account stays in ck.js', async () => {
+  const raw = (name, who) => ({ recordName: name, recordType: 'TrailFactReport', created: { timestamp: 1, userRecordName: who },
+    fields: { trailKey: { value: 'nc:w1' }, fact: { value: 'dogs' }, value: { value: 'noDogs' } } });
+  const db = { async performQuery() { return { records: [raw('mine', ID), raw('theirs', '_someoneElse0000000'), raw('anon', undefined)], moreComing: false }; } };
+  const { records } = await pagedQuery(db, buildQuery('TrailFactReport', { createdBy: ID }), { onlyCreator: ID });
+  assert.deepEqual(records.map((r) => r.recordName), ['mine']);
+  assert.equal(records[0].creator, undefined);
+  assert.ok(!JSON.stringify(records).includes(ID));
+  const none = await pagedQuery(db, buildQuery('TrailFactReport', { createdBy: '' }), { onlyCreator: '' });
+  assert.equal(none.records.length, 0, 'an empty account matches nothing');
+});
+
+test('finding a walker\'s reports refuses a bad identifier before asking CloudKit', async () => {
+  const bad = fakeStore();
+  await assert.rejects(findReportsBy(bad, { identifier: 'bob@example.com' }), /isn't a Wockett identifier/);
+  assert.deepEqual(bad.calls, []);
+  const store = fakeStore({ found: [{ recordName: 'r1', recordType: 'TrailFactReport', created: 1 }] });
+  const out = await findReportsBy(store, { identifier: ` ${ID} ` });
+  assert.deepEqual(store.calls[0].slice(0, 3), ['queryByCreator', 'TrailFactReport', ID]);
+  assert.equal(out.records.length, 1);
+});
+
+test('deleting a walker\'s reports writes History with the count only, then deletes them', async () => {
+  const records = Array.from({ length: 250 }, (_, i) => ({ recordName: `r${i}`, recordType: 'TrailFactReport', created: i }));
+  const store = fakeStore();
+  // The page has the account in hand; it must not reach History.
+  const out = await deleteReportsBy(store, { account: ID, records: [...records, { recordName: 'summary', recordType: 'TrailFactSummary' }] });
+  assert.deepEqual(out, { deleted: 250, error: null });
+  assert.equal(store.calls[0][0], 'create');
+  assert.equal(store.calls[0][2].action, 'erased');
+  assert.equal(store.calls[0][2].reportCount, 250);
+  assert.ok(!JSON.stringify(store.calls).includes(ID), 'no identifier in History');
+  const deleted = store.calls.filter((c) => c[0] === 'delete').map((c) => c[1]);
+  assert.deepEqual(deleted.map((d) => d.length), [200, 50]);
+  assert.ok(!deleted.flat().includes('summary'), 'only reports are deleted');
+  const empty = fakeStore();
+  assert.deepEqual(await deleteReportsBy(empty, { records: [] }), { deleted: 0, error: null });
+  assert.deepEqual(empty.calls, []);
+  const failing = fakeStore({ failDeleteAt: 1 });
+  await assert.rejects(deleteReportsBy(failing, { records }));
+  assert.deepEqual(failing.calls.at(-1), ['delete', ['act1']]);
+});
+
 test('Activity counts walker reports', () => {
   assert.ok(ACTIVITY_KINDS.some((k) => k.recordType === 'TrailFactReport'));
 });
@@ -354,6 +417,7 @@ test('walker reports are readable only by a Moderator; any signed-in user may cr
   assert.deepEqual(grants, ['GRANT READ, WRITE TO Moderator,', 'GRANT CREATE TO "_icloud"']);
   for (const field of ['fact', 'region', 'value']) assert.match(block, new RegExp(`\\n\\s+${field}\\s+STRING,`));
   assert.match(block, /trailKey\s+STRING QUERYABLE,/);
+  assert.match(block, /"___createdBy"\s+REFERENCE QUERYABLE,/, 'a walker\'s reports can be found to delete them');
 });
 
 test('summaries are readable by everyone and written only by a Moderator', () => {

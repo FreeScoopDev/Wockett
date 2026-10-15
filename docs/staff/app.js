@@ -19,7 +19,7 @@ import {
 } from './logic.js';
 import {
   removeItem, dismissItem, suspendAccount, liftSuspension, itemsOf, OWNED_TYPES, featureTrail, unfeatureTrail, dismissNominations,
-  publishSummary, unpublishSummary, findExpiredReports, deleteExpiredReports,
+  publishSummary, unpublishSummary, findExpiredReports, deleteExpiredReports, findReportsBy, deleteReportsBy,
 } from './actions.js';
 
 // MARK: - Helpers
@@ -747,6 +747,7 @@ async function renderWalkerReports(seq) {
     el('div', { class: 'grow title' }, tally.trails.length
       ? `${tally.trails.length} trail${tally.trails.length === 1 ? '' : 's'} with walker reports` : 'No walker reports'),
     el('button', { class: 'btn', onclick: render }, 'Refresh'),
+    el('button', { class: 'btn', onclick: () => askDeleteByIdentifier() }, 'Delete one walker\'s reports'),
     el('button', { class: 'btn danger', onclick: (e) => confirmDeleteOld(e.target) }, `Delete reports older than ${RETENTION_MONTHS} months`)),
   el('p', { class: 'small muted' },
     `A fact can be published when at least ${MIN_REPORTERS} walkers answered and at least 2/3 of them gave the same answer; `
@@ -859,6 +860,65 @@ async function confirmDeleteOld(button) {
   openDialog(form);
 }
 
+/**
+ * A walker asked (by email) for their reports to be deleted, giving the
+ * identifier the app shows them. Step 1 finds and counts them; step 2 asks to
+ * confirm the count before anything is deleted.
+ */
+function askDeleteByIdentifier() {
+  const form = el('form', { method: 'dialog' },
+    el('h2', { class: 'title', id: 'dialog-title' }, 'Delete one walker\'s reports'),
+    el('p', {}, 'Paste the identifier from their email (it starts with _). Nothing is deleted until you see the count and confirm.'),
+    el('label', {}, 'Identifier ', el('input', { name: 'identifier', required: true, autocomplete: 'off', spellcheck: 'false' })),
+    el('div', { class: 'actions' },
+      el('button', { class: 'btn', value: 'cancel', formnovalidate: true }, 'Cancel'),
+      el('button', { class: 'btn primary', value: 'find' }, 'Find their reports')));
+  form.addEventListener('submit', async (event) => {
+    if (event.submitter?.value !== 'find') return;
+    event.preventDefault();
+    for (const b of form.querySelectorAll('button')) b.disabled = true;
+    try {
+      const found = await findReportsBy(store, { identifier: form.elements.identifier.value });
+      confirmDeleteByIdentifier(found);
+    } catch (error) {
+      dialog.close();
+      fail(error);
+    }
+  });
+  openDialog(form);
+}
+
+function confirmDeleteByIdentifier({ records, more }) {
+  const n = records.length;
+  const form = el('form', { method: 'dialog' },
+    el('h2', { class: 'title', id: 'dialog-title' }, n
+      ? `Delete ${n} walker report${n === 1 ? '' : 's'} from this identifier?`
+      : 'No walker reports from this identifier'),
+    n ? el('p', {}, 'This can\'t be undone. History keeps the count, not the identifier. Published summaries hold no one\'s answers and stay; '
+      + 'check the trails they reported if a summary now rests on fewer than 3 walkers.')
+      : el('p', {}, 'Check the identifier was pasted whole. Reports deleted already, or older than 12 months, won\'t be found.'),
+    more ? el('p', { class: 'small muted' }, 'There are more than one load holds: run this again afterwards.') : null,
+    el('div', { class: 'actions' },
+      el('button', { class: 'btn', value: 'cancel', formnovalidate: true }, n ? 'Cancel' : 'Close'),
+      n ? el('button', { class: 'btn danger', value: 'delete' }, `Delete ${n} report${n === 1 ? '' : 's'}`) : null));
+  form.addEventListener('submit', async (event) => {
+    if (event.submitter?.value !== 'delete') return;
+    event.preventDefault();
+    for (const b of form.querySelectorAll('button')) b.disabled = true;
+    try {
+      const out = await deleteReportsBy(store, { records });
+      dialog.close();
+      if (out.error) say(`Deleted ${out.deleted} of ${n}, then: ${describeError(out.error)}. Run it again.`, { error: true });
+      else say(`Deleted ${out.deleted} walker report${out.deleted === 1 ? '' : 's'}. Reply to the walker that it's done.`);
+      setTimeout(() => render(), 600);
+    } catch (error) {
+      dialog.close();
+      fail(error);
+    }
+  });
+  dialog.replaceChildren(form);
+}
+
 // MARK: - Suspensions
 
 async function renderSuspensions(seq) {
@@ -960,7 +1020,7 @@ async function renderActivity(seq) {
 
 const ACTION_LABELS = {
   removed: 'Removed', dismissed: 'Dismissed', suspended: 'Suspended', lifted: 'Lifted', featured: 'Featured', unfeatured: 'Unfeatured',
-  published: 'Published', unpublished: 'Un-published', expired: 'Deleted old reports',
+  published: 'Published', unpublished: 'Un-published', expired: 'Deleted old reports', erased: 'Deleted on request',
 };
 
 const TARGET_LABELS = { account: 'Account', trail: 'Trail', trailFact: 'Walker facts', walkerReports: 'Walker reports' };
@@ -969,6 +1029,7 @@ const TARGET_LABELS = { account: 'Account', trail: 'Trail', trailFact: 'Walker f
 function walkerSummary(f) {
   try {
     const s = JSON.parse(f.snapshot ?? '{}');
+    if (f.action === 'erased') return `${s.count ?? f.reportCount ?? 0} reports deleted at the walker's request`;
     if (f.targetType === 'walkerReports') {
       return `${s.count ?? f.reportCount ?? 0} reports made before ${new Date(s.cutoff).toLocaleDateString()}`;
     }

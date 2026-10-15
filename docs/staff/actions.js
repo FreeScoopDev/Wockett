@@ -4,7 +4,7 @@
 import {
   actionFields, buildSnapshot, removalPlan, suspensionUntil, suspensionRecordName, suspensionFields, ownedBy, TYPES,
   canSuspend, featureUntil, featuredRecordName, featuredFields,
-  summaryRecordName, summaryFields, retentionCutoff, expiredReports, knownValue,
+  summaryRecordName, summaryFields, retentionCutoff, expiredReports, knownValue, walkerId,
 } from './logic.js';
 
 /**
@@ -287,6 +287,15 @@ export async function deleteExpiredReports(store, { records, cutoff }) {
     target: 'TrailFactReport', type: 'walkerReports', action: 'expired', reportCount: names.length,
     snapshot: JSON.stringify({ cutoff, count: names.length }),
   }));
+  return deleteInChunks(store, names, written);
+}
+
+/**
+ * Deletes `names` 200 at a time after the action `written`. If nothing
+ * could be deleted, the action is taken back and the error thrown; a failure
+ * part-way returns how many were deleted and the error, and the action stays.
+ */
+async function deleteInChunks(store, names, written) {
   let deleted = 0;
   for (let i = 0; i < names.length; i += 200) {
     const chunk = names.slice(i, i + 200);
@@ -302,4 +311,32 @@ export async function deleteExpiredReports(store, { records, cutoff }) {
     }
   }
   return { deleted, error: null };
+}
+
+/**
+ * The walker reports one person made, for a request to delete them (by
+ * email, with the identifier the app shows them: their CloudKit user record
+ * name). Refuses anything that isn't such an id before asking CloudKit.
+ */
+export async function findReportsBy(store, { identifier, max = 5000 }) {
+  const account = walkerId(identifier);
+  if (!account) throw new Error('That isn\'t a Wockett identifier: it starts with _ and has only letters and digits.');
+  const { records, more } = await store.queryByCreator('TrailFactReport', account, { max });
+  return { account, records, more };
+}
+
+/**
+ * Deletes the reports `findReportsBy` found: an "erased" action with the
+ * count first (never the identifier: the request was to remove their data),
+ * then the reports, 200 at a time, as the 12-month delete does. Published
+ * summaries are not touched; they hold no one's answers, only counts.
+ */
+export async function deleteReportsBy(store, { records }) {
+  const names = records.filter((r) => r?.recordType === 'TrailFactReport').map((r) => r.recordName);
+  if (!names.length) return { deleted: 0, error: null };
+  const written = await store.create('ModerationAction', actionFields({
+    target: 'TrailFactReport', type: 'walkerReports', action: 'erased', reportCount: names.length,
+    snapshot: JSON.stringify({ count: names.length }),
+  }));
+  return deleteInChunks(store, names, written);
 }

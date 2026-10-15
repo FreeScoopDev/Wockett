@@ -71,10 +71,15 @@ export function hasMorePages(response) {
 /**
  * The query CloudKit JS is sent: newest first, optional equality and age
  * filters. `sinceMs` keeps records created at or after it, `beforeMs` records
- * created before it.
+ * created before it, `createdBy` records the account `createdBy` created.
  */
-export function buildQuery(recordType, { equals, sinceMs, beforeMs } = {}) {
+export function buildQuery(recordType, { equals, sinceMs, beforeMs, createdBy } = {}) {
   const filterBy = [];
+  if (createdBy !== undefined) {
+    // Needs `___createdBy` QUERYABLE on the type (TrailFactReport has it).
+    filterBy.push({ systemFieldName: 'createdUserRecordName', comparator: 'EQUALS',
+                    fieldValue: { value: { recordName: createdBy }, type: 'REFERENCE' } });
+  }
   if (equals) {
     filterBy.push({ fieldName: equals[0], comparator: 'EQUALS', fieldValue: { value: equals[1] } });
   }
@@ -138,14 +143,18 @@ export function reporterToken(account) {
 }
 
 /** Every page of a query, up to `max` records. `more` says some were left out. */
-export async function pagedQuery(db, query, { max = 1000, pageSize = 200 } = {}) {
-  const raw = [];
+export async function pagedQuery(db, query, { max = 1000, pageSize = 200, onlyCreator } = {}) {
+  let raw = [];
   let response = check(await db.performQuery(query, { resultsLimit: Math.min(pageSize, max) }));
   raw.push(...response.records);
   while (hasMorePages(response) && raw.length < max) {
     response = check(await db.performQuery(response));
     raw.push(...response.records);
   }
+  // Checked here as well as by the query's filter: a filter CloudKit ignored
+  // or misread must not hand back someone else's records for deletion. The
+  // account itself stays in this file.
+  if (onlyCreator !== undefined) raw = raw.filter((r) => onlyCreator && r.created?.userRecordName === onlyCreator);
   if (query.recordType === 'CommunityReport') {
     for (const r of raw) if (r.created?.userRecordName) reportFilers.set(r.recordName, r.created.userRecordName);
   }
@@ -203,6 +212,15 @@ export function connect({ CloudKit, containerIdentifier, apiToken, environment }
      */
     query(recordType, { equals, sinceMs, beforeMs, max = 1000, pageSize = 200 } = {}) {
       return pagedQuery(db, buildQuery(recordType, { equals, sinceMs, beforeMs }), { max, pageSize });
+    },
+
+    /**
+     * Records of `recordType` that `account` created, newest first: the
+     * filter is sent to CloudKit and checked again on what comes back. The
+     * records come back without the account.
+     */
+    queryByCreator(recordType, account, { max = 5000, pageSize = 200 } = {}) {
+      return pagedQuery(db, buildQuery(recordType, { createdBy: account }), { max, pageSize, onlyCreator: account });
     },
 
     fetch: (recordNames) => fetchExisting(db, recordNames),

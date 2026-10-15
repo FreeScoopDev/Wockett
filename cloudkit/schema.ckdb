@@ -282,7 +282,7 @@ DEFINE SCHEMA
 
     RECORD TYPE TrailFactReport (
         "___createTime" TIMESTAMP QUERYABLE SORTABLE,
-        "___createdBy"  REFERENCE,
+        "___createdBy"  REFERENCE QUERYABLE,
         "___etag"       STRING,
         "___modTime"    TIMESTAMP,
         "___modifiedBy" REFERENCE,

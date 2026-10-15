@@ -114,7 +114,12 @@ rules need an ordinary account to be proved.
   **Un-publish** deletes it; phones drop it at their next refresh. "How was
   it?" (thumbs up or down) is counted but never published (Joe,
   2026-10-15). **Delete reports older than 12 months** counts them, asks
-  you to confirm, then deletes only those; published summaries stay. Trail
+  you to confirm, then deletes only those; published summaries stay.
+  **Delete one walker's reports** is for someone who emails asking for
+  their reports to be removed: paste the identifier the app shows them (their
+  CloudKit user record name, starting with `_`), see how many reports it
+  made, confirm, and they are deleted. History keeps the count, not the
+  identifier. Trail
   keys are shown, not names: a report holds no name.
   Summaries are keyed by trail key, so a trail whose key changes in a pack
   rebuild loses its summaries.

@@ -267,7 +267,7 @@ export function buildSnapshot(item, limit = SNAPSHOT_LIMIT) {
   return json;
 }
 
-export const ACTIONS = ['removed', 'dismissed', 'suspended', 'lifted', 'featured', 'unfeatured', 'published', 'unpublished', 'expired'];
+export const ACTIONS = ['removed', 'dismissed', 'suspended', 'lifted', 'featured', 'unfeatured', 'published', 'unpublished', 'expired', 'erased'];
 
 /** The fields of a `ModerationAction` record. */
 export function actionFields({ target, type, action, reason = '', note = '', reportCount = 0, snapshot = '' }) {
@@ -955,4 +955,16 @@ export function retentionCutoff(now, months = RETENTION_MONTHS) {
 /** Reports created strictly before `cutoff`: the ones to delete. */
 export function expiredReports(reports, cutoff) {
   return reports.filter((r) => Number.isFinite(r.created) && r.created < cutoff);
+}
+
+/**
+ * The identifier a walker gives when asking for their reports to be deleted:
+ * their CloudKit user record name (`_` and letters and digits), the same id
+ * CloudKit stamps as each report's creator, which the app shows them. Spaces
+ * around it are ignored. CloudKit's own-records placeholder
+ * (`__defaultOwner__`) is refused: it is no one's id.
+ */
+export function walkerId(input) {
+  const id = String(input ?? '').trim();
+  return /^_[A-Za-z0-9]{16,128}$/.test(id) ? id : null;
 }
