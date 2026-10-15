@@ -348,7 +348,7 @@ struct TrailFactsTests {
         ActivityMode.walking, .cycling
     ])
     func cyclewayWithoutFoot(mode: ActivityMode) {
-        for foot in [nil, "no", "permissive", "use_sidepath"] as [String?] {
+        for foot in [nil, "no", "private", "permissive", "destination", "use_sidepath"] as [String?] {
             let facts = TrailFacts.facts(for: item([cycleway(1, foot: foot)]), activityMode: mode)
             #expect(facts.isEmpty, "foot=\(foot ?? "absent")")
         }
@@ -361,6 +361,37 @@ struct TrailFactsTests {
         #expect(text(.sharedUse, [cycleway(1, length: 799, foot: "designated"), cycleway(2, length: 201)]) == nil)
         #expect(text(.sharedUse, [cycleway(1, length: 900, foot: "designated"), cycleway(2, length: 100, foot: "no")])
                 == nil, "foot=no on any section vetoes it")
+    }
+
+    // Joe, 2026-10-15: only foot=no (and private, as before) is a section
+    // saying otherwise. destination and permissive neither veto nor count
+    // toward the 80%. These sections carry flat tags only: the fallback path.
+    @Test("Shared use: foot=destination or permissive does not veto, foot=no and private still do")
+    func cyclewayConditionalFoot() {
+        for other in ["destination", "permissive"] {
+            // 900 m designated, 100 m conditional: 90% yes, no veto.
+            #expect(text(.sharedUse, [cycleway(1, length: 900, foot: "designated"),
+                                      cycleway(2, length: 100, foot: other)]) == "Shared with cyclists", "\(other)")
+            // 799 m designated, 201 m conditional: under 80%, and the
+            // conditional stretch does not count as yes.
+            #expect(text(.sharedUse, [cycleway(1, length: 799, foot: "designated"),
+                                      cycleway(2, length: 201, foot: other)]) == nil, "\(other)")
+        }
+        for veto in ["no", "private", "NO "] {
+            #expect(text(.sharedUse, [cycleway(1, length: 900, foot: "designated"),
+                                      cycleway(2, length: 100, foot: veto)]) == nil, "foot=\(veto)")
+        }
+        // 25% foot=no: hidden (by the veto and by the 80% floor alike).
+        #expect(text(.sharedUse, [cycleway(1, length: 750, foot: "yes"), cycleway(2, length: 250, foot: "no")]) == nil)
+    }
+
+    @Test("The conditional foot values are only neutral for shared use: wheelchair and lit still yield to any other value")
+    func otherClaimsUnchanged() {
+        let wheel = [section(1, length: 900, tags: ["wheelchair": "yes"]),
+                     section(2, length: 100, tags: ["wheelchair": "permissive"])]
+        #expect(text(.wheelchair, wheel) == nil)
+        let lit = [section(1, length: 900, tags: ["lit": "yes"]), section(2, length: 100, tags: ["lit": "no"])]
+        #expect(text(.lit, lit) == nil)
     }
 
     @Test("A trail that is only partly cycleway keeps its path type")
@@ -402,12 +433,13 @@ struct TrailFactsTests {
 
         // Walnut Creek Trail, a cycleway: excellent smoothness under 25% of
         // 14.5 km, so no surface line. Walkers are designated on nearly all
-        // of it, but one way (54 m of row w130332179) says foot=destination,
-        // and a positive claim yields to any stretch saying otherwise: no
-        // "Shared with cyclists" (it showed from the flat tags before 1.6.0).
+        // of it; one way (54 m of row w130332179) says foot=destination,
+        // which is not "says otherwise" (Joe, 2026-10-15): "Shared with
+        // cyclists" (it was hidden from builder 1.6.0's shares until then).
         let walnut = try source.trails(key: "nc:w130332179")
         #expect(walnut.count == 16)
-        #expect(TrailFacts.facts(for: item(walnut)).isEmpty)
+        #expect(TrailFacts.facts(for: item(walnut)).map(\.text) == ["Shared with cyclists"])
+        #expect(TrailFacts.facts(for: item(walnut), activityMode: .cycling).map(\.text) == ["Shared with walkers"])
 
         // Lower Piney Trail: the column says hiking, the row's sac_scale says
         // mountain_hiking (two merged ways). The shares say mountain_hiking

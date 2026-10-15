@@ -25,6 +25,8 @@ import Foundation
 //   it reads "Includes …".
 // - Wheelchair, lighting and a cycleway's shared use are positive claims: shown
 //   only when sections covering `mostOfTrail` say so and none says otherwise.
+//   For shared use, foot=destination or permissive is not "otherwise" (Joe,
+//   2026-10-15); foot=no and foot=private are.
 // - Intermediate smoothness and marking always read "… in places"; the
 //   easiest path grade, like a good thing, needs `somePlaces`.
 // - The maintainer shows only when every section that names one agrees.
@@ -282,16 +284,25 @@ enum TrailFacts {
     /// On a cycleway: who else uses it, from the `foot` tag, under the same
     /// rule. No tag, or anything else, says nothing about walkers.
     static func sharedUse(_ sections: [Stated], activityMode: ActivityMode) -> String? {
-        guard claimed(sections, accepting: ["yes", "designated"]) else { return nil }
+        guard claimed(sections, accepting: ["yes", "designated"], neutral: footNeutral) else { return nil }
         return activityMode == .cycling ? Wording.sharedWithWalkers : Wording.sharedWithCyclists
     }
+
+    /// `foot` values that let walkers on with a condition: neither a yes
+    /// toward the 80% nor a "says otherwise" that vetoes the shared-use line
+    /// (Joe, 2026-10-15: Walnut Creek Trail lost it over 54 m of
+    /// foot=destination). `no`, `private` and anything else still veto.
+    static let footNeutral: Set<String> = ["destination", "permissive"]
 
     /// A positive claim needs sections covering `mostOfTrail` to make it, and
     /// no section to state anything else: 80% is a floor, not a vote that
     /// outweighs an explicit "no" (critic run 3: Tanawha Trail, wheelchair
-    /// designated on 84% and no on the rest).
-    private static func claimed(_ sections: [Stated], accepting: Set<String>) -> Bool {
-        let contradicted = sections.contains { normalized($0.value).map { !accepting.contains($0) } ?? false }
+    /// designated on 84% and no on the rest). A `neutral` value neither
+    /// makes the claim nor vetoes it.
+    private static func claimed(_ sections: [Stated], accepting: Set<String>, neutral: Set<String> = []) -> Bool {
+        let contradicted = sections.contains {
+            normalized($0.value).map { !accepting.contains($0) && !neutral.contains($0) } ?? false
+        }
         return !contradicted && share(sections, where: accepting.contains) >= mostOfTrail
     }
 
