@@ -366,7 +366,7 @@ struct TrailDetailView: View {
 
                 TrailTagRow(item: item, activityMode: activityMode)
 
-                TrailFactsCard(facts: TrailFacts.facts(for: item))
+                TrailFactsCard(facts: TrailFacts.facts(for: item, activityMode: activityMode))
 
                 dogRule
 
