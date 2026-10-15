@@ -106,10 +106,11 @@ rules need an ordinary account to be proved.
   answer. Each walker counts once per trail and fact (their newest answer),
   and who answered is never shown: the page only ever holds a token like
   `walker-3` that means nothing outside this page load. A fact is **Ready to
-  publish** when at least 3 walkers answered and at least 2/3 gave the same
-  answer; a tie or split publishes nothing (`MIN_REPORTERS`, `AGREEMENT` in
+  publish** when at least 3 walkers gave the same answer and they are at
+  least 2 in 3 of everyone who answered; a tie or split publishes nothing
+  (`MIN_AGREEING`, `AGREEMENT` in
   `logic.js`). **Publish** writes a `TrailFactSummary` everyone can read:
-  the trail key, the fact, the answer, how many walkers answered, and when.
+  the trail key, the fact, the answer, how many walkers gave it, and when.
   Publishing again replaces it (`factsummary.<fact>.<region>.<ref>`).
   **Un-publish** deletes it; phones drop it at their next refresh. "How was
   it?" (thumbs up or down) is counted but never published (Joe,
