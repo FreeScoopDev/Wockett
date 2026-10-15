@@ -35,10 +35,31 @@ function check(response) {
   return response;
 }
 
-/** Errors for records that are already gone are not failures when deleting. */
-function onlyRealErrors(response) {
-  const errors = (response?.errors ?? []).filter((e) => !isGone(e));
-  if (errors.length) throw errors[0];
+/**
+ * Deletes `recordNames`, 200 per call. A call is not all-or-nothing: on a
+ * real error, the error thrown carries `deleted`, how many were deleted
+ * (calls before it, plus the records in its call that didn't fail). An error
+ * that names no record may be about the whole call, so it counts that call
+ * as deleting nothing: under-counting only means a re-run finds the rest.
+ */
+export async function deleteAll(db, recordNames) {
+  let deleted = 0;
+  for (let i = 0; i < recordNames.length; i += 200) {
+    const chunk = recordNames.slice(i, i + 200);
+    const response = await db.deleteRecords(chunk);
+    const errors = (response?.errors ?? []).filter((e) => !isGone(e));
+    if (errors.length) {
+      const error = errors[0];
+      const failed = new Set(errors.map((e) => e?.recordName));
+      const inCall = failed.has(undefined) || failed.has(null) || failed.has('')
+        ? 0
+        : chunk.filter((name) => !failed.has(name)).length;
+      try { error.deleted = deleted + inCall; } catch { /* a frozen error just has no count */ }
+      throw error;
+    }
+    deleted += chunk.length;
+  }
+  return deleted;
 }
 
 /**
@@ -68,15 +89,28 @@ export function hasMorePages(response) {
   return Boolean(response?.moreComing ?? response?.moreRecordsComing ?? response?.continuationMarker);
 }
 
-/** The query CloudKit JS is sent: newest first, optional equality and age filters. */
-export function buildQuery(recordType, { equals, sinceMs } = {}) {
+/**
+ * The query CloudKit JS is sent: newest first, optional equality and age
+ * filters. `sinceMs` keeps records created at or after it, `beforeMs` records
+ * created before it, `createdBy` records the account `createdBy` created.
+ */
+export function buildQuery(recordType, { equals, sinceMs, beforeMs, createdBy } = {}) {
   const filterBy = [];
+  if (createdBy !== undefined) {
+    // Needs `___createdBy` QUERYABLE on the type (TrailFactReport has it).
+    filterBy.push({ systemFieldName: 'createdUserRecordName', comparator: 'EQUALS',
+                    fieldValue: { value: { recordName: createdBy }, type: 'REFERENCE' } });
+  }
   if (equals) {
     filterBy.push({ fieldName: equals[0], comparator: 'EQUALS', fieldValue: { value: equals[1] } });
   }
   if (sinceMs !== undefined) {
     filterBy.push({ systemFieldName: 'createdTimestamp', comparator: 'GREATER_THAN_OR_EQUALS',
                     fieldValue: { value: sinceMs, type: 'TIMESTAMP' } });
+  }
+  if (beforeMs !== undefined) {
+    filterBy.push({ systemFieldName: 'createdTimestamp', comparator: 'LESS_THAN',
+                    fieldValue: { value: beforeMs, type: 'TIMESTAMP' } });
   }
   return { recordType, filterBy, sortBy: [{ systemFieldName: 'createdTimestamp', ascending: false }] };
 }
@@ -115,20 +149,46 @@ export function reportedByAuthor(reportRecordName, authorAccount) {
   return Boolean(filer && authorAccount && filer === authorAccount);
 }
 
+/**
+ * Walker reports: who made each one, as a token that means nothing outside
+ * this page load (`walker-1`, `walker-2`, …), so the page can count each
+ * walker once without ever holding the account. The same account gets the
+ * same token for as long as the page is open.
+ */
+const reporterTokens = new Map();
+
+export function reporterToken(account) {
+  if (typeof account !== 'string' || !account) return undefined;
+  if (!reporterTokens.has(account)) reporterTokens.set(account, `walker-${reporterTokens.size + 1}`);
+  return reporterTokens.get(account);
+}
+
 /** Every page of a query, up to `max` records. `more` says some were left out. */
-export async function pagedQuery(db, query, { max = 1000, pageSize = 200 } = {}) {
-  const raw = [];
+export async function pagedQuery(db, query, { max = 1000, pageSize = 200, onlyCreator } = {}) {
+  let raw = [];
   let response = check(await db.performQuery(query, { resultsLimit: Math.min(pageSize, max) }));
   raw.push(...response.records);
   while (hasMorePages(response) && raw.length < max) {
     response = check(await db.performQuery(response));
     raw.push(...response.records);
   }
+  // Checked here as well as by the query's filter: a filter CloudKit ignored
+  // or misread must not hand back someone else's records for deletion. The
+  // account itself stays in this file.
+  if (onlyCreator !== undefined) raw = raw.filter((r) => onlyCreator && r.created?.userRecordName === onlyCreator);
   if (query.recordType === 'CommunityReport') {
     for (const r of raw) if (r.created?.userRecordName) reportFilers.set(r.recordName, r.created.userRecordName);
   }
   const kept = query.recordType === 'TrailNomination' ? onePerNominator(raw) : raw;
-  return { records: kept.slice(0, max).map(plain), more: hasMorePages(response) || raw.length > max };
+  const records = kept.slice(0, max).map((r) => {
+    const out = plain(r);
+    if (r.recordType === 'TrailFactReport') {
+      const token = reporterToken(r.created?.userRecordName);
+      if (token) out.reporter = token;
+    }
+    return out;
+  });
+  return { records, more: hasMorePages(response) || raw.length > max };
 }
 
 /**
@@ -168,10 +228,20 @@ export function connect({ CloudKit, containerIdentifier, apiToken, environment }
 
     /**
      * Records of `recordType`, newest first, following pages up to `max`.
-     * `equals` is [field, value]; `sinceMs` keeps records created since then.
+     * `equals` is [field, value]; `sinceMs` keeps records created since then,
+     * `beforeMs` records created before then.
      */
-    query(recordType, { equals, sinceMs, max = 1000, pageSize = 200 } = {}) {
-      return pagedQuery(db, buildQuery(recordType, { equals, sinceMs }), { max, pageSize });
+    query(recordType, { equals, sinceMs, beforeMs, max = 1000, pageSize = 200 } = {}) {
+      return pagedQuery(db, buildQuery(recordType, { equals, sinceMs, beforeMs }), { max, pageSize });
+    },
+
+    /**
+     * Records of `recordType` that `account` created, newest first: the
+     * filter is sent to CloudKit and checked again on what comes back. The
+     * records come back without the account.
+     */
+    queryByCreator(recordType, account, { max = 5000, pageSize = 200 } = {}) {
+      return pagedQuery(db, buildQuery(recordType, { createdBy: account }), { max, pageSize, onlyCreator: account });
     },
 
     fetch: (recordNames) => fetchExisting(db, recordNames),
@@ -205,11 +275,11 @@ export function connect({ CloudKit, containerIdentifier, apiToken, environment }
       return plain(response.records[0]);
     },
 
-    /** Deletes records by name; ones already gone count as deleted. */
-    async delete(recordNames) {
-      for (let i = 0; i < recordNames.length; i += 200) {
-        onlyRealErrors(await db.deleteRecords(recordNames.slice(i, i + 200)));
-      }
-    },
+    /**
+     * Deletes records by name; ones already gone count as deleted. A call is
+     * not all-or-nothing, so a failure carries `deleted`: how many of
+     * `recordNames` were deleted, including any in the failing call (`deleteAll`).
+     */
+    delete: (recordNames) => deleteAll(db, recordNames),
   };
 }

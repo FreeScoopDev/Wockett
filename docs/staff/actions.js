@@ -4,6 +4,7 @@
 import {
   actionFields, buildSnapshot, removalPlan, suspensionUntil, suspensionRecordName, suspensionFields, ownedBy, TYPES,
   canSuspend, featureUntil, featuredRecordName, featuredFields,
+  summaryRecordName, summaryFields, retentionCutoff, expiredReports, knownValue, walkerId,
 } from './logic.js';
 
 /**
@@ -205,4 +206,152 @@ export async function dismissNominations(store, { trail, note = '', count = 0 })
     target: trail.trailKey, type: 'trail', action: 'dismissed', note, reportCount: count,
     snapshot: JSON.stringify({ trail }),
   }));
+}
+
+// MARK: - Walker reports
+
+/**
+ * Publishes what walkers say about one trail and fact: a "published"
+ * ModerationAction first (the counts, never who gave them), then the
+ * `TrailFactSummary`, replaced in one step if one is already published. If
+ * that fails, the action is taken back. `counts` is `{ value: walkers }`;
+ * `summaryFields` applies Joe's rule to it and refuses anything it doesn't
+ * allow (too few walkers, a tie or split, `liked`), before anything is written.
+ */
+export async function publishSummary(store, { trailKey, fact, counts, now = Date.now() }) {
+  const fields = summaryFields(trailKey, fact, counts, now);
+  const recordName = summaryRecordName(trailKey, fact);
+  const exists = (await store.fetch([recordName])).has(recordName);
+  const written = await store.create('ModerationAction', actionFields({
+    target: recordName, type: 'trailFact', action: 'published', reportCount: fields.walkers,
+    snapshot: JSON.stringify({ trailKey, fact, value: fields.value, walkers: fields.walkers,
+      counts: Object.fromEntries(Object.entries(counts).filter(([v, n]) => knownValue(fact, v) && Number.isInteger(n))) }),
+  }));
+  try {
+    if (exists) await store.replaceNamed('TrailFactSummary', recordName, fields);
+    else await store.createNamed('TrailFactSummary', recordName, fields);
+  } catch (error) {
+    try { await store.delete([written.recordName]); } catch { /* the error below is what matters */ }
+    throw error;
+  }
+  return { recordName, fields };
+}
+
+/**
+ * Withdraws a published summary: an "unpublished" action, then the record
+ * deleted; the action is taken back if the delete fails. Phones drop it at
+ * their next refresh.
+ */
+export async function unpublishSummary(store, { trailKey, fact, recordName: given, note = '' }) {
+  // The summary's own record name when the page has it (one made by hand in
+  // the Console may not follow the naming rule); otherwise the rule's.
+  const recordName = given ?? summaryRecordName(trailKey, fact);
+  const written = await store.create('ModerationAction', actionFields({
+    target: recordName, type: 'trailFact', action: 'unpublished', note,
+    snapshot: JSON.stringify({ trailKey, fact }),
+  }));
+  try {
+    await store.delete([recordName]);
+  } catch (error) {
+    try { await store.delete([written.recordName]); } catch { /* the error below is what matters */ }
+    throw error;
+  }
+  return { recordName };
+}
+
+/**
+ * The walker reports older than the retention window (12 months before
+ * `now`), for the confirm dialog to count. `more` says there were more than
+ * one load can hold: run the delete again afterwards for the rest.
+ */
+export async function findExpiredReports(store, { now = Date.now(), max = 5000 } = {}) {
+  const cutoff = retentionCutoff(now);
+  const { records, more } = await store.query('TrailFactReport', { beforeMs: cutoff, max });
+  // Filtered here too: the query's own filter is not trusted to be exact.
+  return { cutoff, records: expiredReports(records, cutoff), more };
+}
+
+/**
+ * Deletes the expired reports found by `findExpiredReports`: an "expired"
+ * action with the count first, then the reports, 200 at a time. Only reports
+ * created before `cutoff` are ever deleted, whatever is passed. Published
+ * summaries are never touched. If nothing could be deleted, the action is
+ * taken back and the error thrown; a failure part-way returns how many were
+ * deleted and the error, and the action stays (the deleted ones are gone).
+ */
+export async function deleteExpiredReports(store, { records, cutoff }) {
+  if (!Number.isFinite(cutoff)) throw new Error('No cutoff.');
+  const names = expiredReports(records, cutoff).map((r) => r.recordName);
+  if (!names.length) return { deleted: 0, error: null };
+  const fields = actionFields({
+    target: 'TrailFactReport', type: 'walkerReports', action: 'expired', reportCount: names.length,
+    snapshot: JSON.stringify({ cutoff, count: names.length }),
+  });
+  const written = await store.create('ModerationAction', fields);
+  return deleteInChunks(store, names, written, fields);
+}
+
+/**
+ * Deletes `names` 200 at a time after the action `written` (sent as `fields`). A batch can fail
+ * part-way (the store's error says how many of it were deleted, `deleted`).
+ * If nothing was deleted, the action is taken back and the error thrown.
+ * Otherwise the action stays, corrected to the number really deleted, and
+ * that number is returned with the error.
+ */
+async function deleteInChunks(store, names, written, fields) {
+  let deleted = 0;
+  for (let i = 0; i < names.length; i += 200) {
+    const chunk = names.slice(i, i + 200);
+    try {
+      await store.delete(chunk);
+      deleted += chunk.length;
+    } catch (error) {
+      const partly = Number.isInteger(error?.deleted) ? Math.min(Math.max(error.deleted, 0), chunk.length) : 0;
+      deleted += partly;
+      if (deleted === 0) {
+        try { await store.delete([written.recordName]); } catch { /* the error below is what matters */ }
+        throw error;
+      }
+      try {
+        // Rebuilt from what was sent, not the server's copy: a replace keeps
+        // no field it isn't given.
+        await store.replaceNamed('ModerationAction', written.recordName, {
+          ...fields, reportCount: deleted,
+          note: `Stopped part-way: ${deleted} of ${names.length} deleted.`,
+          snapshot: JSON.stringify({ ...JSON.parse(fields.snapshot), count: deleted, planned: names.length }),
+        });
+      } catch { /* History keeps the planned count; the error below is what matters */ }
+      return { deleted, error };
+    }
+  }
+  return { deleted, error: null };
+}
+
+/**
+ * The walker reports one person made, for a request to delete them (by
+ * email, with the identifier the app shows them: their CloudKit user record
+ * name). Refuses anything that isn't such an id before asking CloudKit.
+ */
+export async function findReportsBy(store, { identifier, max = 5000 }) {
+  const account = walkerId(identifier);
+  if (!account) throw new Error('That isn\'t a Wockett identifier: it starts with _ and has only letters and digits.');
+  const { records, more } = await store.queryByCreator('TrailFactReport', account, { max });
+  return { account, records, more };
+}
+
+/**
+ * Deletes the reports `findReportsBy` found: an "erased" action with the
+ * count first (never the identifier: the request was to remove their data),
+ * then the reports, 200 at a time, as the 12-month delete does. Published
+ * summaries are not touched; they hold no one's answers, only counts.
+ */
+export async function deleteReportsBy(store, { records }) {
+  const names = records.filter((r) => r?.recordType === 'TrailFactReport').map((r) => r.recordName);
+  if (!names.length) return { deleted: 0, error: null };
+  const fields = actionFields({
+    target: 'TrailFactReport', type: 'walkerReports', action: 'erased', reportCount: names.length,
+    snapshot: JSON.stringify({ count: names.length }),
+  });
+  const written = await store.create('ModerationAction', fields);
+  return deleteInChunks(store, names, written, fields);
 }
