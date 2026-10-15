@@ -455,9 +455,9 @@ struct WalkHistoryRow: View {
             WktIconBadge(symbol: rowIcon, tint: rowColor)
             VStack(alignment: .leading, spacing: 4) {
                 Text(session.routeName).font(.wktRowTitle).foregroundColor(.earthCream).lineLimit(1)
-                // "Hike · 15 Oct 2026 at 09:12": the row's title is the
+                // "Hike · 15 Oct 2026 at 09:12", "Indoor walk · …": the row's title is the
                 // route's name, so this says which activity it was.
-                Text("\(session.wording.sessionLabel) · \(session.formattedDate)")
+                Text("\(session.wording.displayName) · \(session.formattedDate)")
                     .font(.wktLabel).foregroundColor(.earthMuted)
                 HStack(spacing: 10) {
                     Label { Text(session.distanceText) } icon: { Image(wkt: .distance).wktIcon(.inline, tint: .earthMuted) }

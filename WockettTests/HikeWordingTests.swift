@@ -257,6 +257,36 @@ struct HikeWordingTests {
         #expect(mgr.completedSession.isHike)
     }
 
+    @Test("A hike set off round a loop the other way is still a hike, saved as one")
+    func turnedRoundLoopKeepsHike() throws {
+        let square = [CLLocationCoordinate2D(latitude: 35.780, longitude: -78.640),
+                      CLLocationCoordinate2D(latitude: 35.780, longitude: -78.6356),
+                      CLLocationCoordinate2D(latitude: 35.7836, longitude: -78.6356),
+                      CLLocationCoordinate2D(latitude: 35.7836, longitude: -78.640),
+                      CLLocationCoordinate2D(latitude: 35.780, longitude: -78.640)]
+        let lats = square.map(\.latitude), lons = square.map(\.longitude)
+        let loop = TrailFeature(id: 9, sourceID: "osm", sourceRef: "w9", name: "Loop",
+                                encodedPolyline: encode(square), pointCount: square.count,
+                                lengthMeters: TrailWalkPlanner.length(square),
+                                bounds: TrailBounds(minLatitude: lats.min() ?? 0, minLongitude: lons.min() ?? 0,
+                                                    maxLatitude: lats.max() ?? 0, maxLongitude: lons.max() ?? 0),
+                                surface: "dirt", difficulty: nil, dogAccess: .unknown, dogAccessProvenance: .default,
+                                allowsFoot: true, allowsBike: false, allowsHorse: false, isLoop: true,
+                                tagsJSON: #"{"highway":"footway"}"#)
+        let item = TrailListItem(id: "osm:w9", name: "Loop", sections: [loop], distanceMeters: 0)
+        let plan = try #require(TrailWalkPlanner.plan(for: item, from: square[0]))
+        let route = plan.navigableRoute(activityMode: .walking)
+        #expect(route.isHike)
+        let turned = try #require(route.reversedAlongLine())
+        #expect(turned.isHike, "turning round must not make the hike a walk")
+        let mgr = NavigationSessionManager(route: route)
+        mgr.writesSnapshots = false
+        let progress = try #require(TrailProgress(route: turned))
+        mgr.turnRouteRound(TrailProgress.TurnedRound(route: turned, progress: progress, index: 1, lap: 1))
+        #expect(mgr.route.isHike)
+        #expect(mgr.completedSession.isHike)
+    }
+
     @Test("A hike survives the crash checkpoint and its salvage; an older checkpoint restores as a walk")
     func snapshotKeepsHike() throws {
         let plan = try #require(TrailWalkPlanner.plan(for: trail(surface: "dirt"), from: atStart))

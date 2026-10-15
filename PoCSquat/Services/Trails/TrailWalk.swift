@@ -268,6 +268,9 @@ extension NavigableRoute {
                               activityMode: activityMode, customRouteId: customRouteId,
                               path: back, pathIsRecording: pathIsRecording,
                               // An out-and-back is symmetric; any turnaround mirrors.
-                              turnaroundMeters: turnaroundMeters.map { length - $0 })
+                              turnaroundMeters: turnaroundMeters.map { length - $0 },
+                              // Still the same session: a hike set off round a
+                              // loop the other way is still a hike.
+                              isHike: isHike)
     }
 }

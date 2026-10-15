@@ -54,7 +54,9 @@ public struct WalkActivityAttributes: ActivityAttributes {
 
     /// The activity's word on the Lock Screen and in the Dynamic Island:
     /// "Hike", "Walk", "Run" or "Ride". Here, not in the widget, so a test in
-    /// the app target covers it; this file is in both targets.
+    /// the app target covers it; this file is in both targets. It mirrors
+    /// `SessionWording.sessionLabel` (WalkModels.swift, app target only),
+    /// except that indoor says "Walk" here as it always has: change both.
     public var activityNoun: String {
         if activityMode == "running" { return "Run" }
         if activityMode == "cycling" { return "Ride" }
