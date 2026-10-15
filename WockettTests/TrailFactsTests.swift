@@ -91,17 +91,31 @@ struct TrailFactsTests {
     func maintainerTrimmed() throws {
         let long = "North Carolina Department of Natural and Cultural Resources Division of Parks"
         let shown = try #require(text(.maintainedBy, [section(1, tags: ["operator": long])]))
-        #expect(shown.count <= TrailFacts.maintainerLimit)
+        #expect(shown.count == 60, "Joe's 60, written out: not read from the constant under test")
         #expect(shown.hasSuffix("…"))
         #expect(shown.hasPrefix("North Carolina Department of Natural and Cultural"))
         let exact = String(repeating: "a", count: 60)
         #expect(text(.maintainedBy, [section(1, tags: ["operator": exact])]) == exact, "60 is not cut")
+        let over = String(repeating: "b", count: 61)
+        #expect(text(.maintainedBy, [section(1, tags: ["operator": over])]) == String(repeating: "b", count: 59) + "…",
+                "61 is cut")
     }
 
-    @Test("operator=private is not a maintainer's name and shows nothing")
-    func privateOperator() {
-        #expect(text(.maintainedBy, [section(1, tags: ["operator": "private"])]) == nil)
-        #expect(text(.maintainedBy, [section(1, tags: ["operator": "Private"])]) == nil)
+    @Test("An operator that is not a name (private, no, unknown, as the published packs carry) shows nothing",
+          arguments: ["private", "Private", "no", "unknown", "none", "yes"])
+    func notANameOperator(value: String) {
+        #expect(text(.maintainedBy, [section(1, tags: ["operator": value])]) == nil)
+    }
+
+    @Test("Path type takes the harder of the difficulty column and the row's own sac_scale")
+    func pathTypeFromBothSources() {
+        // The builder writes the merged ways' majority grade to the column and
+        // the first way's tags to tags_json; either can be the harder one.
+        #expect(text(.pathType, [section(1, difficulty: "hiking", tags: ["sac_scale": "mountain_hiking"])])
+                == "Rough mountain path")
+        #expect(text(.pathType, [section(1, difficulty: "mountain_hiking", tags: ["sac_scale": "hiking"])])
+                == "Rough mountain path")
+        #expect(text(.pathType, [section(1, tags: ["sac_scale": "hiking"])]) == "Walking path")
     }
 
     @Test("Values are read regardless of case and stray spaces")
@@ -206,6 +220,12 @@ struct TrailFactsTests {
         #expect(strollway.count == 2)
         #expect(TrailFacts.facts(for: item(strollway)).map(\.text)
                 == ["Smooth", "Well marked", "Mapped as wheelchair accessible", "Lit at night"])
+
+        // Lower Piney Trail: the column says hiking, the row's sac_scale says
+        // mountain_hiking (two merged ways, one of each in OSM).
+        let piney = try source.trails(key: "nc:w171710443")
+        #expect(piney.first?.difficulty == "hiking")
+        #expect(TrailFacts.facts(for: item(piney)).first { $0.kind == .pathType }?.text == "Rough mountain path")
 
         // Six sections, three hiking clubs, wheelchair limited / yes / no.
         let appalachian = try source.trails(key: "nc:w120342541")

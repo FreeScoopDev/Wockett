@@ -51,7 +51,12 @@ enum TrailFacts {
     static func facts(for item: TrailListItem) -> [Fact] {
         let tags = item.sections.map(\.tags)
         var facts: [Fact] = []
-        if let text = pathType(item.sections.map(\.difficulty)) {
+        // Both the column and the row's own sac_scale: the pack builder fills
+        // `difficulty` with the majority grade of the ways it merged into one
+        // row, and `tags_json` with the first way's tags, so either can be the
+        // harder one (critic run 1: Lower Piney Trail's column says hiking, its
+        // tags mountain_hiking).
+        if let text = pathType(item.sections.map(\.difficulty) + tags.map { $0["sac_scale"] }) {
             facts.append(Fact(kind: .pathType, label: "Path type", text: text, symbol: .hiking))
         }
         if let text = surface(tags.map { $0["smoothness"] }) {
@@ -148,9 +153,9 @@ enum TrailFacts {
     }
 
     /// The `operator` text, on one line and cut to `maintainerLimit`, when
-    /// every section that states one names the same maintainer. `private` is
-    /// an access value mis-tagged as an operator (44 rows in North Carolina),
-    /// not a name, so it shows nothing rather than "Maintained by private".
+    /// every section that states one names the same maintainer. Some rows
+    /// carry a word that is not a name (`notNames`), so they show nothing
+    /// rather than "Maintained by private".
     static func maintainer(_ values: [String?]) -> String? {
         let names = values.compactMap { value -> String? in
             guard let value else { return nil }
@@ -159,11 +164,16 @@ enum TrailFacts {
         }
         guard let first = names.first,
               names.allSatisfy({ $0.caseInsensitiveCompare(first) == .orderedSame }),
-              first.lowercased() != "private" else { return nil }
+              !notNames.contains(first.lowercased()) else { return nil }
         guard first.count > maintainerLimit else { return first }
         let cut = first.prefix(maintainerLimit - 1).trimmingCharacters(in: .whitespaces)
         return cut + "…"
     }
+
+    /// `operator` values in the published packs that are not a maintainer's
+    /// name: an access value or a placeholder (2026-10-15: `private` 45 rows
+    /// in North Carolina, `no` 9 and `unknown` 1 elsewhere).
+    static let notNames: Set<String> = ["private", "no", "none", "unknown", "yes"]
 
     /// Lowercased and trimmed; empty is not a value.
     private static func normalized(_ value: String?) -> String? {

@@ -490,6 +490,8 @@ struct TrailFactsCard: View {
             // One element, caption included, so VoiceOver never reads a fact
             // without the line saying it is map data, not a report.
             .accessibilityElement(children: .combine)
+            // The heading's trait would otherwise make the whole card a heading.
+            .accessibilityRemoveTraits(.isHeader)
             .accessibilityIdentifier("routes.trailFacts")
         }
     }
