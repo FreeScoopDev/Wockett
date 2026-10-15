@@ -11,14 +11,17 @@ import {
 import {
   publishSummary, unpublishSummary, findExpiredReports, deleteExpiredReports, findReportsBy, deleteReportsBy,
 } from '../../docs/staff/actions.js';
-import { pagedQuery, buildQuery, plain, reporterToken, deleteAll } from '../../docs/staff/ck.js';
+import { pagedQuery, buildQuery, plain, reporterToken, deleteAll, connect } from '../../docs/staff/ck.js';
 
 const NOW = Date.UTC(2026, 9, 15, 12, 0, 0);
 let seq = 0;
-const rep = (reporter, value, { fact = 'dogs', trailKey = 'nc:w1', created = ++seq } = {}) => ({
-  recordName: `report.${seq}`, recordType: 'TrailFactReport', created, reporter,
-  fields: { trailKey, region: trailKey.slice(0, 2), fact, value },
-});
+const rep = (reporter, value, { fact = 'dogs', trailKey = 'nc:w1', created } = {}) => {
+  const n = ++seq;
+  return {
+    recordName: `report.${n}`, recordType: 'TrailFactReport', created: created ?? n, reporter,
+    fields: { trailKey, region: trailKey.slice(0, 2), fact, value },
+  };
+};
 const counts = (obj) => obj;
 
 function fakeStore({ exists = false, failSave = false, failDeleteAt = null, partly = undefined, found = [] } = {}) {
@@ -27,7 +30,11 @@ function fakeStore({ exists = false, failSave = false, failDeleteAt = null, part
   return {
     calls,
     async create(recordType, fields) { calls.push(['create', recordType, fields]); return { recordName: 'act1', recordType, created: 1, fields }; },
-    async fetch(names) { calls.push(['fetch', names]); return new Map(exists ? [[names[0], { fields: {} }]] : []); },
+    // `exists` is the one record name that exists (or true for any).
+    async fetch(names) {
+      calls.push(['fetch', names]);
+      return new Map(names.filter((n) => exists === true || n === exists).map((n) => [n, { fields: {} }]));
+    },
     async createNamed(recordType, recordName, fields) { calls.push(['createNamed', recordType, recordName, fields]); if (failSave) throw { ckErrorCode: 'ACCESS_DENIED' }; },
     async replaceNamed(recordType, recordName, fields) { calls.push(['replaceNamed', recordType, recordName, fields]); if (failSave) throw { ckErrorCode: 'ACCESS_DENIED' }; },
     async query(recordType, options) { calls.push(['query', recordType, options]); return { records: found, more: false }; },
@@ -230,7 +237,7 @@ test('Publish writes History first, then creates or replaces the summary; a fail
   assert.equal(fresh.calls[1][2].action, 'published');
   assert.equal(fresh.calls[1][2].targetType, 'trailFact');
   assert.equal(fresh.calls[2][1], 'TrailFactSummary');
-  const again = fakeStore({ exists: true });
+  const again = fakeStore({ exists: 'factsummary.dogs.nc.w1' });
   await publishSummary(again, { trailKey: 'nc:w1', fact: 'dogs', counts: { leashRequired: 4 }, now: NOW });
   assert.deepEqual(again.calls.map((c) => c[0]), ['fetch', 'create', 'replaceNamed']);
   assert.equal(again.calls[2][2], 'factsummary.dogs.nc.w1', 'republishing replaces the same record');
@@ -322,7 +329,7 @@ test('deleting old reports writes History with the count, then deletes only expi
   const deleted = store.calls.filter((c) => c[0] === 'delete').map((c) => c[1]);
   assert.deepEqual(deleted.map((names) => names.length), [200, 200, 50]);
   assert.ok(!deleted.flat().includes('fresh'), 'a report inside the window is never deleted');
-  assert.ok(!store.calls.some((c) => c[1] === 'TrailFactSummary'), 'summaries are never touched');
+  assert.ok(!deleted.flat().some((name) => name.startsWith('factsummary.')), 'summaries are never touched');
 });
 
 test('deleting nothing writes nothing; a first failure takes History back; a later one reports progress', async () => {
@@ -372,8 +379,9 @@ test('records from anyone else never come back, even if CloudKit ignores the fil
   assert.deepEqual(records.map((r) => r.recordName), ['mine']);
   assert.equal(records[0].creator, undefined);
   assert.ok(!JSON.stringify(records).includes(ID));
-  const none = await pagedQuery(db, buildQuery('TrailFactReport', { createdBy: '' }), { onlyCreator: '' });
-  assert.equal(none.records.length, 0, 'an empty account matches nothing');
+  const blank = { async performQuery() { return { records: [raw('blank', '')], moreComing: false }; } };
+  const none = await pagedQuery(blank, buildQuery('TrailFactReport', { createdBy: '' }), { onlyCreator: '' });
+  assert.equal(none.records.length, 0, 'an empty account matches nothing, not even a record with an empty creator');
 });
 
 test('finding a walker\'s reports refuses a bad identifier before asking CloudKit', async () => {
@@ -461,4 +469,89 @@ test('summaries are readable by everyone and written only by a Moderator', () =>
   assert.match(block, /walkers\s+INT64,/);
   assert.match(block, /computedAt\s+TIMESTAMP,/);
   assert.match(block, /trailKey\s+STRING QUERYABLE,/);
+});
+
+// MARK: Test-auditor run 1 (2026-10-15)
+
+test('a report whose fact is a prototype name is ignored, not a crash', () => {
+  for (const fact of ['toString', 'hasOwnProperty', '__proto__', 'constructor']) {
+    const out = tallyWalkerReports([{ recordName: 'x', created: 1, reporter: 'walker-1', fields: { trailKey: 'nc:w1', fact, value: 'yes' } }]);
+    assert.equal(out.ignored, 1, fact);
+  }
+  assert.throws(() => summaryRecordName('nc:w1', 'toString'));
+});
+
+test('one walker answering several facts on one trail keeps every answer', async () => {
+  const raw = (n, t, fact, value) => ({ recordName: n, recordType: 'TrailFactReport', created: { timestamp: t, userRecordName: '_pW' },
+    fields: { trailKey: { value: 'nc:w9' }, fact: { value: fact }, value: { value } } });
+  const db = { async performQuery() { return { records: [raw('a', 2, 'dogs', 'noDogs'), raw('b', 1, 'stroller', 'yes')], moreComing: false }; } };
+  const { records } = await pagedQuery(db, { recordType: 'TrailFactReport' });
+  assert.deepEqual(tallyWalkerReports(records).trails[0].facts.map((f) => f.fact), ['dogs', 'stroller']);
+});
+
+test('only walker reports get a reporter token: a content report\'s filer is never linked to a walker', async () => {
+  const db = { async performQuery() { return { records: [{ recordName: 'cr', recordType: 'CommunityReport', created: { timestamp: 1, userRecordName: '_pW' }, fields: {} }], moreComing: false }; } };
+  const { records } = await pagedQuery(db, { recordType: 'CommunityReport' });
+  assert.equal(records[0].reporter, undefined);
+});
+
+test('a failed take-back never hides the original error', async () => {
+  const store = { async fetch() { return new Map(); }, async create() { return { recordName: 'act1' }; },
+    async createNamed() { throw { ckErrorCode: 'ACCESS_DENIED' }; },
+    async delete(n) { throw { ckErrorCode: n[0] === 'act1' ? 'NETWORK_ERROR' : 'ACCESS_DENIED' }; } };
+  await assert.rejects(publishSummary(store, { trailKey: 'nc:w1', fact: 'dogs', counts: { noDogs: 3 }, now: 1 }), { ckErrorCode: 'ACCESS_DENIED' });
+  await assert.rejects(unpublishSummary(store, { trailKey: 'nc:w1', fact: 'dogs' }), { ckErrorCode: 'ACCESS_DENIED' });
+  await assert.rejects(deleteReportsBy(store, { records: [{ recordName: 'r', recordType: 'TrailFactReport' }] }), { ckErrorCode: 'ACCESS_DENIED' });
+});
+
+test('connect() sends the age and creator filters, and re-checks the creator', async () => {
+  let sent;
+  const recs = [{ recordName: 'theirs', recordType: 'TrailFactReport', created: { timestamp: 1, userRecordName: '_other' }, fields: {} }];
+  const CloudKit = { configure() {}, getDefaultContainer() { return { publicCloudDatabase: { async performQuery(q) { sent = q; return { records: recs, moreComing: false }; } } }; } };
+  const store = connect({ CloudKit });
+  await store.query('TrailFactReport', { beforeMs: 123 });
+  assert.equal(sent.filterBy[0].comparator, 'LESS_THAN');
+  assert.equal(sent.filterBy[0].fieldValue.value, 123);
+  const mine = await store.queryByCreator('TrailFactReport', '_me');
+  assert.equal(sent.filterBy[0].systemFieldName, 'createdUserRecordName');
+  assert.deepEqual(sent.filterBy[0].fieldValue.value, { recordName: '_me' });
+  assert.equal(mine.records.length, 0, 'someone else\'s record is dropped even if CloudKit ignores the filter');
+});
+
+test('a key with a second colon anywhere is refused', () => {
+  assert.throws(() => summaryRecordName('nc:ab:cd', 'dogs'));
+  assert.throws(() => summaryRecordName('xnc:w1', 'dogs'));
+});
+
+test('a summary with an unknown value is unsupported', () => {
+  const [row] = summaryRows([{ recordName: 's', created: 1, fields: { trailKey: 'nc:w1', fact: 'dogs', value: 'bogus', walkers: 3 } }]);
+  assert.equal(row.known, false);
+  assert.equal(summaryStanding(row, walkerVerdict('dogs', { noDogs: 3 })), 'unsupported');
+});
+
+/** A type's non-grant lines from the schema, spaces collapsed. */
+function schemaLines(type) {
+  return schemaBlock(type).split('\n').map((l) => l.trim().replace(/\s+/g, ' ')).filter((l) => l && !l.startsWith('GRANT'));
+}
+
+test('a walker report holds exactly these fields: no free text, no location, with the indexes the queries need', () => {
+  assert.deepEqual(schemaLines('TrailFactReport'), [
+    '"___createTime" TIMESTAMP QUERYABLE SORTABLE,', '"___createdBy" REFERENCE QUERYABLE,', '"___etag" STRING,',
+    '"___modTime" TIMESTAMP,', '"___modifiedBy" REFERENCE,', '"___recordID" REFERENCE QUERYABLE,',
+    'fact STRING,', 'region STRING,', 'trailKey STRING QUERYABLE,', 'value STRING,',
+  ]);
+});
+
+test('a summary holds exactly these fields: nothing about who answered', () => {
+  assert.deepEqual(schemaLines('TrailFactSummary'), [
+    '"___createTime" TIMESTAMP SORTABLE,', '"___createdBy" REFERENCE,', '"___etag" STRING,',
+    '"___modTime" TIMESTAMP,', '"___modifiedBy" REFERENCE,', '"___recordID" REFERENCE QUERYABLE,',
+    'computedAt TIMESTAMP,', 'fact STRING,', 'region STRING,', 'trailKey STRING QUERYABLE,', 'value STRING,', 'walkers INT64,',
+  ]);
+});
+
+test('a trail counts its walkers\' answers, newest trail first', () => {
+  const r = (who, trailKey, created) => ({ recordName: `${who}${trailKey}`, created, reporter: who, fields: { trailKey, fact: 'dogs', value: 'noDogs' } });
+  const { trails } = tallyWalkerReports([r('walker-1', 'nc:old', 1), r('walker-2', 'nc:old', 5), r('walker-1', 'nc:new', 3)]);
+  assert.deepEqual(trails.map((t) => [t.trailKey, t.reports, t.latestAt]), [['nc:old', 2, 5], ['nc:new', 1, 3]]);
 });
