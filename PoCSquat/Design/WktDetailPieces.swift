@@ -138,12 +138,18 @@ struct WktInfoSection<Content: View>: View {
 }
 
 /// A third-width stat card with its icon on top: distance, time, steps on a
-/// summary. Three sit side by side.
+/// summary. Three sit side by side. An optional `detail` line goes under the
+/// label (a climb's descent). `fillsHeight` lets a tile stretch to its row's
+/// height, for a row sized to its tallest tile (`fixedSize` vertically), so a
+/// row with one detail line stays even; off, a tile is its natural height.
 struct WktIconStatTile: View {
     let value: String
     let label: String
     let symbol: WktSymbol
     var tint: Color = .earthGreen
+    var detail: String?
+    var accessibilityDetail: String?
+    var fillsHeight = false
 
     var body: some View {
         VStack(spacing: 8) {
@@ -154,13 +160,21 @@ struct WktIconStatTile: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
             Text(label).font(.wktLabel).foregroundColor(.earthMuted)
+            if let detail {
+                Text(detail)
+                    .font(.wktLabel)
+                    .foregroundColor(.earthMuted)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
         }
-        .frame(maxWidth: .infinity)
+        .frame(maxWidth: .infinity, maxHeight: fillsHeight ? .infinity : nil, alignment: .top)
         .padding(.vertical, 16)
         .padding(.horizontal, 6)
         .wktCardBackground()
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(value) \(label)")
+        .accessibilityLabel([ "\(value) \(label)", accessibilityDetail ?? detail ]
+            .compactMap { $0 }.joined(separator: ", "))
     }
 }
 

@@ -415,21 +415,40 @@ struct ActivityStatTiles: View {
     private var mode: ActivityMode { ActivitySummaryContent.mode(of: session) }
 
     var body: some View {
-        if stats.count == 4 {
-            Grid(horizontalSpacing: WktSpacing.betweenCards, verticalSpacing: WktSpacing.betweenCards) {
-                GridRow { tile(stats[0]); tile(stats[1]) }
-                GridRow { tile(stats[2]); tile(stats[3]) }
+        VStack(spacing: WktSpacing.betweenCards) {
+            ForEach(Self.rows(count: stats.count), id: \.self) { row in
+                HStack(spacing: WktSpacing.betweenCards) {
+                    ForEach(row, id: \.self) { tile(stats[$0]) }
+                }
+                // Tiles in a row share the tallest one's height, so a climb's
+                // descent line doesn't leave its neighbours short.
+                .fixedSize(horizontal: false, vertical: true)
             }
-        } else {
-            HStack(spacing: WktSpacing.betweenCards) {
-                ForEach(stats.indices, id: \.self) { tile(stats[$0]) }
-            }
+        }
+    }
+
+    /// Which tiles share a row: three in a row, two rows of two for four,
+    /// and three then two for five (a walk or run with a climb).
+    static func rows(count: Int) -> [[Int]] {
+        let sizes: [Int]
+        switch count {
+        case 4:  sizes = [2, 2]
+        case 5:  sizes = [3, 2]
+        default: sizes = Array(repeating: 3, count: count / 3) + (count % 3 > 0 ? [count % 3] : [])
+        }
+        var start = 0
+        return sizes.map { size in
+            defer { start += size }
+            return Array(start..<start + size)
         }
     }
 
     private func tile(_ stat: SummaryStat) -> some View {
         WktIconStatTile(value: stat.value(for: session), label: stat.label,
-                        symbol: stat == .steps ? mode.wktSymbol : stat.symbol, tint: tint(stat))
+                        symbol: stat == .steps ? mode.wktSymbol : stat.symbol, tint: tint(stat),
+                        detail: stat.detail(for: session),
+                        accessibilityDetail: stat.accessibilityDetail(for: session),
+                        fillsHeight: true)
     }
 
     private func tint(_ stat: SummaryStat) -> Color {

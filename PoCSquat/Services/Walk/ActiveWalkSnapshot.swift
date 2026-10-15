@@ -117,13 +117,16 @@ struct ActiveWalkSnapshot: Codable {
     /// Whole miles or kilometres crossed so far (`SplitTracker`). Optional so
     /// checkpoints from before 1.17 still decode; such a walk keeps no splits.
     let unitSplits: UnitSplits?
+    /// Ascent and descent so far (`ElevationTracker`). Optional so checkpoints
+    /// from before it existed still decode; nil also means no usable altitude yet.
+    let elevation: ElevationTotals?
 
     init(route: RouteData, startTime: Date, totalDistanceCovered: Double,
          pausedDuration: TimeInterval, isPaused: Bool, pauseStartDate: Date?,
          currentWaypointIndex: Int, currentLap: Int, triggeredCheckpoints: Set<Int>,
          splitTimes: [SplitTimeRecord], liveSteps: Int, checkpointDate: Date,
          trackPoints: [WaypointCoord]? = nil, trailAlong: Double? = nil, legStartDistance: Double? = nil,
-         isCompleted: Bool? = nil, unitSplits: UnitSplits? = nil) {
+         isCompleted: Bool? = nil, unitSplits: UnitSplits? = nil, elevation: ElevationTotals? = nil) {
         self.route = route; self.startTime = startTime
         self.totalDistanceCovered = totalDistanceCovered
         self.pausedDuration = pausedDuration; self.isPaused = isPaused
@@ -136,6 +139,7 @@ struct ActiveWalkSnapshot: Codable {
         self.legStartDistance = legStartDistance
         self.isCompleted = isCompleted
         self.unitSplits = unitSplits
+        self.elevation = elevation
     }
 }
 

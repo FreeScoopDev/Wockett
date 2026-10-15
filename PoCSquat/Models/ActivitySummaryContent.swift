@@ -20,6 +20,8 @@ enum SummaryStat: Equatable {
     case speed
     case steps
     case cadence
+    /// Ascent from GPS altitude, with the descent as the tile's detail.
+    case climb
 
     var label: String {
         switch self {
@@ -30,6 +32,7 @@ enum SummaryStat: Equatable {
         case .speed:             return "Speed"
         case .steps:             return "Steps"
         case .cadence:           return "Cadence"
+        case .climb:             return "Climb"
         }
     }
 
@@ -40,6 +43,7 @@ enum SummaryStat: Equatable {
         case .pace, .speed:                 return .pace
         case .steps:                        return .steps
         case .cadence:                      return .cadence
+        case .climb:                        return .elevation
         }
     }
 
@@ -59,7 +63,29 @@ enum SummaryStat: Equatable {
             guard session.elapsedTime > 0 else { return "—" }
             let perMinute = Double(session.estimatedSteps) / (session.elapsedTime / 60)
             return String(format: "%.0f spm", perMinute)
+        case .climb:
+            guard let elevation = session.elevation else { return "—" }
+            return Self.heightText(elevation.ascentMeters, metric: metric)
         }
+    }
+
+    /// A second line under the value: the descent, for the climb tile only.
+    func detail(for session: WalkSession,
+                metric: Bool = Locale.current.measurementSystem != .us) -> String? {
+        guard self == .climb, let elevation = session.elevation else { return nil }
+        return "↓ " + Self.heightText(elevation.descentMeters, metric: metric)
+    }
+
+    /// The detail as VoiceOver says it: "98 m descent", not an arrow.
+    func accessibilityDetail(for session: WalkSession,
+                             metric: Bool = Locale.current.measurementSystem != .us) -> String? {
+        guard self == .climb, let elevation = session.elevation else { return nil }
+        return Self.heightText(elevation.descentMeters, metric: metric) + " descent"
+    }
+
+    /// A height in whole metres, or whole feet for US users: "120 m", "394 ft".
+    static func heightText(_ meters: Double, metric: Bool) -> String {
+        metric ? "\(Int(meters.rounded())) m" : "\(Int((meters / 0.3048).rounded())) ft"
     }
 }
 
@@ -91,9 +117,23 @@ enum ActivitySummaryContent {
         session.totalDistance > 100 && session.elapsedTime > 0
     }
 
+    /// The least climb worth a tile. Below it a walk is as good as flat, and
+    /// GPS altitude cannot tell the difference anyway.
+    static let minClimbMeters: Double = 5
+
+    /// Whether the summary shows a Climb tile: an outdoor activity saved with
+    /// a climb of at least `minClimbMeters`. Nil (no usable altitude, an
+    /// indoor walk, anything from before 1.17) never shows, so "no data" is
+    /// not read as "flat".
+    static func showsClimb(_ session: WalkSession) -> Bool {
+        guard mode(of: session).recordsElevation, let elevation = session.elevation else { return false }
+        return elevation.ascentMeters >= minClimbMeters
+    }
+
     /// The summary's tiles. A ride has no steps; indoor has no pace, because
     /// its distance is only steps times a stride.
     static func stats(for session: WalkSession) -> [SummaryStat] {
+        let climb: [SummaryStat] = showsClimb(session) ? [.climb] : []
         switch mode(of: session) {
         case .stationary:
             var stats: [SummaryStat] = [.steps, .time]
@@ -101,9 +141,9 @@ enum ActivitySummaryContent {
             stats.append(.estimatedDistance)
             return stats
         case .cycling:
-            return [.distance, .time] + (hasPace(session) ? [.speed] : [])
+            return [.distance, .time] + (hasPace(session) ? [.speed] : []) + climb
         case .walking, .running:
-            return [.distance, .time] + (hasPace(session) ? [.pace] : []) + [.steps]
+            return [.distance, .time] + (hasPace(session) ? [.pace] : []) + [.steps] + climb
         }
     }
 
