@@ -111,7 +111,9 @@ struct SplitTracker {
     /// splits, or nil for a checkpoint written before splits existed.
     init(restoring saved: UnitSplits?, unitMeters fallbackUnit: Double,
          elapsed: TimeInterval, distance: Double) {
-        unitMeters = saved?.unitMeters ?? fallbackUnit
+        // A unit of 0 could only come from a corrupt checkpoint; it would
+        // make every distance infinitely many units.
+        unitMeters = (saved?.unitMeters).flatMap { $0 > 0 ? $0 : nil } ?? fallbackUnit
         // A checkpoint holds whole units only; anything past the distance
         // now (which a restore never moves backwards) is left out regardless.
         splits = (saved?.splits ?? []).filter { $0.distance <= distance }

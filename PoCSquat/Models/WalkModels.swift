@@ -33,6 +33,11 @@ enum WalkIntent: Equatable {
 enum ActivityMode: String, Codable {
     case walking, running, cycling, stationary
 
+    /// Walks and runs show a smoothed current pace and save per-mile/km
+    /// splits; a ride shows one average speed, and indoor has no GPS
+    /// (`feat/run-pace-splits`).
+    var hasPaceAndSplits: Bool { self == .walking || self == .running }
+
     var icon: String {
         switch self {
         case .walking:    return "figure.walk"

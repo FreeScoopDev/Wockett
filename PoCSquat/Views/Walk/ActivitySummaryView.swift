@@ -103,7 +103,9 @@ struct ActivitySummaryView: View {
                             .transition(.opacity)
                     }
                     if isJustFinished, !crew.isEmpty { petRingsSection }
-                    if !splitRows.isEmpty { unitSplitsSection }
+                    // A run reclassified as a ride in Activity History keeps
+                    // its saved splits; a ride never shows them.
+                    if mode.hasPaceAndSplits, !splitRows.isEmpty { unitSplitsSection }
                     if isJustFinished, !splits.isEmpty { checkpointsSection }
                     if isJustFinished, session.customRouteId != nil, onExcludeFromRouteStats != nil { routeStatsPrompt }
                     if canSaveAsRoute { saveAsRouteSection }

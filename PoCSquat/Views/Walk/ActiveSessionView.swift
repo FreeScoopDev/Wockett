@@ -848,9 +848,7 @@ private struct ActiveSessionScreen: View {
 
     /// Walks and runs show a smoothed current pace beside the average; a ride
     /// shows one average speed (`feat/run-pace-splits`).
-    private var showsCurrentPace: Bool {
-        route.activityMode == .walking || route.activityMode == .running
-    }
+    private var showsCurrentPace: Bool { route.activityMode.hasPaceAndSplits }
 
     /// A ride's steps are only distance / 0.762 m: not shown.
     private var showsSteps: Bool {

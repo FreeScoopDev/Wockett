@@ -195,8 +195,8 @@ final class ActiveWalkStore {
     /// checkpoint and the part-unit after them. None for a ride, an indoor
     /// walk, or a checkpoint from before splits existed.
     static func salvagedSplits(for snapshot: ActiveWalkSnapshot, elapsed: TimeInterval) -> UnitSplits? {
-        let mode = ActivityMode(rawValue: snapshot.route.activityMode)
-        guard let saved = snapshot.unitSplits, mode == .walking || mode == .running else { return nil }
+        guard let saved = snapshot.unitSplits,
+              ActivityMode(rawValue: snapshot.route.activityMode)?.hasPaceAndSplits == true else { return nil }
         return SplitTracker(restoring: saved, unitMeters: saved.unitMeters,
                             elapsed: elapsed, distance: snapshot.totalDistanceCovered)
             .finished(elapsed: elapsed, distance: snapshot.totalDistanceCovered)

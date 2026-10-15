@@ -274,8 +274,10 @@ private struct WalkWristView: View {
                     .font(Font.wktRowTitle.monospacedDigit())
                     .foregroundColor(.earthCream)
                 Spacer(minLength: 4)
+                // No unit on either pace: the Smart Stack is narrow, and the
+                // distance beside it already says miles or kilometres.
                 Text(showsCurrentPace(attrs.activityMode)
-                     ? "\(fmtPace(state.currentPaceSecsPerKm, mode: attrs.activityMode)) · avg \(fmtPaceShort(state.paceSecsPerKm))"
+                     ? "\(fmtPaceShort(state.currentPaceSecsPerKm)) · avg \(fmtPaceShort(state.paceSecsPerKm))"
                      : fmtPace(state.paceSecsPerKm, mode: attrs.activityMode))
                     .font(Font.wktLabel.monospacedDigit())
                     .foregroundColor(.earthMuted)
@@ -392,7 +394,8 @@ struct WocketWalkLiveActivity: Widget {
                                           mode: context.attributes.activityMode), systemImage: WS.speedometer)
                                 .font(Font.wktRowTitle.monospacedDigit())
                                 .foregroundColor(context.state.isPaused ? .earthOrange : .earthCream)
-                            if showsCurrentPace(context.attributes.activityMode) {
+                            // While paused, "Paused" takes the room the average had.
+                            if showsCurrentPace(context.attributes.activityMode), !context.state.isPaused {
                                 Text("avg \(fmtPaceShort(context.state.paceSecsPerKm))")
                                     .font(Font.wktLabel.monospacedDigit())
                                     .foregroundColor(.earthMuted)
@@ -403,6 +406,9 @@ struct WocketWalkLiveActivity: Widget {
                                     .foregroundColor(.earthOrange)
                             }
                         }
+                        // Shrink rather than truncate at large text sizes.
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
 
                         HStack(spacing: 10) {
                             Button(intent: ToggleWalkPauseLiveActivityIntent()) {

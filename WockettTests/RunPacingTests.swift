@@ -64,15 +64,19 @@ struct RunPacingTests {
     @Test func windowStart_isInterpolatedBetweenFixes() throws {
         var pace = RollingPace()
         // Fixes 30 s apart; the window starts at 75 s, halfway between the
-        // 60 s and 90 s fixes, so its distance there is halfway too.
+        // 60 s and 90 s fixes, so its distance there is halfway too. The two
+        // stretches run at different speeds, so taking either fix instead of
+        // interpolating gives another answer (333.3 or 500, not 375): the
+        // first version of this test ran at one speed and could not fail
+        // (critic, 2026-10-14).
         pace.add(elapsed: 0, distance: 0)
         pace.add(elapsed: 30, distance: 60)
         pace.add(elapsed: 60, distance: 120)
         pace.add(elapsed: 90, distance: 240)
-        pace.add(elapsed: 120, distance: 360)
-        // At 75 s: 120 + 0.5 × 120 = 180 m. 45 s for 180 m is 250 s/km.
+        pace.add(elapsed: 120, distance: 300)
+        // At 75 s: 120 + 0.5 × 120 = 180 m. 45 s for 120 m is 375 s/km.
         let value = try #require(pace.secsPerKm(at: 120))
-        #expect(abs(value - 250) < 0.01)
+        #expect(abs(value - 375) < 0.01)
     }
 
     // MARK: - Split tracker
@@ -97,6 +101,18 @@ struct RunPacingTests {
         let done = tracker.add(elapsed: 300, distance: 2500)
         #expect(done.map(\.distance) == [1000, 2000])
         #expect(done.map(\.elapsed) == [150, 250])
+    }
+
+    @Test func splitUnit_followsTheLocale() {
+        #expect(NavigationSessionManager.splitUnitMeters(locale: Locale(identifier: "en_US")) == 1609.344)
+        #expect(NavigationSessionManager.splitUnitMeters(locale: Locale(identifier: "en_CA")) == 1000)
+    }
+
+    @Test func onlyWalksAndRuns_haveCurrentPaceAndSplits() {
+        #expect(ActivityMode.walking.hasPaceAndSplits)
+        #expect(ActivityMode.running.hasPaceAndSplits)
+        #expect(!ActivityMode.cycling.hasPaceAndSplits)
+        #expect(!ActivityMode.stationary.hasPaceAndSplits)
     }
 
     @Test func miles_splitAtOneMile() {
@@ -287,6 +303,71 @@ struct RunPacingTests {
         restored.applySnapshot(try JSONDecoder().decode(ActiveWalkSnapshot.self, from: data))
         #expect(restored.splitTracker.splits == mgr.splitTracker.splits)
         #expect(restored.splitTracker.isTracking)
+    }
+
+    @Test @MainActor func aCompletedSplit_isCheckpointedAtOnce() {
+        // A killed app restores to its last checkpoint; one taken only every
+        // 15 s could predate a split already spoken, which would be said again.
+        let mgr = NavigationSessionManager(route: route(.running))
+        mgr.writesSnapshots = false
+        mgr.speaksSplits = false
+        let unit = mgr.splitTracker.unitMeters
+        mgr.elapsedTime = 300; mgr.totalDistanceCovered = unit - 10
+        mgr.recordPacing()
+        let before = mgr.checkpointRequests
+        mgr.elapsedTime = 305; mgr.totalDistanceCovered = unit - 1
+        mgr.recordPacing()
+        #expect(mgr.checkpointRequests == before)
+        mgr.elapsedTime = 310; mgr.totalDistanceCovered = unit + 10
+        mgr.recordPacing()
+        #expect(mgr.checkpointRequests == before + 1)
+        #expect(mgr.snapshot.unitSplits?.splits.count == 1)
+    }
+
+    @Test @MainActor func standingStill_pushesTheLiveActivityOnce_whenCurrentPaceLapses() {
+        // Standing still brings no fixes, so the 1 s timer is what tells the
+        // Lock Screen current pace has gone; it pushes only on the change.
+        let mgr = NavigationSessionManager(route: route(.running))
+        drive(mgr, metersPerSecond: 3, to: 100)
+        #expect(mgr.refreshLiveActivityIfCurrentPaceChanged())     // first pace to show
+        #expect(mgr.lastPushedHadCurrentPace)
+        mgr.elapsedTime = 110
+        #expect(!mgr.refreshLiveActivityIfCurrentPaceChanged())    // still moving, as far as it knows
+        mgr.elapsedTime = 116
+        #expect(mgr.refreshLiveActivityIfCurrentPaceChanged())     // 16 s without a fix
+        #expect(!mgr.lastPushedHadCurrentPace)
+        mgr.elapsedTime = 130
+        #expect(!mgr.refreshLiveActivityIfCurrentPaceChanged())    // no push every second
+    }
+
+    // MARK: - Salvaged walks
+
+    @MainActor private func checkpoint(_ mode: ActivityMode, units: Double, withSplits: Bool = true) throws -> ActiveWalkSnapshot {
+        let mgr = NavigationSessionManager(route: route(mode))
+        let unit = mgr.splitTracker.unitMeters
+        drive(mgr, metersPerSecond: 3, to: (unit * units) / 3)
+        let data = try JSONEncoder().encode(mgr.snapshot)
+        var json = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        if !withSplits { json.removeValue(forKey: "unitSplits") }
+        return try JSONDecoder().decode(ActiveWalkSnapshot.self, from: JSONSerialization.data(withJSONObject: json))
+    }
+
+    @Test @MainActor func salvagedRun_keepsItsWholeUnitsAndThePartAfter() throws {
+        let snapshot = try checkpoint(.running, units: 1.5)
+        let splits = try #require(ActiveWalkStore.salvagedSplits(for: snapshot, elapsed: 500))
+        #expect(splits.splits.count == 2)
+        #expect(splits.splits.last?.elapsed == 500)
+    }
+
+    @Test @MainActor func salvagedRide_keepsNoSplits() throws {
+        let snapshot = try checkpoint(.cycling, units: 1.5)
+        #expect(snapshot.unitSplits != nil)   // the ride's tracker ran, for its cue
+        #expect(ActiveWalkStore.salvagedSplits(for: snapshot, elapsed: 500) == nil)
+    }
+
+    @Test @MainActor func salvagedCheckpointFromBefore117_keepsNoSplits() throws {
+        let snapshot = try checkpoint(.running, units: 1.5, withSplits: false)
+        #expect(ActiveWalkStore.salvagedSplits(for: snapshot, elapsed: 500) == nil)
     }
 
     @Test @MainActor func checkpointFromBefore117_decodesWithNoSplits() throws {
