@@ -36,6 +36,11 @@ final class WalkSessionRecord {
     // the activity has no splits. A new CloudKit field (CD_unitSplitsData):
     // it must be deployed to Production before the release that adds it.
     var unitSplitsData: Data = Data()
+    // JSON-encoded ElevationTotals (feat/walk-elevation-gain, 1.17); empty
+    // Data when the activity has no usable altitude, is indoor, or predates
+    // it. A new CloudKit field (CD_elevationData): it must be deployed to
+    // Production before the release that adds it, like CD_unitSplitsData.
+    var elevationData: Data = Data()
 
     init(from session: WalkSession) {
         id               = session.id
@@ -54,6 +59,7 @@ final class WalkSessionRecord {
         stopCount               = session.stopCount ?? -1
         flaggedPossibleVehicle  = session.flaggedPossibleVehicle
         unitSplitsData          = session.unitSplits.flatMap { try? JSONEncoder().encode($0) } ?? Data()
+        elevationData           = session.elevation.flatMap { try? JSONEncoder().encode($0) } ?? Data()
         activePetIdsData  = (try? JSONEncoder().encode(session.activePetIds.map(\.uuidString))) ?? Data()
         waypointsData     = (try? JSONEncoder().encode(session.waypoints)) ?? Data()
         let distStrings   = Dictionary(uniqueKeysWithValues: session.petDistances.map { (k, v) in (k.uuidString, v) })
@@ -87,7 +93,8 @@ final class WalkSessionRecord {
             countsTowardRouteStats: countsTowardRouteStats,
             stopCount:              stopCount >= 0 ? stopCount : nil,
             flaggedPossibleVehicle: flaggedPossibleVehicle,
-            unitSplits:             try? JSONDecoder().decode(UnitSplits.self, from: unitSplitsData)
+            unitSplits:             try? JSONDecoder().decode(UnitSplits.self, from: unitSplitsData),
+            elevation:              try? JSONDecoder().decode(ElevationTotals.self, from: elevationData)
         )
     }
 }
