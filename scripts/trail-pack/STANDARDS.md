@@ -48,6 +48,101 @@ manifest and in the published record's history.
 - **Changes against the published version**: rows, named trails, names added
   and removed. Compared with the archived copy of what users have
   (`published/<region>-v<N>.wktpack`), never with the build folder.
+- **Fact shares** (builder 1.6.0): `N rows state a fact; M of them not one
+  value over their whole length`. Rows, not trails, and "states a fact" is
+  not "the card shows a fact". The per-trail numbers come from the fact
+  checks below.
+
+## Checking the trail facts (builder 1.6.0 and later)
+
+The Trail facts card words each fact from the length shares in a row's
+`tags_json` (`facts`), and from a pack's meta `fact_shares=1`, which tells
+"this row states nothing" apart from "this pack is too old to say". A pack
+without them falls back to the older per-section rule, silently: the card
+still shows something, so nothing on screen says the shares are missing.
+These checks are for review, not gates; no threshold depends on them.
+
+**1. The pack carries shares.** Read-only, on the pack that will be
+published:
+
+```bash
+sqlite3 -readonly "$WORK/packs/<region>-full.wktpack" \
+  "SELECT key, value FROM meta WHERE key IN ('builder_version','fact_shares');"
+```
+
+Expect `builder_version` 1.6.0 or later and `fact_shares|1`. A pack without
+`fact_shares` was built by an older builder: rebuild it, do not publish it as
+a fact update.
+
+**2. Per state: how many named trails the map data gives a fact.** Also
+read-only. `trail_key` is set on named rows only, so distinct keys are named
+trails:
+
+```bash
+sqlite3 -readonly "$WORK/packs/<region>-full.wktpack" <<'SQL'
+SELECT count(DISTINCT trail_key) AS named_trails,
+       count(DISTINCT CASE WHEN json_extract(tags_json,'$.facts') IS NOT NULL
+                           THEN trail_key END) AS stating_any_fact
+FROM trails WHERE trail_key IS NOT NULL;
+SELECT s.key AS tag, count(DISTINCT t.trail_key) AS named_trails_stating_it
+FROM trails t, json_each(t.tags_json,'$.facts.shares') s
+WHERE t.trail_key IS NOT NULL
+GROUP BY s.key ORDER BY 2 DESC;
+SQL
+```
+
+This is a ceiling, not what users see: the card applies Joe's rules (0.8 of
+the length for a plain claim, 0.25 for "in places", a veto when any section
+says otherwise), so fewer trails show a fact than state one. On the bundled
+NC pack (2026-10-15): 2,850 of 4,688 named trails state a fact; 1,886
+(40.2%) show one on the card. A pre-1.6.0 pack prints 0 for the second
+number, which is how the query was checked.
+
+**Not yet a script: the share that would show at least one fact.** The
+1,886 above came from a Python copy of the card's rules that was not kept
+(#242). The repo has no tool that prints it per state. The one to write is
+read-only and runs the app's own rules rather than a copy, because a copy
+drifts the first time a rule changes and keeps printing a plausible number:
+a `WockettTests` test that opens the pack named in an environment variable
+through `BundledTrailSource`, builds every trail key's `TrailFacts`, and
+prints the trails showing at least one fact and the count for each fact
+(path type, shared use, surface, marking, wheelchair, lit, maintainer). It
+must skip when the variable is unset, so CI never runs it. Until it exists,
+print query 2 for each state and say in the review that the card's number
+was not measured.
+
+**3. Two real rows on the simulator.** After the Development publish and
+before Production, open two trails' cards in a Debug build of `main` (it
+must include #242, or the app ignores the shares): one long trail merged from
+many ways, and one with several graded sections. These queries find them:
+
+```bash
+sqlite3 -readonly "$WORK/packs/<region>-full.wktpack" <<'SQL'
+-- Long rows whose ways disagree along their length
+SELECT t.name, t.trail_key, round(t.length_m/1000,1) AS km
+FROM trails t
+WHERE (SELECT count(*) FROM json_each(t.tags_json,'$.facts.shares') s
+       WHERE (SELECT count(*) FROM json_each(s.value)) > 1) > 0
+ORDER BY t.length_m DESC LIMIT 3;
+-- Rows with two or more stated grades
+SELECT t.name, t.trail_key, round(t.length_m) AS m,
+       json_extract(t.tags_json,'$.facts.shares.sac_scale') AS sac_scale
+FROM trails t
+WHERE (SELECT count(*) FROM json_each(t.tags_json,'$.facts.shares.sac_scale')
+       WHERE key <> 'unstated') >= 2
+ORDER BY t.length_m DESC LIMIT 5;
+SQL
+```
+
+The card sums every row of the trail key, not just the row the query
+found, so work out what it should say from all of that key's rows
+(`SELECT name, length_m, tags_json FROM trails WHERE trail_key = '<key>'`)
+before looking, then compare. In NC the worked examples are an Appalachian
+Trail row (`hiking` on 0.9% of 21.8 km: "Rough mountain path" on its own,
+where the flat tags said "Walking path") and Lower Piney Trail (1,569 m
+`hiking` + 216 m `mountain_hiking`: "Includes rough mountain path"); #242
+lists them. A card that reads as if only one way's tags existed means the
+shares were not read: stop before Production.
 
 ## The curation rules (builder, in order of introduction)
 
@@ -73,12 +168,16 @@ Source filters in `make_region.sh`: sidewalks, traffic islands and
    largest city), `bundled: false`.
 2. `make_region.sh <region>`. If a gate fails, the state waits. Look at the
    towns without a trail and the review lists before changing any threshold.
-3. `region_publish.py publish <region>` (Development). On the simulator,
+3. Fact checks 1 and 2 above: builder 1.6.0 or later, `fact_shares=1`, and
+   the per-state counts in the review.
+4. `region_publish.py publish <region>` (Development). On the simulator,
    download it and check the Trails list in the probe city **and one small
-   town**. Under `-WKTUITest` each launch starts with an empty pack folder and
-   the list is centred on Raleigh, so download inside the same launch and
-   override the centre temporarily (never committed).
-4. Production only with Joe's go-ahead:
+   town**, and the two cards from fact check 3. Under `-WKTUITest` each
+   launch starts with an empty pack folder and the list is centred on
+   Raleigh, so download inside the same launch and override the centre
+   temporarily (never committed).
+5. Production only with Joe's go-ahead, and with a fresh cktool token (it
+   expires within hours; Joe renews it in his own Terminal):
    `region_publish.py publish <region> --production --tested`.
 
 ## Updating states (the improvement loop)
@@ -95,7 +194,21 @@ Source filters in `make_region.sh`: sidewalks, traffic islands and
 4. **Measure**: compare coverage and the review lists with the published
    history (`published/<region>.json` → `history`). A rule that does not
    improve the lists, or costs coverage, is reconsidered before it ships.
-5. Development, simulator check, then Production with Joe's go-ahead, as above.
+   Print the fact checks too, against the archived published pack where it
+   has shares.
+5. Development, simulator check (including the two fact cards), then
+   Production with Joe's go-ahead and a fresh cktool token, as above.
+
+**Fact shares reach a published state only when it is republished.** The
+states live in Production on 2026-10-15 were all built before 1.6.0, so
+their rows carry no shares and the card uses the per-section rule for them.
+Republishing them with 1.6.0 is a material change in the sense of step 1,
+but it waits for the app release that reads the shares (1.17): apps before
+it ignore them, so an earlier republish gains users nothing and spends a
+version. Then one state at a time, each through Development, the simulator
+check and its own go-ahead from Joe: NC (bundled) first, then SC, VA, TN,
+GA, then FL, AL, KY, WV, MD, then the New England states. A new state built
+by 1.6.0 carries shares from the start, and older apps read it as before.
 
 ## Backlog from the review lists (2026-10-09)
 
