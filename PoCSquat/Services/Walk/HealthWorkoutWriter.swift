@@ -10,6 +10,7 @@ private let log = Logger(subsystem: "com.wockett.app", category: "HealthKit")
 /// test can hand it a fake and see which end a walk reaches; the app always
 /// uses `HealthWorkoutWriter`.
 protocol WalkWorkoutRecording: AnyObject {
+    func start(at date: Date) async
     func addLocations(_ locations: [CLLocation])
     func discard()
     @discardableResult

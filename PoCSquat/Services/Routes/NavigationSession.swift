@@ -204,6 +204,12 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
     /// set whether or not Health access was granted; without access it does
     /// nothing. Internal, not private, so a test can give it a fake writer.
     var workoutWriter: (any WalkWorkoutRecording)?
+    /// Makes the walk's Health workout writer for a workout type. The app
+    /// always makes a `HealthWorkoutWriter`; a test swaps in a fake to see
+    /// which type a session asks for (a hike is Hiking, feat/hike-wording).
+    var makeWorkoutWriter: (HKWorkoutActivityType) -> any WalkWorkoutRecording = {
+        HealthWorkoutWriter(activityType: $0)
+    }
     var isPaused = false
     private var pausedDuration: TimeInterval = 0
     private var pauseStart: Date?
@@ -366,13 +372,23 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
                 }
             }
         }
+        // Through `startWorkout`, never a writer built here: a test starts a
+        // hike and checks Health is asked for Hiking (test-auditor, #239).
         let capturedStartTime = startTime
         Task { @MainActor [weak self] in
-            guard let self else { return }
-            let writer = HealthWorkoutWriter(activityType: route.activityMode.hkActivityType)
-            await writer.start(at: capturedStartTime)
-            self.workoutWriter = writer
+            await self?.startWorkout(at: capturedStartTime)
         }
+    }
+
+    /// Starts the walk's Health workout, typed by the session's words: a hike
+    /// is saved to Health as Hiking, everything else as its activity
+    /// (`SessionWording.hkActivityType`). Separate from `beginTracking` so a
+    /// test can start the workout without starting location and motion; one
+    /// other test does start a session, to prove `beginTracking` calls this.
+    func startWorkout(at date: Date) async {
+        let writer = makeWorkoutWriter(route.wording.hkActivityType)
+        await writer.start(at: date)
+        workoutWriter = writer
     }
 
     private func startTimer() {
@@ -484,7 +500,7 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
         case .resume:
             dismissBreakPrompt()
             resume()
-            let label = route.activityMode.sessionLabel
+            let label = route.wording.sessionLabel
             WalkAudioCueService.shared.announce("You're moving again. Resuming your \(label.lowercased()).")
             Task {
                 // Same kind as the pause notice, so it replaces it.
@@ -583,7 +599,9 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
 
     /// Everything `stop()` does except deleting the checkpoint. `finish()`
     /// uses it: the walk is over but not yet saved.
-    private func stopTracking() {
+    /// Internal, not private, so a test that starts a session can stop its
+    /// sensors without `stop()` deleting the shared checkpoint file.
+    func stopTracking() {
         stopped = true
         isTrackingLocation = false
         autoPausedForInactivity = false
@@ -834,7 +852,8 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
             stopCount: stopTracker.stopCount,
             flaggedPossibleVehicle: drivingEverDetected && !drivingAffirmedByUser,
             unitSplits: finishedSplits,
-            elevation: finishedElevation
+            elevation: finishedElevation,
+            isHike: route.isHike
         )
     }
 
@@ -988,8 +1007,10 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
     private func applyLocationAction() {
         switch Self.locationAction(status: locationAuthorization, tracking: isTrackingLocation, paused: isPaused) {
         // Never under UI tests: a system alert mid-walk breaks the taps that
-        // follow it (they fake location through RouteManager instead).
-        case .ask:          if !isWKTUITestMode { locationManager.requestWhenInUseAuthorization() }
+        // follow it (they fake location through RouteManager instead). Nor
+        // under unit tests, one of which starts a session (#239) and must not
+        // leave an alert on the test host.
+        case .ask:          if !AppModelContainer.isRunningUnderTests { locationManager.requestWhenInUseAuthorization() }
         case .startUpdates: locationManager.startUpdatingLocation()
         case .nothing:      break
         }
@@ -1135,7 +1156,7 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
                                   lapCount: 1, isLoop: false, totalDistance: along + length,
                                   isCustomRoute: route.isCustomRoute, isCommunityRoute: route.isCommunityRoute,
                                   activityMode: route.activityMode, customRouteId: route.customRouteId,
-                                  path: back, pathIsRecording: route.pathIsRecording)
+                                  path: back, pathIsRecording: route.pathIsRecording, isHike: route.isHike)
         route = next
         trailProgress = TrailProgress(route: next)
         currentWaypointIndex = 1
@@ -1156,7 +1177,7 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
         guard !arrivedAtTrail, approach.arrivalPlan(at: location.coordinate) != nil else { return }
         arrivedAtTrail = true
         trailArrivalLocation = location.coordinate
-        let noun = route.activityMode.noun
+        let noun = route.wording.noun
         WalkAudioCueService.shared.announce("You've reached \(approach.trailName). Start the trail \(noun) when you're ready.")
         if Self.shouldNotifyOffTrail(appIsActive: UIApplication.shared.applicationState == .active,
                                      sessionScreenVisible: isSessionScreenVisible) {
@@ -1178,7 +1199,10 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
         let mode = route.activityMode
         guard let plan = here.flatMap({ approach.arrivalPlan(at: $0, activityMode: mode) })
                 ?? trailArrivalLocation.flatMap({ approach.arrivalPlan(at: $0, activityMode: mode) }) else { return nil }
-        let next = plan.navigableRoute(activityMode: route.activityMode)
+        var next = plan.navigableRoute(activityMode: route.activityMode)
+        // A hike or not is fixed when the session starts, with its Health
+        // workout type: a session that walked here stays a walk on the trail.
+        next.isHike = route.isHike
         route = next
         trailProgress = TrailProgress(route: next)
         currentWaypointIndex = 1
@@ -1258,8 +1282,9 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
         // had saved the walk.
         writeSnapshot()
         stopTracking()
-        fireBackgroundNotification(title: "Walk complete! 🎉", body: "Great work on \(route.name)")
-        WalkAudioCueService.shared.announce("Walk complete! Great job on \(route.name).")
+        let done = "\(route.wording.displayName) complete!"
+        fireBackgroundNotification(title: "\(done) 🎉", body: "Great work on \(route.name)")
+        WalkAudioCueService.shared.announce("\(done) Great job on \(route.name).")
         onCompleted?()
     }
 

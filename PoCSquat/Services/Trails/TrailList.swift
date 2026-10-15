@@ -130,6 +130,18 @@ struct TrailListItem: Identifiable, Hashable {
         return kinds.count == 1 ? kinds.first : nil
     }
 
+    /// A walk started on this trail is a hike (Joe, 2026-10-15, option B,
+    /// refined the same day): never on a bike path (even an unpaved one) or a
+    /// paved trail; otherwise only with evidence it is a hiking trail: every
+    /// section that states a surface says unpaved, or any section carries a
+    /// hiking difficulty (OSM `sac_scale`). A trail with no surface tag, or
+    /// sections that disagree, and no difficulty is a walk: an untagged
+    /// urban footway must not say "Start Hike".
+    var isHikeable: Bool {
+        guard !isBikePath, surfaceKind != .paved else { return false }
+        return surfaceKind == .unpaved || sections.contains { !($0.difficulty ?? "").isEmpty }
+    }
+
     /// The dog rule worth showing, or nil. Only a tagged value is confident
     /// (see `DogAccessProvenance`); across sections the strictest tagged rule
     /// wins, because "no dogs" on one section is what an owner needs to know.
