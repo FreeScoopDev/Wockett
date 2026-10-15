@@ -65,6 +65,33 @@ struct TrailPackTests {
         #expect(try src.trails(key: "fixture:w1").isEmpty)
     }
 
+    @Test("A pack built before 1.6.0 claims no fact shares, so its rows keep the per-section facts rule")
+    func olderPackHasNoFactShares() throws {
+        // The fixture is a builder 1.1.0 pack: no fact_shares in its meta,
+        // like every published state pack until it is republished.
+        let src = try open()
+        #expect(src.hasFactShares == false)
+        let rows = try src.trails(near: raleigh, radiusMeters: 5_000, matching: .any, limit: 50)
+        #expect(!rows.isEmpty)
+        #expect(rows.allSatisfy { $0.packHasFactShares == false })
+    }
+
+    @Test("Only fact_shares=1 in the meta turns fact shares on", arguments: [
+        ("1", true), ("2", false), ("0", false), ("", false)
+    ])
+    func factSharesMeta(value: String, expected: Bool) throws {
+        let copy = try scratchCopy()
+        defer { try? FileManager.default.removeItem(at: copy) }
+        var db: OpaquePointer?
+        #expect(sqlite3_open(copy.path, &db) == SQLITE_OK)
+        #expect(sqlite3_exec(db, "INSERT INTO meta (key, value) VALUES ('fact_shares', '\(value)')", nil, nil, nil) == SQLITE_OK)
+        sqlite3_close(db)
+        let src = try BundledTrailSource(url: copy)
+        #expect(src.hasFactShares == expected)
+        let row = try #require(try src.trails(near: raleigh, radiusMeters: 5_000, matching: .any, limit: 1).first)
+        #expect(row.packHasFactShares == expected)
+    }
+
     @Test("The bundled NC pack returns a whole trail by its key")
     func bundledWholeTrail() throws {
         let url = try #require(Bundle.main.url(forResource: "nc", withExtension: "wktpack"))

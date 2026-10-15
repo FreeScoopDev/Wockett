@@ -385,6 +385,10 @@ struct TrailFactsTests {
                 "two clubs: no maintainer; limited and no: no wheelchair line")
     }
 
+    // The bundled pack carries fact shares since builder 1.6.0 (spec
+    // feat/trail-facts-from-shares), so these read every way's facts by
+    // length, not each row's first way. Expectations re-derived from the
+    // rules on the rebuilt pack, 2026-10-15; the ones that changed say so.
     @Test("The bundled NC pack, read through the real source, under the length rules")
     func bundledPack() throws {
         let url = try #require(Bundle.main.url(forResource: "nc", withExtension: "wktpack"))
@@ -396,26 +400,30 @@ struct TrailFactsTests {
         #expect(TrailFacts.facts(for: item(strollway)).map(\.text)
                 == ["Smooth", "Well marked", "Mapped as wheelchair accessible", "Lit at night"])
 
-        // Walnut Creek Trail, a cycleway: 1 of 16 sections (13% of 14.5 km)
-        // says excellent. It must not read "Smooth"; under 25% it says
-        // nothing. foot=designated on all of it.
+        // Walnut Creek Trail, a cycleway: excellent smoothness under 25% of
+        // 14.5 km, so no surface line. Walkers are designated on nearly all
+        // of it, but one way (54 m of row w130332179) says foot=destination,
+        // and a positive claim yields to any stretch saying otherwise: no
+        // "Shared with cyclists" (it showed from the flat tags before 1.6.0).
         let walnut = try source.trails(key: "nc:w130332179")
         #expect(walnut.count == 16)
-        #expect(TrailFacts.facts(for: item(walnut)).map(\.text) == ["Shared with cyclists"])
+        #expect(TrailFacts.facts(for: item(walnut)).isEmpty)
 
         // Lower Piney Trail: the column says hiking, the row's sac_scale says
-        // mountain_hiking (two merged ways, one of each in OSM).
+        // mountain_hiking (two merged ways). The shares say mountain_hiking
+        // on 12% of it: "Includes …" (was "Rough mountain path").
         let piney = try source.trails(key: "nc:w171710443")
         #expect(piney.first?.difficulty == "hiking")
-        #expect(TrailFacts.facts(for: item(piney)).first { $0.kind == .pathType }?.text == "Rough mountain path")
+        #expect(TrailFacts.facts(for: item(piney)).first { $0.kind == .pathType }?.text == "Includes rough mountain path")
 
-        // Appalachian Trail, six sections, 143 km: mountain_hiking on 77% of
-        // it, one section intermediate, excellent marking on 51%, wheelchair
-        // yes on 15%, three hiking clubs.
+        // Appalachian Trail, six sections, 143 km: mountain_hiking on part of
+        // it, bad smoothness stated on some ways (was "Uneven in places" from
+        // one row's flat intermediate), excellent marking on part, several
+        // hiking clubs.
         let appalachian = try source.trails(key: "nc:w120342541")
         #expect(appalachian.count == 6)
         #expect(TrailFacts.facts(for: item(appalachian)).map(\.text)
-                == ["Includes rough mountain path", "Uneven in places", "Well marked in places"])
+                == ["Includes rough mountain path", "Rough in places", "Well marked in places"])
 
         // Thermal Belt Rail Trail: a cycleway with sac_scale=hiking and
         // foot=designated. No "Walking path" beside its Bike path chip.
@@ -424,10 +432,11 @@ struct TrailFactsTests {
                 == ["Shared with cyclists", "Smooth", "Well marked", "Mapped as wheelchair accessible"])
         #expect(TrailFacts.facts(for: item(thermal), activityMode: .cycling).first?.text == "Shared with walkers")
 
-        // Little Rock Trail: a cycleway whose longest piece has no foot tag
-        // (41% of the length says designated): nothing about walkers.
+        // Little Rock Trail: a cycleway whose longest row's first way has no
+        // foot tag. Its other ways say designated or yes, over 80% of the
+        // trail and nothing else stated: "Shared with cyclists" (was nothing).
         let littleRock = try source.trails(key: "nc:w1086215060")
-        #expect(TrailFacts.facts(for: item(littleRock)).isEmpty)
+        #expect(TrailFacts.facts(for: item(littleRock)).map(\.text) == ["Shared with cyclists"])
 
         // Tanawha Trail: wheelchair=designated on 84% of 20 km of mountain
         // path, wheelchair=no on the rest. Never "accessible" (critic run 3).
