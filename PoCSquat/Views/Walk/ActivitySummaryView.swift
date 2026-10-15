@@ -433,7 +433,6 @@ struct ActivityStatTiles: View {
         let sizes: [Int]
         switch count {
         case 4:  sizes = [2, 2]
-        case 5:  sizes = [3, 2]
         default: sizes = Array(repeating: 3, count: count / 3) + (count % 3 > 0 ? [count % 3] : [])
         }
         var start = 0

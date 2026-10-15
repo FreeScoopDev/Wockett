@@ -52,7 +52,7 @@ struct ElevationTrackerTests {
         // two fixes (2 m here) and the last part-step under the 3 m
         // hysteresis can go uncounted; it never overstates.
         var tracker = ElevationTracker()
-        feed(&tracker, (0...60).map { 200 + Double($0) })
+        feed(&tracker, Array(repeating: 200, count: 5) + (0...60).map { 200 + Double($0) })
         let totals = try #require(tracker.totals)
         #expect(totals.ascentMeters >= 60 - ElevationTracker.hysteresis - 2)
         #expect(totals.ascentMeters <= 60)
@@ -65,7 +65,8 @@ struct ElevationTrackerTests {
         let up = stride(from: 0.0, through: 40, by: 2).map { 50 + $0 }
         let down = stride(from: 38.0, through: 16, by: -2).map { 50 + $0 }
         var tracker = ElevationTracker()
-        feed(&tracker, up + Array(repeating: 90, count: 5) + down + Array(repeating: 66, count: 5))
+        feed(&tracker, Array(repeating: 50, count: 5) + up + Array(repeating: 90, count: 5)
+             + down + Array(repeating: 66, count: 5))
         let totals = try #require(tracker.totals)
         #expect(totals.ascentMeters > 40 - ElevationTracker.hysteresis && totals.ascentMeters <= 40)
         #expect(totals.descentMeters > 24 - ElevationTracker.hysteresis && totals.descentMeters <= 24)
@@ -88,8 +89,9 @@ struct ElevationTrackerTests {
 
     @Test func accuracyOfExactly15_counts() {
         var tracker = ElevationTracker()
-        feed(&tracker, [100] + Array(repeating: 110, count: 5), accuracy: ElevationTracker.maxVerticalAccuracy)
-        #expect(tracker.totals?.ascentMeters == 10)
+        feed(&tracker, Array(repeating: 100, count: 5) + Array(repeating: 120, count: 5),
+             accuracy: ElevationTracker.maxVerticalAccuracy)
+        #expect(tracker.totals?.ascentMeters == 20)
     }
 
     @Test func noUsableFix_isNil_notZero() {
@@ -118,9 +120,9 @@ struct ElevationTrackerTests {
         var tracker = ElevationTracker()
         feed(&tracker, Array(repeating: 100, count: 5))
         tracker.add(altitude: 140, verticalAccuracy: 5, at: start.addingTimeInterval(25), continuous: false)
-        feed(&tracker, Array(repeating: 146, count: 5), from: 30)
+        feed(&tracker, Array(repeating: 140, count: 4) + Array(repeating: 160, count: 5), from: 30)
         let totals = try #require(tracker.totals)
-        #expect(totals.ascentMeters == 4)   // 140 to 146 counts; 100 to 140 does not
+        #expect(totals.ascentMeters == 20)   // 140 to 160 counts; 100 to 140 does not
         #expect(totals.descentMeters == 0)
     }
 
@@ -139,9 +141,9 @@ struct ElevationTrackerTests {
         var tracker = ElevationTracker(restoring: ElevationTotals(ascentMeters: 42, descentMeters: 17))
         #expect(tracker.totals == ElevationTotals(ascentMeters: 42, descentMeters: 17))
         // The first fix after a restore sets the level; only the climb after it counts.
-        feed(&tracker, [300] + Array(repeating: 310, count: 5))
+        feed(&tracker, Array(repeating: 300, count: 5) + Array(repeating: 320, count: 5))
         let totals = try #require(tracker.totals)
-        #expect(totals.ascentMeters == 52)
+        #expect(totals.ascentMeters == 62)
         #expect(totals.descentMeters == 17)
         #expect(ElevationTracker(restoring: nil).totals == nil)
     }
@@ -313,4 +315,114 @@ struct ElevationTrackerTests {
         #expect(ActivityStatTiles.rows(count: 4) == [[0, 1], [2, 3]])
         #expect(ActivityStatTiles.rows(count: 5) == [[0, 1, 2], [3, 4]])
     }
+
+    @Test func aStrayFirstFix_doesNotSetTheLevel() throws {
+        // The level waits for a full average: one fix 5 m off at the start
+        // of a flat walk saved 3.3 m of descent (critic run 2, 2026-10-15).
+        var tracker = ElevationTracker()
+        feed(&tracker, [105] + Array(repeating: 100, count: 20))
+        let totals = try #require(tracker.totals)
+        #expect(totals.ascentMeters == 0)
+        #expect(totals.descentMeters == 0)
+    }
+
+    // MARK: - Test-auditor kill tests (2026-10-15)
+
+    @Test func nonFiniteAltitude_isIgnored() {
+        var tracker = ElevationTracker()
+        tracker.add(altitude: .infinity, verticalAccuracy: 5, at: start)
+        tracker.add(altitude: .nan, verticalAccuracy: 5, at: start.addingTimeInterval(5))
+        #expect(tracker.totals == nil)
+    }
+
+    @Test func aGapOfUnusableFixes_isStillAGap() throws {
+        // Five minutes of fixes whose altitude is unusable (a tunnel, a canyon)
+        // is a gap like no fixes at all.
+        var tracker = ElevationTracker()
+        feed(&tracker, Array(repeating: 100, count: 10))
+        feed(&tracker, Array(repeating: 125, count: 60), accuracy: 40, from: 50)
+        feed(&tracker, Array(repeating: 150, count: 10), from: 350)
+        let totals = try #require(tracker.totals)
+        #expect(totals.ascentMeters == 0)
+    }
+
+    /// Drives the location delegate; waits until every fix has landed.
+    @MainActor private func deliver(_ mgr: NavigationSessionManager,
+                                    _ fixes: [AuditFix]) async throws {
+        mgr.writesSnapshots = false
+        mgr.speaksSplits = false
+        let manager = CLLocationManager()
+        for f in fixes {
+            let loc = CLLocation(coordinate: CLLocationCoordinate2D(latitude: f.lat, longitude: -75),
+                                 altitude: f.alt, horizontalAccuracy: 5, verticalAccuracy: f.vAcc,
+                                 timestamp: start.addingTimeInterval(f.t))
+            mgr.locationManager(manager, didUpdateLocations: [loc])
+        }
+        for _ in 0..<300 where mgr.trackPoints.count < fixes.count {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(mgr.trackPoints.count == fixes.count)
+    }
+
+    @Test @MainActor func delegate_aPositionJump_isNotClimb() async throws {
+        // Fix 6 lands ~220 m from fix 5: the distance skips it, so must the climb.
+        let mgr = NavigationSessionManager(route: route(.walking))
+        var fixes: [AuditFix] = []
+        for i in 0..<12 {
+            let d = Double(i)
+            let lat: Double = 45 + d * 0.00005 + (i >= 6 ? 0.002 : 0)
+            fixes.append(AuditFix(lat: lat, alt: i < 6 ? 100 : 140, vAcc: 5, t: d * 5))
+        }
+        try await deliver(mgr, fixes)
+        #expect(mgr.elevationTracker.totals == ElevationTotals(ascentMeters: 0, descentMeters: 0))
+    }
+
+    @Test @MainActor func delegate_readsVerticalNotHorizontalAccuracy() async throws {
+        // Horizontal 5 m, vertical 30 m: the altitude is unusable.
+        let mgr = NavigationSessionManager(route: route(.walking))
+        var fixes: [AuditFix] = []
+        for i in 0..<12 {
+            let d = Double(i)
+            fixes.append(AuditFix(lat: 45 + d * 0.00005, alt: i < 6 ? 100 : 120, vAcc: 30, t: d * 5))
+        }
+        try await deliver(mgr, fixes)
+        #expect(mgr.elevationTracker.totals == nil)
+    }
+
+    @Test @MainActor func delegate_usesTheFixTimestamp_forGaps() async throws {
+        // Five minutes between fix 5 and fix 6 by their own timestamps.
+        let mgr = NavigationSessionManager(route: route(.walking))
+        var fixes: [AuditFix] = []
+        for i in 0..<12 {
+            let d = Double(i)
+            let t: Double = d * 5 + (i >= 6 ? 300 : 0)
+            fixes.append(AuditFix(lat: 45 + d * 0.00005, alt: i < 6 ? 100 : 150, vAcc: 5, t: t))
+        }
+        try await deliver(mgr, fixes)
+        #expect(mgr.elevationTracker.totals == ElevationTotals(ascentMeters: 0, descentMeters: 0))
+    }
+
+    @Test @MainActor func indoorSession_recordsNoClimb() {
+        let mgr = NavigationSessionManager(route: route(.stationary))
+        climb(mgr, Array(repeating: 100, count: 5) + Array(repeating: 120, count: 5))
+        #expect(mgr.elevationTracker.totals == nil)
+        #expect(mgr.snapshot.elevation == nil)
+        #expect(mgr.completedSession.elevation == nil)
+    }
+
+    @Test func climbTile_detailsOnlyOnTheClimb_andInTheValuesUnit() {
+        let walk = session("walking", ascent: 120.4, descent: 98.6)
+        for stat in [SummaryStat.distance, .estimatedDistance, .time, .pace, .speed, .steps, .cadence] {
+            #expect(stat.detail(for: walk) == nil)
+            #expect(stat.accessibilityDetail(for: walk) == nil)
+        }
+        // Default (locale) units: value, detail and VoiceOver detail agree.
+        let unit = SummaryStat.climb.value(for: walk).split(separator: " ").last
+        #expect(SummaryStat.climb.detail(for: walk)?.split(separator: " ").last == unit)
+        #expect(SummaryStat.climb.accessibilityDetail(for: walk)?.split(separator: " ").dropLast().last == unit)
+        // Feet round, not truncate: 10 m is 32.8 ft.
+        #expect(SummaryStat.heightText(10, metric: false) == "33 ft")
+    }
 }
+
+private struct AuditFix { let lat: Double; let alt: Double; let vAcc: Double; let t: TimeInterval }

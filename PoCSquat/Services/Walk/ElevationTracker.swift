@@ -29,8 +29,14 @@ struct ElevationTotals: Codable, Equatable {
 /// peak to peak. Jitter of ±2.5 m is 5 m peak to peak; once the level sat at
 /// one extreme, every swing to the other counted, and a flat walk could save
 /// a climb of a hundred metres (critic, 2026-10-15). Averaging five fixes
-/// costs a couple of metres of a climb's final stretch, which `ascent` may
-/// therefore understate; it never overstates.
+/// costs a couple of metres of a climb's final stretch. The level is only
+/// set once five fixes are averaged, so one stray first fix can't skew it.
+///
+/// Known limit: the average cancels random altitude noise up to about 1.5 m
+/// (one standard deviation). Noisier altitude can still add a little climb
+/// on a flat walk (simulated: about 20 m over 5 km at 2 m). How noisy an
+/// iPhone's GPS altitude really is has not been measured; a flat walk and a
+/// hill walk on a real phone are owed before 1.17 ships.
 /// After a gap (no usable fix for `maxGap`, or a stretch the walk's distance
 /// skipped) the level is re-anchored at the new fix without counting the
 /// difference, so a gap never invents a climb.
@@ -77,7 +83,7 @@ struct ElevationTracker {
         if recent.count > Self.smoothingWindow { recent.removeFirst() }
         let smoothed = recent.reduce(0, +) / Double(recent.count)
         guard let level = anchor else {
-            anchor = smoothed
+            if recent.count == Self.smoothingWindow { anchor = smoothed }
             return
         }
         let change = smoothed - level
