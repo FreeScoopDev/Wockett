@@ -1,5 +1,6 @@
 import Testing
 import Foundation
+import CoreLocation
 @testable import PoCSquat
 
 /// Climb from GPS altitude (`feat/walk-elevation-gain`). The rules are in
@@ -19,37 +20,55 @@ struct ElevationTrackerTests {
 
     // MARK: - Tracker
 
-    @Test func flatGPSJitter_addsNothing() throws {
-        // GPS altitude wandering up to 2.5 m either side of 100 m for ten
-        // minutes, the way it does while standing still.
+    @Test(arguments: 0..<12)
+    func flatGPSJitter_addsNothing(startingAt offset: Int) throws {
+        // GPS altitude wandering up to 2.5 m either side of 100 m for twenty
+        // minutes, the way it does on a flat walk. Every starting point of the
+        // pattern: from the centre value alone a bare 3 m hysteresis passed,
+        // and from an extreme it saved over 100 m of climb (critic, 2026-10-15).
         let jitter: [Double] = [0, 1.5, -1, 2.5, -2.5, 0.5, 2, -1.5, 1, -2, 2.5, -2.5]
         var tracker = ElevationTracker()
-        feed(&tracker, (0..<120).map { 100 + jitter[$0 % jitter.count] })
+        feed(&tracker, (0..<240).map { 100 + jitter[($0 + offset) % jitter.count] })
+        let totals = try #require(tracker.totals)
+        #expect(totals.ascentMeters == 0)
+        #expect(totals.descentMeters == 0)
+    }
+
+    @Test func alternatingTwoMetreNoise_addsNothing() throws {
+        // ±2 m flipping every fix at 10 m accuracy, a kilometre of flat walking
+        // at the 5 m distance filter: 396 m of "climb" without smoothing.
+        var tracker = ElevationTracker()
+        for i in 0..<200 {
+            tracker.add(altitude: i.isMultiple(of: 2) ? 98 : 102, verticalAccuracy: 10,
+                        at: start.addingTimeInterval(Double(i) * 5))
+        }
         let totals = try #require(tracker.totals)
         #expect(totals.ascentMeters == 0)
         #expect(totals.descentMeters == 0)
     }
 
     @Test func steadyClimb_givesTheGain() throws {
-        // 60 m up, a metre a fix. Only the last part-step under the 3 m
-        // hysteresis can go uncounted.
+        // 60 m up, a metre a fix, ending as the walk ends. The smoothing lags
+        // two fixes (2 m here) and the last part-step under the 3 m
+        // hysteresis can go uncounted; it never overstates.
         var tracker = ElevationTracker()
         feed(&tracker, (0...60).map { 200 + Double($0) })
         let totals = try #require(tracker.totals)
-        #expect(totals.ascentMeters > 60 - ElevationTracker.hysteresis)
+        #expect(totals.ascentMeters >= 60 - ElevationTracker.hysteresis - 2)
         #expect(totals.ascentMeters <= 60)
         #expect(totals.descentMeters == 0)
     }
 
     @Test func upAndDown_keepsGainAndLossApart() throws {
-        // Up 40 m, down 25 m, in 2 m steps.
+        // Up 40 m, a pause at the top, down 24 m, a pause at the bottom, in
+        // 2 m steps.
         let up = stride(from: 0.0, through: 40, by: 2).map { 50 + $0 }
-        let down = stride(from: 38.0, through: 15, by: -2).map { 50 + $0 }
+        let down = stride(from: 38.0, through: 16, by: -2).map { 50 + $0 }
         var tracker = ElevationTracker()
-        feed(&tracker, up + down)
+        feed(&tracker, up + Array(repeating: 90, count: 5) + down + Array(repeating: 66, count: 5))
         let totals = try #require(tracker.totals)
         #expect(totals.ascentMeters > 40 - ElevationTracker.hysteresis && totals.ascentMeters <= 40)
-        #expect(totals.descentMeters > 25 - ElevationTracker.hysteresis && totals.descentMeters <= 25)
+        #expect(totals.descentMeters > 24 - ElevationTracker.hysteresis && totals.descentMeters <= 24)
     }
 
     @Test func badVerticalAccuracy_isIgnored() throws {
@@ -69,7 +88,7 @@ struct ElevationTrackerTests {
 
     @Test func accuracyOfExactly15_counts() {
         var tracker = ElevationTracker()
-        feed(&tracker, [100, 110], accuracy: ElevationTracker.maxVerticalAccuracy)
+        feed(&tracker, [100] + Array(repeating: 110, count: 5), accuracy: ElevationTracker.maxVerticalAccuracy)
         #expect(tracker.totals?.ascentMeters == 10)
     }
 
@@ -99,16 +118,28 @@ struct ElevationTrackerTests {
         var tracker = ElevationTracker()
         feed(&tracker, Array(repeating: 100, count: 5))
         tracker.add(altitude: 140, verticalAccuracy: 5, at: start.addingTimeInterval(25), continuous: false)
-        tracker.add(altitude: 146, verticalAccuracy: 5, at: start.addingTimeInterval(30))
+        feed(&tracker, Array(repeating: 146, count: 5), from: 30)
         let totals = try #require(tracker.totals)
-        #expect(totals.ascentMeters == 6)
+        #expect(totals.ascentMeters == 4)   // 140 to 146 counts; 100 to 140 does not
+        #expect(totals.descentMeters == 0)
+    }
+
+    @Test func aSkippedStretch_onAFixWithBadAltitude_stillRestartsTheLevel() throws {
+        // The jump lands on a fix whose altitude is unusable; the next good
+        // fix is past the jump and must not be compared with before it.
+        var tracker = ElevationTracker()
+        feed(&tracker, Array(repeating: 100, count: 5))
+        tracker.add(altitude: 140, verticalAccuracy: -1, at: start.addingTimeInterval(25), continuous: false)
+        feed(&tracker, Array(repeating: 146, count: 5), from: 30)
+        let totals = try #require(tracker.totals)
+        #expect(totals.ascentMeters == 0)
     }
 
     @Test func restoring_keepsTheTotals_andReanchorsAtTheNextFix() throws {
         var tracker = ElevationTracker(restoring: ElevationTotals(ascentMeters: 42, descentMeters: 17))
         #expect(tracker.totals == ElevationTotals(ascentMeters: 42, descentMeters: 17))
         // The first fix after a restore sets the level; only the climb after it counts.
-        feed(&tracker, [300, 310])
+        feed(&tracker, [300] + Array(repeating: 310, count: 5))
         let totals = try #require(tracker.totals)
         #expect(totals.ascentMeters == 52)
         #expect(totals.descentMeters == 17)
@@ -132,9 +163,29 @@ struct ElevationTrackerTests {
 
     @Test @MainActor func ride_isSavedWithItsClimb() throws {
         let mgr = NavigationSessionManager(route: route(.cycling))
-        climb(mgr, [10, 20, 30, 25, 15])
+        climb(mgr, Array(repeating: 10, count: 5) + Array(repeating: 30, count: 5) + Array(repeating: 15, count: 5))
         let elevation = try #require(mgr.completedSession.elevation)
-        #expect(elevation == ElevationTotals(ascentMeters: 20, descentMeters: 15))
+        #expect(elevation == ElevationTotals(ascentMeters: 20, descentMeters: 12))
+    }
+
+    @Test @MainActor func locationFixes_feedTheClimb() async throws {
+        // The delegate path itself, not recordElevation: removing the call in
+        // didUpdateLocations must turn this red (critic, 2026-10-15).
+        let mgr = NavigationSessionManager(route: route(.walking))
+        mgr.writesSnapshots = false
+        mgr.speaksSplits = false
+        let manager = CLLocationManager()
+        for i in 0..<12 {
+            let loc = CLLocation(coordinate: CLLocationCoordinate2D(latitude: 45 + Double(i) * 0.00005, longitude: -75),
+                                 altitude: i < 6 ? 100 : 120, horizontalAccuracy: 5, verticalAccuracy: 5,
+                                 timestamp: start.addingTimeInterval(Double(i) * 5))
+            mgr.locationManager(manager, didUpdateLocations: [loc])
+        }
+        // Each fix hops to the main actor in a task of its own.
+        for _ in 0..<300 where mgr.elevationTracker.totals?.ascentMeters != 20 {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(mgr.elevationTracker.totals == ElevationTotals(ascentMeters: 20, descentMeters: 0))
     }
 
     @Test @MainActor func walkWithNoUsableAltitude_isSavedWithNil() {
@@ -146,7 +197,7 @@ struct ElevationTrackerTests {
 
     @Test @MainActor func climb_survivesACrashRestore() throws {
         let mgr = NavigationSessionManager(route: route(.running))
-        climb(mgr, [100, 110, 120, 112])
+        climb(mgr, Array(repeating: 100, count: 5) + Array(repeating: 120, count: 5) + Array(repeating: 110, count: 5))
         let snapshot = mgr.snapshot
         #expect(snapshot.elevation == ElevationTotals(ascentMeters: 20, descentMeters: 8))
 
