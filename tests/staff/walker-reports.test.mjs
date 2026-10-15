@@ -100,9 +100,12 @@ test('a tie publishes nothing', () => {
 });
 
 test('answers outside the vocabulary never count toward the rule', () => {
-  // Two real answers plus a crafted one would be 3 walkers if it counted.
-  assert.equal(walkerVerdict('dogs', { leashRequired: 2, bogus: 5 }).status, 'tooFew');
-  assert.equal(walkerVerdict('dogs', { leashRequired: 2, toString: 1 }).status, 'tooFew');
+  // Each case changes the verdict if the crafted answer counts: a crafted
+  // answer alone would publish, and next to real ones it would make a split.
+  for (const bad of ['bogus', 'toString', 'constructor', '__proto__', 'hasOwnProperty']) {
+    assert.equal(walkerVerdict('dogs', { [bad]: 3 }).status, 'tooFew', `${bad} alone`);
+    assert.equal(walkerVerdict('dogs', { leashRequired: 3, [bad]: 2 }).status, 'ready', `${bad} next to 3 real answers`);
+  }
 });
 
 // MARK: Counting walkers
