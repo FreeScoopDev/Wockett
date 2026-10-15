@@ -9,4 +9,4 @@
 
 ### Internal
 - The Live Activity's paces come from one place, `NavigationSessionManager.liveActivityState`. Nine callers each recomputed the pace before, with two different distance thresholds, and four sent no pace at all after a restore, a head-back or the start of a trail.
-- `RollingPace` and `SplitTracker` (`RunPacing.swift`) are plain values fed numbers, with 39 tests (`RunPacingTests`).
+- `RollingPace` and `SplitTracker` (`RunPacing.swift`) are plain values fed numbers, with 52 tests (`RunPacingTests`).
