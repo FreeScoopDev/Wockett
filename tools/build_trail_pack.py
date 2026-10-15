@@ -53,7 +53,7 @@ from typing import Any, Iterable, Iterator, Optional, Sequence
 # ---------------------------------------------------------------------------
 
 SCHEMA_VERSION = 1
-BUILDER_VERSION = "1.5.0"
+BUILDER_VERSION = "1.6.0"
 
 # ---------------------------------------------------------------------------
 # Source registry. Attribution lives here and is copied into every pack, so a
@@ -311,12 +311,148 @@ class Trail:
     # "Raider Camp Trail"); the trail's name is voted on these, not on the
     # first way's name (critic run 2 of #160). None = {name: length_m}.
     name_weights: Optional[dict] = None
+    # Decimetres of this row stating each value of each FACT_TAGS tag,
+    # summed over every way merged into it: {"smoothness": {"bad": 15690}}.
+    # Written to the pack as shares (`fact_shares`). None = read from this
+    # row's own tags (a single way).
+    fact_dm: Optional[dict] = None
 
 
 def _name_weights(t: "Trail") -> dict:
     if t.name_weights is not None:
         return t.name_weights
     return {t.name: t.length_m} if t.name else {}
+
+
+# ---------------------------------------------------------------------------
+# Fact shares (builder 1.6.0, 2026-10-15). A merged row's `tags_json` holds
+# ONE of its ways' tags (the first in the chain; for bridged pieces the one
+# with the smallest ref; for an unnamed corridor the longest way), and its
+# `difficulty` column is a vote by way count. Lower Piney Trail (nc:w171710443)
+# is a 1,569 m way tagged sac_scale=hiking and a 216 m way tagged
+# mountain_hiking: the row's tags said mountain_hiking, the column said hiking,
+# and nothing said which covered what. The trail facts card (#238) needs
+# exactly that, so the builder now keeps, for each fact the card shows, how
+# much of the row states each value:
+#
+#   "facts": {"v": 1,
+#             "shares": {"sac_scale": {"hiking": 0.879, "mountain_hiking": 0.121}},
+#             "worst": {"sac_scale": "mountain_hiking"},
+#             "best":  {"sac_scale": "hiking"}}
+#
+# A share is a fraction of the row's `length_m`. Per tag the shares sum to
+# exactly 1 (thousandths, largest remainder); the part no way states is
+# "unstated", and so is a bridged gap, which no way covers. A stated value is
+# never rounded away: it keeps at least 0.001, because one rough section is
+# enough for the card to warn. Shares times `length_m` are metres, so the app
+# can add up every row of a trail key into the whole trail. A tag no way
+# states is left out; a row stating none of them has no "facts".
+#
+# Nested inside tags_json on purpose: apps before 1.6.0 read tags_json as a
+# flat map of strings and numbers and skip any other value
+# (`TrailFeature.tags(fromJSON:)`), so they ignore it, and the pack schema
+# stays 1. The flat tags are untouched.
+# ---------------------------------------------------------------------------
+
+FACT_TAGS = ("sac_scale", "smoothness", "trail_visibility", "wheelchair", "lit", "foot", "operator")
+FACTS_KEY = "facts"
+FACTS_FORMAT = 1
+UNSTATED = "unstated"
+_SHARE_UNITS = 1000
+# Length the merged geometry has beyond its ways' rounded lengths that is
+# rounding, not an unstated stretch.
+_UNSTATED_NOISE_DM = 10
+
+# OSM's own scales, easiest or best first. `worst` and `best` are read on
+# these; a value not on its scale still has a share but is neither.
+FACT_SCALES = {
+    "sac_scale": ("strolling", "hiking", "mountain_hiking", "demanding_mountain_hiking",
+                  "alpine_hiking", "demanding_alpine_hiking", "difficult_alpine_hiking"),
+    "smoothness": ("excellent", "good", "intermediate", "bad", "very_bad", "horrible",
+                   "very_horrible", "impassable"),
+    "trail_visibility": ("excellent", "good", "intermediate", "bad", "horrible", "no"),
+}
+
+
+def fact_value(tag: str, raw: Any) -> Optional[str]:
+    """A tag's value as a fact: spacing collapsed, lowercased (not operator,
+    a name), and None when it says nothing."""
+    if raw is None:
+        return None
+    text = " ".join(str(raw).split())
+    if tag != "operator":
+        text = text.lower()
+    return None if not text or text == UNSTATED else text
+
+
+def way_fact_dm(tags: dict, length_m: float) -> dict:
+    """{tag: {value: decimetres}} for one way: its whole length states each
+    fact it carries."""
+    dm = int(round(length_m * 10))
+    out: dict = {}
+    if dm <= 0:
+        return out
+    for tag in FACT_TAGS:
+        value = fact_value(tag, tags.get(tag))
+        if value is not None:
+            out[tag] = {value: dm}
+    return out
+
+
+def _fact_dm(t: "Trail") -> dict:
+    if t.fact_dm is not None:
+        return t.fact_dm
+    return way_fact_dm(json.loads(t.tags_json or "{}"), t.length_m)
+
+
+def _allocate(dm: dict, total_dm: int) -> dict:
+    """Thousandths for each key of `dm` plus UNSTATED, summing to exactly
+    _SHARE_UNITS: largest remainder, every stated value at least one unit."""
+    stated = sum(dm.values())
+    total = max(total_dm, stated)
+    parts = dict(dm)
+    if total - stated > _UNSTATED_NOISE_DM:
+        parts[UNSTATED] = total - stated
+    else:
+        total = stated
+    units = {k: (v * _SHARE_UNITS) // total for k, v in parts.items()}
+    for k in dm:
+        units[k] = max(units[k], 1)
+    left = _SHARE_UNITS - sum(units.values())
+    if left > 0:
+        by_remainder = sorted(parts, key=lambda k: (-((parts[k] * _SHARE_UNITS) % total), k))
+        for k in by_remainder[:left]:
+            units[k] += 1
+    while left < 0:  # minimum units overshot: take from the largest share
+        k = max(sorted(units), key=lambda k: units[k])
+        units[k] -= 1
+        left += 1
+    return {k: u for k, u in units.items() if u > 0}
+
+
+def fact_shares(fact_dm: dict, length_m: float) -> Optional[dict]:
+    """The `facts` object for a row (see above), or None when it states none."""
+    total_dm = int(round(length_m * 10))
+    shares: dict = {}
+    worst: dict = {}
+    best: dict = {}
+    for tag in FACT_TAGS:
+        values = {v: dm for v, dm in (fact_dm.get(tag) or {}).items() if dm > 0}
+        if not values:
+            continue
+        shares[tag] = {v: u / _SHARE_UNITS for v, u in sorted(_allocate(values, total_dm).items())}
+        scale = FACT_SCALES.get(tag)
+        if scale:
+            ranked = sorted((scale.index(v), v) for v in values if v in scale)
+            if ranked:
+                best[tag], worst[tag] = ranked[0][1], ranked[-1][1]
+    if not shares:
+        return None
+    facts: dict = {"v": FACTS_FORMAT, "shares": shares}
+    if worst:
+        facts["worst"] = worst
+        facts["best"] = best
+    return facts
 
 
 @dataclass
@@ -343,6 +479,8 @@ class Stats:
     kept_track_at_trailhead: int = 0
     unified_names: int = 0
     trail_keys: int = 0
+    fact_rows: int = 0
+    fact_rows_mixed: int = 0
     read: int = 0
     written: int = 0
     skipped_geometry: int = 0
@@ -564,6 +702,7 @@ def normalize_feature(
         forbids_foot=_forbids(tags, "foot"),
         forbids_bike=_forbids(tags, "bicycle"),
         forbids_horse=_forbids(tags, "horse"),
+        fact_dm=way_fact_dm(tags, round(length_m, 1)),
     ), simplified)
 
 
@@ -902,7 +1041,8 @@ def bridge_named_gaps(
 def _merged_row(parts, coords: list[list[float]], base: Optional[Trail] = None):
     """One Trail from several.
 
-    Tags (and name) come from `base`, by default the first part.
+    Tags (and name) come from `base`, by default the first part; what every
+    part states about the card's facts is summed into `fact_dm`.
 
     Crossings do not vote on access, surface, difficulty or dogs: they are a
     few metres of road crosswalk, usually tagged with nothing, and letting
@@ -979,6 +1119,16 @@ def _merged_row(parts, coords: list[list[float]], base: Optional[Trail] = None):
         for spelling, metres in _name_weights(t).items():
             weights[spelling] = weights.get(spelling, 0.0) + metres
     trail.name_weights = weights or None
+    # Every member counts toward the fact shares, crossings included: a
+    # crosswalk that states no smoothness is a stretch the data says nothing
+    # about, and the shares say so (as "unstated").
+    facts: dict = {}
+    for t, _ in all_parts:
+        for tag, values in _fact_dm(t).items():
+            into = facts.setdefault(tag, {})
+            for value, dm in values.items():
+                into[value] = into.get(value, 0) + dm
+    trail.fact_dm = facts
     return trail, coords
 
 
@@ -2034,6 +2184,16 @@ def build_pack(
     rtree_batch: list[tuple] = []
     for trail, _ in rows:
         stats.dog[trail.dog_access] = stats.dog.get(trail.dog_access, 0) + 1
+        facts = fact_shares(_fact_dm(trail), trail.length_m)
+        if facts:
+            tags = json.loads(trail.tags_json)
+            tags[FACTS_KEY] = facts
+            trail.tags_json = json.dumps(tags, separators=(",", ":"), sort_keys=True)
+            stats.fact_rows += 1
+            # A row whose ways disagree, or only part of which states a
+            # value: what the flat tags could not say.
+            if any(len(v) > 1 for v in facts["shares"].values()):
+                stats.fact_rows_mixed += 1
         batch.append((
             trail.id, trail.source_id, trail.source_ref, trail.name, trail.polyline,
             trail.point_count, trail.length_m, trail.min_lat, trail.min_lon,
@@ -2077,6 +2237,9 @@ def build_pack(
         "keep_sidewalks": "1" if keep_sidewalks else "0",
         "min_unnamed_length_m": str(min_unnamed_length_m),
         "trail_keys": "1",
+        # tags_json carries `facts` wherever a row states one (builder 1.6.0):
+        # in this pack, a row without it states none.
+        "fact_shares": str(FACTS_FORMAT),
         "sources": ",".join(sorted(used_sources)),
     }.items():
         conn.execute("INSERT INTO meta VALUES (?,?)", (key, value))
@@ -2142,6 +2305,20 @@ def verify_pack(path: str) -> bool:
         elif not (row["min_lat"] - 1e-4 <= decoded[0][1] <= row["max_lat"] + 1e-4):
             print("  FAIL decoded polyline falls outside its own bounding box")
             ok = False
+
+    # Every fact's shares sum to exactly 1, so the app can trust them as
+    # fractions of the row's length.
+    bad = 0
+    for (tags_json,) in conn.execute("SELECT tags_json FROM trails WHERE tags_json LIKE '%\"facts\"%'"):
+        facts = json.loads(tags_json).get(FACTS_KEY)
+        if not isinstance(facts, dict):
+            continue
+        for shares in (facts.get("shares") or {}).values():
+            if round(sum(shares.values()) * _SHARE_UNITS) != _SHARE_UNITS or min(shares.values()) <= 0:
+                bad += 1
+    if bad:
+        print(f"  FAIL {bad} fact share sets do not sum to 1")
+        ok = False
 
     conn.close()
     return ok
@@ -2275,6 +2452,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     print(f"  junction merges    {stats.junction_merges:,}")
     print(f"  bridged gaps       {stats.bridged_gaps:,} (same name, facing, under {BRIDGE_MAX_GAP_M:.0f} m)")
     print(f"  named trails       {stats.trail_keys:,} (trail keys)")
+    print(f"  fact shares        {stats.fact_rows:,} rows state a fact; {stats.fact_rows_mixed:,} of them "
+          f"not one value over their whole length")
     print(f"  skipped sidewalk   {stats.skipped_sidewalk:,}")
     print(f"  skipped crossing   {stats.skipped_crossing:,} (not joining two pieces of a path)")
     print(f"  merged             {stats.merged_ways:,} ways -> {stats.merge_groups:,} trails; "

@@ -62,6 +62,7 @@ broken on purpose to prove it guards something.
 | 1.3.2 | Military installation names and names with no letter or digit are unnamed; `access=military` dropped |
 | 1.4.0 | Unnamed dirt roads (`highway=track`) dropped unless open or within 100 m of a trailhead; street-named dirt roads likewise (trail-like names stay); bike paths walkable unless `foot=no`; ways closed to walking and riding dropped |
 | 1.5.0 | Name variants of one trail (case, spacing, a trailing "Trail") share its key, named by the spelling covering most of its length, best written; trail numbers are identity ("Loop #1" and "Loop #2", "#109" and "#109A" stay apart); "access line/connector/point/spur" names are unnamed, "Access Trail/Path" names are kept |
+| 1.6.0 | Fact shares: for `sac_scale`, `smoothness`, `trail_visibility`, `wheelchair`, `lit`, `foot` and `operator`, each row's `tags_json` carries `facts`, the share of its length stating each value (summed over every way merged into it, "unstated" for the rest, exactly 1 per tag) and the worst and best value on OSM's scale. Before, a merged row kept one way's tags. Flat tags, columns, ids, keys and names are unchanged; `verify_pack` refuses shares that do not sum to 1 |
 
 Source filters in `make_region.sh`: sidewalks, traffic islands and
 `access=private/no/military` never enter the build.
