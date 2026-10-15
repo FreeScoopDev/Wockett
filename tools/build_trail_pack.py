@@ -407,23 +407,32 @@ def _fact_dm(t: "Trail") -> dict:
 
 def _allocate(dm: dict, total_dm: int) -> dict:
     """Thousandths for each key of `dm` plus UNSTATED, summing to exactly
-    _SHARE_UNITS: largest remainder, every stated value at least one unit."""
+    _SHARE_UNITS: largest remainder, every stated value at least one unit.
+
+    The part of `total_dm` no key states is UNSTATED when it is more than
+    _UNSTATED_NOISE_DM (less is rounding between the merged geometry and its
+    ways' lengths, and the stated values then share the whole). A value the
+    one-unit minimum already raised takes no remainder unit; when the
+    minimums overshoot, the largest share gives units back. Ties go by key,
+    so the order of `dm` never changes the result."""
     stated = sum(dm.values())
-    total = max(total_dm, stated)
     parts = dict(dm)
+    total = total_dm
     if total - stated > _UNSTATED_NOISE_DM:
         parts[UNSTATED] = total - stated
     else:
         total = stated
     units = {k: (v * _SHARE_UNITS) // total for k, v in parts.items()}
-    for k in dm:
-        units[k] = max(units[k], 1)
+    raised = {k for k in dm if units[k] == 0}
+    for k in raised:
+        units[k] = 1
     left = _SHARE_UNITS - sum(units.values())
     if left > 0:
-        by_remainder = sorted(parts, key=lambda k: (-((parts[k] * _SHARE_UNITS) % total), k))
+        by_remainder = sorted((k for k in parts if k not in raised),
+                              key=lambda k: (-((parts[k] * _SHARE_UNITS) % total), k))
         for k in by_remainder[:left]:
             units[k] += 1
-    while left < 0:  # minimum units overshot: take from the largest share
+    while left < 0:
         k = max(sorted(units), key=lambda k: units[k])
         units[k] -= 1
         left += 1

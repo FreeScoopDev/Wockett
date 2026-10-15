@@ -1098,8 +1098,8 @@ class FactShareTests(unittest.TestCase):
         src = os.path.join(d, "in.geojsonseq")
         out = os.path.join(d, "out.wktpack")
         write_seq(src, features)
-        btp.build_pack([(src, "osm")], out, "t", "Test", 0.00002, 30.0,
-                       built_at="2026-01-01T00:00:00Z", **kw)
+        self.stats = btp.build_pack([(src, "osm")], out, "t", "Test", 0.00002, 30.0,
+                                    built_at="2026-01-01T00:00:00Z", **kw)
         conn = sqlite3.connect(out)
         rows = conn.execute("SELECT source_ref, name, length_m, difficulty, tags_json, trail_key "
                             "FROM trails ORDER BY id").fetchall()
@@ -1139,7 +1139,10 @@ class FactShareTests(unittest.TestCase):
         # 1.5.0's answers, unchanged: the column is the way-count vote (a tie,
         # alphabetical), the flat tags are one way's.
         self.assertEqual(difficulty, "hiking")
-        self.assertIn(tags["sac_scale"], ("hiking", "mountain_hiking"))
+        # The first way of the chain as laid out here (south to north). In
+        # the real data the chain runs the other way and the row says
+        # mountain_hiking; the NC rebuild compared every row with 1.5.0's.
+        self.assertEqual(tags["sac_scale"], "hiking")
         for k in ("highway", "surface", "smoothness", "trail_visibility", "wheelchair",
                   "foot", "bicycle", "horse", "dog"):
             self.assertIn(k, tags, "a kept tag survives beside the shares")
@@ -1245,6 +1248,59 @@ class FactShareTests(unittest.TestCase):
         self.assertAlmostEqual(shares["unstated"], 40 / rows[0][2], delta=0.002)
         self.assertSumsToOne(self.facts(rows[0]))
 
+    def test_a_bridged_piece_that_is_itself_a_merge_keeps_all_its_ways(self):
+        # bridge_named_gaps merges rows merge_named_ways already merged: A1
+        # lit=yes and A2 lit=no end to end, a 40 m gap, then B lit=yes. Each
+        # way's metres must survive both merges (critic run 1: reading each
+        # member's flat tags instead changed 69 NC rows).
+        a1 = north("w1", 36.0, 36.005, highway="path", name="Creek Trail", lit="yes")
+        a2 = north("w2", 36.005, 36.010, highway="path", name="Creek Trail", lit="no")
+        b = north("w3", 36.01036, 36.02036, highway="path", name="Creek Trail", lit="yes")
+        rows, _, _ = self.build([a1, a2, b])
+        self.assertEqual(len(rows), 1)
+        tags = json.loads(rows[0][4])
+        self.assertEqual((tags["merged_ways"], tags["bridged_gaps"]), (3, 1))
+        metres = {v: s * rows[0][2] for v, s in tags["facts"]["shares"]["lit"].items()}
+        length = btp.line_length_m
+        self.assertAlmostEqual(metres["yes"], length(a1["geometry"]["coordinates"]) + length(b["geometry"]["coordinates"]), delta=3)
+        self.assertAlmostEqual(metres["no"], length(a2["geometry"]["coordinates"]), delta=3)
+        self.assertAlmostEqual(metres["unstated"], 40, delta=3)
+
+    def test_an_off_scale_value_has_a_share_but_is_neither_worst_nor_best(self):
+        rows, _, _ = self.build([
+            north("w1", 36.0, 36.01, highway="path", name="Scale Trail", sac_scale="T3"),
+            north("w2", 36.01, 36.02, highway="path", name="Scale Trail", sac_scale="hiking"),
+        ])
+        facts = self.facts(rows[0])
+        self.assertIn("t3", facts["shares"]["sac_scale"])
+        self.assertEqual((facts["worst"]["sac_scale"], facts["best"]["sac_scale"]), ("hiking", "hiking"))
+
+    def test_tags_off_any_scale_get_no_worst_or_best(self):
+        rows, _, _ = self.build([
+            north("w1", 36.0, 36.006, highway="cycleway", surface="asphalt", lit="yes"),
+            north("w2", 36.006, 36.010, highway="cycleway", surface="asphalt", lit="no"),
+        ])
+        facts = self.facts(rows[0])
+        self.assertNotIn("worst", facts)
+        self.assertNotIn("best", facts)
+
+    def test_a_literal_unstated_value_states_nothing(self):
+        rows, _, _ = self.build([
+            north("w1", 36.0, 36.01, highway="path", name="Odd Trail", smoothness="good"),
+            north("w2", 36.01, 36.02, highway="path", name="Odd Trail", smoothness="unstated"),
+            north("w3", 36.02, 36.03, highway="path", name="Odd Trail"),
+        ])
+        shares = self.facts(rows[0])["shares"]["smoothness"]
+        self.assertAlmostEqual(shares["good"], 1 / 3, delta=0.002)
+        self.assertAlmostEqual(shares["unstated"], 2 / 3, delta=0.002)
+
+    def test_the_build_counts_rows_with_facts_and_mixed_rows(self):
+        self.build(piney() + [
+            north("w5", 36.1, 36.11, highway="path", name="Smooth Trail", smoothness="good"),
+            north("w6", 36.2, 36.21, highway="path", name="Plain Trail", surface="dirt"),
+        ])
+        self.assertEqual((self.stats.fact_rows, self.stats.fact_rows_mixed), (2, 1))
+
     def test_an_unnamed_corridor_counts_every_way_not_its_longest(self):
         rows, _, _ = self.build([
             north("w1", 36.0, 36.006, highway="cycleway", surface="asphalt", lit="yes"),
@@ -1301,12 +1357,39 @@ class FactShareTests(unittest.TestCase):
         conn.close()
         self.assertFalse(btp.verify_pack(out))
 
+    def test_verify_refuses_a_zero_share(self):
+        _, _, out = self.build(piney())
+        conn = sqlite3.connect(out)
+        tags = json.loads(conn.execute("SELECT tags_json FROM trails").fetchone()[0])
+        tags["facts"]["shares"]["sac_scale"]["unstated"] = 0.0  # still sums to 1
+        conn.execute("UPDATE trails SET tags_json = ?", (json.dumps(tags),))
+        conn.commit()
+        conn.close()
+        self.assertFalse(btp.verify_pack(out))
+
 
 class AllocateTests(unittest.TestCase):
 
     def test_rounding_noise_is_not_an_unstated_stretch(self):
-        # Merged geometry 0.5 m longer than its ways' rounded lengths.
-        self.assertEqual(btp._allocate({"good": 10000}, 10005), {"good": 1000})
+        # Up to 1 m more geometry than stated length is rounding; past it, unstated.
+        self.assertEqual(btp._allocate({"good": 1000}, 1010), {"good": 1000})
+        self.assertEqual(btp._allocate({"good": 1000}, 1011), {"good": 989, "unstated": 11})
+        self.assertEqual(btp._allocate({"a": 47}, 57), {"a": 1000})
+        self.assertEqual(btp._allocate({"good": 50000}, 50015), {"good": 1000}, "no zero-unit entry")
+
+    def test_more_stated_than_geometry_shares_the_stated_length(self):
+        self.assertEqual(btp._allocate({"a": 11, "b": 1}, 7), {"a": 917, "b": 83})
+
+    def test_a_raised_value_takes_no_remainder_unit(self):
+        # a is 0.9 units, raised to 1; the spare unit is v's (499.6), not a's
+        # (critic run 1).
+        self.assertEqual(btp._allocate({"a": 9, "u": 4995, "v": 4996}, 10000), {"a": 1, "u": 499, "v": 500})
+
+    def test_giving_back_units_does_not_depend_on_order(self):
+        one = btp._allocate({"a": 100000, "b": 100000, "c": 1, "d": 1, "e": 1}, 200003)
+        two = btp._allocate({"e": 1, "d": 1, "c": 1, "b": 100000, "a": 100000}, 200003)
+        self.assertEqual(one, two)
+        self.assertEqual(sum(one.values()), 1000)
 
     def test_tiny_values_keep_one_unit_and_the_total_stays_exact(self):
         units = btp._allocate({"good": 100000, "bad": 1, "horrible": 1}, 100002)
