@@ -32,6 +32,10 @@ final class WalkSessionRecord {
     var countsTowardRouteStats: Bool = true
     var stopCount: Int = -1    // -1 encodes nil (no data); ≥0 is a real stop count
     var flaggedPossibleVehicle: Bool = false
+    // JSON-encoded UnitSplits (feat/run-pace-splits, 1.17); empty Data when
+    // the activity has no splits. A new CloudKit field (CD_unitSplitsData):
+    // it must be deployed to Production before the release that adds it.
+    var unitSplitsData: Data = Data()
 
     init(from session: WalkSession) {
         id               = session.id
@@ -49,6 +53,7 @@ final class WalkSessionRecord {
         countsTowardRouteStats  = session.countsTowardRouteStats
         stopCount               = session.stopCount ?? -1
         flaggedPossibleVehicle  = session.flaggedPossibleVehicle
+        unitSplitsData          = session.unitSplits.flatMap { try? JSONEncoder().encode($0) } ?? Data()
         activePetIdsData  = (try? JSONEncoder().encode(session.activePetIds.map(\.uuidString))) ?? Data()
         waypointsData     = (try? JSONEncoder().encode(session.waypoints)) ?? Data()
         let distStrings   = Dictionary(uniqueKeysWithValues: session.petDistances.map { (k, v) in (k.uuidString, v) })
@@ -81,7 +86,8 @@ final class WalkSessionRecord {
             customRouteId:          customRouteIdString.flatMap { UUID(uuidString: $0) },
             countsTowardRouteStats: countsTowardRouteStats,
             stopCount:              stopCount >= 0 ? stopCount : nil,
-            flaggedPossibleVehicle: flaggedPossibleVehicle
+            flaggedPossibleVehicle: flaggedPossibleVehicle,
+            unitSplits:             try? JSONDecoder().decode(UnitSplits.self, from: unitSplitsData)
         )
     }
 }

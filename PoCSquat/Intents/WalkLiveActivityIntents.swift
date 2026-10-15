@@ -42,18 +42,7 @@ struct ToggleWalkPauseLiveActivityIntent: LiveActivityIntent {
         // onChange, which only fires while SwiftUI is actively rendering. With
         // openAppWhenRun = false the app never comes to the foreground, so that
         // handler may not run for a while (or until the user opens the app).
-        let dist = session.totalDistanceCovered
-        let elapsed = session.elapsedTime
-        let paused = session.isPaused
-        let pace = dist > 100 && elapsed > 10 ? elapsed / (dist / 1000) : nil
-        await WalkLiveActivityManager.shared.update(
-            distanceCovered: dist,
-            elapsedSeconds: Int(elapsed),
-            isPaused: paused,
-            paceSecsPerKm: pace,
-            pausedDuration: session.totalPausedDuration,
-            pauseTime: paused ? Date() : nil
-        )
+        await WalkLiveActivityManager.shared.update(session.liveActivityState)
         #endif
         return .result()
     }

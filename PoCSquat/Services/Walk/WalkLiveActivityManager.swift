@@ -57,18 +57,11 @@ final class WalkLiveActivityManager: WalkLiveActivityEnding {
         activity = try? Activity.request(attributes: attributes, content: content)
     }
 
-    func update(distanceCovered: Double, elapsedSeconds: Int,
-                isPaused: Bool, paceSecsPerKm: Double?,
-                pausedDuration: Double, pauseTime: Date?) async {
+    /// Pushes a session's state, from `NavigationSessionManager.liveActivityState`:
+    /// the one place its paces are worked out. Until 2026-10-14 nine callers
+    /// each recomputed the pace, with two different distance thresholds.
+    func update(_ state: WalkActivityAttributes.ContentState) async {
         guard let activity else { return }
-        let state = WalkActivityAttributes.ContentState(
-            distanceCoveredMeters: distanceCovered,
-            elapsedSeconds: elapsedSeconds,
-            isPaused: isPaused,
-            paceSecsPerKm: paceSecsPerKm,
-            pausedDuration: pausedDuration,
-            pauseTime: pauseTime
-        )
         let content = ActivityContent(state: state, staleDate: nil)
         await activity.update(content)
     }

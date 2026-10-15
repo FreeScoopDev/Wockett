@@ -114,13 +114,16 @@ struct ActiveWalkSnapshot: Codable {
     /// True once a guided walk reached its end. Such a checkpoint is a walk
     /// waiting to be saved, never one to resume. Optional for the same reason.
     let isCompleted: Bool?
+    /// Whole miles or kilometres crossed so far (`SplitTracker`). Optional so
+    /// checkpoints from before 1.17 still decode; such a walk keeps no splits.
+    let unitSplits: UnitSplits?
 
     init(route: RouteData, startTime: Date, totalDistanceCovered: Double,
          pausedDuration: TimeInterval, isPaused: Bool, pauseStartDate: Date?,
          currentWaypointIndex: Int, currentLap: Int, triggeredCheckpoints: Set<Int>,
          splitTimes: [SplitTimeRecord], liveSteps: Int, checkpointDate: Date,
          trackPoints: [WaypointCoord]? = nil, trailAlong: Double? = nil, legStartDistance: Double? = nil,
-         isCompleted: Bool? = nil) {
+         isCompleted: Bool? = nil, unitSplits: UnitSplits? = nil) {
         self.route = route; self.startTime = startTime
         self.totalDistanceCovered = totalDistanceCovered
         self.pausedDuration = pausedDuration; self.isPaused = isPaused
@@ -132,6 +135,7 @@ struct ActiveWalkSnapshot: Codable {
         self.trailAlong = trailAlong
         self.legStartDistance = legStartDistance
         self.isCompleted = isCompleted
+        self.unitSplits = unitSplits
     }
 }
 

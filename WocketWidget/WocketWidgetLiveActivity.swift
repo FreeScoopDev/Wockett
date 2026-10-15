@@ -47,10 +47,23 @@ private func fmtPace(_ secsPerKm: Double?, mode: String) -> String {
         let value = useMetric ? kmh : kmh / 1.609344
         return String(format: "%.1f %@", value, useMetric ? "km/h" : "mph")
     }
-    let adjusted = useMetric ? p : p * 1.60934
-    let mins = Int(adjusted) / 60; let secs = Int(adjusted) % 60
+    let adjusted = Int((useMetric ? p : p * 1.60934).rounded())
+    let mins = adjusted / 60; let secs = adjusted % 60
     let unit = useMetric ? "/km" : "/mi"
     return String(format: "%d:%02d%@", mins, secs, unit)
+}
+
+/// "9:20", no unit: the average beside a current pace that carries the unit.
+private func fmtPaceShort(_ secsPerKm: Double?) -> String {
+    guard let p = secsPerKm, p > 0 else { return "--:--" }
+    let adjusted = Int((Locale.current.measurementSystem != .us ? p : p * 1.60934).rounded())
+    return String(format: "%d:%02d", adjusted / 60, adjusted % 60)
+}
+
+/// Walks and runs show a smoothed current pace with the average beside it;
+/// a ride shows its average speed alone (`feat/run-pace-splits`).
+private func showsCurrentPace(_ mode: String) -> Bool {
+    mode == "walking" || mode == "running"
 }
 
 private func adjustedStart(_ attrs: WalkActivityAttributes, _ state: WalkActivityAttributes.ContentState) -> Date {
@@ -141,11 +154,19 @@ private struct WalkLockScreenView: View {
                     )
                 }
                 Divider().frame(height: 30).overlay(Color.earthTrack)
-                statCell(
-                    value: fmtPace(state.paceSecsPerKm, mode: attrs.activityMode),
-                    label: attrs.activityMode == "cycling" ? "Speed" : "Pace",
-                    icon: WS.speedometer
-                )
+                if showsCurrentPace(attrs.activityMode) {
+                    statCell(
+                        value: fmtPace(state.currentPaceSecsPerKm, mode: attrs.activityMode),
+                        label: "Avg \(fmtPaceShort(state.paceSecsPerKm))",
+                        icon: WS.speedometer
+                    )
+                } else {
+                    statCell(
+                        value: fmtPace(state.paceSecsPerKm, mode: attrs.activityMode),
+                        label: attrs.activityMode == "cycling" ? "Speed" : "Pace",
+                        icon: WS.speedometer
+                    )
+                }
             }
 
             // Interactive buttons
@@ -253,7 +274,11 @@ private struct WalkWristView: View {
                     .font(Font.wktRowTitle.monospacedDigit())
                     .foregroundColor(.earthCream)
                 Spacer(minLength: 4)
-                Text(fmtPace(state.paceSecsPerKm, mode: attrs.activityMode))
+                // No unit on either pace: the Smart Stack is narrow, and the
+                // distance beside it already says miles or kilometres.
+                Text(showsCurrentPace(attrs.activityMode)
+                     ? "\(fmtPaceShort(state.currentPaceSecsPerKm)) · avg \(fmtPaceShort(state.paceSecsPerKm))"
+                     : fmtPace(state.paceSecsPerKm, mode: attrs.activityMode))
                     .font(Font.wktLabel.monospacedDigit())
                     .foregroundColor(.earthMuted)
             }
@@ -337,10 +362,13 @@ struct WocketWalkLiveActivity: Widget {
                             Image(systemName: WS.speedometer)
                                 .font(.wktLabel)
                                 .foregroundColor(.earthGreen)
-                            Text(fmtPace(context.state.paceSecsPerKm, mode: context.attributes.activityMode))
+                            let current = showsCurrentPace(context.attributes.activityMode)
+                            Text(fmtPace(current ? context.state.currentPaceSecsPerKm : context.state.paceSecsPerKm,
+                                         mode: context.attributes.activityMode))
                                 .font(Font.wktSection.monospacedDigit())
                                 .foregroundColor(.earthCream)
-                            Text(context.attributes.activityMode == "cycling" ? "Speed" : "Pace")
+                            Text(current ? "Avg \(fmtPaceShort(context.state.paceSecsPerKm))"
+                                 : context.attributes.activityMode == "cycling" ? "Speed" : "Pace")
                                 .font(.wktLabel)
                                 .foregroundColor(.earthMuted)
                         }
@@ -361,15 +389,26 @@ struct WocketWalkLiveActivity: Widget {
                             Label(fmtDistance(context.state.distanceCoveredMeters), systemImage: WS.location)
                                 .font(Font.wktRowTitle.monospacedDigit())
                                 .foregroundColor(.earthCream)
-                            Label(fmtPace(context.state.paceSecsPerKm, mode: context.attributes.activityMode), systemImage: WS.speedometer)
+                            Label(fmtPace(showsCurrentPace(context.attributes.activityMode)
+                                          ? context.state.currentPaceSecsPerKm : context.state.paceSecsPerKm,
+                                          mode: context.attributes.activityMode), systemImage: WS.speedometer)
                                 .font(Font.wktRowTitle.monospacedDigit())
                                 .foregroundColor(context.state.isPaused ? .earthOrange : .earthCream)
+                            // While paused, "Paused" takes the room the average had.
+                            if showsCurrentPace(context.attributes.activityMode), !context.state.isPaused {
+                                Text("avg \(fmtPaceShort(context.state.paceSecsPerKm))")
+                                    .font(Font.wktLabel.monospacedDigit())
+                                    .foregroundColor(.earthMuted)
+                            }
                             if context.state.isPaused {
                                 Label("Paused", systemImage: WS.pauseCircle)
                                     .font(.wktLabel)
                                     .foregroundColor(.earthOrange)
                             }
                         }
+                        // Shrink rather than truncate at large text sizes.
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
 
                         HStack(spacing: 10) {
                             Button(intent: ToggleWalkPauseLiveActivityIntent()) {

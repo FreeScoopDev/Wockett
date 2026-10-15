@@ -103,7 +103,10 @@ struct ActivitySummaryView: View {
                             .transition(.opacity)
                     }
                     if isJustFinished, !crew.isEmpty { petRingsSection }
-                    if isJustFinished, !splits.isEmpty { splitsSection }
+                    // A run reclassified as a ride in Activity History keeps
+                    // its saved splits; a ride never shows them.
+                    if mode.hasPaceAndSplits, !splitRows.isEmpty { unitSplitsSection }
+                    if isJustFinished, !splits.isEmpty { checkpointsSection }
                     if isJustFinished, session.customRouteId != nil, onExcludeFromRouteStats != nil { routeStatsPrompt }
                     if canSaveAsRoute { saveAsRouteSection }
                     if onSave != nil { saveToHistoryButton }
@@ -264,8 +267,39 @@ struct ActivitySummaryView: View {
         }
     }
 
-    private var splitsSection: some View {
+    private var splitRows: [ActivitySummaryContent.SplitRow] {
+        ActivitySummaryContent.splitRows(session.unitSplits)
+    }
+
+    /// Per-mile or per-km splits, saved with the activity, so they show again
+    /// when it is opened from Activity History (`feat/run-pace-splits`).
+    private var unitSplitsSection: some View {
         WktSection(title: "Splits") {
+            VStack(spacing: 0) {
+                ForEach(splitRows.indices, id: \.self) { i in
+                    if i > 0 { WktDivider() }
+                    let row = splitRows[i]
+                    HStack {
+                        Text(row.label).font(.wktRowTitle).foregroundColor(.earthCream)
+                        Spacer()
+                        Text(row.time).font(Font.wktBodyText.monospacedDigit()).foregroundColor(.earthCream)
+                        Text(row.pace).font(Font.wktLabel.monospacedDigit()).foregroundColor(.earthMuted)
+                            .frame(minWidth: 72, alignment: .trailing)
+                    }
+                    .padding(.vertical, 10)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("\(row.label): \(row.time), \(row.pace)")
+                }
+            }
+            .wktCard(padding: 14)
+        }
+    }
+
+    /// A guided route's checkpoint times (20/40/60/80%, or a custom route's
+    /// points). Called "Splits" until 2026-10-14, when per-mile splits took
+    /// that name.
+    private var checkpointsSection: some View {
+        WktSection(title: "Checkpoints") {
             VStack(spacing: 0) {
                 ForEach(splits.indices, id: \.self) { i in
                     if i > 0 { WktDivider() }
