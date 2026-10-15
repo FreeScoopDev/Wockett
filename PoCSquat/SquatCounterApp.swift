@@ -147,6 +147,8 @@ struct SquatCounterApp: App {
                     } : nil
                 )
             }
+            // The mini tile's End asks here, not in the tile (see the modifier).
+            .modifier(MiniTileEndConfirmation())
             .environment(ActiveWalkStore.shared)
             .environment(communityRoutesModel)
             .environmentObject(petStore)

@@ -268,6 +268,8 @@ final class ActiveWalkStore {
         activeRoute = nil
         isStarted = false
         sessionEnded = false
+        // A walk ended another way (Live Activity) takes its question with it.
+        endConfirmationRequested = false
     }
 
     // MARK: - Reopen signal
@@ -277,4 +279,9 @@ final class ActiveWalkStore {
 
     func requestReopen() { reopenRequested = true }
     func consumeReopenRequest() { reopenRequested = false }
+
+    /// Set by the mini tile's End; the app root asks Save or Discard
+    /// (`MiniTileEndConfirmation`), because iOS 26.5 never presents a dialog
+    /// attached inside `tabViewBottomAccessory`.
+    var endConfirmationRequested = false
 }

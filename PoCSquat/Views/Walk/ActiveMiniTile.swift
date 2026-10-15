@@ -10,34 +10,48 @@ import UserNotifications
 struct ActiveMiniTileContainer: View {
     @Environment(ActiveWalkStore.self) private var walkStore
     @EnvironmentObject private var tabRouter: TabRouter
-    @State private var showEndConfirmation = false
 
     var body: some View {
-        Group {
-            if let session = walkStore.session, let route = walkStore.activeRoute {
-                ActiveMiniTile(
-                    session: session,
-                    route: route,
-                    onReopen: {
-                        tabRouter.selected = .home
-                        Task { @MainActor in walkStore.requestReopen() }
-                    },
-                    onEnd: { showEndConfirmation = true }
-                )
-            }
+        if let session = walkStore.session, let route = walkStore.activeRoute {
+            ActiveMiniTile(
+                session: session,
+                route: route,
+                onReopen: {
+                    tabRouter.selected = .home
+                    Task { @MainActor in walkStore.requestReopen() }
+                },
+                onEnd: { walkStore.endConfirmationRequested = true }
+            )
         }
-        .confirmationDialog("End \(walkStore.activeRoute?.wording.sessionLabel ?? "Walk")?", isPresented: $showEndConfirmation, titleVisibility: .visible) {
-            Button("Save & End \(walkStore.activeRoute?.wording.sessionLabel ?? "Walk")") {
-                // The person is in the app: the root shows the summary.
-                walkStore.end(.save, presentSummary: true)
+    }
+}
+
+// MARK: - End confirmation
+//
+// Attached at the app root, not inside the tile: on iOS 26.5 a dialog
+// attached inside `tabViewBottomAccessory` never appears, so the tile's End
+// did nothing (CI and a local 26.5 simulator, 2026-10-15; iOS 27 shows it).
+
+struct MiniTileEndConfirmation: ViewModifier {
+    @Environment(ActiveWalkStore.self) private var walkStore
+
+    func body(content: Content) -> some View {
+        @Bindable var walkStore = walkStore
+        let label = walkStore.activeRoute?.wording.sessionLabel ?? "Walk"
+        content
+            .confirmationDialog("End \(label)?", isPresented: $walkStore.endConfirmationRequested,
+                                titleVisibility: .visible) {
+                Button("Save & End \(label)") {
+                    // The person is in the app: the root shows the summary.
+                    walkStore.end(.save, presentSummary: true)
+                }
+                Button("Discard \(label)", role: .destructive) {
+                    walkStore.end(.discard)
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Save this \(walkStore.activeRoute?.wording.noun ?? "walk") to your history, or discard it?")
             }
-            Button("Discard \(walkStore.activeRoute?.wording.sessionLabel ?? "Walk")", role: .destructive) {
-                walkStore.end(.discard)
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Save this \(walkStore.activeRoute?.wording.noun ?? "walk") to your history, or discard it?")
-        }
     }
 }
 
