@@ -268,6 +268,8 @@ final class ActiveWalkStore {
         activeRoute = nil
         isStarted = false
         sessionEnded = false
+        // A walk ended another way (Live Activity) takes its question with it.
+        endConfirmationRequested = false
     }
 
     // MARK: - Reopen signal

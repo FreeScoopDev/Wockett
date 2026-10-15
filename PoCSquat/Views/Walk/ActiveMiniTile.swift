@@ -52,10 +52,6 @@ struct MiniTileEndConfirmation: ViewModifier {
             } message: {
                 Text("Save this \(walkStore.activeRoute?.activityMode.noun ?? "walk") to your history, or discard it?")
             }
-            // A walk ended another way (Live Activity, Siri) takes its question with it.
-            .onChange(of: walkStore.isActive) { _, active in
-                if !active { walkStore.endConfirmationRequested = false }
-            }
     }
 }
 
