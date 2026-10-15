@@ -253,6 +253,7 @@ struct ElevationTrackerTests {
         #expect(SummaryStat.climb.detail(for: walk, metric: false) == "↓ 323 ft")
         #expect(SummaryStat.climb.accessibilityDetail(for: walk, metric: true) == "99 m descent")
         #expect(SummaryStat.pace.detail(for: walk) == nil)
+        #expect(SummaryStat.heightText(310, metric: false) == "\(1017.formatted()) ft")
     }
 
     @Test func statTiles_rows() {

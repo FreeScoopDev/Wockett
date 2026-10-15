@@ -83,9 +83,9 @@ enum SummaryStat: Equatable {
         return Self.heightText(elevation.descentMeters, metric: metric) + " descent"
     }
 
-    /// A height in whole metres, or whole feet for US users: "120 m", "394 ft".
+    /// A height in whole metres, or whole feet for US users: "120 m", "1,017 ft".
     static func heightText(_ meters: Double, metric: Bool) -> String {
-        metric ? "\(Int(meters.rounded())) m" : "\(Int((meters / 0.3048).rounded())) ft"
+        metric ? "\(Int(meters.rounded()).formatted()) m" : "\(Int((meters / 0.3048).rounded()).formatted()) ft"
     }
 }
 
