@@ -4,7 +4,7 @@ import SwiftData
 @testable import PoCSquat
 
 /// Current pace and automatic splits (`feat/run-pace-splits`). The rules are
-/// in `RunPacing.swift` and the spec `Wockett/feat/run-pace-splits.md`.
+/// in `RunPacing.swift`.
 struct RunPacingTests {
 
     /// Feeds a steady speed: a fix every `every` seconds from `from` to `to`.
@@ -322,6 +322,24 @@ struct RunPacingTests {
         mgr.recordPacing()
         #expect(mgr.checkpointRequests == before + 1)
         #expect(mgr.snapshot.unitSplits?.splits.count == 1)
+    }
+
+    @Test @MainActor func theSecondTick_pushesWhenCurrentPaceLapses() {
+        // The timer's own path, not the refresh alone: removing the call
+        // from secondTick() must turn this red.
+        let mgr = NavigationSessionManager(route: route(.running))
+        drive(mgr, metersPerSecond: 3, to: 100)
+        mgr.secondTick()
+        #expect(mgr.lastPushedHadCurrentPace)
+        mgr.elapsedTime = 116
+        mgr.secondTick()
+        #expect(!mgr.lastPushedHadCurrentPace)
+    }
+
+    @Test @MainActor func ride_speedTile_keepsItsFiftyMetreStart() {
+        let mgr = NavigationSessionManager(route: route(.cycling))
+        mgr.elapsedTime = 8; mgr.totalDistanceCovered = 60
+        #expect(mgr.paceText != "--")
     }
 
     @Test @MainActor func standingStill_pushesTheLiveActivityOnce_whenCurrentPaceLapses() {

@@ -293,7 +293,6 @@ struct ActivitySummaryView: View {
             }
             .wktCard(padding: 14)
         }
-        .accessibilityIdentifier("summary.splits")
     }
 
     /// A guided route's checkpoint times (20/40/60/80%, or a custom route's

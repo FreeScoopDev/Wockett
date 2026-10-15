@@ -376,40 +376,48 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 self.elapsedTime = Date().timeIntervalSince(self.startTime) - self.pausedDuration
-                guard !self.isPaused else { return }
-                self.refreshLiveActivityIfCurrentPaceChanged()
-                self.snapshotTickCounter += 1
-                if self.snapshotTickCounter >= 15 {
-                    self.snapshotTickCounter = 0
-                    self.writeSnapshot()
-                }
-                let now = Date()
-                if var progress = self.trailProgress {
-                    let event = progress.tick(at: now, alertsEnabled: self.offTrailAlertsEnabled)
-                    self.trailProgress = progress
-                    if let event { self.handleOffTrail(event) }
-                }
-                let isMoving = now.timeIntervalSince(self.lastMovementTime) < self.movementWindow
-                if self.stopTracker.tick(isMoving: isMoving, now: now) != nil {
-                    if !self.showBreakPrompt {
-                        self.showBreakPrompt = true
-                        self.breakPromptShownAt = now
-                    }
-                }
-                // If the prompt has been ignored for 5+ minutes, auto-pause to keep stats honest.
-                if Self.shouldAutoPause(showBreakPrompt: self.showBreakPrompt,
-                                        isPaused: self.isPaused,
-                                        promptShownAt: self.breakPromptShownAt,
-                                        now: now) {
-                    self.autoPause(at: now)
-                }
-                if !self.drivingAffirmedByUser, !self.drivingSuspected {
-                    let isAutomotive = ActivityDetectionService.shared.isAutomotiveHighConfidence
-                    if self.drivingDetector.tick(speed: self.lastKnownSpeed, isAutomotiveHigh: isAutomotive, now: now) != nil {
-                        self.drivingEverDetected = true
-                        self.drivingSuspected = true
-                    }
-                }
+                self.secondTick()
+            }
+        }
+    }
+
+    /// Everything the 1 s timer does once elapsed time is updated. A method,
+    /// not the timer's closure, so tests can drive it: the Live Activity's
+    /// stand-still push lives here, and a test of the refresh alone stayed
+    /// green with the call removed (critic run 2, 2026-10-14).
+    func secondTick() {
+        guard !isPaused else { return }
+        refreshLiveActivityIfCurrentPaceChanged()
+        snapshotTickCounter += 1
+        if snapshotTickCounter >= 15 {
+            snapshotTickCounter = 0
+            writeSnapshot()
+        }
+        let now = Date()
+        if var progress = trailProgress {
+            let event = progress.tick(at: now, alertsEnabled: offTrailAlertsEnabled)
+            trailProgress = progress
+            if let event { handleOffTrail(event) }
+        }
+        let isMoving = now.timeIntervalSince(lastMovementTime) < movementWindow
+        if stopTracker.tick(isMoving: isMoving, now: now) != nil {
+            if !showBreakPrompt {
+                showBreakPrompt = true
+                breakPromptShownAt = now
+            }
+        }
+        // If the prompt has been ignored for 5+ minutes, auto-pause to keep stats honest.
+        if Self.shouldAutoPause(showBreakPrompt: showBreakPrompt,
+                                isPaused: isPaused,
+                                promptShownAt: breakPromptShownAt,
+                                now: now) {
+            autoPause(at: now)
+        }
+        if !drivingAffirmedByUser, !drivingSuspected {
+            let isAutomotive = ActivityDetectionService.shared.isAutomotiveHighConfidence
+            if drivingDetector.tick(speed: lastKnownSpeed, isAutomotiveHigh: isAutomotive, now: now) != nil {
+                drivingEverDetected = true
+                drivingSuspected = true
             }
         }
     }
@@ -493,7 +501,9 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
 
     /// The Live Activity cannot rely on the walk screen's onChange, which only
     /// runs while the screen renders; an auto-pause usually happens pocketed.
-    /// Everything that updates the Live Activity comes through here.
+    /// The session's own updates come through here; other callers (the Live
+    /// Activity intent, a restore, head-back, a trail start) push
+    /// `liveActivityState` directly, which at worst costs one extra push.
     func pushLiveActivityState() {
         let state = liveActivityState
         lastPushedHadCurrentPace = state.currentPaceSecsPerKm != nil
@@ -709,12 +719,15 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
 
     // Pace (walking/running) or speed (cycling) — shown as "--" until enough data.
     var paceText: String {
-        // From averagePaceSecsPerKm, the figure the Live Activity shows, so
-        // the screen and the Lock Screen start showing it at the same moment.
+        // A walk or run's average: averagePaceSecsPerKm, the figure the Live
+        // Activity shows, so the screen and the Lock Screen agree.
+        // A ride keeps the 50 m / 5 s start it always had (spec: rides
+        // unchanged on the live screen), so its speed shows a little before
+        // the Lock Screen's.
         if route.activityMode == .cycling {
-            guard let secsPerKm = averagePaceSecsPerKm else { return "--" }
+            guard totalDistanceCovered > 50, elapsedTime > 5 else { return "--" }
             let useMetric = Locale.current.measurementSystem != .us
-            let speed = 3600 / secsPerKm   // km/h
+            let speed = (totalDistanceCovered / elapsedTime) * 3.6   // km/h
             let value = useMetric ? speed : speed / 1.609344
             return String(format: "%.1f %@", value, useMetric ? "km/h" : "mph")
         }
