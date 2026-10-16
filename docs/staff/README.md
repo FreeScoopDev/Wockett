@@ -164,8 +164,11 @@ rules need an ordinary account to be proved.
   round it was walked. Only the group's own line counts, never another
   member's, so a short walk on a stretch two paths share can't merge them.
   A line over the caps or unreadable is a group of its own and is never
-  compared, and grouping has a hard work budget: past it, the rest are
-  shown ungrouped with a note, so crafted records can't freeze the tab. Each card
+  compared (the 20 km cap is also checked as grouping measures length, so a
+  line across the 180th meridian is over it), and grouping has two hard
+  ceilings, on work (every distance measured counts) and on index memory:
+  past either, the rest are shown ungrouped with a note, so crafted records
+  can't freeze the tab for more than a second or two. Each card
   draws the group's lines together (the one Accept uses on top, a dot at
   its start), links the start to Apple Maps and to the OpenStreetMap editor,
   shows the names, facts and notes given, and lists what to check: very

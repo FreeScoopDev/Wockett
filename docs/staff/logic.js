@@ -1253,14 +1253,22 @@ export const OVERLAP_TOLERANCE_M = 30;
 export const OVERLAP_SHARE = 0.6;
 export const OVERLAP_STEP_M = 25;
 /**
- * The most work grouping may do in one go, in points projected, samples
- * checked and index entries built: about a second in node, measured on the
- * worst shapes the critic found (2026-10-16). Real
- * suggestions need a small part of it; past it the rest are shown ungrouped.
+ * The most work grouping may do in one go, counted in points projected,
+ * samples made and distances measured (every one, however many pieces share
+ * a grid cell): about 50 ns a unit in node, so about 2 s on the worst shapes
+ * the critics built (2026-10-16). Past it, the rest are shown ungrouped,
+ * flagged. A few hundred real suggestions in one town fit well within it.
  */
-export const GROUPING_BUDGET = 25_000_000;
-/** An index entry costs memory as well as time: it counts this much against the budget, which keeps every index together at about a million entries. */
-export const INDEX_ENTRY_COST = 20;
+export const GROUPING_BUDGET = 40_000_000;
+/**
+ * The most index entries alive at once, for memory (about 100 MB): a
+ * separate ceiling. A 5 km walk is about 1,500 entries, so this is several
+ * thousand walks indexed; past it, the rest are shown ungrouped.
+ */
+export const MAX_INDEX_ENTRIES = 8_000_000;
+/** What building one index entry, or making one sample, costs in budget units (measured: each is about this many distance checks). */
+export const INDEX_ENTRY_WORK = 10;
+export const SAMPLE_WORK = 5;
 /** The fact chips a suggestion may carry: Feature A's vocabulary, without `liked` (spec criterion 1). */
 export const SUGGESTION_FACTS = Object.freeze(['dogs', 'stroller', 'wheelchair', 'surface']);
 /**
@@ -1346,6 +1354,14 @@ export function lineLength(points) {
   return total;
 }
 
+/** A line's length on the flat map round its first point (as grouping measures it), in metres. */
+export function flatLength(points) {
+  const xy = project(points, points[0].latitude, points[0].longitude);
+  let total = 0;
+  for (let i = 1; i < xy.length; i += 1) total += Math.hypot(xy[i].x - xy[i - 1].x, xy[i].y - xy[i - 1].y);
+  return total;
+}
+
 /** The longest gap between two consecutive points, in metres. */
 export function longestStretch(points) {
   let longest = 0;
@@ -1392,12 +1408,14 @@ function distanceToSegment(p, a, b) {
 /**
  * A line laid out for "is this point within `tolerance` of it?": projected
  * around its own first point, cut into pieces no longer than the tolerance,
- * each piece filed in a grid of cells as wide as the tolerance under every
- * cell its box (grown by the tolerance) covers: at most 4 x 4 cells a piece.
+ * each piece filed in a grid of cells twice as wide as the tolerance under
+ * every cell its box (grown by the tolerance) covers: at most 3 x 3 cells.
  * A point then checks only the pieces filed under its own cell. The index
  * grows with the line's length (a 20 km line is about 11,000 entries),
  * never with the area a long straight segment spans. `entries` says how many.
  */
+const EMPTY = Object.freeze([]);
+
 export function lineIndex(points, tolerance) {
   const lat0 = points[0].latitude;
   const lng0 = points[0].longitude;
@@ -1413,40 +1431,65 @@ export function lineIndex(points, tolerance) {
     }
   }
   const cells = new Map();
-  const cell = (v) => Math.floor(v / tolerance);
+  // Cells twice the tolerance wide: a piece's grown box (at most 3x the
+  // tolerance across) then touches at most 3 x 3 cells, usually 2 x 2.
+  const cell = (v) => Math.floor(v / (2 * tolerance));
+  // A number, not a string: the lookup is the hot path. Cells within ±2^20
+  // of the origin (31,000 km at 30 m) can't collide.
+  const keyOf = (cx, cy) => (cx + 1_048_576) * 2_097_152 + (cy + 1_048_576);
   let entries = 0;
   pieces.forEach(([a, b], i) => {
     for (let cx = cell(Math.min(a.x, b.x) - tolerance); cx <= cell(Math.max(a.x, b.x) + tolerance); cx += 1) {
       for (let cy = cell(Math.min(a.y, b.y) - tolerance); cy <= cell(Math.max(a.y, b.y) + tolerance); cy += 1) {
-        const key = `${cx},${cy}`;
-        if (!cells.has(key)) cells.set(key, []);
-        cells.get(key).push(i);
+        const key = keyOf(cx, cy);
+        let list = cells.get(key);
+        if (!list) { list = []; cells.set(key, list); }
+        list.push(i);
         entries += 1;
       }
     }
   });
   return {
     lat0, lng0, entries,
-    near(p) {
-      for (const i of cells.get(`${cell(p.x)},${cell(p.y)}`) ?? []) if (distanceToSegment(p, pieces[i][0], pieces[i][1]) <= tolerance) return true;
+    near(p, spend = () => {}) {
+      const here = cells.get(keyOf(cell(p.x), cell(p.y))) ?? EMPTY;
+      for (let k = 0; k < here.length; k += 1) {
+        if (distanceToSegment(p, pieces[here[k]][0], pieces[here[k]][1]) <= tolerance) { spend(k + 1); return true; }
+      }
+      spend(here.length + 1);
       return false;
     },
   };
 }
 
 /**
- * Whether at least `share` of line `a`, sampled every `step` metres, lies
- * within the tolerance of the indexed line. Stops as soon as the answer is
- * known either way, so a pair that clearly differs costs little.
+ * A line's points every `step` metres along it (resampled on its own flat
+ * map), as latitude and longitude: made once per line, then placed on any
+ * other line's map point by point.
  */
-function sharesAtLeast(a, index, share, step, spend = () => {}) {
-  const samples = resample(project(a, index.lat0, index.lng0), step);
-  spend(a.length + samples.length);
+export function samplesOf(points, step = OVERLAP_STEP_M) {
+  const lat0 = points[0].latitude;
+  const lng0 = points[0].longitude;
+  const k = Math.cos(rad(lat0));
+  const deg = 180 / Math.PI;
+  return resample(project(points, lat0, lng0), step)
+    .map((p) => ({ latitude: lat0 + (p.y / EARTH_RADIUS_M) * deg, longitude: lng0 + (p.x / (EARTH_RADIUS_M * k)) * deg }));
+}
+
+/**
+ * Whether at least `share` of `samples` (`samplesOf` a line) lie within the
+ * tolerance of the indexed line. Stops as soon as the answer is known either
+ * way, so a pair that clearly differs costs little; each sample is placed on
+ * the index's map only when it is reached.
+ */
+function sharesAtLeast(samples, index, share, spend = () => {}) {
+  const k = Math.cos(rad(index.lat0));
   const need = Math.ceil(share * samples.length - 1e-9);
   let near = 0;
   for (let i = 0; i < samples.length; i += 1) {
-    spend(1);
-    if (index.near(samples[i])) near += 1;
+    const p = samples[i];
+    const xy = { x: EARTH_RADIUS_M * rad(p.longitude - index.lng0) * k, y: EARTH_RADIUS_M * rad(p.latitude - index.lat0) };
+    if (index.near(xy, spend)) near += 1;
     if (near >= need) return true;
     if (near + (samples.length - i - 1) < need) return false;
   }
@@ -1484,7 +1527,7 @@ export function sameLine(a, b) {
   if (!Array.isArray(a) || !Array.isArray(b) || a.length < 2 || b.length < 2) return false;
   if (!boxesMeet(boxOf(a), boxOf(b), OVERLAP_TOLERANCE_M)) return false;
   const [shorter, longer] = lineLength(a) <= lineLength(b) ? [a, b] : [b, a];
-  return sharesAtLeast(shorter, lineIndex(longer, OVERLAP_TOLERANCE_M), OVERLAP_SHARE, OVERLAP_STEP_M);
+  return sharesAtLeast(samplesOf(shorter), lineIndex(longer, OVERLAP_TOLERANCE_M), OVERLAP_SHARE);
 }
 
 /**
@@ -1514,7 +1557,10 @@ export function suggestionOf(record) {
   if (!line) problems.push(tooLong ? 'lineTooLong' : 'unreadable');
   else {
     if (line.length > SUGGESTION_CAPS.points) problems.push('points');
-    if (lengthMeters > SUGGESTION_CAPS.meters) problems.push('meters');
+    // Measured on the globe and, as grouping sees it, on the flat map round
+    // its first point: a line across the 180th meridian is a few metres on
+    // the globe and 40,000 km on the map. Either over the cap is over it.
+    if (lengthMeters > SUGGESTION_CAPS.meters || flatLength(line) > SUGGESTION_CAPS.meters * 1.02) problems.push('meters');
     if (lengthMeters < SHORT_SUGGESTION_M) warnings.push('short');
     else if (lengthMeters > LONG_SUGGESTION_M && lengthMeters <= SUGGESTION_CAPS.meters) warnings.push('long');
     if (stretch > STRAIGHT_STRETCH_M) warnings.push('straight');
@@ -1600,7 +1646,7 @@ export function suggestionDecisions(actions) {
  * - `ungrouped`: true when the work budget ran out before it was compared.
  * Waiting groups first (most walkers, then newest), then the rest, newest first.
  */
-export function groupSuggestions(records, actions = [], budget = GROUPING_BUDGET) {
+export function groupSuggestions(records, actions = [], budget = GROUPING_BUDGET, maxEntries = MAX_INDEX_ENTRIES) {
   const decisions = suggestionDecisions(actions);
   const items = (records ?? []).filter((r) => r && typeof r.recordName === 'string').map((r) => {
     const s = suggestionOf(r);
@@ -1624,20 +1670,38 @@ export function groupSuggestions(records, actions = [], budget = GROUPING_BUDGET
   // A hard ceiling on the work, whatever the records say (anyone can create
   // them): points projected, samples checked and index entries built. Past it,
   // the rest are shown as groups of their own, marked `ungrouped`.
+  // Every line here is within the caps on the flat map too, so one index is
+  // at most about 2,700 pieces and one comparison about 820 samples: no
+  // single step can blow far past a ceiling before it is checked.
   let spent = 0;
+  let entries = 0;
   const spend = (n) => { spent += n; };
+  const outOfBudget = () => spent > budget || entries > maxEntries;
   const anchors = [];
   const ungrouped = [];
   for (const s of usable) {
-    if (spent > budget) { ungrouped.push(s); continue; }
+    if (outOfBudget()) { ungrouped.push(s); continue; }
     const box = boxOf(s.line);
+    let stopped = false;
+    let samples = null;
     const home = anchors.find((g) => {
-      if (spent > budget || !boxesMeet(g.box, box, OVERLAP_TOLERANCE_M)) return false;
+      if (!boxesMeet(g.box, box, OVERLAP_TOLERANCE_M)) return false;
+      if (outOfBudget()) { stopped = true; return false; }
       // Built only when a line first comes near it.
-      if (!g.index) { g.index = lineIndex(g.members[0].line, OVERLAP_TOLERANCE_M); spend(g.index.entries * INDEX_ENTRY_COST); }
-      return sharesAtLeast(s.line, g.index, OVERLAP_SHARE, OVERLAP_STEP_M, spend);
+      if (!g.index) {
+        g.index = lineIndex(g.members[0].line, OVERLAP_TOLERANCE_M);
+        entries += g.index.entries;
+        spend(g.index.entries * INDEX_ENTRY_WORK);
+      }
+      if (!samples) {
+        samples = samplesOf(s.line);
+        spend(samples.length * SAMPLE_WORK);
+      }
+      return sharesAtLeast(samples, g.index, OVERLAP_SHARE, spend);
     });
     if (home) home.members.push(s);
+    // Not compared with every anchor it might match: shown ungrouped, not as a path of its own.
+    else if (stopped) ungrouped.push(s);
     else anchors.push({ box, index: null, members: [s] });
   }
   const loners = items.filter((s) => !s.line || s.problems.length).map((s) => ({ members: [s] }));

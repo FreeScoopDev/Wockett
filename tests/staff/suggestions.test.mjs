@@ -8,7 +8,7 @@ import {
   decodePolyline, lineLength, overlapShare, sameLine, suggestionOf, suggestionIssueText, groupSuggestions, suggestionDecisions,
   suggestionStatusNames, acceptPlan, declinePlan, acceptTellText, suggestionToldText, suggestionHistoryText, gpxDocument, gpxFileName,
   osmEditLink, mapsLink, routePath, routePaths, contributionStatusFields, textLength, isTrailKey, longestStretch,
-  lineIndex, GROUPING_BUDGET, INDEX_ENTRY_COST,
+  lineIndex, GROUPING_BUDGET, MAX_INDEX_ENTRIES, INDEX_ENTRY_WORK, SAMPLE_WORK, samplesOf, flatLength,
   SUGGESTION_CAPS, LINE_CHAR_LIMIT, OVERLAP_TOLERANCE_M, OVERLAP_SHARE, OVERLAP_STEP_M, SHORT_SUGGESTION_M, LONG_SUGGESTION_M,
   STRAIGHT_STRETCH_M, TOKENS_PER_SUGGESTER, SUGGESTION_FACTS, SUGGESTION_STATUS_TRAIL_KEY,
   NON_ITEM_TARGETS, ACTIONS, ACTIVITY_KINDS, actionFields, groupReports, queue, groupNominations, statusesToWithdraw,
@@ -907,8 +907,6 @@ test('a long straight segment costs an index as long as it is, not as big as the
   assert.ok(diagonal.near({ x: 7000 * 1.0, y: 7000 * 1.0 }), 'still finds the line in the middle');
   const straight = lineIndex([at(0, 0), at(0, 19_800)], OVERLAP_TOLERANCE_M);
   assert.ok(straight.entries <= 15_000, `${straight.entries} entries`);
-  assert.equal(INDEX_ENTRY_COST, 20);
-  assert.equal(GROUPING_BUDGET, 25_000_000);
 });
 
 test('grouping has a hard ceiling: past the budget the rest are shown ungrouped, never lost', () => {
@@ -1076,6 +1074,110 @@ test('a very large group still draws: no spread of every point', () => {
   const lines = Array.from({ length: 70 }, (_, k) => Array.from({ length: 2000 }, (_, i) => ({ latitude: 35 + i * 1e-5, longitude: -78 + k * 1e-5 })));
   const { paths } = routePaths(lines);
   assert.equal(paths.filter(Boolean).length, 70);
+});
+
+// MARK: Critic run 3 (2026-10-16)
+
+test('a line across the 180th meridian is over the caps as grouping measures it, and costs nothing', () => {
+  const anti = Array.from({ length: 6 }, (_, i) => ({ latitude: 0, longitude: i % 2 ? 180 : -180 }));
+  assert.ok(lineLength(anti) < 1, 'a few metres on the globe');
+  assert.ok(flatLength(anti) > 1e7, 'forty thousand km on the flat map');
+  const s = suggestionOf(sugg('s', anti));
+  assert.deepEqual(s.problems, ['meters']);
+  const t = performance.now();
+  const groups = groupSuggestions([sugg('a', anti), sugg('b', anti)]);
+  assert.ok(performance.now() - t < 1000, `${Math.round(performance.now() - t)} ms (4 s and 1.8 GB before)`);
+  assert.equal(groups.length, 2);
+  // An ordinary line measures the same both ways.
+  const line = path(60).map(round5);
+  assert.ok(Math.abs(flatLength(line) - lineLength(line)) < 1);
+});
+
+test('crafted lines stacked in one place cost what they check: the budget stops them, and every suggestion stays on the page', () => {
+  // A 2,000-point line back and forth over 10 m, and 1,999 within-cap zigzags passing 45 m from it at every angle.
+  const blob = sugg('blob', Array.from({ length: 2000 }, (_, i) => at((i % 2) * 10, 0)));
+  assert.deepEqual(suggestionOf(blob).problems, []);
+  const radial = Array.from({ length: 1999 }, (_, k) => {
+    const a = (k / 1999) * Math.PI;
+    return sugg(`p${k}`, Array.from({ length: 560 }, (_, i) => {
+      const d = (i - 280) * 34;
+      const w = (i % 2) * 8;
+      return at(45 + Math.cos(a) * d - Math.sin(a) * w, 45 + Math.sin(a) * d + Math.cos(a) * w);
+    }), { created: k + 1 });
+  });
+  assert.deepEqual(suggestionOf(radial[0]).problems, []);
+  const t = performance.now();
+  const groups = groupSuggestions([blob, ...radial]);
+  const ms = performance.now() - t;
+  assert.equal(groups.reduce((n, g) => n + g.members.length, 0), 2000);
+  assert.ok(groups.some((g) => g.ungrouped), 'the budget ran out and said so');
+  assert.ok(ms < 15_000, `${Math.round(ms)} ms (about 1.3 s alone; 53 s before)`);
+});
+
+test('a suggestion the budget stopped part-way through its comparisons is flagged ungrouped, never shown as a path of its own', () => {
+  // A and B are different paths whose boxes meet (they cross); C lies along B (the second anchor).
+  const a = seg([0, 0], [600, 3000]);
+  const b = seg([300, 0], [300, 2800]);
+  const c = seg([300, 500], [300, 1500]);
+  const records = [sugg('A', a, { created: 1 }), sugg('B', b, { created: 2 }), sugg('C', c, { created: 3 })];
+  const full = groupSuggestions(records);
+  assert.deepEqual(full.map((g) => g.members.map((m) => m.recordName).sort()).sort(), [['A'], ['B', 'C']]);
+  let sawStopped = false;
+  for (let budget = 0; budget <= 30_000; budget += 20) {
+    const groups = groupSuggestions(records, [], budget);
+    const withC = groups.find((g) => g.members.some((m) => m.recordName === 'C'));
+    assert.ok(withC.members.some((m) => m.recordName === 'B') || withC.ungrouped, `budget ${budget}: C alone and unflagged`);
+    if (withC.ungrouped && groups.some((g) => g.id === 'B' && !g.ungrouped)) sawStopped = true;
+  }
+  assert.ok(sawStopped, 'some budget stops C between the two anchors');
+  // The memory ceiling works the same way.
+  const tight = groupSuggestions(records, [], GROUPING_BUDGET, 1);
+  assert.ok(tight.find((g) => g.members.some((m) => m.recordName === 'C')).ungrouped);
+  assert.deepEqual([GROUPING_BUDGET, MAX_INDEX_ENTRIES, INDEX_ENTRY_WORK, SAMPLE_WORK], [40_000_000, 8_000_000, 10, 5]);
+});
+
+test('the index finds exactly the points within the tolerance, and charges every distance it measures', () => {
+  // Against a brute-force distance to the original segments, on the index's own flat map.
+  let r = 11;
+  const rand = () => { r = (r * 48271) % 2147483647; return r / 2147483647; };
+  const toSeg = (p, a, b) => {
+    const dx = b.x - a.x; const dy = b.y - a.y; const l2 = dx * dx + dy * dy;
+    const t = l2 ? Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / l2)) : 0;
+    return Math.hypot(p.x - a.x - t * dx, p.y - a.y - t * dy);
+  };
+  for (let n = 0; n < 40; n += 1) {
+    const pts = [];
+    let x = 0; let y = 0; let h = rand() * 6.28;
+    for (let i = 0; i < 30; i += 1) { h += (rand() - 0.5) * 2; const step = 5 + rand() * 300; x += Math.cos(h) * step; y += Math.sin(h) * step; pts.push(at(x, y)); }
+    const index = lineIndex(pts, OVERLAP_TOLERANCE_M);
+    const k = Math.cos((pts[0].latitude * Math.PI) / 180);
+    const xy = pts.map((p) => ({ x: 6_371_008.8 * ((p.longitude - pts[0].longitude) * Math.PI / 180) * k, y: 6_371_008.8 * ((p.latitude - pts[0].latitude) * Math.PI / 180) }));
+    for (let j = 0; j < 400; j += 1) {
+      const i = 1 + Math.floor(rand() * (xy.length - 1));
+      const t = rand();
+      const base = { x: xy[i - 1].x + (xy[i].x - xy[i - 1].x) * t, y: xy[i - 1].y + (xy[i].y - xy[i - 1].y) * t };
+      const a = rand() * 6.28;
+      const d = 20 + rand() * 20;
+      const p = { x: base.x + Math.cos(a) * d, y: base.y + Math.sin(a) * d };
+      let best = Infinity;
+      for (let q = 1; q < xy.length; q += 1) best = Math.min(best, toSeg(p, xy[q - 1], xy[q]));
+      assert.equal(index.near(p), best <= OVERLAP_TOLERANCE_M, `line ${n}, point ${j}: ${best.toFixed(3)} m`);
+    }
+  }
+  // 2,000 pieces stacked in one place: a miss next to them is charged for every one it measured.
+  const blob = lineIndex(Array.from({ length: 2000 }, (_, i) => at((i % 2) * 10, 0)), OVERLAP_TOLERANCE_M);
+  let spent = 0;
+  assert.equal(blob.near({ x: 5, y: 45 }, (n) => { spent += n; }), false);
+  assert.ok(spent >= 1999, `${spent} units for one miss`);
+});
+
+test('samples are made once per line, every 25 m, and land where the line is', () => {
+  const line = seg([0, 0], [0, 1000]);
+  const samples = samplesOf(line);
+  assert.ok(samples.length === 41 || samples.length === 42, `${samples.length}: every 25 m, both ends`);
+  assert.ok(Math.abs(samples[20].latitude - at(0, 500).latitude) < 1e-7);
+  assert.ok(Math.abs(samples.at(-1).latitude - at(0, 1000).latitude) < 1e-9);
+  assert.ok(Math.abs(samples.at(-1).longitude - at(0, 1000).longitude) < 1e-9);
 });
 
 // MARK: The page and the schema
