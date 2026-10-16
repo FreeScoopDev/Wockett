@@ -14,6 +14,12 @@ video is published. They are plain text, one caption per line, `start | end |
 text` (seconds), and are kept apart from the script logic so correcting them
 never touches the scripts.
 
+Video 01's captions were re-timed to the real ~11 s clip: two captions only.
+The other drafted lines are kept as comments in `captions/video-01.txt` and are
+left out of the render, because nothing on screen matches them. Captions for
+02, 03, 04, 05 and 07 are still the original drafts and do not fit their clips
+(render.sh refuses 02, 03, 04 and 07; 05's render shows them on the wrong screens).
+
 ## Prerequisites
 
 1. A booted iOS simulator (`xcrun simctl list devices booted`). If more than one
@@ -44,9 +50,11 @@ never touches the scripts.
   start) and clears it at the end.
 - `render.sh NN` trims the lead-in (`offset_for` in `common.sh`), converts to
   30 fps, scales and pads to 1080x1920, burns the captions in, encodes H.264
-  yuv420p at CRF 23, and prints the size. It holds the last frame so the final
-  caption is never cut off if the recording is shorter than the captions. It
-  refuses to overwrite without `--force`.
+  yuv420p at CRF 23, and prints the size. It never pads or holds a frame: if a
+  caption ends after the clip does, it fails and says so. It refuses to
+  overwrite without `--force`. Caption box: MarginV=90 (libass units), which
+  clears the walk screen's distance and time numbers but covers the Start
+  Walk button on Home.
 - `build-batch.sh` runs both for each recordable video, keeps going after a
   failure, and prints video / status / duration / size.
 

@@ -47,15 +47,19 @@ LAST_END="$(awk -F' \\| ' 'NF >= 3 && $1 !~ /^#/ { e = $2 } END { print e + 0 }'
 OFFSET="$(offset_for "$NN")"
 RAW_DUR="$("$FFPROBE" -v error -show_entries format=duration -of csv=p=0 "$RAW")"
 CLIP_DUR="$(awk -v r="$RAW_DUR" -v o="$OFFSET" 'BEGIN { printf "%.3f", r - o }')"
-# Hold the last frame until the final caption has been on screen for half a second.
-PAD="$(awk -v c="$CLIP_DUR" -v l="$LAST_END" 'BEGIN { p = l + 0.5 - c; printf "%.3f", (p > 0 ? p : 0) }')"
+# A caption that ends after the clip does would be cut off: fail, never pad.
+if awk -v c="$CLIP_DUR" -v l="$LAST_END" 'BEGIN { exit !(l > c) }'; then
+  echo "Caption file $CAPS ends at ${LAST_END}s but the clip is only ${CLIP_DUR}s (raw ${RAW_DUR}s minus offset ${OFFSET}s)." >&2
+  echo "Re-time the captions to the clip; render.sh does not hold the last frame." >&2
+  exit 1
+fi
 
 # Subtitle sizes are in libass PlayRes units (288 high for SRT), so 9 is
 # ~60 px on a 1920 px frame. BorderStyle=3 draws an opaque box behind the text.
-STYLE="FontName=Helvetica,FontSize=9,Bold=1,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BackColour=&H00000000,BorderStyle=3,Outline=3,Shadow=0,Alignment=2,MarginV=40,MarginL=20,MarginR=20"
-VF="fps=30,scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,tpad=stop_mode=clone:stop_duration=$PAD,subtitles=$SRT:force_style='$STYLE'"
+STYLE="FontName=Helvetica,FontSize=9,Bold=1,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BackColour=&H00000000,BorderStyle=3,Outline=3,Shadow=0,Alignment=2,MarginV=90,MarginL=20,MarginR=20"
+VF="fps=30,scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,subtitles=$SRT:force_style='$STYLE'"
 
-echo "Rendering video $NN: offset ${OFFSET}s, clip ${CLIP_DUR}s, hold ${PAD}s, last caption ends ${LAST_END}s"
+echo "Rendering video $NN: offset ${OFFSET}s, clip ${CLIP_DUR}s, last caption ends ${LAST_END}s"
 "$FFMPEG" -hide_banner -loglevel error -y -ss "$OFFSET" -i "$RAW" -an -vf "$VF" \
   -c:v libx264 -crf 23 -preset medium -pix_fmt yuv420p -movflags +faststart "$OUT"
 

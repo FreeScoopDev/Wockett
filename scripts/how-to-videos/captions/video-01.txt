@@ -1,5 +1,8 @@
-0.5 | 2.0 | Start a walk in two taps.
-2.5 | 6.0 | Tap Home, then Start an activity.
-6.5 | 10.0 | Choose Start Walk.
-10.5 | 15.0 | Pet credit saves with the walk you finish.
-15.5 | 20.0 | Wockett: start a walk in two taps.
+# Re-timed 2026-10-16 to the real ~11 s clip: Home until ~3.4 s, then the walk screen.
+# Still unverified drafts. Dropped from the render (no matching screen in this clip):
+#   2.5 | 6.0 | Tap Home, then Start an activity.
+#   6.5 | 10.0 | Choose Start Walk.
+#   10.5 | 15.0 | Pet credit saves with the walk you finish.
+#   15.5 | 20.0 | Wockett: start a walk in two taps.
+0.3 | 3.2 | Start a walk in two taps.
+4.0 | 10.5 | Your walk is under way.
