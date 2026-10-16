@@ -496,8 +496,14 @@ struct ContributionStatusTests {
         #expect(store.asked.count == 4)
     }
 
+    /// Nothing here waits: the deadline fires when the test says so. The
+    /// limit only turns a missing deadline (a refresh stuck on the hung
+    /// fetch) into a failure instead of a stuck run, so it is five minutes:
+    /// wall time includes the time this test queues behind every other
+    /// main-actor test, and one minute was not enough on CI for tests that
+    /// wait for nothing (PRs 186, 196, 252).
     @Test("A fetch that never answers gives up at the deadline, keeps the cache and waits before trying again",
-          .timeLimit(.minutes(1)))
+          .timeLimit(.minutes(5)))
     func hungFetchGivesUp() async throws {
         let clock = Clock()
         let store = FakeStatuses()
@@ -544,39 +550,64 @@ struct ContributionStatusTests {
         #expect(ContributionService(store: FakeStatuses(), defaults: d).contributions.first?.statusLabel == "Featured")
     }
 
-    /// A store whose lookup waits until `release()`.
+    /// A store whose lookup waits until `release()`. `held()` returns once a
+    /// lookup is waiting: an event the test awaits, not a condition it polls.
+    /// Polling with `Task.yield()` sends the test to the back of the main
+    /// actor's queue on every turn, and on a busy CI runner each turn waits
+    /// behind every other main-actor test (PR 252).
     private final class GatedStatuses: ContributionStatusStore {
         var asked = 0
         var throwing: Error?
         var gated = true
         var answer: [String: ContributionStatusLookup] = [:]
         private var waiting: [CheckedContinuation<Void, Never>] = []
+        private var heldWaiters: [CheckedContinuation<Void, Never>] = []
         func lookup(names: [String]) async throws -> [String: ContributionStatusLookup] {
             asked += 1
             if let throwing { throw throwing }
-            if gated { await withCheckedContinuation { waiting.append($0) } }
+            if gated {
+                await withCheckedContinuation { c in
+                    waiting.append(c)
+                    let arrived = heldWaiters
+                    heldWaiters = []
+                    arrived.forEach { $0.resume() }
+                }
+            }
             return answer
         }
         func release() { waiting.forEach { $0.resume() }; waiting = [] }
-        var isWaiting: Bool { !waiting.isEmpty }
+        func held() async {
+            if !waiting.isEmpty { return }
+            await withCheckedContinuation { heldWaiters.append($0) }
+        }
     }
 
-    @Test("Two refreshes at once make one fetch", .timeLimit(.minutes(1)))
+    /// The limit on this and the next test only turns a broken build (a
+    /// lookup that never starts, a refresh that never returns) into a failure
+    /// instead of a stuck run. Nothing in them waits on time, so it is five
+    /// minutes: one minute was hit on CI by tests that wait for nothing,
+    /// because wall time includes queueing for the main actor (PRs 186, 196, 252).
+    @Test("Two refreshes at once make one fetch", .timeLimit(.minutes(5)))
     func overlappingRefreshesJoin() async throws {
-        final class Flag { var on = false }
         let store = GatedStatuses()
         let s = ContributionService(store: store, defaults: try defaults(), sleep: Self.neverFires)
         s.noteSent(contribution())
         let first = Task { @MainActor in await s.refresh() }
-        while !store.isWaiting { await Task.yield() }
+        await store.held()
         // The second caller reaches the join without suspending once it
-        // starts (all on the main actor), so the flag means it is waiting.
-        let started = Flag()
+        // starts (all on the main actor), so by the time the test runs again
+        // after `started` is resumed, the second refresh is waiting on the join
+        // (or, if refreshes weren't joined, on a second lookup).
+        var started: CheckedContinuation<Void, Never>?
         let second = Task { @MainActor in
-            started.on = true
+            started?.resume()
             return await s.refresh()
         }
-        while !started.on { await Task.yield() }
+        await withCheckedContinuation { started = $0 }
+        // Ungated from here: a second lookup (refreshes not joined) that
+        // arrives after the release answers at once, so `asked` fails the
+        // test instead of a lookup waiting for ever.
+        store.gated = false
         store.release()
         #expect(await first.value)
         #expect(await second.value)
@@ -584,7 +615,7 @@ struct ContributionStatusTests {
     }
 
     @Test("The Trails list closed mid-fetch: nothing is marked shown, so the banner (and its notification) still come",
-          .timeLimit(.minutes(1)))
+          .timeLimit(.minutes(5)))
     func cancelledBannerKeepsIt() async throws {
         let clock = Clock()
         let store = GatedStatuses()
@@ -597,7 +628,7 @@ struct ContributionStatusTests {
         clock.now += 86_400
         store.gated = true
         let task = Task { @MainActor in await s.bannerAfterRefresh() }
-        while !store.isWaiting { await Task.yield() }
+        await store.held()
         task.cancel()
         store.release()
         #expect(await task.value.isEmpty)
