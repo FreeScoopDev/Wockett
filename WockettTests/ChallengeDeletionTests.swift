@@ -230,6 +230,22 @@ struct ChallengeDeletionTests {
         #expect(reports.saved.count == 1)
     }
 
+    @Test("A request that timed out is not remembered, so asking again the same day sends it")
+    func requestTimeoutNotRemembered() async throws {
+        let reports = HangingReports()
+        let ledger = CommunityReportLedger(defaults: defaults())
+        let utc = try #require(TimeZone(identifier: "UTC"))
+        let day = Date(timeIntervalSince1970: 2_000_000_000)
+        let c = try challenge()
+        #expect(await ChallengeDeletion.request(c, others: 2, store: reports, ledger: ledger, on: day, timeZone: utc,
+                                                sleep: { _ in }) == .failed(ChallengeDeletion.timedOut))
+        #expect(!ledger.contains(ChallengeDeletion.requestEntry(for: c, on: day, timeZone: utc)))
+    }
+
+    private final class HangingReports: CommunityReportStore {
+        func save(_ record: CKRecord) async throws { try await Task.sleep(for: .seconds(600)) }
+    }
+
     @Test("A name clash is a failure, not 'already sent': only this phone's own record says that")
     func requestClashFails() async throws {
         let reports = FakeReports()
