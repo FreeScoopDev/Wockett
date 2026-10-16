@@ -1,5 +1,4 @@
 import CloudKit
-import CryptoKit
 import SwiftUI
 import UIKit
 
@@ -144,23 +143,22 @@ enum CommunityReports {
     /// The longest `targetSummary`: enough for a post's message and badge.
     static let summaryLimit = 500
 
-    /// `report.<hash>`: the same for one reporter and one item on any of their
-    /// devices, so CloudKit refuses a second report of it as already existing
-    /// (votes work the same way). A hash, so the dashboard, which can read
-    /// record names, can't read the reporter's iCloud ID out of one. With no
-    /// known reporter (the lookup failed) every report gets its own name.
-    static func recordName(target: String, reporter: String?) -> String {
-        guard let reporter else { return "report.\(UUID().uuidString.lowercased())" }
-        let digest = SHA256.hash(data: Data("\(target)\n\(reporter)".utf8))
-        return "report." + digest.map { String(format: "%02x", $0) }.joined()
+    /// `report.<random UUID>`, a new one for every report. Until 2026-10-16 it
+    /// was a hash of the item and the reporter's account, both public (the
+    /// account is the creator of everything they share), so anyone could
+    /// compute it and learn from CloudKit refusing a save under it that the
+    /// account had reported the item. One report per person is now kept by
+    /// the phone (`CommunityReportLedger`) and by the staff dashboard, which
+    /// counts each reporter once per item.
+    static func recordName() -> String {
+        "report.\(UUID().uuidString.lowercased())"
     }
 
     /// The record a report saves: what was reported and why, and nothing
     /// about who reported it (CloudKit adds the creator itself).
-    static func record(for report: CommunityReport, reporter: String?) -> CKRecord {
+    static func record(for report: CommunityReport) -> CKRecord {
         let target = report.recordID.recordName
-        let record = CKRecord(recordType: recordType,
-                              recordID: CKRecord.ID(recordName: recordName(target: target, reporter: reporter)))
+        let record = CKRecord(recordType: recordType, recordID: CKRecord.ID(recordName: recordName()))
         record["targetRecordName"] = target
         record["targetType"] = report.kind.targetType
         record["reason"] = (report.reason ?? .other).rawValue
@@ -172,20 +170,37 @@ enum CommunityReports {
 
     enum Outcome: Equatable {
         case sent
-        /// This person reported the item before, perhaps on another device.
+        /// This phone sent a report of the item before and CloudKit took it.
         case alreadyReported
         /// Not saved: signed out, offline, timed out, or any other error. The
-        /// sheet offers the email instead.
+        /// sheet offers the email instead. Every save error is this: a random
+        /// name can't collide with an earlier report.
         case failed
     }
+}
 
-    /// CloudKit's answer to saving a report. A record name that already exists
-    /// is this person's earlier report of the item. Anything else is a failure,
-    /// including `permissionFailure`: a reporter can't write their own report,
-    /// so a duplicate *might* come back that way, but so does a schema without
-    /// the record type, and only the email is sure to reach us then.
-    static func outcome(of error: Error) -> Outcome {
-        (error as? CKError)?.code == .serverRecordChanged ? .alreadyReported : .failed
+/// What this phone has had CloudKit accept: a report of an item, or a
+/// challenge owner's request to delete on one day. Asked before saving, so a
+/// second report from the same phone answers "already reported" without a
+/// second record, as CloudKit's refusal of the old computed names did. Kept
+/// in UserDefaults, on this device only: another device, or a reinstall, can
+/// send again, and the staff dashboard counts that person once.
+struct CommunityReportLedger {
+    static let key = "communityReportsSent_v1"
+    var defaults: UserDefaults = .standard
+
+    static func reportEntry(target: String) -> String { "report:\(target)" }
+    static func requestEntry(challenge: String, day: String) -> String { "request:\(challenge)@\(day)" }
+
+    func contains(_ entry: String) -> Bool {
+        defaults.stringArray(forKey: Self.key)?.contains(entry) ?? false
+    }
+
+    func record(_ entry: String) {
+        var list = defaults.stringArray(forKey: Self.key) ?? []
+        guard !list.contains(entry) else { return }
+        list.append(entry)
+        defaults.set(list, forKey: Self.key)
     }
 }
 
@@ -194,18 +209,12 @@ enum CommunityReports {
 /// The CloudKit side, behind a protocol so the rules are tested without a
 /// network or an iCloud account (CI has neither).
 protocol CommunityReportStore: AnyObject {
-    /// The iCloud user record name of whoever is signed in.
-    func currentUserRecordName() async throws -> String
-    /// Creates the record; throws CloudKit's error when it exists.
+    /// Creates the record; throws CloudKit's error when it can't.
     func save(_ record: CKRecord) async throws
 }
 
 final class CloudKitCommunityReportStore: CommunityReportStore {
     private let container = CKContainer(identifier: WockettCloud.containerID)
-
-    func currentUserRecordName() async throws -> String {
-        try await container.userRecordID().recordName
-    }
 
     func save(_ record: CKRecord) async throws {
         _ = try await container.publicCloudDatabase.save(record)
@@ -220,27 +229,28 @@ enum CommunityReportSubmission {
     /// shows the report and the email both. One not yet started is dropped.
     static let deadline: Duration = .seconds(15)
 
-    /// `knownReporter` is the ID saved earlier (`MyAccount`), used when the
-    /// lookup fails, so a slow or failed lookup doesn't skip the
-    /// one-report-per-person rule.
+    /// An item this phone already reported (`ledger`) is answered without a
+    /// save; it is recorded there only once CloudKit has taken the report.
     static func submit(_ report: CommunityReport,
                        store: CommunityReportStore,
-                       knownReporter: @escaping () -> String? = { MyAccount.recordName },
+                       ledger: CommunityReportLedger = CommunityReportLedger(),
                        deadline: Duration = deadline,
                        sleep: @escaping OptimisticVote.Sleep = { try await Task.sleep(for: $0) }) async -> CommunityReports.Outcome {
+        let entry = CommunityReportLedger.reportEntry(target: report.recordID.recordName)
+        if ledger.contains(entry) { return .alreadyReported }
         do {
+            // Nothing is awaited before the save any more (the account lookup
+            // that named the record is gone), so there is no window in which
+            // the deadline can pass before the save starts.
             let saved: Bool? = try await OptimisticVote.withDeadline(deadline, sleep: sleep) {
-                // Unknown reporter: still try, and CloudKit says why it can't.
-                let reporter = (try? await store.currentUserRecordName()) ?? knownReporter()
-                // Past the deadline the sheet has offered the email: don't
-                // also start a save that would land as a second report.
-                try Task.checkCancellation()
-                try await store.save(CommunityReports.record(for: report, reporter: reporter))
+                try await store.save(CommunityReports.record(for: report))
                 return true
             }
-            return saved == nil ? .failed : .sent
+            guard saved != nil else { return .failed }
+            ledger.record(entry)
+            return .sent
         } catch {
-            return CommunityReports.outcome(of: error)
+            return .failed
         }
     }
 }

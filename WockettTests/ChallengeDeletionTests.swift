@@ -62,7 +62,6 @@ struct ChallengeDeletionTests {
     private final class FakeReports: CommunityReportStore {
         var saved: [CKRecord] = []
         var error: Error?
-        func currentUserRecordName() async throws -> String { "_me" }
         func save(_ record: CKRecord) async throws {
             if let error { throw error }
             saved.append(record)
@@ -160,24 +159,48 @@ struct ChallengeDeletionTests {
 
     @Test("A request is a report on the challenge, reason ownerRequest, naming how many joined")
     func requestRecord() throws {
-        let record = ChallengeDeletion.requestRecord(for: try challenge(), others: 3, requester: "_me")
+        let record = ChallengeDeletion.requestRecord(for: try challenge(), others: 3)
         #expect(record.recordType == "CommunityReport")
         #expect(record["targetRecordName"] as? String == "c1")
         #expect(record["targetType"] as? String == "challenge")
         #expect(record["reason"] as? String == "ownerRequest")
         #expect(record["note"] as? String == "The person who created it asked to delete it. 3 other people have joined.")
+        #expect(record["targetAuthorName"] as? String == "MistyOak12")
+        #expect(record["targetSummary"] as? String == "🥾 10k a day")
+        #expect(Set(record.allKeys()) == ["targetRecordName", "targetType", "reason", "note",
+                                          "targetAuthorName", "targetSummary"])
     }
 
-    @Test("One request per person per challenge per day, so asking again after a dismissal still arrives")
-    func requestPerDay() throws {
+    @Test("Every request gets its own random name, so no one can compute it to test whether you asked")
+    func requestRandomName() throws {
+        let c = try challenge()
+        let a = ChallengeDeletion.requestRecord(for: c, others: 1).recordID.recordName
+        let b = ChallengeDeletion.requestRecord(for: c, others: 1).recordID.recordName
+        #expect(a != b)
+        let uuid = try #require(a.split(separator: ".", maxSplits: 1).last)
+        #expect(a.hasPrefix("report."))
+        #expect(UUID(uuidString: String(uuid)) != nil, "report.<UUID>")
+        #expect(String(uuid) == String(uuid).lowercased())
+    }
+
+    @Test("One request per challenge per day from this phone; the next day, or another challenge, sends again")
+    func requestPerDay() async throws {
+        let reports = FakeReports()
+        let ledger = CommunityReportLedger(defaults: defaults())
+        let utc = try #require(TimeZone(identifier: "UTC"))
         let day1 = Date(timeIntervalSince1970: 2_000_000_000)
         let day2 = day1.addingTimeInterval(86_400)
         let c = try challenge()
-        let a = ChallengeDeletion.requestRecord(for: c, others: 1, requester: "_me", on: day1).recordID.recordName
-        #expect(a == ChallengeDeletion.requestRecord(for: c, others: 1, requester: "_me", on: day1).recordID.recordName)
-        #expect(a != ChallengeDeletion.requestRecord(for: c, others: 1, requester: "_me", on: day2).recordID.recordName)
-        #expect(a != ChallengeDeletion.requestRecord(for: c, others: 1, requester: "_other", on: day1).recordID.recordName)
-        #expect(!a.contains("_me"))
+        #expect(await ChallengeDeletion.request(c, others: 1, store: reports, ledger: ledger, on: day1, timeZone: utc,
+                                                sleep: Self.neverFires) == .sent)
+        #expect(await ChallengeDeletion.request(c, others: 1, store: reports, ledger: ledger, on: day1, timeZone: utc,
+                                                sleep: Self.neverFires) == .alreadySent)
+        #expect(reports.saved.count == 1, "the second ask the same day saves nothing")
+        #expect(await ChallengeDeletion.request(c, others: 1, store: reports, ledger: ledger, on: day2, timeZone: utc,
+                                                sleep: Self.neverFires) == .sent)
+        #expect(await ChallengeDeletion.request(try challenge("c2"), others: 1, store: reports, ledger: ledger, on: day2,
+                                                timeZone: utc, sleep: Self.neverFires) == .sent)
+        #expect(reports.saved.count == 3)
     }
 
     @Test("'Today' is the person's own day, not UTC's")
@@ -187,18 +210,33 @@ struct ChallengeDeletionTests {
         // 6 pm in Los Angeles on Oct 11 is already Oct 12 in UTC; 9 am the next day is Oct 12 in both.
         let evening = try #require(ISO8601DateFormatter().date(from: "2026-10-12T01:00:00Z"))
         let nextMorning = try #require(ISO8601DateFormatter().date(from: "2026-10-12T16:00:00Z"))
-        let first = ChallengeDeletion.requestRecord(for: c, others: 1, requester: "_me", on: evening, timeZone: la).recordID.recordName
-        let again = ChallengeDeletion.requestRecord(for: c, others: 1, requester: "_me", on: nextMorning, timeZone: la).recordID.recordName
+        let first = ChallengeDeletion.requestEntry(for: c, on: evening, timeZone: la)
+        let again = ChallengeDeletion.requestEntry(for: c, on: nextMorning, timeZone: la)
+        #expect(first == "request:c1@2026-10-11")
         #expect(first != again, "asking again the next morning is a new request")
     }
 
-    @Test("Sending saves once; a second request is 'already sent'")
-    func request() async throws {
+    @Test("A request that fails is not remembered, so asking again sends it")
+    func requestFailureNotRemembered() async throws {
         let reports = FakeReports()
-        #expect(await ChallengeDeletion.request(try challenge(), others: 2, store: reports, knownRequester: { nil }, sleep: Self.neverFires) == .sent)
+        let ledger = CommunityReportLedger(defaults: defaults())
+        let c = try challenge()
+        reports.error = CKError(.networkFailure)
+        guard case .failed = await ChallengeDeletion.request(c, others: 2, store: reports, ledger: ledger, sleep: Self.neverFires) else {
+            Issue.record("a network failure is a failure"); return
+        }
+        reports.error = nil
+        #expect(await ChallengeDeletion.request(c, others: 2, store: reports, ledger: ledger, sleep: Self.neverFires) == .sent)
         #expect(reports.saved.count == 1)
+    }
+
+    @Test("A name clash is a failure, not 'already sent': only this phone's own record says that")
+    func requestClashFails() async throws {
+        let reports = FakeReports()
         reports.error = CKError(.serverRecordChanged)
-        #expect(await ChallengeDeletion.request(try challenge(), others: 2, store: reports, knownRequester: { nil }, sleep: Self.neverFires) == .alreadySent)
+        let outcome = await ChallengeDeletion.request(try challenge(), others: 2, store: reports,
+                                                      ledger: CommunityReportLedger(defaults: defaults()), sleep: Self.neverFires)
+        #expect(outcome == .failed("Couldn't send the request. Check your connection and try again."))
     }
 
     @Test("The words say what happens")

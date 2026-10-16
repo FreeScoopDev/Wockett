@@ -4,8 +4,9 @@ import Foundation
 @testable import PoCSquat
 
 /// A report saved as a `CommunityReport` record (2026-10-10): what the record
-/// holds, the one-report-per-person rule, and the email fallback when CloudKit
-/// can't take it. The staff dashboard reads these fields by name.
+/// holds, its random name (2026-10-16), one report per item from this phone,
+/// and the email fallback when CloudKit can't take it. The staff dashboard
+/// reads these fields by name.
 @MainActor
 struct CommunityReportRecordTests {
 
@@ -19,21 +20,9 @@ struct CommunityReportRecordTests {
 
     /// CloudKit without a network: records what was saved, throws what it is told to.
     private final class FakeStore: CommunityReportStore {
-        var user: Result<String, Error> = .success("_reporter1")
         var saveError: Error?
         var hangs = false
-        /// The lookup takes a moment (and ignores cancellation, like CloudKit).
-        var userDelay = false
         var saved: [CKRecord] = []
-
-        func currentUserRecordName() async throws -> String {
-            if userDelay {
-                await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { c.resume() }
-                }
-            }
-            return try user.get()
-        }
 
         func save(_ record: CKRecord) async throws {
             if hangs { try await Task.sleep(for: .seconds(600)) }
@@ -42,11 +31,18 @@ struct CommunityReportRecordTests {
         }
     }
 
+    private func ledger() -> CommunityReportLedger {
+        let name = "CommunityReportRecordTests-\(UUID().uuidString)"
+        let d = UserDefaults(suiteName: name) ?? .standard
+        d.removePersistentDomain(forName: name)
+        return CommunityReportLedger(defaults: d)
+    }
+
     // MARK: Record
 
     @Test("The record holds what was reported, why, and the note")
     func recordFields() {
-        let record = CommunityReports.record(for: report(), reporter: "_reporter1")
+        let record = CommunityReports.record(for: report())
         #expect(record.recordType == "CommunityReport")
         #expect(record["targetRecordName"] as? String == "post-9")
         #expect(record["targetType"] as? String == "post")
@@ -62,21 +58,21 @@ struct CommunityReportRecordTests {
     @Test("Each kind names its type the way the dashboard reads it", arguments: [
         (CommunityReport.Kind.route, "route"), (.post, "post"), (.challenge, "challenge")])
     func targetTypes(kind: CommunityReport.Kind, expected: String) {
-        #expect(CommunityReports.record(for: report(kind), reporter: nil)["targetType"] as? String == expected)
+        #expect(CommunityReports.record(for: report(kind))["targetType"] as? String == expected)
     }
 
     @Test("The record holds the reason chosen", arguments: CommunityReportReason.allCases)
     func recordReason(reason: CommunityReportReason) {
         var r = report()
         r.reason = reason
-        #expect(CommunityReports.record(for: r, reporter: nil)["reason"] as? String == reason.rawValue)
+        #expect(CommunityReports.record(for: r)["reason"] as? String == reason.rawValue)
     }
 
     @Test("A report with no reason is filed as other")
     func noReasonIsOther() {
         var r = report()
         r.reason = nil
-        #expect(CommunityReports.record(for: r, reporter: nil)["reason"] as? String == "other")
+        #expect(CommunityReports.record(for: r)["reason"] as? String == "other")
     }
 
     @Test("Reason raw values are the ones the dashboard knows")
@@ -88,98 +84,102 @@ struct CommunityReportRecordTests {
     func caps() {
         var r = report(content: String(repeating: "c", count: 900))
         r.note = "  " + String(repeating: "n", count: 400) + "\n"
-        let record = CommunityReports.record(for: r, reporter: nil)
+        let record = CommunityReports.record(for: r)
         #expect((record["note"] as? String) == String(repeating: "n", count: 300))
         #expect((record["targetSummary"] as? String)?.count == 500)
     }
 
-    // MARK: One report per person
+    // MARK: Record name
 
-    @Test("One reporter and one item always make the same record name")
-    func sameName() {
-        let a = CommunityReports.recordName(target: "post-9", reporter: "_reporter1")
-        #expect(a == CommunityReports.recordName(target: "post-9", reporter: "_reporter1"))
-        #expect(a != CommunityReports.recordName(target: "post-9", reporter: "_reporter2"))
-        #expect(a != CommunityReports.recordName(target: "post-10", reporter: "_reporter1"))
+    @Test("Every report gets its own random name: nothing in it can be computed from the item or the account")
+    func randomName() throws {
+        let a = CommunityReports.record(for: report()).recordID.recordName
+        let b = CommunityReports.record(for: report()).recordID.recordName
+        #expect(a != b, "the same item reported twice must not share a name")
         #expect(a.hasPrefix("report."))
-        #expect(!a.contains("_reporter1"), "the dashboard can read names; it must not read the reporter")
-    }
-
-    @Test("With no known reporter, each report gets its own name")
-    func unknownReporter() {
-        #expect(CommunityReports.recordName(target: "t", reporter: nil)
-                != CommunityReports.recordName(target: "t", reporter: nil))
+        let uuid = String(a.dropFirst("report.".count))
+        #expect(UUID(uuidString: uuid) != nil, "report.<UUID>")
+        #expect(uuid == uuid.lowercased())
+        #expect(!a.contains("post-9"))
     }
 
     // MARK: Outcomes
 
-    @Test("An existing record name means already reported")
-    func duplicate() {
-        #expect(CommunityReports.outcome(of: CKError(.serverRecordChanged)) == .alreadyReported)
-    }
-
-    @Test("Every other error falls back to the email", arguments: [
-        CKError.Code.notAuthenticated, .networkUnavailable, .networkFailure, .permissionFailure,
+    @Test("Every save error falls back to the email, a name clash included", arguments: [
+        CKError.Code.serverRecordChanged, .notAuthenticated, .networkUnavailable, .networkFailure, .permissionFailure,
         .unknownItem, .quotaExceeded, .serviceUnavailable])
-    func failures(code: CKError.Code) {
-        #expect(CommunityReports.outcome(of: CKError(code)) == .failed)
+    func failures(code: CKError.Code) async {
+        let store = FakeStore()
+        store.saveError = CKError(code)
+        #expect(await CommunityReportSubmission.submit(report(), store: store, ledger: ledger()) == .failed)
     }
 
     @Test("A non-CloudKit error falls back to the email")
-    func otherError() {
-        #expect(CommunityReports.outcome(of: URLError(.timedOut)) == .failed)
+    func otherError() async {
+        let store = FakeStore()
+        store.saveError = URLError(.timedOut)
+        #expect(await CommunityReportSubmission.submit(report(), store: store, ledger: ledger()) == .failed)
     }
 
     // MARK: Submit
 
-    @Test("A saved report is sent, under the reporter's record name")
+    @Test("A saved report is sent, with the report's fields")
     func submitSaves() async throws {
         let store = FakeStore()
-        let r = report()
-        #expect(await CommunityReportSubmission.submit(r, store: store) == .sent)
+        #expect(await CommunityReportSubmission.submit(report(), store: store, ledger: ledger()) == .sent)
         let saved = try #require(store.saved.first)
-        #expect(saved.recordID.recordName == CommunityReports.recordName(target: "post-9", reporter: "_reporter1"))
+        #expect(saved.recordID.recordName.hasPrefix("report."))
+        #expect(saved["targetRecordName"] as? String == "post-9")
+        #expect(saved["reason"] as? String == "offensive")
     }
 
-    @Test("A second report of the same item is already reported, not a failure")
+    @Test("A second report of the same item from this phone is already reported, and saves nothing")
     func submitDuplicate() async {
         let store = FakeStore()
-        store.saveError = CKError(.serverRecordChanged)
-        #expect(await CommunityReportSubmission.submit(report(), store: store) == .alreadyReported)
+        let book = ledger()
+        #expect(await CommunityReportSubmission.submit(report(), store: store, ledger: book) == .sent)
+        #expect(await CommunityReportSubmission.submit(report(), store: store, ledger: book) == .alreadyReported)
+        #expect(store.saved.count == 1)
+        #expect(await CommunityReportSubmission.submit(report(target: "post-10"), store: store, ledger: book) == .sent,
+                "another item is a new report")
+        #expect(store.saved.count == 2)
+    }
+
+    @Test("A report that wasn't saved is not remembered, so reporting again sends it")
+    func failureNotRemembered() async {
+        let store = FakeStore()
+        let book = ledger()
+        store.saveError = CKError(.networkUnavailable)
+        #expect(await CommunityReportSubmission.submit(report(), store: store, ledger: book) == .failed)
+        store.saveError = nil
+        #expect(await CommunityReportSubmission.submit(report(), store: store, ledger: book) == .sent)
+        #expect(store.saved.count == 1)
+    }
+
+    @Test("A report that timed out is not remembered")
+    func timeoutNotRemembered() async {
+        let store = FakeStore()
+        let book = ledger()
+        store.hangs = true
+        #expect(await CommunityReportSubmission.submit(report(), store: store, ledger: book, sleep: { _ in }) == .failed)
+        #expect(!book.contains(CommunityReportLedger.reportEntry(target: "post-9")))
     }
 
     @Test("Offline or signed out: failed, so the sheet offers the email")
     func submitFails() async {
         let store = FakeStore()
         store.saveError = CKError(.notAuthenticated)
-        #expect(await CommunityReportSubmission.submit(report(), store: store) == .failed)
+        #expect(await CommunityReportSubmission.submit(report(), store: store, ledger: ledger()) == .failed)
         store.saveError = CKError(.networkUnavailable)
-        #expect(await CommunityReportSubmission.submit(report(), store: store) == .failed)
-    }
-
-    @Test("When the reporter can't be looked up, the report is still tried")
-    func submitWithoutReporter() async throws {
-        let store = FakeStore()
-        store.user = .failure(CKError(.networkFailure))
-        #expect(await CommunityReportSubmission.submit(report(), store: store, knownReporter: { nil }) == .sent)
-        #expect(store.saved.count == 1)
-    }
-
-    @Test("When the lookup fails, the saved ID keeps one report per person")
-    func submitUsesKnownReporter() async throws {
-        let store = FakeStore()
-        store.user = .failure(CKError(.networkFailure))
-        #expect(await CommunityReportSubmission.submit(report(), store: store, knownReporter: { "_saved" }) == .sent)
-        let saved = try #require(store.saved.first)
-        #expect(saved.recordID.recordName == CommunityReports.recordName(target: "post-9", reporter: "_saved"))
+        #expect(await CommunityReportSubmission.submit(report(), store: store, ledger: ledger()) == .failed)
     }
 
     @Test("A save that doesn't answer by the deadline is failed")
     func submitTimesOut() async {
         let store = FakeStore()
         store.hangs = true
-        let outcome = await CommunityReportSubmission.submit(report(), store: store, deadline: .seconds(15),
-                                                             sleep: { _ in })
+        let outcome = await CommunityReportSubmission.submit(report(), store: store, ledger: ledger(),
+                                                             deadline: .seconds(15), sleep: { _ in })
         #expect(outcome == .failed)
     }
 
@@ -188,18 +188,8 @@ struct CommunityReportRecordTests {
         let store = FakeStore()
         store.hangs = true
         var waited: Duration?
-        _ = await CommunityReportSubmission.submit(report(), store: store, sleep: { waited = $0 })
+        _ = await CommunityReportSubmission.submit(report(), store: store, ledger: ledger(), sleep: { waited = $0 })
         #expect(waited == .seconds(15))
-    }
-
-    @Test("Past the deadline, a save not yet started is dropped")
-    func noSaveAfterDeadline() async {
-        let store = FakeStore()
-        store.userDelay = true
-        let outcome = await CommunityReportSubmission.submit(report(), store: store, sleep: { _ in })
-        #expect(outcome == .failed)
-        try? await Task.sleep(for: .milliseconds(300))
-        #expect(store.saved.isEmpty, "the email was offered; a late record would be a second report")
     }
 
     // MARK: Flow

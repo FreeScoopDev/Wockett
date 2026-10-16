@@ -110,24 +110,24 @@ enum ChallengeDeletion {
         return .deleted
     }
 
-    /// The request: a report on the challenge, reason "ownerRequest", one per
-    /// person per day (so asking again after a moderator dismissed it still
-    /// reaches the queue), nothing about you but CloudKit's own creator
-    /// reference. The dashboard checks that creator against the challenge's
-    /// before calling it the owner's.
-    static func requestRecord(for challenge: WalkChallenge, others: Int, requester: String?, on day: Date = Date(),
-                              timeZone: TimeZone = .current) -> CKRecord {
+    /// The request: a report on the challenge, reason "ownerRequest", under a
+    /// random name like every report, nothing about you but CloudKit's own
+    /// creator reference. The dashboard checks that creator against the
+    /// challenge's before calling it the owner's.
+    static func requestRecord(for challenge: WalkChallenge, others: Int) -> CKRecord {
         var report = CommunityReport(challenge: challenge)
         report.note = "The person who created it asked to delete it. \(others) other \(others == 1 ? "person has" : "people have") joined."
-        let template = CommunityReports.record(for: report, reporter: requester)
-        // The person's own day, not UTC's: "today" means their today.
-        let stamp = day.formatted(Date.ISO8601FormatStyle(timeZone: timeZone).year().month().day())
-        let name = requester.map { CommunityReports.recordName(target: "\(challenge.id.recordName)@\(stamp)", reporter: $0) }
-            ?? template.recordID.recordName
-        let record = CKRecord(recordType: template.recordType, recordID: CKRecord.ID(recordName: name))
-        for key in template.allKeys() { record[key] = template[key] }
+        let record = CommunityReports.record(for: report)
         record["reason"] = requestReason
         return record
+    }
+
+    /// One request per challenge per day from this phone (so asking again
+    /// after a moderator dismissed it still reaches the queue): the person's
+    /// own day, not UTC's, since "today" means their today.
+    static func requestEntry(for challenge: WalkChallenge, on day: Date, timeZone: TimeZone) -> String {
+        let stamp = day.formatted(Date.ISO8601FormatStyle(timeZone: timeZone).year().month().day())
+        return CommunityReportLedger.requestEntry(challenge: challenge.id.recordName, day: stamp)
     }
 
     enum RequestOutcome: Equatable {
@@ -139,24 +139,23 @@ enum ChallengeDeletion {
     @MainActor
     static func request(_ challenge: WalkChallenge, others: Int,
                         store: CommunityReportStore = CloudKitCommunityReportStore(),
-                        knownRequester: @escaping () -> String? = { MyAccount.recordName },
+                        ledger: CommunityReportLedger = CommunityReportLedger(),
+                        on day: Date = Date(), timeZone: TimeZone = .current,
                         sleep: @escaping OptimisticVote.Sleep = { try await Task.sleep(for: $0) }) async -> RequestOutcome {
+        let entry = requestEntry(for: challenge, on: day, timeZone: timeZone)
+        if ledger.contains(entry) { return .alreadySent }
         do {
             let saved: Bool? = try await OptimisticVote.withDeadline(deadline, sleep: sleep) {
-                let requester = (try? await store.currentUserRecordName()) ?? knownRequester()
-                try Task.checkCancellation()
-                try await store.save(requestRecord(for: challenge, others: others, requester: requester))
+                try await store.save(requestRecord(for: challenge, others: others))
                 return true
             }
-            return saved == nil ? .failed(timedOut) : .sent
+            guard saved != nil else { return .failed(timedOut) }
+            ledger.record(entry)
+            return .sent
         } catch {
-            switch CommunityReports.outcome(of: error) {
-            case .alreadyReported: return .alreadySent
-            default:
-                return (error as? CKError)?.code == .notAuthenticated
-                    ? .failed("Sign in to iCloud in the Settings app to send it.")
-                    : .failed("Couldn't send the request. Check your connection and try again.")
-            }
+            return (error as? CKError)?.code == .notAuthenticated
+                ? .failed("Sign in to iCloud in the Settings app to send it.")
+                : .failed("Couldn't send the request. Check your connection and try again.")
         }
     }
 }
