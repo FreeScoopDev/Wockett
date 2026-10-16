@@ -8,19 +8,21 @@ import {
   CONTRIBUTION_KINDS, STATUS_RECORD_PREFIX, isClaimToken, contributionStatusName, isContributionStatusName,
   knownContribution, contributionStatusFields, nominationStatusNames, statusDecidedAt, statusesToWithdraw,
   groupReports, queue, groupNominations, NON_ITEM_TARGETS, actionFields, isUnknownRecordType,
-  unfeatureLookup, toldText, featureTellText,
+  unfeatureLookup, toldText, featureTellText, nominationCount, withdrawText, withdrawnText, partialWithdrawText, contributionCountText,
 } from '../../docs/staff/logic.js';
 import {
   publishNominationStatuses, findNominationStatuses, withdrawNominationStatuses,
-  featureTrailAndTell, unfeatureTrailAndWithdraw,
+  featureTrailAndTell, unfeatureTrailAndWithdraw, countNominationsToTell, countNominationsToTellOrNull,
 } from '../../docs/staff/actions.js';
-import { plain, pagedQuery, nominationStatusName, connect, fetchExisting } from '../../docs/staff/ck.js';
+import { plain, pagedQuery, nominationStatusName, connect, fetchExisting, fewPerNominator, TOKENS_PER_NOMINATOR } from '../../docs/staff/ck.js';
 
 const NOW = Date.UTC(2026, 9, 16, 12, 0, 0);
 const TOKEN = 'E621E1F8-C36C-495A-93FC-0C247A3E6E5F';
 // shasum -a 256 of the token's exact text, computed outside this code.
 const TOKEN_NAME = 'status.949960179bb0c122dce42afa24e79611f32cbea403a75ffe8b4d5c07e73ed951';
 const TOKEN2 = '0B4E1D7A-2F3C-4A5B-8C9D-AEBFC0D1E2F3';
+// The same person's second device (or a reinstall): a token of its own.
+const TOKEN3 = '5D2C9A41-7E6B-4F80-9A1C-3B2D4E5F6A7B';
 const CREATOR = '_a1b2c3d4e5f60718293a4b5c6d7e8f90';
 const trail = { trailKey: 'nc:w1', trailName: 'Lake Loop', region: 'nc', latitude: 35.78, longitude: -78.64, lengthMeters: 2400 };
 const sha = (s) => createHash('sha256').update(s, 'utf8').digest('hex');
@@ -193,6 +195,31 @@ test('a nomination reaches the page with its status name, never its token or its
   assert.equal(await nominationStatusName(rawNom('n', TOKEN)), TOKEN_NAME);
 });
 
+test('every nomination of one person reaches the status path, each with its own name; the queue still counts the person once', async () => {
+  // One person, one trail: a phone (newest), an older device, and a nomination sent before tokens existed.
+  const raws = [rawNom('n1', TOKEN3, { created: 3 }), rawNom('n2', TOKEN, { created: 2 }), rawNom('n3', undefined, { created: 1 })];
+  const db = { async performQuery() { return { records: raws, moreComing: false }; } };
+  const every = await pagedQuery(db, { recordType: 'TrailNomination' }, { everyNomination: true });
+  assert.deepEqual(every.records.map((r) => r.statusName), [`status.${sha(TOKEN3)}`, TOKEN_NAME, undefined]);
+  assert.deepEqual(nominationStatusNames(every.records, 'nc:w1'), { names: [`status.${sha(TOKEN3)}`, TOKEN_NAME].sort(), withoutToken: 1 });
+  const queue = await pagedQuery(db, { recordType: 'TrailNomination' });
+  assert.deepEqual(queue.records.map((r) => r.recordName), ['n1'], 'the nomination queue still keeps the newest per person');
+  for (const secret of [TOKEN, TOKEN3, CREATOR, 'claimToken']) assert.ok(!JSON.stringify(every.records).includes(secret), secret);
+});
+
+test('one account can\'t make Feature write thousands: each person is told on at most a few devices per trail', async () => {
+  assert.equal(TOKENS_PER_NOMINATOR, 5);
+  const uuid = (i) => `00000000-0000-4000-8000-${i.toString(16).padStart(12, '0')}`;
+  // 20 crafted nominations from one account (newest first), one from someone else, one for another trail.
+  const raws = [...Array.from({ length: 20 }, (_, i) => rawNom(`f${i}`, uuid(i), { created: 100 - i })),
+    rawNom('o1', TOKEN2, { who: '_b0000000000000000' }), rawNom('k1', uuid(99), { key: 'nc:w2' })];
+  const db = { async performQuery() { return { records: raws, moreComing: false }; } };
+  const { records } = await pagedQuery(db, { recordType: 'TrailNomination' }, { everyNomination: true });
+  assert.deepEqual(records.map((r) => r.recordName), ['f0', 'f1', 'f2', 'f3', 'f4', 'o1', 'k1'], 'the newest five of the flood, and everyone else');
+  assert.equal(nominationStatusNames(records, 'nc:w1').names.length, 6);
+  assert.deepEqual(fewPerNominator(raws, 2).map((r) => r.recordName), ['f0', 'f1', 'o1', 'k1']);
+});
+
 test('plain() drops a claim token from any record, however it is fetched', async () => {
   for (const recordType of ['TrailNomination', 'ContributionStatus', 'WocketAchievement']) {
     const out = plain({ recordName: 'x', recordType, created: { timestamp: 1 }, fields: { claimToken: { value: TOKEN }, note: { value: 'hi' } } });
@@ -218,7 +245,8 @@ test('featuring a trail with no tokened nominations writes nothing at all, and i
   const store = fakeStore({ nominations: [nom('n1'), nom('n2')] });
   const out = await publishNominationStatuses(store, { trail, now: NOW });
   assert.deepEqual(out, { written: 0, planned: 0, blocked: 0, withoutToken: 2, error: null });
-  assert.deepEqual(store.calls, [['query', 'TrailNomination', { equals: ['trailKey', 'nc:w1'], max: 5000 }]], 'asks for this trail\'s nominations');
+  assert.deepEqual(store.calls, [['query', 'TrailNomination', { equals: ['trailKey', 'nc:w1'], max: 5000, everyNomination: true }]],
+    'asks for every nomination of this trail, not one per person');
 });
 
 test('telling nominators writes History first, then one status per token, for this trail only', async () => {
@@ -278,6 +306,7 @@ test('a status name already used by another record is skipped, and can\'t stop t
   assert.deepEqual(statusWrites(store).map((c) => [c[0], c[2]]), [['createNamed', NAME_B], ['createNamed', NAME_C]]);
   assert.equal(history(store)[0].reportCount, 2);
   assert.equal(JSON.parse(history(store)[0].snapshot).blocked, 1, 'History says one was skipped');
+  assert.equal(JSON.parse(history(store)[0].snapshot).count, 2, 'and counts only the ones it writes');
 
   const all = fakeStore({ nominations: [nom('n1', NAME_A)], existing: squatted });
   assert.deepEqual(await publishNominationStatuses(all, { trail, now: NOW }), { written: 0, planned: 0, blocked: 1, withoutToken: 0, error: null });
@@ -380,20 +409,56 @@ test('Unfeature proceeds when the count is known or the type does not exist yet;
   assert.equal(unfeatureLookup({ ckErrorCode: 'ACCESS_DENIED', reason: 'not allowed' }), 'unchecked');
 });
 
-test('the Feature confirm says how many nominators it tells, none, or that it tells them in general', () => {
-  assert.equal(featureTellText(2), 'It also tells 2 nominators: their My contributions shows Featured.');
-  assert.equal(featureTellText(1), 'It also tells 1 nominator: their My contributions shows Featured.');
-  assert.match(featureTellText(0), /^None of its nominators can be told yet/);
-  assert.match(featureTellText(null), /^Its nominators are told too/);
+test('the Feature confirm says how many nominations it tells, that other devices count, none, or that it tells them in general', () => {
+  assert.equal(featureTellText(2), 'It also tells 2 nominations: each shows Featured in My contributions on the device that sent it, '
+    + 'so someone who nominated it from two devices sees it on both.');
+  assert.equal(featureTellText(1), 'It also tells 1 nomination: each shows Featured in My contributions on the device that sent it, '
+    + 'so someone who nominated it from two devices sees it on both.');
+  assert.match(featureTellText(0), /^None of its nominations can be told yet/);
+  assert.match(featureTellText(null), /^Its nominations are told too: .* on the device that sent it\.$/);
+});
+
+test('Unfeature and History count nominations, not nominators', () => {
+  assert.equal(nominationCount(1), '1 nomination');
+  assert.equal(nominationCount(3), '3 nominations');
+  assert.equal(withdrawText(2), 'It also withdraws the Featured status of 2 nominations in My contributions, on every device that sent one. They go back to Sent.');
+  assert.match(withdrawText(1), /of 1 nomination in/);
+  assert.equal(withdrawnText(0), '');
+  assert.equal(withdrawnText(3), 'Withdrew the Featured status of 3 nominations.');
+  assert.equal(partialWithdrawText(1, 1), 'Withdrew 1 of 1 nomination\'s status');
+  assert.equal(partialWithdrawText(2, 3), 'Withdrew 2 of 3 nominations\' statuses');
+  assert.equal(contributionCountText('nomination', 3), '3 nominations');
+  assert.equal(contributionCountText('suggestion', 1), '1 contribution');
+});
+
+test('a failed count still opens the Feature confirm, saying they are told without a number', async () => {
+  const failing = fakeStore();
+  failing.query = async () => { throw { ckErrorCode: 'NETWORK_ERROR' }; };
+  const error = console.error;
+  console.error = () => {};
+  try {
+    assert.equal(await countNominationsToTellOrNull(failing, { trailKey: 'nc:w1' }), null);
+  } finally {
+    console.error = error;
+  }
+  assert.equal(await countNominationsToTellOrNull(fakeStore({ nominations: [nom('n1', NAME_A)] }), { trailKey: 'nc:w1' }), 1);
+});
+
+test('the Feature confirm counts every nomination of the trail, as Feature writes them', async () => {
+  // Two nominations by one person (two devices) arrive as two records with two names.
+  const store = fakeStore({ nominations: [nom('n1', NAME_A), nom('n2', NAME_B), nom('n3'), nom('n4', NAME_C, 'nc:w2')] });
+  assert.equal(await countNominationsToTell(store, { trailKey: 'nc:w1' }), 2);
+  assert.deepEqual(store.calls, [['query', 'TrailNomination', { equals: ['trailKey', 'nc:w1'], max: 5000, everyNomination: true }]]);
+  assert.equal(await countNominationsToTell(fakeStore({ nominations: [nom('n1')] }), { trailKey: 'nc:w1' }), 0);
 });
 
 test('the message after Feature says who was told, who was skipped, and how to finish', () => {
   assert.equal(toldText({ written: 0, planned: 0, blocked: 0, error: null }), '');
-  assert.equal(toldText({ written: 2, planned: 2, blocked: 0, error: null }), 'Told 2 nominators.');
+  assert.equal(toldText({ written: 2, planned: 2, blocked: 0, error: null }), 'Told 2 nominations.');
   assert.equal(toldText({ written: 1, planned: 1, blocked: 1, error: null }),
-    'Told 1 nominator. 1 couldn\'t be told: another record already has that name (a crafted nomination, most likely).');
+    'Told 1 nomination. 1 couldn\'t be told: another record already has that name (a crafted nomination, most likely).');
   assert.equal(toldText({ written: 2, planned: 3, blocked: 0, error: { ckErrorCode: 'NETWORK_ERROR' } }),
-    'Told 2 of 3 nominators; the rest failed: Couldn\'t reach iCloud. Check the connection and try again. To finish, open Featured, Change note or length, and Feature (Keep).');
+    'Told 2 of 3 nominations; the rest failed: Couldn\'t reach iCloud. Check the connection and try again. To finish, open Featured, Change note or length, and Feature (Keep).');
   assert.match(toldText({ written: 0, planned: null, blocked: 0, error: { ckErrorCode: 'NETWORK_ERROR' } }), /^Couldn't tell its nominators: Couldn't reach iCloud/);
   // No token can be in the text: told carries counts and an error only.
   assert.ok(!toldText({ written: 1, planned: 1, blocked: 0, error: null }).includes('status.'));
@@ -484,8 +549,8 @@ test('Unfeature withdraws the statuses before the feature; a failure stops befor
 
 // MARK: Nothing secret reaches CloudKit, History or the page
 
-/** CloudKit JS's public database, in memory, logging every save. */
-function fakeCloudKit(records) {
+/** CloudKit JS's public database, in memory, logging every save. A save of a name in `failNames` fails, as CloudKit JS reports it. */
+function fakeCloudKit(records, { failNames = [] } = {}) {
   const byName = new Map(records.map((r) => [r.recordName, r]));
   const saved = [];
   let auto = 0;
@@ -503,7 +568,11 @@ function fakeCloudKit(records) {
       return { records: found, moreComing: false };
     },
     async fetchRecords(names) { return { records: names.filter((n) => byName.has(n)).map((n) => byName.get(n)) }; },
-    async saveRecords(list) { return { records: list.map(save) }; },
+    async saveRecords(list) {
+      const failed = list.filter((r) => failNames.includes(r.recordName));
+      if (failed.length) return { hasErrors: true, errors: failed.map((r) => ({ ckErrorCode: 'NETWORK_ERROR', recordName: r.recordName })), records: [] };
+      return { records: list.map(save) };
+    },
     newRecordsBatch() {
       let pending;
       return { forceReplace(r) { pending = r; return this; }, async commit() { return { records: [save(pending)] }; } };
@@ -515,43 +584,67 @@ function fakeCloudKit(records) {
 
 test('end to end through ck.js: no token, nominator or status name in History; no token or nominator in any status', async () => {
   const other = '_f9e8d7c6b5a4938271605f4e3d2c1b0a';
-  const cloud = fakeCloudKit([rawNom('nomination.x', TOKEN), rawNom('nomination.y', TOKEN2, { who: other }), rawNom('nomination.z', undefined, { who: '_z000000000000000' })]);
+  // CREATOR nominated from two devices (nomination.w is the second, newer) and once more before tokens existed.
+  const cloud = fakeCloudKit([rawNom('nomination.w', TOKEN3, { created: 3 }), rawNom('nomination.x', TOKEN, { created: 2 }),
+    rawNom('nomination.v', undefined, { created: 1 }),
+    rawNom('nomination.y', TOKEN2, { who: other }), rawNom('nomination.z', undefined, { who: '_z000000000000000' })]);
   const store = connect({ CloudKit: cloud.CloudKit });
+  assert.equal(await countNominationsToTell(store, { trailKey: 'nc:w1' }), 3, 'the confirm counts both of one person\'s devices');
   const out = await featureTrailAndTell(store, { trail, blurb: 'Shady', length: '30d', now: NOW });
-  assert.equal(out.told.written, 2);
+  assert.equal(out.told.written, 3, 'one status per token: both of CREATOR\'s devices, and the other nominator');
+  assert.equal(out.told.withoutToken, 2, 'the two nominations without a token get nothing');
   const statuses = cloud.saved.filter((r) => r.recordType === 'ContributionStatus');
-  assert.deepEqual(statuses.map((r) => r.recordName).sort(), [TOKEN_NAME, `status.${sha(TOKEN2)}`].sort());
+  assert.deepEqual(statuses.map((r) => r.recordName).sort(), [TOKEN_NAME, `status.${sha(TOKEN2)}`, `status.${sha(TOKEN3)}`].sort());
   const actions = cloud.saved.filter((r) => r.recordType === 'ModerationAction');
-  for (const secret of [TOKEN, TOKEN2, TOKEN.toLowerCase(), CREATOR, other, 'claimToken']) {
+  for (const secret of [TOKEN, TOKEN2, TOKEN3, TOKEN.toLowerCase(), TOKEN3.toLowerCase(), CREATOR, other, 'claimToken']) {
     assert.ok(!JSON.stringify(cloud.saved).includes(secret), `${secret} reached CloudKit`);
   }
-  for (const name of [TOKEN_NAME, `status.${sha(TOKEN2)}`, sha(TOKEN), sha(TOKEN2)]) {
+  for (const name of [TOKEN_NAME, `status.${sha(TOKEN2)}`, `status.${sha(TOKEN3)}`, sha(TOKEN), sha(TOKEN2), sha(TOKEN3)]) {
     assert.ok(!JSON.stringify(actions).includes(name), 'History holds the count, not the names');
   }
   for (const r of statuses) assert.deepEqual(Object.keys(r.fields).sort(), ['decidedAt', 'kind', 'status', 'trailKey', 'trailName']);
   // What the page itself holds after loading nominations.
   const { records } = await store.query('TrailNomination');
-  for (const secret of [TOKEN, TOKEN2, CREATOR, other, 'claimToken']) assert.ok(!JSON.stringify(records).includes(secret));
+  for (const secret of [TOKEN, TOKEN2, TOKEN3, CREATOR, other, 'claimToken']) assert.ok(!JSON.stringify(records).includes(secret));
+  assert.deepEqual(records.map((r) => r.recordName).sort(), ['nomination.w', 'nomination.y', 'nomination.z'], 'the queue still counts CREATOR once');
+  assert.equal(JSON.parse(cloud.saved.find((r) => r.fields?.action?.value === 'statusPublished').fields.snapshot.value).count, 3);
 
-  // Featuring again (Change note or length) rewrites the same two records, and nothing new.
+  // Featuring again (Change note or length) rewrites the same three records, and nothing new.
   const before = new Set(cloud.byName.keys());
   await featureTrailAndTell(store, { trail, blurb: 'Shadier', keepUntil: null, now: NOW + 1000 });
   assert.deepEqual([...cloud.byName.keys()].filter((k) => !before.has(k) && !k.startsWith('auto-')), []);
-  assert.equal([...cloud.byName.values()].filter((r) => r.recordType === 'ContributionStatus').length, 2);
+  assert.equal([...cloud.byName.values()].filter((r) => r.recordType === 'ContributionStatus').length, 3);
 
-  // Unfeature withdraws both, through the same store.
+  // Unfeature withdraws all three, both of CREATOR's devices included, through the same store.
   const { records: found } = await findNominationStatuses(store, { trailKey: 'nc:w1' });
   const done = await unfeatureTrailAndWithdraw(store, { trail, statuses: found });
-  assert.equal(done.withdrawn.deleted, 2);
+  assert.equal(done.withdrawn.deleted, 3);
   assert.equal([...cloud.byName.values()].filter((r) => r.recordType === 'ContributionStatus').length, 0);
   assert.ok(!cloud.byName.has('featured.nc.w1'));
   // Every History record of the whole run, Unfeature's included.
   const allActions = cloud.saved.filter((r) => r.recordType === 'ModerationAction');
   assert.deepEqual(allActions.map((r) => r.fields.action.value),
     ['featured', 'statusPublished', 'featured', 'statusPublished', 'statusWithdrawn', 'unfeatured']);
-  for (const secret of [TOKEN, TOKEN2, CREATOR, other, 'claimToken', TOKEN_NAME, `status.${sha(TOKEN2)}`, sha(TOKEN), sha(TOKEN2)]) {
+  for (const secret of [TOKEN, TOKEN2, TOKEN3, CREATOR, other, 'claimToken', TOKEN_NAME, `status.${sha(TOKEN2)}`, `status.${sha(TOKEN3)}`,
+    sha(TOKEN), sha(TOKEN2), sha(TOKEN3)]) {
     assert.ok(!JSON.stringify(allActions).includes(secret), `${secret} reached History`);
   }
+});
+
+test('end to end through ck.js: one of a person\'s two devices failing still tells the other, and History says 1 of 2', async () => {
+  const cloud = fakeCloudKit([rawNom('nomination.w', TOKEN3, { created: 3 }), rawNom('nomination.x', TOKEN, { created: 2 })],
+    { failNames: [TOKEN_NAME] });
+  const store = connect({ CloudKit: cloud.CloudKit });
+  const out = await featureTrailAndTell(store, { trail, blurb: 'Shady', length: '30d', now: NOW });
+  assert.deepEqual([out.told.written, out.told.planned, out.told.error?.ckErrorCode], [1, 2, 'NETWORK_ERROR']);
+  // TOKEN's name sorts first, so the device after the failure is still told.
+  assert.ok(TOKEN_NAME < `status.${sha(TOKEN3)}`);
+  assert.deepEqual([...cloud.byName.values()].filter((r) => r.recordType === 'ContributionStatus').map((r) => r.recordName), [`status.${sha(TOKEN3)}`]);
+  const told = cloud.byName.get(cloud.saved.find((r) => r.fields?.action?.value === 'statusPublished').recordName);
+  assert.equal(told.fields.reportCount.value, 1, 'History corrected to the number written');
+  assert.equal(told.fields.note.value, 'Stopped part-way: 1 of 2 written.');
+  assert.deepEqual(JSON.parse(told.fields.snapshot.value), { trailKey: 'nc:w1', trailName: 'Lake Loop', kind: 'nomination', status: 'featured', count: 1, blocked: 0, planned: 2 });
+  for (const secret of [TOKEN, TOKEN3, CREATOR, sha(TOKEN), sha(TOKEN3)]) assert.ok(!JSON.stringify(told).includes(secret), secret);
 });
 
 // MARK: History and the queues
@@ -563,6 +656,23 @@ test('a contribution action never closes a community report or a nomination with
   assert.equal(queue(groupReports([report], [action])).length, 1);
   const [g] = groupNominations([nom('n1', NAME_A)], [action]);
   assert.equal(g.open, true);
+});
+
+test('the page counts nominations to tell from the every-nomination query, never from the per-person queue', () => {
+  // The Nominations tab's groups hold one nomination per person, so a count
+  // taken from them would leave out a person's other devices.
+  const app = readFileSync(new URL('../../docs/staff/app.js', import.meta.url), 'utf8');
+  assert.ok(!/nominationStatusNames\(/.test(app), 'app.js counts statuses from loaded nominations');
+  assert.ok(!/everyNomination/.test(app), 'the nomination queue must not ask for every nomination');
+  assert.match(app, /const canTell = await countNominationsToTellOrNull\(store, \{ trailKey: trail\.trailKey \}\);/);
+  assert.equal((app.match(/canTell =/g) ?? []).length, 1, 'the count is not replaced after it is taken');
+  assert.match(app, /\$\{featureTellText\(canTell\)\} /);
+  // The wording helpers, tested above, are what the page shows.
+  assert.match(app, /el\('p', \{\}, withdrawText\(n\)\)/);
+  assert.match(app, /Unfeatured “\$\{f\.trail\.trailName\}”\. \$\{withdrawnText\(w\)\}/);
+  assert.match(app, /const who = contributionCountText\(s\.kind, count\);/);
+  assert.match(app, /say\(`\$\{partialWithdrawText\(out\.withdrawn\.deleted, n\)\}, then: /);
+  assert.ok(!/nominator\$\{/.test(app), 'no per-person count left in the page');
 });
 
 test('the two new History actions are known actions', () => {
