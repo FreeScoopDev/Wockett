@@ -225,7 +225,19 @@ let walkBadges: [WalkBadge] = [
 
 @Observable
 final class StreakStore {
-    static let shared = StreakStore()
+    static let shared = StreakStore.make(demo: isWKTDemoMode)
+
+    /// Under -WKTDemo nothing is persisted: the seeded demo history would
+    /// otherwise raise the real longest streak, mark badges as seen (so the
+    /// user never gets their celebration) and put the demo streak on the widget.
+    static func make(demo: Bool) -> StreakStore {
+        StreakStore(defaults: demo ? nil : .standard)
+    }
+
+    /// Where the longest streak and seen badges are kept; nil keeps them in
+    /// memory only and skips the widget's streak too.
+    let defaults: UserDefaults?
+    private var seenInMemory: Set<String> = []
 
     var currentStreak: Int = 0
     var appleADayStreak: Int = 0
@@ -234,8 +246,9 @@ final class StreakStore {
     private let longestKey    = "wkt_longestStreak_v1"
     private let seenBadgesKey = "wkt_seenBadges_v1"
 
-    init() {
-        longestStreak = UserDefaults.standard.integer(forKey: longestKey)
+    init(defaults: UserDefaults? = .standard) {
+        self.defaults = defaults
+        longestStreak = defaults?.integer(forKey: longestKey) ?? 0
     }
 
     /// Recomputes streaks and returns a newly unlocked badge if one was just earned.
@@ -245,17 +258,20 @@ final class StreakStore {
         appleADayStreak = compute(sessions: sessions, todaySteps: todaySteps, threshold: 10_000)
         if currentStreak > longestStreak {
             longestStreak = currentStreak
-            UserDefaults.standard.set(longestStreak, forKey: longestKey)
+            defaults?.set(longestStreak, forKey: longestKey)
         }
-        AppGroup.defaults?.set(currentStreak, forKey: AppGroup.WidgetKey.streak)
+        if defaults != nil {
+            AppGroup.defaults?.set(currentStreak, forKey: AppGroup.WidgetKey.streak)
+        }
         return checkNewBadge(sessions: sessions)
     }
 
     private func checkNewBadge(sessions: [WalkSession]) -> WalkBadge? {
-        let prevSeen  = Set(UserDefaults.standard.stringArray(forKey: seenBadgesKey) ?? [])
+        let prevSeen  = defaults.map { Set($0.stringArray(forKey: seenBadgesKey) ?? []) } ?? seenInMemory
         let nowEarned = walkBadges.filter { $0.isEarned(sessions: sessions, currentStreak: currentStreak) }
         let newOnes   = nowEarned.filter { !prevSeen.contains($0.id) }
-        UserDefaults.standard.set(Array(prevSeen.union(Set(nowEarned.map(\.id)))), forKey: seenBadgesKey)
+        let seen      = prevSeen.union(Set(nowEarned.map(\.id)))
+        if let defaults { defaults.set(Array(seen), forKey: seenBadgesKey) } else { seenInMemory = seen }
         return newOnes.first
     }
 

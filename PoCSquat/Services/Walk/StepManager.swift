@@ -179,7 +179,9 @@ final class StepManager: ObservableObject {
     func initialize() async {
         switch trackingMode {
         case .healthKit:
-            guard !isWKTUITestMode else { break }
+            // -WKTDemo too: the Health permission sheet would open over Home
+            // at the start of every how-to recording.
+            guard !isWKTUITestMode, !isWKTDemoMode else { break }
             await authorizeAndFetchHealthKit()
         case .appOnly:   startPedometer()
         }

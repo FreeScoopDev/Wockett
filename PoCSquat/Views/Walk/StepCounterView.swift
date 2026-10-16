@@ -209,9 +209,11 @@ struct StepCounterView: View {
         // modal and blocks the tab bar. Discard the checkpoint instead of prompting
         // so every test starts from the same clean state. Release builds are
         // unaffected (isWKTUITestMode is compiled out).
+        // Under -WKTDemo the alert is only not shown: the checkpoint belongs to
+        // a real walk on this device and stays for the next normal launch.
         if isWKTUITestMode {
             walkStore.declineRestore()
-        } else if walkStore.hasRestorableWalk {
+        } else if walkStore.hasRestorableWalk, !isWKTDemoMode {
             showRestoreWalkPrompt = true
         }
         // The badge celebration is a fullScreenCover, so it covers the tab bar and
@@ -220,8 +222,9 @@ struct StepCounterView: View {
         // roughly 15 s into the run. Keep refresh() running so streak bookkeeping
         // is identical; only suppress the presentation. (isWKTUITestMode is
         // compiled out of release builds, so shipping behaviour is unchanged.)
+        // -WKTDemo's seeded walk earns it too, over the first frame of a recording.
         if let badge = streakStore.refresh(sessions: historyStore.sessions, todaySteps: stepManager.todaySteps, dailyGoal: stepManager.currentGoal),
-           !isWKTUITestMode {
+           !isWKTUITestMode, !isWKTDemoMode {
             earnedBadge = badge
         }
         guard !isWKTUITestMode else { return }
@@ -230,9 +233,9 @@ struct StepCounterView: View {
 
     private func handleStepGoalCheck(_ steps: Int) {
         // Same reasoning as handleAppear: never present the celebration cover
-        // during a UI test run.
+        // during a UI test run or a demo recording.
         if let badge = streakStore.refresh(sessions: historyStore.sessions, todaySteps: steps, dailyGoal: stepManager.currentGoal),
-           !isWKTUITestMode {
+           !isWKTUITestMode, !isWKTDemoMode {
             earnedBadge = badge
         }
     }

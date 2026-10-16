@@ -34,7 +34,20 @@ enum AppModelContainer {
         BookmarkedLocationRecord.self
     ])
 
-    static let shared: ModelContainer = {
+    static let shared: ModelContainer = make(arguments: ProcessInfo.processInfo.arguments)
+
+    /// The store a launch with these arguments opens. Separate from `shared`
+    /// so a test can check the -WKTDemo choice; without that flag this opens
+    /// the persistent store, so tests call it only with the flag.
+    static func make(arguments: [String]) -> ModelContainer {
+        #if DEBUG
+        // -WKTDemo (how-to videos): in memory only, before CloudKit is tried, so
+        // the demo seed never reaches the user's store. See DemoMode.
+        if let demo = DemoMode.container(arguments: arguments) {
+            return demo
+        }
+        #endif
+
         // Attempt 1: CloudKit-backed persistent store (skipped under tests)
         if !isRunningUnderTests {
             let cloudConfig = ModelConfiguration(
@@ -79,7 +92,7 @@ enum AppModelContainer {
         } catch {
             fatalError("AppModelContainer: in-memory ModelContainer failed — schema is unusable: \(error)")
         }
-    }()
+    }
 
     // MARK: - One-time legacy migration
 

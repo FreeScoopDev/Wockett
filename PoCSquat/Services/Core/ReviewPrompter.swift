@@ -63,8 +63,9 @@ private struct AsksForReviewWhenDue: ViewModifier {
                 // system sheet over a half-dismissed cover reads as a glitch.
                 try? await Task.sleep(for: .seconds(1))
                 // A system sheet under UI tests would wake the interruption
-                // monitor, like notification banners do (CLAUDE.md).
-                guard !isWKTUITestMode, prompter.consume() else { return }
+                // monitor, like notification banners do (CLAUDE.md), and would
+                // land in a -WKTDemo recording.
+                guard !isWKTUITestMode, !isWKTDemoMode, prompter.consume() else { return }
                 requestReview()
             }
         }

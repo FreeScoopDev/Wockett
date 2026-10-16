@@ -47,8 +47,17 @@ final class RouteManager: NSObject, ObservableObject, CLLocationManagerDelegate 
     // Monotonically-increasing token: each new search increments this so stale
     // tasks from a cancelled search can't overwrite isGenerating or suggestedRoutes.
     private var searchGeneration = 0
+    /// Answers every location request instead of CoreLocation, with no
+    /// permission prompt. Only `-WKTDemo` passes one (DemoMode, debug builds);
+    /// the app passes nil otherwise, which is the path users run.
+    private let fixedLocation: CLLocation?
 
-    override init() {
+    override convenience init() {
+        self.init(fixedLocation: nil)
+    }
+
+    init(fixedLocation: CLLocation?) {
+        self.fixedLocation = fixedLocation
         super.init()
         locationManager.delegate = self
         locationManager.desiredAccuracy = kCLLocationAccuracyHundredMeters
@@ -65,7 +74,9 @@ final class RouteManager: NSObject, ObservableObject, CLLocationManagerDelegate 
     func generateRoutes(remainingMeters: Double,
                         transportType: MKDirectionsTransportType = .walking) async {
         #if DEBUG
-        if isWKTUITestMode {
+        // Not with -WKTDemo as well: the recording wants real routes around the
+        // demo location, not this stub.
+        if isWKTUITestMode, fixedLocation == nil {
             let origin = CLLocationCoordinate2D(latitude: 40.7589, longitude: -73.9851)
             let dest   = CLLocationCoordinate2D(latitude: 40.7650, longitude: -73.9780)
             var pts    = [origin, dest, origin]
@@ -458,6 +469,8 @@ final class RouteManager: NSObject, ObservableObject, CLLocationManagerDelegate 
     // MARK: - Location
 
     private func currentLocation(maxAge: TimeInterval = 300) async -> CLLocation? {
+        // First, so -WKTDemo wins over -WKTUITest's Times Square when both are passed.
+        if let fixedLocation { return fixedLocation }
         if isWKTUITestMode {
             return CLLocation(latitude: 40.7589, longitude: -73.9851)
         }

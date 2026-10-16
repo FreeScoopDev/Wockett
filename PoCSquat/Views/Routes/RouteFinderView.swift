@@ -294,7 +294,8 @@ struct RouteFinderContentView: View {
     /// trail pack, so the Trails list searches from downtown Raleigh instead
     /// and the smoke test has real data. Compiled out of release builds.
     private var trailCenter: CLLocationCoordinate2D? {
-        isWKTUITestMode
+        // -WKTDemo wins when both flags are passed: its fixed location is lastLocation.
+        isWKTUITestMode && !isWKTDemoMode
             ? CLLocationCoordinate2D(latitude: 35.7796, longitude: -78.6382)
             : routeManager.lastLocation?.coordinate
     }
@@ -871,7 +872,10 @@ struct RouteFinderMapView: UIViewRepresentable {
     func makeUIView(context: Context) -> MKMapView {
         let map = MKMapView()
         map.delegate = context.coordinator
-        map.showsUserLocation = true
+        // Not under -WKTDemo: the routes start from the fixed demo location, and
+        // the simulator's own location would sit elsewhere on the map and pull
+        // the route framing across the world (seen with the simulator in London).
+        map.showsUserLocation = !isWKTDemoMode
         map.overrideUserInterfaceStyle = .unspecified
         let tap = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleTap(_:)))
         tap.cancelsTouchesInView = false
@@ -913,7 +917,7 @@ struct RouteFinderMapView: UIViewRepresentable {
                     let pts = pl.points()
                     for i in 0..<pl.pointCount { coords.append(pts[i].coordinate) }
                 }
-                if let user = map.userLocation.location { coords.append(user.coordinate) }
+                if !isWKTDemoMode, let user = map.userLocation.location { coords.append(user.coordinate) }
                 if !coords.isEmpty {
                     let rect = coords.reduce(MKMapRect.null) { r, c in
                         let p = MKMapPoint(c)
@@ -1019,7 +1023,7 @@ struct RouteFinderMapView: UIViewRepresentable {
                 rect = rect.union(MKMapRect(x: p.x, y: p.y, width: 0, height: 0))
             }
         }
-        if selectedRoute == nil, let user = map.userLocation.location {
+        if selectedRoute == nil, !isWKTDemoMode, let user = map.userLocation.location {
             let p = MKMapPoint(user.coordinate)
             rect = rect.union(MKMapRect(x: p.x, y: p.y, width: 0, height: 0))
         }
