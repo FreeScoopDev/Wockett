@@ -1,2 +1,0 @@
-### Internal
-- "Staff dashboard tests" is now a required check on `main` (since 2026-10-15), with `.claude/app.json`, `CLAUDE.md` and `docs/ci.md` listing it. It guards the moderator dashboard, which acts on live CloudKit data, so a broken rule there (which reports group together, what gets snapshotted before a removal) should stop a merge rather than only show a red cross. `docs/ci.md` also listed three required checks when there were four; it now names all five.

@@ -5,6 +5,258 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [1.17] - 2026-10-16
+
+### Added
+- My contributions (Settings > Community, and a button on the nomination
+  thank-you): every trail you nominated from this device, the day you sent it,
+  and Sent or Featured. Until now a nomination got "Thanks for the tip" and
+  nothing ever came back, and people keep contributing when they can see it
+  mattered. There is no "not chosen" status: a nomination that isn't featured
+  stays Sent. The list is kept on this device and in its backups, not synced
+  through iCloud, so it starts empty and a reinstall without a restore loses
+  it (no new iCloud data). Pull to refresh; it also asks whenever it opens.
+- When the Wockett team features a trail you nominated, the Trails list says
+  so once ("Your nomination of Lake Loop was featured by the Wockett team").
+  If the app finds out in the background first (the background refresh that
+  already looks for untracked walks, so it can be hours late), one local
+  notification says it as well; if it finds out while you are using it, the
+  banner is the only announcement. Each nomination is announced once on the
+  Trails list, and at most once by notification. No remote push: the phone
+  asks, nobody tells it. It never asks for notification permission; quiet
+  delivery counts, and with notifications off the banner still shows.
+
+- Wockett Staff: featuring a nominated trail now tells its nominators. For
+  each nomination that carries a claim token (a random code the app will
+  send with new nominations), the dashboard writes a world-readable
+  `ContributionStatus` named after the token's SHA-256, saying only that the
+  trail was featured and when, so the nominator's phone can show "Featured"
+  in My contributions (the app part follows in a later PR). The status
+  record's name comes from the token alone, so it can't be worked out from
+  anyone's public account id; the token and the nominator never reach a
+  status record, History or the page. (The nomination record's own name is
+  still derived from the account and the trail; the app PR changes that.)
+  Unfeature withdraws the statuses, with the count in its confirm. Schema:
+  `ContributionStatus` (read by everyone, written only by a Moderator) and
+  `claimToken` on `TrailNomination`. Both must be imported into Development
+  before the Development dashboard features a trail and before any app build
+  sends `claimToken`, or CloudKit creates them with its default grants. The
+  dashboard checks the type exists before writing a status.
+
+- **Hikes.** A walk started from a trail in the Trails list is now a hike: the trail's button reads **Start Hike**, and the walk screen, the Lock Screen and Dynamic Island, the summary ("Hike complete!") and Activity History all say "Hike". Apple Health saves it as a Hiking workout instead of Walking. Someone looking for hikes found none, because no word in the app said hike or hiking, and the walks they took on trails were saved to Health as walking. A trail counts as a hike only when the map data says so: an unpaved surface, or a hiking difficulty grade. Trails mapped as paved or as bike paths (unpaved ones included) stay walks, and so does a path with no surface information and no difficulty, so a paved greenway or an untagged city footpath never says "Start Hike". In the bundled North Carolina trails that makes 2,249 of 4,688 trails hikes. Wockett itself still counts a hike as a walk (history filters, challenges, badges and the widget's numbers are unchanged), and a run or ride on a trail keeps its own name. Whether a walk is a hike is decided when it starts and saved with it, not guessed later from its name; every walk saved before this stays a walk. A walk to a trail that carries on along it also stays a walk, because its Health workout has already started as one. Saved as a new field on the walk record in iCloud (`CD_isHike`), which must be deployed to CloudKit Production before 1.17 ships, alongside the climb and splits fields.
+
+- Trail regions for Vermont (probe: Burlington), New Hampshire (Manchester), Maine (Portland), Massachusetts (Boston), Connecticut (Hartford) and Rhode Island (Providence) in `tools/regions.json`, so `make_region.sh` can build them. All six passed the release gates on 2026-10-14 with builder 1.5.0, built as v1 with `LIVE_VERSION=0` because the CloudKit token had expired and none of them has been published. Coverage (cities and towns with a named trail within 3 miles): Vermont 97%, New Hampshire 95%, Maine 95%, Massachusetts 98%, Connecticut 94%, Rhode Island 97%. Published as v1 to Development, checked on the simulator in each probe city and one small town per state (Middlebury, Littleton, Bar Harbor, Northampton, Willimantic, Westerly), then published to Production on 2026-10-14 with Joe's go-ahead; they download from Settings → Trail Regions without an app release. Seen in the check and left for the builder backlog: the Freedom Trail lists as a 0.3 mi piece rather than the whole trail, and "Childs Park Road B" (a park road) tops Northampton's list.
+- **Save Image** on the walk card's share sheet, so a walk card can go straight to Photos. iOS only offers Save Image to an app that explains why it adds to the photo library, and Wockett had no such text, so the option was simply missing (Copy, Save to Files and the rest were there). It now says: "Wockett saves your walk card to your photo library when you choose Save Image." This entry first said the change stopped a crash; checked on the simulator on 2026-10-14, the 1.16 build never offers Save Image at all, not even under Edit Actions, and the build with this text offers it, asks for photo access, and saves the card.
+- **Current pace** on walks and runs, beside the average. The one pace a walk or run showed was its average since the start, and the voice cue called that average "current pace". Instant pace is the figure runners complain about most when it jumps with GPS noise (research for the Run plan, 2026-10-14), so current pace is smoothed: moving time over distance across the last 45 seconds, from fixes the app already trusts, and blank ("--:--") when there is too little to go on or you have stopped for 15 seconds. The live screen glances at current pace; pulled up, it shows "current pace" and "avg pace". Rides keep their one average speed. The 45 s window is a starting value to tune on a real run.
+- **Splits on every outdoor walk and run**, per mile in the US and per kilometre elsewhere. Until now a free run, most runs, had none; only guided routes recorded checkpoint times. Each split's time is worked out at the exact crossing, between the two GPS fixes either side of it, and a last part-mile of at least a tenth is kept ("0.43 mi"). Splits are saved with the activity, so the summary shows them right after finishing and again from Activity History, and they survive the app being closed mid-run. Saved as a new field on the walk record in iCloud.
+- The **Live Activity** shows both paces for a walk or run: current pace with "Avg 9:20" beneath on the Lock Screen and in the Dynamic Island, and "9:05 · avg 9:20" on the Apple Watch Smart Stack (not yet measured on a real watch).
+
+- **Trail facts** on a trail's detail screen: how hard the path is ("Walking path", "Rough mountain path", "Steep, demanding path", "Alpine route, experienced hikers"), how smooth the surface is, how well it is marked, whether it is mapped as wheelchair accessible, whether it is lit at night, and who maintains it. Every trail pack already carried these from the map data and no screen showed them; more about each trail was Joe's first want, and this costs no pack rebuild, no iCloud change and no download. A fact appears only when the map data states it, so many trails show no card at all (of the named trails in the published state packs, from about one in eight in New Hampshire and Rhode Island to over four in ten in North Carolina state at least one): a hidden fact is better than a guessed one, and nothing is inferred from a trail's length. A line under the card says the facts are from the map data, not a current report.
+- A trail made of several sections is judged by length, so one short section cannot speak for a long trail: a good thing ("Smooth", "Well marked") is said plainly only when sections covering 80% of the trail say so, "in places" from 25%, and not at all below that; a warning ("Rough", "Faint or unmarked", "May be impassable") shows when any section states it, "in places" unless it covers 80%, and an "intermediate" grade always reads "Uneven in places" or "Faint or unmarked in places"; a harder grade on part of a trail reads "Includes rough mountain path"; wheelchair access and lighting need 80% of the trail and no section saying otherwise, so a 20 km mountain path partly mapped "no" is never called accessible. Walnut Creek Trail in Raleigh, smooth on one of its 16 sections, does not read "Smooth".
+- A **cycleway** shows no path type, which read as "no bikes" beside its Bike path chip. Where the map data says walkers may use it, it says "Shared with cyclists" when walking or running and "Shared with walkers" when riding; with no such tag it says nothing about walkers.
+- "Maintained by" is left out when the map data holds a code rather than a name ("btc", "TVA", "private").
+
+- After a hike or a walk on a named trail, the summary may ask "Help the next
+  walker": one-tap answers about dogs, stroller and wheelchair access, the
+  surface, and whether you liked it. The map data states these facts on only
+  6-15% of trails, and someone who has just walked one knows. Each answer is
+  optional and sends only the trail, the question and the answer (no name, no
+  free text, no location, not the walk) as a report only the Wockett team can
+  read. It asks at most once per trail and once a week, never during a walk,
+  never for a trail already answered, and never after "Don't ask again"
+  (also a switch in Settings > Community). The first answer gets a thank-you.
+  A walk on a trail restored after the app was closed mid-walk does not ask:
+  the trail is held only in memory, so nothing new is stored on the walk or
+  synced. Each report gets a random record name, so nobody can test from
+  public ids whether someone reported on a trail.
+- The Trail facts card has a "Walkers say" section below the map facts, with
+  one line per answer the Wockett team has published once at least 3 walkers
+  agree, such as "Dogs on leash (4 walkers)". It is kept apart from the map
+  data with its own caption, cached for offline use and refreshed at most
+  once a day. "How was it?" answers are collected but never shown.
+- Settings > Community > Delete my community data shows your identifier, with
+  a Copy button, and the removal email includes it on its own line: trail
+  reports can't be deleted from the app (only the Wockett team can read
+  them), and the staff dashboard finds them by that identifier.
+
+- Wockett Staff has a Walker reports tab, ready for the app's "Help the next
+  walker" card (a later release). Walkers who just finished a trail know
+  what the map data rarely says (dogs, stroller, wheelchair, surface), but
+  their answers can't be world-readable: grouped by creator they would list
+  the trails one account walked. So each answer is a `TrailFactReport` only
+  a moderator can read, the tab counts them per trail and fact (each walker
+  once), and Joe publishes a `TrailFactSummary` only when at least 3 walkers
+  gave the same answer and they are at least 2 in 3 of those who answered; a
+  tie or split publishes nothing. A summary holds the trail, the fact, the
+  answer, how many walkers gave it and when, never who, so "(3 walkers)" in
+  the app always means three said so. Un-publish withdraws one. "How was
+  it?" is counted but not published until Joe decides how to use it. Reports
+  older than 12 months can be deleted from the tab, with a count and a
+  confirm, and so can one walker's reports when they email asking: the
+  privacy text will offer that, so the tab finds a person's reports by the
+  identifier the app will show them, counts them, and deletes them on
+  confirm. The facts and answers are written down once, in
+  `docs/staff/walker-facts.js`, for the app to mirror. History records each
+  publish, un-publish and deletion.
+
+- **Climb** on outdoor walks, runs and rides: how far up you went, with how far down beneath it, on the summary and again from Activity History, in feet in the US and metres elsewhere. A hiker's first question after a walk is "how much climbing was that?", and Wockett could not answer it: nothing read the altitude every GPS fix already carries. It is worked out on the phone during the activity from those same fixes, so it works offline and costs no extra battery (no new location request, no higher accuracy, no barometer yet). Fixes with an unknown altitude or one worse than 15 m are ignored, the altitude is averaged over the last five fixes, and a change counts only once it passes 3 m, so GPS altitude jittering on a flat walk should add little or nothing (without the average, ±2.5 m of jitter could add up to a hundred metres of made-up climb; how noisy a real iPhone's altitude is has not been measured yet); after a gap in fixes the level starts again rather than counting the jump. The figure is final when the activity ends: nothing "corrects" it afterwards against a map, which is what people report doubling their gain in other apps. The tile appears only from 5 m of climb; an activity with no usable altitude shows none, so "no data" never reads as "flat". The climb so far survives the app being closed mid-walk. Saved as a new field on the walk record in iCloud (`CD_elevationData`), which must be deployed to CloudKit Production before 1.17 ships, alongside the splits field. Measured only in tests and the simulator, which has no real altitude; a walk up a real hill is still owed.
+
+### Changed
+- Each nomination now carries a random claim token, readable only by the
+  Wockett team like the rest of the nomination. When a trail is featured the
+  staff dashboard publishes a status named after a hash of that token, holding
+  no account and no token, so only the phone that sent it can find its own.
+- Nominations get a random record name instead of a hash of the trail and the
+  account. Both of those are public, so anyone could work out the old name for
+  someone else and learn from a refused save whether that account had
+  nominated that trail. This device still sends each trail once; the staff
+  dashboard keeps one nomination per person per trail.
+- The nomination thank-you says what happens next: "If it is featured you will
+  see it here, in My contributions."
+- One nomination per trail is now kept by this device rather than by
+  CloudKit. A second device can nominate the same trail again; only the newest
+  nomination is told when it is featured for now (a staff dashboard change to
+  tell every one is a follow-up).
+
+- Activity History rows and the walk screen's progress line now start with the activity's name ("Hike · …", "Walk · …", "Run · …"), because both titles are the route's name and nothing said which activity it was. A finished guided walk, run or ride now announces "Run complete!" or "Ride complete!" rather than always "Walk complete!".
+- The **voice cue** says each split and names each pace for what it is: "Mile 2. Time 18 minutes 40 seconds. Last mile 9 minutes 12 seconds. Average pace 9 minutes 20 seconds per mile." A ride hears its average speed instead of a pace it never showed. The cue now follows the split, so a run restored after the app was closed doesn't repeat a mile.
+- A guided route's checkpoint times on the summary are titled "Checkpoints", so the new per-mile "Splits" are the only section of that name.
+
+- Tapping an activity in a calendar day now opens its full summary, the same
+  screen Activity History opens, so the day view is no longer a dead end.
+
+- The Trail facts card now words each fact from how much of the whole trail
+  the map data says it about, not from one OSM way per section. A pack row is
+  often several ways joined together, and until trail builder 1.6.0 it kept
+  only the first way's tags, so a long trail could read "Smooth" because of a
+  short smooth stretch: the 24.6 km American Tobacco Trail row said
+  "Smooth" and "Lit at night" from ways covering 2% of it (it now reads
+  "Uneven in places", and no lighting line, since part of it is mapped unlit),
+  and a 21.8 km Appalachian Trail row said "Walking path" from 0.9% of it
+  and "Mapped as wheelchair accessible" from 0.3% (now "Rough mountain
+  path", and no access line). Lower
+  Piney Trail reads "Includes rough mountain path": 12% of it is graded
+  mountain_hiking. Joe's rules and thresholds are unchanged; only their input
+  is. A trail with any section from a pack built before 1.6.0 keeps the old
+  per-section reading, so a missing share is never taken as silence. The
+  bundled North Carolina pack is rebuilt with builder 1.6.0 from the same
+  extract (only `tags_json` and two meta values differ; +0.63 MB). Downloaded
+  states gain this when they are republished.
+- "Trail suggestions" in the delete screen is now "trail nominations", the
+  name the privacy policy will use, so "trail suggestions" can mean the later
+  "suggest a missing trail" feature without a clash.
+
+- The Terms of Service and the privacy policy describe what 1.17 adds to community
+  data, scoped "from version 1.17" so they stay true in the days before the App
+  Store approves it. Terms section 5 now covers trail reports (answers to a few
+  optional questions after a hike or a walk on a trail) as Community Content,
+  shown to others only as combined counts once at least three walkers agree. The
+  privacy policy gains rows for trail reports and trail nominations (what is sent,
+  who can read it, the claim code and status record behind My contributions, that
+  Delete my community data does not remove either, and the 12 month deletion), and
+  its summary no longer says the only thing others ever see is content you publish,
+  since a combined count is worked out from reports. "Trail suggestions" is now
+  "trail nominations" so the old name is free for the later suggest-a-missing-trail
+  feature. The agreement version (`CommunityTerms.version`) is not bumped: it is
+  bumped once, with that later feature, so people agree once rather than twice in two
+  releases; until then section 15 (continued use) is the only cover for the new
+  trail reports licence sentence for people who agreed before. A lawyer still needs
+  to read both pages.
+
+### Fixed
+- Wockett Staff: Feature and Suspend always failed with "Unknown length:
+  undefined" since they were added (#178, #180), so no trail could be
+  featured and no account suspended from the dashboard. The dialogs read
+  their "length" choice as `form.elements.length`, which is the number of
+  controls in the form. Found while running the new Feature step against a
+  fake CloudKit; both now work there.
+- On iOS 26, End on the minimised walk tile now asks to save or discard the
+  walk. Before, it did nothing. The question was attached inside the tile, which
+  sits in the tab bar's bottom accessory, and iOS 26.5 never shows a dialog
+  from there (iOS 27 does). It now comes from the app's root, so it appears on
+  both. Found by the `testMiniTileSaveAndEndShowsTheSummary` smoke test, which
+  failed on every CI run (iOS 26.5) and passed locally (iOS 27).
+- A cycleway's "Shared with cyclists" / "Shared with walkers" line is no
+  longer hidden by a stretch tagged `foot=destination` or `foot=permissive`.
+  Those values still let walkers on, so they are not the map "saying
+  otherwise"; only an explicit `foot=no` (or `foot=private`, as before)
+  hides the line. They do not count toward the 80% of the trail that must
+  say `yes` or `designated` either. Walnut Creek Trail in Raleigh had lost
+  the line over 54 m of `foot=destination` in 14.5 km, and is the one North
+  Carolina trail that gets it back. Wheelchair, lighting and every other
+  fact are unchanged.
+- Wockett Staff: featuring a nominated trail now tells each device that
+  nominated it, not only each person's newest nomination. The dashboard
+  counts one nomination per person per trail so that one account can't
+  outvote everyone, and the Feature step reused that list. Each claim token
+  belongs to the device that sent it, so once the app names nominations
+  randomly (the contribution-status app release; until then a second
+  device's nomination from the same account is refused), someone who
+  nominated a trail from two devices would have been told on one and seen
+  Sent on the other for good. Each person counts for at most 5 devices per
+  trail, because anyone can create nominations with tokens of their
+  choosing, and without a cap one account could make Feature write
+  thousands of public records. The Feature confirm now counts nominations
+  (from the same query Feature writes from, on both the Nominations and
+  Featured tabs) and says a person's other devices are included; Unfeature
+  and History count nominations too. Unfeature already withdrew every
+  status of the trail and still does. Statuses still hold no token or
+  nominator, so telling every device costs no privacy. The nomination queue
+  still counts each person once. Comments that said CloudKit refuses a
+  second walker report or nomination from one account are corrected: the
+  app names walker reports randomly, and nominations from the
+  contribution-status app release.
+- Rides no longer show a step count on the live ride screen or in the day,
+  Your Progress and pet sheets, and the Your Progress 7-day steps total leaves
+  rides out. A ride's "steps" were only its distance divided by a walking
+  stride (a 14 km ride read as 18,000 steps); the summary stopped showing them
+  in the last change, and these screens now follow the same rule.
+
+- Wockett Staff no longer prints the word "null" under some lists (an empty
+  queue's hint, the "showing the newest" note) when there was nothing to show.
+
+### Internal
+- The status vocabulary is mirrored from `docs/staff/contribution-status.js`
+  and the status name from the dashboard's test vector; tests read both
+  files. A Debug build checks that `ContributionStatus` exists in the CloudKit
+  container before it saves a nomination with a claim token, so a test build
+  can't add the field to Development before the schema is imported.
+- Release: `TrailNomination.claimToken` and `ContributionStatus` must be
+  deployed to CloudKit Production as a Console step before Start Build.
+  Without the field, every nomination from a Release build is refused and the
+  person sees the usual "check your connection" message (the log names the
+  likely cause).
+- "Staff dashboard tests" is now a required check on `main` (since 2026-10-15), with `.claude/app.json`, `CLAUDE.md` and `docs/ci.md` listing it. It guards the moderator dashboard, which acts on live CloudKit data, so a broken rule there (which reports group together, what gets snapshotted before a removal) should stop a merge rather than only show a red cross. `docs/ci.md` also listed three required checks when there were four; it now names all five.
+- The Live Activity's paces come from one place, `NavigationSessionManager.liveActivityState`. Nine callers each recomputed the pace before, with two different distance thresholds, and four sent no pace at all after a restore, a head-back or the start of a trail.
+- `RollingPace` and `SplitTracker` (`RunPacing.swift`) are plain values fed numbers, with 52 tests (`RunPacingTests`).
+- The Community hub badge tests use a fresh UserDefaults suite. Badges read
+  counters such as `wkt_manualEntries_count` from defaults, so leftover
+  simulator state could change which badges counted and fail the suite.
+- Trail pack builder 1.6.0 keeps what every piece of a trail says about the
+  facts the trail card shows (path grade, surface quality, marking,
+  wheelchair, lighting, walkers on cycleways, maintainer), as the share of
+  the trail's length stating each value. Until now, when the builder joined
+  several map pieces into one trail it kept only one piece's tags: a 216 m
+  stretch of Lower Piney Trail graded "mountain" stood for all 1.8 km, and
+  21.8 km of the Appalachian Trail read "hiking" from 0.9% of its length.
+  The shares sit inside the existing tags, so apps already on phones ignore
+  them and the pack format stays the same. The trail card starts reading
+  them in a later change; no pack is republished by this one.
+- `TrailFacts` (`Services/Trails/TrailFacts.swift`) turns a trail's pack rows into the facts as a plain function, with the 80% and 25% thresholds and all wording in one place, and its own tests (`TrailFactsTests`), including real rows read from the bundled North Carolina pack.
+- Trail data standards (`scripts/trail-pack/STANDARDS.md`) now include the fact checks for builder 1.6.0's length shares, because a pack without them still shows a Trail facts card (the older per-section rule) and nothing on screen says the shares are missing. Adding or republishing a state now confirms builder 1.6.0 and `fact_shares=1` in the pack's meta, prints per state how many named trails the map data gives a fact (a ceiling: the card's rules show fewer), and checks two real cards on the simulator after the Development publish: one long trail merged from many ways, one with several graded sections. The page also records that the live states gain shares only when republished, that republishing waits for 1.17, the release that reads them, and that each Production publish needs Joe's go-ahead and a fresh cktool token. The per-state share of trails that would show a fact on the card has no tool yet; the page says what to write (a test that runs the app's own rules on a given pack) rather than a copy of the rules that would drift. No gate or threshold changed.
+- The answer vocabulary is mirrored from `docs/staff/walker-facts.js`, and a
+  test compares the two. A Debug build checks that `TrailFactReport` already
+  exists in the CloudKit container before its first save, so a test build
+  can't create the type with CloudKit's default, world-readable grants.
+- `cloudkit/schema.ckdb` gains `TrailFactReport` (create: any signed-in
+  user; read and write: Moderator; its creator is QUERYABLE, so one
+  person's reports can be found) and `TrailFactSummary` (read: everyone;
+  create and write: Moderator). Not yet in CloudKit: they need importing to
+  Development and deploying to Production before the app version that writes
+  reports ships. A test reads the schema file and fails if a report becomes
+  readable by anyone but a moderator.
+
+
 ## [1.16] - 2026-10-13
 
 ### Added
