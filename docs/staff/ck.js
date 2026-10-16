@@ -184,7 +184,7 @@ export function fewPerNominator(records, limit = TOKENS_PER_NOMINATOR) {
 }
 
 /**
- * One report per person per item, the oldest, for the Reports queue's counts.
+ * One report per person per item, for the Reports queue's counts.
  * Until the app named reports randomly (fix/community-report-random-names)
  * a report's name came from the item and the reporter's account, so CloudKit
  * refused a second; anyone could compute that name, and the refusal told them
@@ -192,8 +192,10 @@ export function fewPerNominator(records, limit = TOKENS_PER_NOMINATOR) {
  * a reinstall, leaves two records, and any client can create more. The
  * oldest is kept so that a person who already reported an item cannot reopen
  * it after a dismissal by reporting again, as they never could before. An
- * owner's request to delete counts once per person per item per UTC day (the
- * app allows one a day, so asking again after a dismissal still arrives).
+ * owner's request to delete counts once per person per item per UTC day, the
+ * newest: the app allows one per *local* day, and in the Americas an evening
+ * request and the next morning's can share a UTC day, so keeping the oldest
+ * would drop a request that comes after a dismissal (critic run 1).
  * Records with no creator or no target are all kept. Old computed names and
  * new random ones are treated alike: names are never read. Done here, on the
  * raw records, so the reporter never leaves this file.
@@ -210,16 +212,18 @@ export function onePerReporter(records) {
     }
     return `${who}\n${target}\nreport`;
   };
-  const oldest = new Map();
+  const at = (r) => r.created?.timestamp ?? 0;
+  const kept = new Map();
   for (const r of records) {
     const key = keyOf(r);
     if (key === null) continue;
-    const best = oldest.get(key);
-    if (!best || (r.created?.timestamp ?? 0) < (best.created?.timestamp ?? 0)) oldest.set(key, r);
+    const best = kept.get(key);
+    const newest = key.includes('\nrequest@');
+    if (!best || (newest ? at(r) > at(best) : at(r) < at(best))) kept.set(key, r);
   }
   return records.filter((r) => {
     const key = keyOf(r);
-    return key === null || oldest.get(key) === r;
+    return key === null || kept.get(key) === r;
   });
 }
 

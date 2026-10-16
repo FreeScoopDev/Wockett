@@ -91,10 +91,20 @@ test('reports with no creator or no target are all kept', () => {
   assert.equal(onePerReporter([anon('a1'), anon('a2'), noTarget('n1'), noTarget('n2')]).length, 4);
 });
 
-test('an owner asking to delete on two days counts on each; twice in one UTC day, once', () => {
+test('an owner asking to delete on two days counts on each; twice in one UTC day, once (the newest)', () => {
   const req = (name, created) => raw(name, '_owner', 'c1', created, 'ownerRequest');
   const kept = onePerReporter([req('q1', T0), req('q2', T0 + 1000), req('q3', T0 + DAY)]);
-  assert.deepEqual(kept.map((r) => r.recordName).sort(), ['q1', 'q3']);
+  assert.deepEqual(kept.map((r) => r.recordName).sort(), ['q2', 'q3']);
+});
+
+test('an owner in Los Angeles asking again the next morning, after a dismissal the same UTC day, reopens it', async () => {
+  // 6 pm Oct 11 in LA is 01:00Z Oct 12; 9 am Oct 12 in LA is 16:00Z Oct 12: two local days, one UTC day.
+  const req = (name, iso) => raw(name, '_owner', 'c1', Date.parse(iso), 'ownerRequest');
+  const { records } = await pagedQuery(db([req('q1', '2026-10-12T01:00:00Z'), req('q2', '2026-10-12T16:00:00Z')]),
+    { recordType: 'CommunityReport' });
+  const [g] = groupReports(records, [dismissal('c1', Date.parse('2026-10-12T03:00:00Z'))]);
+  assert.equal(g.open, true);
+  assert.equal(g.newCount, 1);
 });
 
 test('an owner request after a dismissal, on a later day, reopens the challenge', async () => {
