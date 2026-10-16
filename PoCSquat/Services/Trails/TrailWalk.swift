@@ -46,6 +46,18 @@ struct TrailWalkPlan: Equatable {
     /// plan, including the one a session heading to a trail turns into on
     /// arrival, whose Health workout began as a walk.
     var isHikeable = false
+    /// The named trail walked, set by whoever starts the walk (the detail's
+    /// Start, or arrival at a trail), not by the planner: working it out
+    /// decodes geometry, and the planner runs on every render.
+    var trail: TrailRef?
+
+    /// This plan as started from `item`'s own Start: carrying the trail, for
+    /// the summary's questions. Nil-trail for unnamed or keyless paths.
+    func started(from item: TrailListItem) -> TrailWalkPlan {
+        var plan = self
+        plan.trail = TrailRef(item: item)
+        return plan
+    }
 
     /// What a session of this plan is called: the Start button's word and the
     /// session's are the same value.
@@ -57,7 +69,8 @@ struct TrailWalkPlan: Equatable {
         NavigableRoute(name: name, waypoints: waypoints, lapCount: 1, isLoop: isLoop,
                        totalDistance: distanceMeters, activityMode: activityMode, path: path,
                        turnaroundMeters: turnaroundMeters,
-                       isHike: wording(activityMode: activityMode).isHike)
+                       isHike: wording(activityMode: activityMode).isHike,
+                       trail: trail)
     }
 
     static func == (lhs: TrailWalkPlan, rhs: TrailWalkPlan) -> Bool {
@@ -271,6 +284,6 @@ extension NavigableRoute {
                               turnaroundMeters: turnaroundMeters.map { length - $0 },
                               // Still the same session: a hike set off round a
                               // loop the other way is still a hike.
-                              isHike: isHike)
+                              isHike: isHike, trail: trail)
     }
 }

@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 // MARK: - Settings > Community
 //
@@ -8,8 +9,23 @@ import SwiftUI
 
 /// The two rows Settings shows under Community.
 struct CommunitySettingsSection: View {
+    /// "Don't ask again" for the post-walk trail questions, stored inverted.
+    @AppStorage(TrailReportAskPolicy.offKey) private var trailQuestionsOff = false
+
     var body: some View {
         Section {
+            Toggle(isOn: Binding(get: { !trailQuestionsOff }, set: { trailQuestionsOff = !$0 })) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Trail questions after a walk")
+                        .foregroundColor(.earthCream)
+                    Text("A few optional taps about a trail you walked, at most once a week")
+                        .font(.wktLabel).foregroundColor(.earthMuted)
+                }
+            }
+            .tint(.earthGreenFill)
+            .accessibilityIdentifier("settings.trailQuestions")
+            .listRowBackground(Color.earthCard)
+
             NavigationLink {
                 BlockedPeopleView()
             } label: {
@@ -121,6 +137,9 @@ final class DeleteCommunityDataModel {
 struct DeleteCommunityDataView: View {
     @State private var model = DeleteCommunityDataModel()
     @State private var confirming = false
+    /// The signed-in account's ID, once known: shown, copyable and in the email.
+    @State private var account: String? = MyAccount.recordName
+    @State private var copied = false
     @Environment(\.openURL) private var openURL
 
     var body: some View {
@@ -159,16 +178,41 @@ struct DeleteCommunityDataView: View {
                     resultSection(report)
                 }
 
+                if let id = reportAccount ?? account {
+                    Section {
+                        Text(id)
+                            .font(.wktBodyText)
+                            .foregroundColor(.earthCream)
+                            .textSelection(.enabled)
+                            .accessibilityIdentifier("community.identifier")
+                            .listRowBackground(Color.earthCard)
+                        Button {
+                            UIPasteboard.general.string = id
+                            copied = true
+                        } label: {
+                            Label { Text(copied ? "Copied" : "Copy") } icon: { Image(wkt: .copy).wktIcon(.row, tint: .earthGreen) }
+                                .foregroundColor(.earthGreen)
+                        }
+                        .accessibilityIdentifier("community.copyIdentifier")
+                        .listRowBackground(Color.earthCard)
+                    } header: {
+                        WktListHeader(title: CommunityDataDeletion.identifierTitle)
+                    } footer: {
+                        Text(CommunityDataDeletion.identifierExplanation)
+                            .font(.wktLabel).foregroundColor(.earthMuted)
+                    }
+                }
+
                 Section {
                     Button {
-                        if let url = CommunityDataDeletion.supportMailURL(account: reportAccount ?? MyAccount.recordName) { openURL(url) }
+                        if let url = CommunityDataDeletion.supportMailURL(account: reportAccount ?? account) { openURL(url) }
                     } label: {
                         Label { Text("Email support@wockett.app") } icon: { Image(wkt: .envelope).wktIcon(.row, tint: .earthGreen) }
                             .foregroundColor(.earthGreen)
                     }
                     .listRowBackground(Color.earthCard)
                 } footer: {
-                    Text("The email includes your community account ID, so the Wockett team can find what you shared.")
+                    Text("The email includes your identifier, so the Wockett team can find what you sent.")
                         .font(.wktLabel).foregroundColor(.earthMuted)
                 }
             }
@@ -177,7 +221,10 @@ struct DeleteCommunityDataView: View {
         .navigationTitle("Community data")
         .navigationBarTitleDisplayMode(.inline)
         // The email's account ID comes from here before any run.
-        .task { await MyAccount.refresh() }
+        .task {
+            await MyAccount.refresh()
+            account = MyAccount.recordName
+        }
         .interactiveDismissDisabled(isRunning)
         .navigationBarBackButtonHidden(isRunning)
         .alert(CommunityDataDeletion.confirmTitle, isPresented: $confirming) {

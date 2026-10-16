@@ -30,6 +30,10 @@ struct ActivitySummaryView: View {
     /// An activity not saved yet (an indoor walk of 100 steps or fewer): the
     /// summary offers to save it. Returns the records the save set.
     var onSave: (() -> [PRType])?
+    /// The named trail this walk was on, carried in memory from the session
+    /// (`NavigableRoute.trail`), for the post-walk questions. Nil from
+    /// history, for a walk restored after the app was killed, and off trails.
+    var trail: TrailRef?
 
     // Not private: a private stored property can make the memberwise
     // initializer private on CI's Xcode 26.6 (CLAUDE.md memory, #202).
@@ -48,6 +52,9 @@ struct ActivitySummaryView: View {
     @State private var ringProgress: [UUID: Double] = [:]
     @State private var savedLate          = false
     @State private var lateRecords: [PRType] = []
+    /// The trail questions, decided once when the summary first appears.
+    @State private var trailReport: TrailReportCardModel?
+    @State private var trailReportDecided = false
 
     private var mode: ActivityMode { ActivitySummaryContent.mode(of: session) }
     /// "Hike complete!" for a hike; the activity's words otherwise.
@@ -97,6 +104,8 @@ struct ActivitySummaryView: View {
                     header
                     if ActivitySummaryContent.hasRoute(session) { routeMap }
                     ActivityStatTiles(session: session)
+                    // High up, so it is seen before Done; it counts as asked only once seen.
+                    if let trailReport { TrailReportCard(model: trailReport, noun: wording.noun) }
 
                     if !shownRecords.isEmpty { prBanner }
                     if isJustFinished, let line = stopEncouragement {
@@ -139,7 +148,10 @@ struct ActivitySummaryView: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("summary.root")
-        .onAppear { animateRings() }
+        .onAppear {
+            animateRings()
+            decideTrailReport()
+        }
         .sheet(isPresented: $showActivityShare) {
             ActivitySummaryShareSheet(session: session, historyStore: historyStore)
         }
@@ -153,6 +165,15 @@ struct ActivitySummaryView: View {
     private func finish() {
         if isJustFinished, !shownRecords.isEmpty { ReviewPrompter.shared.noteHighlight() }
         dismiss()
+    }
+
+    /// Whether to ask about the trail: decided once per summary, within the
+    /// policy's limits. The ask is spent when the card is seen, not here.
+    private func decideTrailReport() {
+        guard !trailReportDecided else { return }
+        trailReportDecided = true
+        trailReport = TrailReportCardModel.forSummary(trail: trail, session: session, moment: moment,
+                                                      walkStore: ActiveWalkStore.shared)
     }
 
     private func animateRings() {

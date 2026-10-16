@@ -8,6 +8,8 @@ struct ActivitySummaryRequest: Identifiable {
     let id = UUID()
     let session: WalkSession
     let records: [PRType]
+    /// The named trail walked, for the summary's questions (memory only).
+    var trail: TrailRef?
     /// Checkpoint splits of a guided walk, read before the session stops.
     var splits: [(label: String, elapsed: TimeInterval)] = []
 }
@@ -43,6 +45,10 @@ final class ActiveWalkStore {
     /// a discard: the walk is in Activity History, one tap from its summary.
     var pendingSummary: ActivitySummaryRequest?
 
+    /// The named trail of the walk `end(.save)` just saved, for the walk
+    /// screen's summary questions (memory only). Cleared with the session.
+    @ObservationIgnored private(set) var endedTrail: TrailRef?
+
     /// `shared` is the app's store; tests build their own with an in-memory
     /// history store. `.shared` defaults are resolved in the body, not as
     /// default arguments, which are evaluated off the main actor.
@@ -61,6 +67,11 @@ final class ActiveWalkStore {
     }
 
     var isActive: Bool { session != nil }
+
+    /// A walk is being recorded: a session exists and has not been ended.
+    /// False on the summary, where the stopped session is still held
+    /// (`releaseSession: false`). The trail questions never show while true.
+    var isWalkInProgress: Bool { session != nil && !sessionEnded }
 
     // MARK: - Ending a walk
 
@@ -103,12 +114,13 @@ final class ActiveWalkStore {
                 walk.petDistances = pets
                 walk.isCommunityRoute = route.isCommunityRoute
                 historyStore.add(walk)
+                endedTrail = route.trail
                 BackgroundTaskManager.shared.scheduleCloudKitSync()
                 saved = walk
                 if presentSummary {
                     pendingSummary = ActivitySummaryRequest(
                         session: walk, records: checkNewPRs(newSession: walk, against: previous),
-                        splits: session.splitTimes)
+                        trail: route.trail, splits: session.splitTimes)
                 }
             }
         case .discard:
@@ -268,6 +280,7 @@ final class ActiveWalkStore {
         activeRoute = nil
         isStarted = false
         sessionEnded = false
+        endedTrail = nil
         // A walk ended another way (Live Activity) takes its question with it.
         endConfirmationRequested = false
     }

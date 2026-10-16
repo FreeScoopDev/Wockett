@@ -287,6 +287,7 @@ struct TrailDetailView: View {
     /// distance most days).
     @AppStorage(TrailWalkOption.byTimeKey) private var byTime = false
     @AppStorage(TrailWalkOption.choiceKey) private var storedChoice = ""
+    var walkerFacts: TrailFactSummaryService = .shared
 
     /// How far there is to go from here: toward the farther end of a line,
     /// or half way round a loop.
@@ -366,7 +367,8 @@ struct TrailDetailView: View {
 
                 TrailTagRow(item: item, activityMode: activityMode)
 
-                TrailFactsCard(facts: TrailFacts.facts(for: item, activityMode: activityMode))
+                TrailFactsCard(facts: TrailFacts.facts(for: item, activityMode: activityMode),
+                               walkerLines: walkerFacts.lines(forKeys: TrailFactSummaries.keys(of: item)))
 
                 dogRule
 
@@ -385,6 +387,10 @@ struct TrailDetailView: View {
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("routes.trailDetail")
         }
+        // Published walker answers for this trail: cached, fetched at most daily.
+        .task(id: item.id) {
+            await walkerFacts.refreshIfStale(keys: TrailFactSummaries.keys(of: item))
+        }
     }
 
     private func startButton(_ plan: TrailWalkPlan) -> some View {
@@ -392,7 +398,8 @@ struct TrailDetailView: View {
             if options.count > 1 { chooser }
             Button {
                 rememberPace()
-                onStart(plan)
+                // The trail goes with the walk, for the summary's questions.
+                onStart(plan.started(from: item))
             } label: {
                 // "Start Hike" on a hikeable trail; the session started gets
                 // the same word from the same plan (`TrailWalkPlan.wording`).
@@ -460,43 +467,105 @@ struct TrailDetailView: View {
 // MARK: - Facts
 
 /// What the map data states about a trail (`TrailFacts`): one row per stated
-/// fact, and the provenance caption under the card. No facts, no card: most
-/// trails state none, and the screen must look complete without it.
+/// fact, and the provenance caption under the card. Then, separately and
+/// below, what walkers say (`TrailFactSummaries`): one line per published
+/// summary, under its own heading and caption, never merged into a map-data
+/// line (spec feat/trail-walker-reports, criterion 5). Either part shows only
+/// when it has something; most trails have neither, and the screen must look
+/// complete without them.
 struct TrailFactsCard: View {
     let facts: [TrailFacts.Fact]
+    var walkerLines: [WalkerFactLine] = []
+
+    /// Which parts show, in order. Pure, so the rules are tested.
+    enum Part: Hashable { case mapData, walkers }
+
+    static func parts(facts: [TrailFacts.Fact], walkerLines: [WalkerFactLine]) -> [Part] {
+        (facts.isEmpty ? [] : [.mapData]) + (walkerLines.isEmpty ? [] : [.walkers])
+    }
+
+    static let walkersTitle = "Walkers say"
+
+    /// Each part's own caption, never shared.
+    static func caption(for part: Part) -> String {
+        switch part {
+        case .mapData: return TrailFacts.caption
+        case .walkers: return walkersCaption
+        }
+    }
+    static let walkersCaption = "Combined answers from walkers after their walks, shown once at least \(TrailFactSummaries.minimumWalkers) agree. Not map data or a current report."
 
     var body: some View {
-        if !facts.isEmpty {
-            WktSection(title: "Trail facts") {
-                VStack(alignment: .leading, spacing: 12) {
-                    ForEach(facts, id: \.kind) { fact in
-                        HStack(alignment: .center, spacing: 12) {
-                            WktIconBadge(symbol: fact.symbol)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(fact.label)
-                                    .font(.wktLabel)
-                                    .foregroundColor(.earthMuted)
-                                Text(fact.text)
-                                    .font(.wktBodyText)
-                                    .foregroundColor(.earthCream)
-                                    .fixedSize(horizontal: false, vertical: true)
-                            }
+        let parts = Self.parts(facts: facts, walkerLines: walkerLines)
+        if !parts.isEmpty {
+            // Rendered in `parts` order, so the tested order is the shown one.
+            VStack(alignment: .leading, spacing: WktSpacing.betweenSections) {
+                ForEach(parts, id: \.self) { part in
+                    switch part {
+                    case .mapData: mapFacts
+                    case .walkers: walkersSay
+                    }
+                }
+            }
+        }
+    }
+
+    private var mapFacts: some View {
+        WktSection(title: "Trail facts") {
+            VStack(alignment: .leading, spacing: 12) {
+                ForEach(facts, id: \.kind) { fact in
+                    HStack(alignment: .center, spacing: 12) {
+                        WktIconBadge(symbol: fact.symbol)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(fact.label)
+                                .font(.wktLabel)
+                                .foregroundColor(.earthMuted)
+                            Text(fact.text)
+                                .font(.wktBodyText)
+                                .foregroundColor(.earthCream)
+                                .fixedSize(horizontal: false, vertical: true)
                         }
                     }
                 }
-                .wktCard()
-                Text(TrailFacts.caption)
-                    .font(.wktLabel)
-                    .foregroundColor(.earthMuted)
-                    .fixedSize(horizontal: false, vertical: true)
             }
-            // One element, caption included, so VoiceOver never reads a fact
-            // without the line saying it is map data, not a report.
-            .accessibilityElement(children: .combine)
-            // The heading's trait would otherwise make the whole card a heading.
-            .accessibilityRemoveTraits(.isHeader)
-            .accessibilityIdentifier("routes.trailFacts")
+            .wktCard()
+            Text(Self.caption(for: .mapData))
+                .font(.wktLabel)
+                .foregroundColor(.earthMuted)
+                .fixedSize(horizontal: false, vertical: true)
         }
+        // One element, caption included, so VoiceOver never reads a fact
+        // without the line saying it is map data, not a report.
+        .accessibilityElement(children: .combine)
+        // The heading's trait would otherwise make the whole card a heading.
+        .accessibilityRemoveTraits(.isHeader)
+        .accessibilityIdentifier("routes.trailFacts")
+    }
+
+    private var walkersSay: some View {
+        WktSection(title: Self.walkersTitle) {
+            VStack(alignment: .leading, spacing: 12) {
+                ForEach(walkerLines) { line in
+                    HStack(alignment: .center, spacing: 12) {
+                        WktIconBadge(symbol: line.symbol, tint: .accentRide)
+                        Text(line.text)
+                            .font(.wktBodyText)
+                            .foregroundColor(.earthCream)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+            .wktCard()
+            Text(Self.caption(for: .walkers))
+                .font(.wktLabel)
+                .foregroundColor(.earthMuted)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        // Its own element, with its own caption: VoiceOver reads "Walkers
+        // say" and never runs these lines into the map facts.
+        .accessibilityElement(children: .combine)
+        .accessibilityRemoveTraits(.isHeader)
+        .accessibilityIdentifier("routes.walkersSay")
     }
 }
 

@@ -775,6 +775,11 @@ struct NavigableRoute: Identifiable, Hashable {
     /// to Health as Hiking. Fixed when the session starts, because its Health
     /// workout type is.
     var isHike: Bool = false
+    /// The named trail this session walks, for the post-walk questions
+    /// (`TrailReportAskPolicy`): set when a trail walk starts from the trail's
+    /// detail or on arrival at it. Memory only, never in the checkpoint or
+    /// Walk History, so a walk restored after the app was killed asks nothing.
+    var trail: TrailRef? = nil
 
     /// What this session is called.
     var wording: SessionWording { SessionWording(activityMode, isHike: isHike) }

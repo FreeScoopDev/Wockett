@@ -104,6 +104,9 @@ private struct ActiveSessionScreen: View {
     @State private var endSessionOnDismiss    = false
     @State private var showActivitySummary    = false
     @State private var summarySession: WalkSession?
+    /// The trail this walk ended on (`ActiveWalkStore.endedTrail`; a trail
+    /// reached from the way there sets it on arrival).
+    @State private var summaryTrail: TrailRef?
     @State private var summaryPRs: [PRType]   = []
     @State private var summarySplits: [(label: String, elapsed: TimeInterval)] = []
     @State private var waterBreakEnabled      = false
@@ -266,7 +269,8 @@ private struct ActiveSessionScreen: View {
                     petIds: summaryPetIds,
                     onExcludeFromRouteStats: s.customRouteId != nil ? {
                         historyStore.updateCountsTowardRouteStats(id: s.id, counts: false)
-                    } : nil
+                    } : nil,
+                    trail: summaryTrail
                 )
             }
         }
@@ -886,6 +890,7 @@ private struct ActiveSessionScreen: View {
         let previous = historyStore.sessions
         summarySplits = session.splitTimes
         let saved = walkStore.end(.save, releaseSession: false)
+        summaryTrail = walkStore.endedTrail
         let prs = saved.map { checkNewPRs(newSession: $0, against: previous) } ?? []
         if routeCompleted, let saved {
             if !prs.isEmpty {

@@ -18,10 +18,10 @@ struct CommunityDataDeletionTests {
                 == ["CommunityVote", "WocketAchievement", "SharedRoute", "ChallengeEntry", "Challenge", "CommunityName"])
     }
 
-    @Test("Reports and trail suggestions are named as what it can't delete")
+    @Test("Reports, trail nominations and trail reports are named as what it can't delete")
     func undeletableTypes() {
-        #expect(CommunityDataDeletion.undeletable.map(\.recordType) == ["CommunityReport", "TrailNomination"])
-        #expect(CommunityDataDeletion.undeletableNote.contains("Reports and trail suggestions"))
+        #expect(CommunityDataDeletion.undeletable.map(\.recordType) == ["CommunityReport", "TrailNomination", "TrailFactReport"])
+        #expect(CommunityDataDeletion.undeletableNote.contains("Reports and trail nominations you sent, and your trail reports"))
     }
 
     @Test("Every type the delete covers is queryable by creator in the schema; the two it can't delete grant the creator nothing")
@@ -234,6 +234,6 @@ struct CommunityDataDeletionTests {
         let url = try #require(CommunityDataDeletion.supportMailURL(account: "_abc123"))
         let text = try #require(url.absoluteString.removingPercentEncoding)
         #expect(text.hasPrefix("mailto:support@wockett.app"))
-        #expect(text.contains("My community account ID: _abc123"))
+        #expect(text.contains("My identifier: _abc123"))
     }
 }

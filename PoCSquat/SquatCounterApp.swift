@@ -144,7 +144,8 @@ struct SquatCounterApp: App {
                     splits: request.splits,
                     onExcludeFromRouteStats: request.session.customRouteId != nil ? {
                         historyStore.updateCountsTowardRouteStats(id: request.session.id, counts: false)
-                    } : nil
+                    } : nil,
+                    trail: request.trail
                 )
             }
             // The mini tile's End asks here, not in the tile (see the modifier).
