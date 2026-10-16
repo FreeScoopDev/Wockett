@@ -29,7 +29,8 @@
 reads but only a Moderator writes. `TrailFactReport`, like `TrailNomination`
 and `CommunityReport`, is the reverse: any signed-in user creates one, only a
 Moderator reads it, because grouped by creator, readable reports would list
-the trails one account walked.
+the trails one account walked. `TrailSuggestion` is the same, for the same
+reason: its line is somewhere the walker walked.
 
 A type with grants like these is added to Development by importing this file
 (step 1 above), or by hand in the Console. Not by a Debug build saving a

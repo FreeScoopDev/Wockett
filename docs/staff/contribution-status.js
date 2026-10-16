@@ -35,3 +35,11 @@ export const CONTRIBUTION_KINDS = Object.freeze({
     }),
   }),
 });
+
+// A status's `trailKey` says which trail it is about, and the phone checks it
+// against the contribution it sent. A suggestion is a path the packs don't
+// have, so it has no pack key: its status carries this word instead, and the
+// app stores the same word as its suggestion's trail key (spec
+// feat/trail-suggestions, PR 1 decisions). It can never be a pack key (those
+// are `<region>:<ref>`), so Unfeature's lookup by trail never meets it.
+export const SUGGESTION_STATUS_TRAIL_KEY = 'suggestion';

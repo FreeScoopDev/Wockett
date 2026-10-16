@@ -15,11 +15,11 @@ import { isGone, isValidRecordName, isClaimToken, contributionStatusName, REQUES
 export const CREATOR_TYPES = new Set(['SharedRoute', 'WocketAchievement', 'Challenge', 'ChallengeEntry', 'CommunityName']);
 
 /**
- * Fields the page never holds. A nomination's `claimToken` is the secret its
- * phone uses to find its own status record (spec feat/contribution-status):
- * shown, logged or copied anywhere, it would tell whoever saw it which status
- * is whose. `nominationStatusName` turns it into the status name here and
- * nothing else keeps it.
+ * Fields the page never holds. A nomination's or suggestion's `claimToken` is
+ * the secret its phone uses to find its own status record (spec
+ * feat/contribution-status): shown, logged or copied anywhere, it would tell
+ * whoever saw it which status is whose. `claimStatusName` turns it into the
+ * status name here and nothing else keeps it.
  */
 export const NEVER_PLAIN_FIELDS = new Set(['claimToken']);
 
@@ -264,14 +264,53 @@ export function reporterToken(account) {
 }
 
 /**
+ * Trail suggestions: the same idea, a token per account for this page load
+ * (`suggester-1`, …), kept apart from the walker-report tokens so the page
+ * can't link a person's reports to their suggestions. Used to count walkers
+ * and to cap how many statuses one person's suggestions can make Accept write.
+ */
+const suggesterTokens = new Map();
+
+export function suggesterToken(account) {
+  if (typeof account !== 'string' || !account) return undefined;
+  if (!suggesterTokens.has(account)) suggesterTokens.set(account, `suggester-${suggesterTokens.size + 1}`);
+  return suggesterTokens.get(account);
+}
+
+/**
+ * The only record names a suggestion may have here: `suggestion.<UUID>`, as
+ * the app names them (spec feat/trail-suggestions, PR 1 decisions: random,
+ * never from the line, the account or the token).
+ */
+export const SUGGESTION_RECORD_NAME = /^suggestion\.[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$/;
+
+/**
+ * Whether a suggestion's record name can't go into History: anything but
+ * `suggestion.<UUID>`, or that UUID being the record's own claim token (in
+ * either case). Accept and Decline write the record names they decide into
+ * History, which must never hold a token, an account or a status name, and a
+ * crafted record can be named anything; so only the app's shape passes, and
+ * such a record never reaches the page.
+ */
+export function nameLeaks(record) {
+  const name = String(record?.recordName ?? '');
+  if (!SUGGESTION_RECORD_NAME.test(name)) return true;
+  const token = record?.fields?.claimToken?.value;
+  return typeof token === 'string' && name.slice('suggestion.'.length).toLowerCase() === token.toLowerCase();
+}
+
+/**
  * Every page of a query, up to `max` records. `more` says some were left out.
  * Nominations come one per person per trail (`onePerNominator`) unless
  * `everyNomination` is set, as telling nominators needs: then each device's
  * nomination, up to `TOKENS_PER_NOMINATOR` per person (`fewPerNominator`).
  * Reports come one per person per item (`onePerReporter`), except in a query
  * by creator (`onlyCreator`; none for reports today), which gets every one.
+ * Suggestions come with `submitter` and `statusName`, never the account or
+ * the token; `hidden` counts suggestions left out by `nameLeaks`.
  */
 export async function pagedQuery(db, query, { max = 1000, pageSize = 200, onlyCreator, everyNomination = false } = {}) {
+  let hidden = 0;
   let raw = [];
   let response = check(await db.performQuery(query, { resultsLimit: Math.min(pageSize, max) }));
   raw.push(...response.records);
@@ -286,6 +325,14 @@ export async function pagedQuery(db, query, { max = 1000, pageSize = 200, onlyCr
   if (query.recordType === 'CommunityReport') {
     for (const r of raw) if (r.created?.userRecordName) reportFilers.set(r.recordName, r.created.userRecordName);
   }
+  // A suggestion whose name could put a token, an account or a status name
+  // into History (`nameLeaks`) is left out and counted, except when finding
+  // one account's records to delete them: deleting writes only a count.
+  if (query.recordType === 'TrailSuggestion' && onlyCreator === undefined) {
+    const before = raw.length;
+    raw = raw.filter((r) => !nameLeaks(r));
+    hidden = before - raw.length;
+  }
   // A query by creator gets every record. None exists for reports today
   // (CloudKit would need ___createdBy queryable on CommunityReport); if one is
   // added, it must see each of a person's reports, not one per item.
@@ -298,24 +345,31 @@ export async function pagedQuery(db, query, { max = 1000, pageSize = 200, onlyCr
       const token = reporterToken(r.created?.userRecordName);
       if (token) out.reporter = token;
     }
-    if (r.recordType === 'TrailNomination') {
-      const statusName = await nominationStatusName(r);
+    if (r.recordType === 'TrailSuggestion') {
+      const token = suggesterToken(r.created?.userRecordName);
+      if (token) out.submitter = token;
+    }
+    if (r.recordType === 'TrailNomination' || r.recordType === 'TrailSuggestion') {
+      const statusName = await claimStatusName(r);
       if (statusName) out.statusName = statusName;
     }
     records.push(out);
   }
-  return { records, more: hasMorePages(response) || raw.length > max };
+  return { records, more: hasMorePages(response) || raw.length > max, hidden };
 }
 
 /**
- * The status record name for a raw nomination's claim token, or undefined
- * when it has none (sent before the app wrote one) or one that isn't a UUID.
- * The token goes no further than this function.
+ * The status record name for a raw nomination's or suggestion's claim token,
+ * or undefined when it has none (sent before the app wrote one) or one that
+ * isn't a UUID. The token goes no further than this function.
  */
-export async function nominationStatusName(record) {
+export async function claimStatusName(record) {
   const token = record?.fields?.claimToken?.value;
   return isClaimToken(token) ? contributionStatusName(token) : undefined;
 }
+
+/** `claimStatusName`, under the name the nominations code and its tests know. */
+export const nominationStatusName = claimStatusName;
 
 /**
  * CloudKit JS fields from plain values. A value that is already

@@ -17,11 +17,15 @@ import {
   tallyWalkerReports, summaryRows, summaryRecordName, summaryStanding, verdictText, factLabel, valueLabel, countsOf,
   MIN_AGREEING, AGREEMENT, RETENTION_MONTHS, WALKER_FACTS, CONTRIBUTION_KINDS, knownContribution,
   unfeatureLookup, errorClause, featureTellText, toldText, withdrawText, withdrawnText, partialWithdrawText, contributionCountText,
+  groupSuggestions, routePaths, suggestionIssueText, suggestionStatusNames, acceptTellText, suggestionToldText, suggestionHistoryText,
+  osmEditLink, gpxDocument, gpxFileName, SUGGESTION_FACTS, OVERLAP_TOLERANCE_M, OVERLAP_SHARE, suggestionCount,
+  acceptPlan, isUnknownRecordType, overCap, SUGGESTION_CAPS,
 } from './logic.js';
 import {
   removeItem, dismissItem, suspendAccount, liftSuspension, itemsOf, OWNED_TYPES, featureTrailAndTell, unfeatureTrailAndWithdraw, dismissNominations,
   findNominationStatuses, countNominationsToTellOrNull,
   publishSummary, unpublishSummary, findExpiredReports, deleteExpiredReports, findReportsBy, deleteReportsBy,
+  acceptSuggestionsAndTell, declineSuggestions, findSuggestionsBy, deleteSuggestionsBy,
 } from './actions.js';
 
 // MARK: - Helpers
@@ -179,7 +183,7 @@ function render() {
   const seq = renderSeq;
   const screens = {
     reports: renderReports, browse: renderBrowse, nominations: renderNominations, featured: renderFeatured, walker: renderWalkerReports,
-    activity: renderActivity, suspensions: renderSuspensions, history: renderHistory,
+    suggestions: renderSuggestions, activity: renderActivity, suspensions: renderSuspensions, history: renderHistory,
   };
   screens[view](seq).catch((error) => { if (current(seq)) fail(error); });
 }
@@ -973,6 +977,321 @@ function confirmDeleteByIdentifier({ records, more }) {
   dialog.replaceChildren(form);
 }
 
+// MARK: - Trail suggestions
+
+let suggestionFilter = 'waiting';
+/**
+ * Decisions made this session, as the actions they wrote: grouping counts
+ * them until CloudKit's index returns the real ones (an action can take a
+ * moment to show in a query).
+ */
+const suggestionsDecided = [];
+
+const SUGGESTION_FILTERS = { waiting: 'Waiting', accepted: 'Accepted', declined: 'Declined', all: 'All' };
+
+/** The group's lines in one drawing, the accepted one on top, with a dot at its start. */
+function suggestionSvg(group) {
+  // At most 20 others: a flood of duplicates must not become megabytes of drawing.
+  const others = group.members.filter((m) => m.line && m !== group.line).slice(0, 20).map((m) => m.line);
+  const lines = group.line ? [...others, group.line.line] : others;
+  const { paths, at } = routePaths(lines, 160, 120, 10);
+  if (!at) return null;
+  const NS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(NS, 'svg');
+  svg.setAttribute('viewBox', '0 0 160 120');
+  svg.setAttribute('class', 'route');
+  svg.setAttribute('role', 'img');
+  svg.setAttribute('aria-label', group.members.length > 1 ? 'The suggested lines, drawn together' : 'The suggested line');
+  paths.forEach((d, i) => {
+    if (!d) return;
+    const path = document.createElementNS(NS, 'path');
+    path.setAttribute('d', d);
+    if (group.line && i === paths.length - 1) path.setAttribute('class', 'accepted');
+    else if (group.line) path.setAttribute('class', 'other');
+    svg.append(path);
+  });
+  const start = (group.line ?? group.members.find((m) => m.line))?.line?.[0];
+  if (start) {
+    const { x, y } = at(start);
+    const dot = document.createElementNS(NS, 'circle');
+    dot.setAttribute('cx', x);
+    dot.setAttribute('cy', y);
+    dot.setAttribute('r', '3.5');
+    dot.setAttribute('class', 'start');
+    svg.append(dot);
+  }
+  return svg;
+}
+
+/** At most `n` UTF-16 units of `text`, with … when cut: crafted text over the caps can be any size. */
+function clip(text, n) {
+  const s = String(text ?? '');
+  return s.length > n ? `${s.slice(0, n)}…` : s;
+}
+
+/** Saves `text` as a file on this computer: made on the page, nothing is sent anywhere. */
+function saveFile(fileName, text, type) {
+  const url = URL.createObjectURL(new Blob([text], { type }));
+  const a = el('a', { href: url, download: fileName });
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function suggestionIssues(group) {
+  const out = [];
+  const members = group.members.length;
+  for (const m of group.members) {
+    const which = members > 1 ? `${m === group.line ? 'The line used' : `One of the ${members}`}: ` : '';
+    for (const code of [...m.problems, ...m.warnings]) out.push(`${which}${suggestionIssueText(code, m)}`);
+  }
+  return [...new Set(out)];
+}
+
+function suggestionCard(g) {
+  const line = g.line;
+  // The accepted line's start; with none within the caps, any line's, so an over-cap path can still be looked at.
+  const start = (line ?? g.members.find((m) => m.line))?.line?.[0];
+  const issues = suggestionIssues(g);
+  const factChips = SUGGESTION_FACTS.filter((fact) => g.facts[fact]).flatMap((fact) => Object.entries(g.facts[fact])
+    .map(([value, n]) => el('span', { class: 'chip' }, `${valueLabel(fact, value)} ×${n}`)));
+  const decided = g.members.length - g.pending;
+  const maps = start ? mapsLink(start.latitude, start.longitude, clip(g.name, 120) || 'Suggested path') : null;
+  const osm = start ? osmEditLink(start.latitude, start.longitude) : null;
+  return el('article', { class: 'card' },
+    el('div', { class: 'row' },
+      suggestionSvg(g),
+      el('div', { class: 'body' },
+        el('div', {},
+          el('span', { class: 'chip' }, 'Suggestion'),
+          line?.region ? el('span', { class: 'chip' }, line.region.toUpperCase()) : null,
+          g.state === 'waiting' ? null : el('span', { class: 'chip' }, SUGGESTION_FILTERS[g.state]),
+          issues.length ? el('span', { class: 'chip warn' }, `${issues.length} to check`) : null),
+        el('div', { class: 'title' }, clip(g.name, 200) || 'No name'),
+        el('div', { class: 'small muted' }, line
+          ? `${formatDistance(line.lengthMeters)} · ${line.pointCount.toLocaleString('en-US')} points`
+          : 'No line within the caps'),
+        el('div', { class: 'small muted' },
+          `${suggestionCount(g.members.length)} from ${g.walkers} walker${g.walkers === 1 ? '' : 's'}, latest ${ago(g.latestAt)}`,
+          decided && g.pending ? ` · ${decided} decided before, ${g.pending} new` : ''),
+        g.acceptedName ? el('div', { class: 'small' }, `Accepted as “${g.acceptedName}”`) : null)),
+    g.names.length > 1 ? el('div', { class: 'small' }, 'Names given: ', g.names.slice(0, 10).map((v) => `${clip(v.name, 120)} (${v.count})`).join(', ')) : null,
+    factChips.length ? el('div', { class: 'reasons' }, factChips) : null,
+    g.notes.length ? el('ul', { class: 'notes' }, g.notes.slice(0, 10).map((n) => el('li', {}, `“${clip(n.note, 600)}” `, el('span', { class: 'muted small' }, ago(n.at))))) : null,
+    issues.length ? el('ul', { class: 'notes status error' }, issues.map((t) => el('li', {}, t))) : null,
+    el('div', { class: 'actions small' },
+      maps ? el('a', { href: maps, target: '_blank', rel: 'noopener noreferrer' }, 'Start in Maps') : null,
+      osm ? el('a', { href: osm, target: '_blank', rel: 'noopener noreferrer' }, 'OpenStreetMap editor here') : null),
+    el('div', { class: 'actions' },
+      line ? el('button', { class: 'btn primary', onclick: () => confirmAcceptSuggestion(g) }, g.state === 'accepted' && !g.pending ? 'Accept again' : 'Accept') : null,
+      g.pending ? el('button', { class: 'btn', onclick: () => confirmDeclineSuggestion(g) }, 'Decline') : null,
+      line ? el('button', { class: 'btn', onclick: () => {
+        // Named as accepted, if it was: that is the name Joe chose (for OpenStreetMap, say).
+        const name = g.acceptedName || g.name;
+        saveFile(gpxFileName(name), gpxDocument(name, line.line), 'application/gpx+xml');
+      } }, 'Download GPX') : null));
+}
+
+async function renderSuggestions(seq) {
+  // The removal-request button comes first, before anything that could be slow or fail.
+  const deleteButton = el('button', { class: 'btn', onclick: () => askDeleteSuggestionsByIdentifier() }, 'Delete one walker\'s suggestions');
+  show(el('div', { class: 'toolbar' }, el('div', { class: 'grow muted' }, 'Loading trail suggestions…'), deleteButton));
+  let suggestions;
+  let actions;
+  try {
+    [suggestions, actions] = await Promise.all([
+      store.query('TrailSuggestion', { max: 2000 }),
+      store.query('ModerationAction', { max: 5000 }),
+    ]);
+  } catch (error) {
+    if (!current(seq) || !isUnknownRecordType(error)) throw error;
+    // Production until the release that ships the app's suggest flow deploys the type.
+    show(el('div', { class: 'title' }, 'No trail suggestions here yet'),
+      el('p', { class: 'muted' }, `TrailSuggestion isn't in ${environment}'s schema yet. It arrives with the schema import (Development) or the release that ships the app's Suggest it (Production).`));
+    return;
+  }
+  if (!current(seq)) return;
+  show(el('div', { class: 'toolbar' }, el('div', { class: 'grow muted' }, 'Grouping suggestions…'), deleteButton));
+  await new Promise((resolve) => { setTimeout(resolve, 0); });
+  if (!current(seq)) return;
+  const all = groupSuggestions(suggestions.records, [...actions.records, ...suggestionsDecided]);
+  const groups = suggestionFilter === 'all' ? all : all.filter((g) => g.state === suggestionFilter);
+  const filter = el('select', { 'aria-label': 'Show', onchange: (e) => { suggestionFilter = e.target.value; render(); } },
+    Object.entries(SUGGESTION_FILTERS).map(([value, label]) => el('option', { value, selected: value === suggestionFilter }, label)));
+  const cards = groups.map((g) => {
+    try {
+      return suggestionCard(g);
+    } catch (error) {
+      console.error(error);
+      return el('article', { class: 'card' }, el('div', { class: 'title' }, 'A suggestion this page can\'t show'),
+        el('div', { class: 'small muted' }, g.id));
+    }
+  });
+  const waiting = all.filter((g) => g.state === 'waiting').length;
+  const ungrouped = all.filter((g) => g.ungrouped).length;
+  show(el('div', { class: 'toolbar' },
+    el('div', { class: 'grow title' }, waiting ? `${waiting} path${waiting === 1 ? '' : 's'} waiting` : 'No suggestions waiting'),
+    filter,
+    el('button', { class: 'btn', onclick: render }, 'Refresh'),
+    deleteButton),
+  el('p', { class: 'small muted' },
+    'Paths walkers say the map lacks. Suggestions of the same path are grouped by their lines (at least '
+    + `${Math.round(OVERLAP_SHARE * 100)}% of the shorter line within ${OVERLAP_TOLERANCE_M} m of the other), not by name. `
+    + 'Collect-only for now: Accept tells the walkers it was added (Added in My contributions) and publishes nothing; '
+    + 'Decline tells no one. The names and lines are never shown to other walkers yet.'),
+  ungrouped ? el('p', { class: 'small status error' }, `${suggestionCount(ungrouped)} shown ungrouped: too many overlapping lines to compare in one go `
+    + '(a flood of crafted records, most likely). Their duplicates may be in other cards.') : null,
+  suggestions.hidden ? el('p', { class: 'small status error' },
+    `${suggestionCount(suggestions.hidden)} left out: not named suggestion.<UUID> as the app names them, or named after its own claim token, `
+    + 'so deciding it could put a token or an account into History. Only something other than the app makes one: delete it in CloudKit Console '
+    + '(Records, type TrailSuggestion).') : null,
+  ...cards,
+  groups.length ? null : el('p', { class: 'muted' }, suggestionFilter === 'waiting'
+    ? 'When a walker suggests a path from a walk summary in the app, it shows up here.'
+    : `Nothing ${SUGGESTION_FILTERS[suggestionFilter].toLowerCase()}.`),
+  suggestions.more ? el('p', { class: 'muted small' }, 'Showing the newest 2,000 suggestions; an older duplicate may be missing from a group.') : null);
+}
+
+/** Remembers a decision made here until CloudKit's query returns it. */
+function rememberDecision(action, { recordNames, name = '' }) {
+  suggestionsDecided.push({ recordName: `local-${suggestionsDecided.length + 1}`, created: Date.now(),
+    fields: { targetType: 'suggestion', action, snapshot: JSON.stringify({ name, recordNames }) } });
+}
+
+function confirmAcceptSuggestion(group) {
+  const tell = suggestionStatusNames(group.members);
+  const form = el('form', { method: 'dialog' },
+    el('h2', { class: 'title', id: 'dialog-title' }, `Accept “${clip(group.name, 120) || 'this path'}”?`),
+    el('p', {}, 'Collect-only for now: nothing is published, and no other walker sees the name or the line. '
+      + `It is recorded as accepted (${suggestionCount(group.members.length)}, all leave the queue), with the longest line within the caps.`),
+    el('p', {}, acceptTellText(tell), ' What everyone can read says only Added and when: not the name, the line or who suggested it.'),
+    el('label', {}, 'Accept it as (edit if needed) ',
+      el('input', { name: 'name', required: true, value: overCap(group.name, SUGGESTION_CAPS.name) ? clip(group.name, 200) : group.name, autocomplete: 'off' })),
+    el('p', { class: 'small status error', hidden: true, 'data-role': 'problem' }),
+    el('label', {}, 'Note (optional, History only)', el('textarea', { name: 'note', maxlength: 1000 })),
+    el('div', { class: 'actions' },
+      el('button', { class: 'btn', value: 'cancel', formnovalidate: true }, 'Cancel'),
+      el('button', { class: 'btn primary', value: 'accept' }, 'Accept')));
+  form.addEventListener('submit', async (event) => {
+    if (event.submitter?.value !== 'accept') return;
+    event.preventDefault();
+    // Checked here first (the caps count characters as a person does), so a name
+    // that's too long keeps the dialog and Joe's edits open.
+    const name = form.elements.namedItem('name').value;
+    const problem = form.querySelector('[data-role=problem]');
+    try {
+      acceptPlan(group, name);
+    } catch (error) {
+      problem.textContent = error.message;
+      problem.hidden = false;
+      return;
+    }
+    for (const b of form.querySelectorAll('button')) b.disabled = true;
+    try {
+      const { plan, told } = await acceptSuggestionsAndTell(store, { group, name, note: form.elements.note.value });
+      rememberDecision('accepted', plan);
+      dialog.close();
+      const notice = Boolean(told.error || told.blocked);
+      say(`Accepted “${plan.name}”. ${suggestionToldText(told)}`.trim(), { error: notice });
+      if (!notice) setTimeout(() => render(), 600);
+    } catch (error) {
+      dialog.close();
+      fail(error);
+    }
+  });
+  openDialog(form);
+}
+
+function confirmDeclineSuggestion(group) {
+  const form = el('form', { method: 'dialog' },
+    el('h2', { class: 'title', id: 'dialog-title' }, `Decline “${clip(group.name, 120) || 'this path'}”?`),
+    el('p', {}, `${suggestionCount(group.members.length)} ${group.members.length === 1 ? 'leaves' : 'leave'} the queue. `
+      + 'Nobody is told: there is no declined status, and their phones keep showing Sent. '
+      + 'A later suggestion of the same path comes back.'),
+    group.state === 'accepted' || group.members.some((m) => m.decision === 'accepted')
+      ? el('p', { class: 'small muted' }, 'Some of these were accepted before. Walkers told Added keep seeing it.') : null,
+    el('label', {}, 'Note (optional, History only)', el('textarea', { name: 'note', maxlength: 1000 })),
+    el('div', { class: 'actions' },
+      el('button', { class: 'btn', value: 'cancel', formnovalidate: true }, 'Cancel'),
+      el('button', { class: 'btn danger', value: 'decline' }, 'Decline')));
+  form.addEventListener('submit', async (event) => {
+    if (event.submitter?.value !== 'decline') return;
+    event.preventDefault();
+    for (const b of form.querySelectorAll('button')) b.disabled = true;
+    try {
+      const plan = await declineSuggestions(store, { group, note: form.elements.note.value });
+      rememberDecision('declined', plan);
+      dialog.close();
+      say(`Declined ${suggestionCount(plan.recordNames.length)}.`);
+      setTimeout(() => render(), 600);
+    } catch (error) {
+      dialog.close();
+      fail(error);
+    }
+  });
+  openDialog(form);
+}
+
+/**
+ * A walker asked (by email) for their suggestions to be deleted, giving the
+ * identifier the app shows them. Step 1 finds and counts them; step 2 asks to
+ * confirm the count before anything is deleted.
+ */
+function askDeleteSuggestionsByIdentifier() {
+  const form = el('form', { method: 'dialog' },
+    el('h2', { class: 'title', id: 'dialog-title' }, 'Delete one walker\'s suggestions'),
+    el('p', {}, 'Paste the identifier from their email (it starts with _). Nothing is deleted until you see the count and confirm.'),
+    el('label', {}, 'Identifier ', el('input', { name: 'identifier', required: true, autocomplete: 'off', spellcheck: 'false' })),
+    el('div', { class: 'actions' },
+      el('button', { class: 'btn', value: 'cancel', formnovalidate: true }, 'Cancel'),
+      el('button', { class: 'btn primary', value: 'find' }, 'Find their suggestions')));
+  form.addEventListener('submit', async (event) => {
+    if (event.submitter?.value !== 'find') return;
+    event.preventDefault();
+    for (const b of form.querySelectorAll('button')) b.disabled = true;
+    try {
+      const found = await findSuggestionsBy(store, { identifier: form.elements.identifier.value });
+      confirmDeleteSuggestionsByIdentifier(found);
+    } catch (error) {
+      dialog.close();
+      fail(error);
+    }
+  });
+  openDialog(form);
+}
+
+function confirmDeleteSuggestionsByIdentifier({ records, more }) {
+  const n = records.length;
+  const form = el('form', { method: 'dialog' },
+    el('h2', { class: 'title', id: 'dialog-title' }, n
+      ? `Delete ${suggestionCount(n)} from this identifier?`
+      : 'No suggestions from this identifier'),
+    n ? el('p', {}, 'This can\'t be undone. History keeps the count, not the identifier. An Added status already sent stays: '
+      + 'it holds no identifier, and only their phone can find it.')
+      : el('p', {}, 'Check the identifier was pasted whole. Suggestions deleted already won\'t be found.'),
+    more ? el('p', { class: 'small muted' }, 'There are more than one load can hold (5,000): run this again afterwards for the rest.') : null,
+    el('div', { class: 'actions' },
+      el('button', { class: 'btn', value: 'cancel', formnovalidate: true }, n ? 'Cancel' : 'Close'),
+      n ? el('button', { class: 'btn danger', value: 'delete' }, `Delete ${suggestionCount(n)}`) : null));
+  form.addEventListener('submit', async (event) => {
+    if (event.submitter?.value !== 'delete') return;
+    event.preventDefault();
+    for (const b of form.querySelectorAll('button')) b.disabled = true;
+    try {
+      const out = await deleteSuggestionsBy(store, { records });
+      dialog.close();
+      if (out.error) say(`Deleted ${out.deleted} of ${n}, then: ${describeError(out.error)}. Run it again.`, { error: true });
+      else say(`Deleted ${suggestionCount(out.deleted)}. Reply to the walker that it's done.`);
+      setTimeout(() => render(), 600);
+    } catch (error) {
+      dialog.close();
+      fail(error);
+    }
+  });
+  dialog.replaceChildren(form);
+}
+
 // MARK: - Suspensions
 
 async function renderSuspensions(seq) {
@@ -1075,10 +1394,15 @@ async function renderActivity(seq) {
 const ACTION_LABELS = {
   removed: 'Removed', dismissed: 'Dismissed', suspended: 'Suspended', lifted: 'Lifted', featured: 'Featured', unfeatured: 'Unfeatured',
   published: 'Published', unpublished: 'Un-published', expired: 'Deleted old reports', erased: 'Deleted on request',
-  statusPublished: 'Told nominators', statusWithdrawn: 'Withdrew status',
+  statusPublished: 'Told contributors', statusWithdrawn: 'Withdrew status', accepted: 'Accepted', declined: 'Declined',
 };
 
-const TARGET_LABELS = { account: 'Account', trail: 'Trail', trailFact: 'Walker facts', walkerReports: 'Walker reports', contribution: 'Contributions' };
+const TARGET_LABELS = {
+  account: 'Account', trail: 'Trail', trailFact: 'Walker facts', walkerReports: 'Walker reports', contribution: 'Contributions',
+  suggestion: 'Trail suggestion', trailSuggestions: 'Trail suggestions',
+};
+/** Targets whose History row has its own summary, not a reason and report count. */
+const OWN_SUMMARY_TARGETS = ['trailFact', 'walkerReports', 'contribution', 'suggestion', 'trailSuggestions'];
 
 /** "Lake Loop · 3 nominations: Featured" from a contribution-status action's snapshot (counts only, one per claim token). */
 function contributionSummary(f) {
@@ -1148,9 +1472,10 @@ async function renderHistory(seq) {
       f.targetType === 'trail' ? el('div', {}, trailSummary(f.snapshot)) : null,
       f.targetType === 'trailFact' || f.targetType === 'walkerReports' ? el('div', {}, walkerSummary(f)) : null,
       f.targetType === 'contribution' ? el('div', {}, contributionSummary(f)) : null,
+      f.targetType === 'suggestion' || f.targetType === 'trailSuggestions' ? el('div', {}, suggestionHistoryText(f)) : null,
       f.targetType === 'trail'
         ? (f.reportCount ? el('div', {}, `${f.reportCount} nomination${f.reportCount === 1 ? '' : 's'}`) : null)
-        : f.targetType === 'trailFact' || f.targetType === 'walkerReports' || f.targetType === 'contribution'
+        : OWN_SUMMARY_TARGETS.includes(f.targetType)
           ? null
           : el('div', {}, f.reason ? reasonLabel(f.reason) : 'No reason', f.reportCount ? ` · ${f.reportCount} report${f.reportCount === 1 ? '' : 's'}` : ''),
       f.note ? el('div', {}, `“${f.note}”`) : null,
