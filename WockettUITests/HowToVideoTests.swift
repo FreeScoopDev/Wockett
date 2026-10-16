@@ -229,8 +229,23 @@ final class HowToVideoTests: XCTestCase {
 
         let undo = app.buttons["Undo"]
         XCTAssertTrue(undo.waitForExistence(timeout: 5), "The builder must offer Undo")
+        // With the loop closed, the first Undo only reopens it
+        // (`CustomRouteBuilder.undoLast`); all three points stay.
         undo.tap()
-        XCTAssertTrue(app.staticTexts["2"].waitForExistence(timeout: 30), "Undo must remove the last point")
+        let opened = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == '0'"), object: loop)
+        XCTAssertEqual(XCTWaiter().wait(for: [opened], timeout: 10), .completed, "The first Undo must reopen the loop")
+        XCTAssertTrue(app.staticTexts["3"].exists, "Reopening the loop keeps all three points")
+        // The second Undo removes the last point.
+        undo.tap()
+        // Nothing labelled "3" may survive: not pin 3 on the map (pins are
+        // titled by their number) and not the Points chip. Asserting "2"
+        // exists would pass on pin 2 alone, whatever Undo did.
+        let three = app.descendants(matching: .any).matching(NSPredicate(format: "label == '3'")).firstMatch
+        XCTAssertTrue(three.waitForNonExistence(timeout: 30),
+                      "Undo must remove the third point and its pin; still labelled 3: "
+                      + app.descendants(matching: .any).matching(NSPredicate(format: "label == '3'"))
+                        .allElementsBoundByIndex.map { "\($0.elementType.rawValue) \($0.frame)" }.joined(separator: "; "))
+        XCTAssertTrue(app.staticTexts["2"].exists, "Two points must remain after Undo")
         XCTAssertTrue(app.buttons["Save Route"].waitForExistence(timeout: 30),
                       "Two points still make a route that can be saved")
     }
@@ -338,9 +353,20 @@ final class HowToVideoTests: XCTestCase {
                       "Head back now must appear 50 m along the trail; the simulator's location must "
                       + "be moving along it (the recording script starts `simctl location … start`)")
         headBack.tap()
-        let confirm = app.buttons["Head back now"].firstMatch
-        XCTAssertTrue(app.staticTexts["Head back to the start?"].waitForExistence(timeout: 5),
-                      "Head back now must ask first")
+        // The dialog's own button, looked up inside the dialog: the walk
+        // screen's pill (session.headBack) and the expanded panel's button
+        // are also titled "Head back now", and tapping one of those again
+        // would only reopen the dialog.
+        let hasTitle = NSPredicate(format: "label == 'Head back to the start?'")
+        let sheet = app.sheets.containing(.staticText, identifier: "Head back to the start?").firstMatch
+        let alert = app.alerts.matching(hasTitle).firstMatch
+        let dialogUp = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in sheet.exists || alert.exists },
+                                                 object: nil)
+        XCTAssertEqual(XCTWaiter().wait(for: [dialogUp], timeout: 5), .completed,
+                       "Head back now must ask first, in its \"Head back to the start?\" dialog")
+        let dialog = sheet.exists ? sheet : alert
+        let confirm = dialog.buttons["Head back now"]
+        XCTAssertTrue(confirm.exists, "The dialog must offer Head back now")
         confirm.tap()
         XCTAssertTrue(headBack.waitForNonExistence(timeout: 10), "After heading back it is not offered again")
         XCTAssertTrue(el("session.root").exists, "Heading back keeps the same walk going")
@@ -396,7 +422,10 @@ final class HowToVideoTests: XCTestCase {
 
         let name = app.textFields["challenge.create.name"]
         XCTAssertTrue(name.waitForExistence(timeout: 15), "Start a challenge must open the New Challenge form")
-        let title = "Weekend Walkers"
+        // Unique per run: every run that gets this far leaves its challenge in
+        // CloudKit's Development public database, and a fixed name could open
+        // an earlier run's instead of this one's.
+        let title = "Weekend Walkers \(Int(Date().timeIntervalSince1970) % 1_000_000)"
         name.tap()
         name.typeText(title)
         let create = app.buttons["challenge.create.submit"]
