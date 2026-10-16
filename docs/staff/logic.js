@@ -9,8 +9,9 @@
 // reported something.
 
 import { WALKER_FACTS } from './walker-facts.js';
+import { CONTRIBUTION_KINDS, STATUS_RECORD_PREFIX } from './contribution-status.js';
 
-export { WALKER_FACTS };
+export { WALKER_FACTS, CONTRIBUTION_KINDS, STATUS_RECORD_PREFIX };
 
 /** The community types a moderator acts on, keyed by the app's `targetType`. */
 export const TYPES = {
@@ -158,7 +159,7 @@ export function reopenFailedRemovals(groups, live) {
 }
 
 /** Action targets that aren't community items, so never close reports. */
-export const NON_ITEM_TARGETS = ['trail', 'account', 'trailFact', 'walkerReports'];
+export const NON_ITEM_TARGETS = ['trail', 'account', 'trailFact', 'walkerReports', 'contribution'];
 
 /**
  * Open groups, newest report first, or most reported first (ties: newest).
@@ -267,7 +268,8 @@ export function buildSnapshot(item, limit = SNAPSHOT_LIMIT) {
   return json;
 }
 
-export const ACTIONS = ['removed', 'dismissed', 'suspended', 'lifted', 'featured', 'unfeatured', 'published', 'unpublished', 'expired', 'erased'];
+export const ACTIONS = ['removed', 'dismissed', 'suspended', 'lifted', 'featured', 'unfeatured', 'published', 'unpublished', 'expired', 'erased',
+  'statusPublished', 'statusWithdrawn'];
 
 /** The fields of a `ModerationAction` record. */
 export function actionFields({ target, type, action, reason = '', note = '', reportCount = 0, snapshot = '' }) {
@@ -973,4 +975,159 @@ export function expiredReports(reports, cutoff) {
 export function walkerId(input) {
   const id = String(input ?? '').trim();
   return /^_[A-Za-z0-9]{16,128}$/.test(id) ? id : null;
+}
+
+// MARK: - Contribution status (spec feat/contribution-status)
+//
+// When Joe features a nominated trail, each nominator's phone finds out by
+// reading a world-readable `ContributionStatus` record named
+// `status.<SHA-256 of a claim token>`. The token is a random UUID the phone
+// wrote into its own nomination (`claimToken`, readable only by a Moderator),
+// so only that phone can work out the name. The record holds the kind, the
+// status, the trail's key and name (already public in `FeaturedTrail`) and
+// when; never a token, a creator or anything else about the nominator.
+//
+// The token itself never reaches this file: ck.js turns it into the status
+// name (`statusName` on a nomination) and drops it, the same way it keeps
+// every nominator's account to itself.
+
+/** A claim token as the app writes one: a UUID, either case. */
+export function isClaimToken(token) {
+  return typeof token === 'string'
+    && /^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$/.test(token);
+}
+
+/**
+ * `status.<sha256 hex>` for a claim token, hashed exactly as written (UTF-8),
+ * as the phone will. Built from the token alone: nothing public (a trail key,
+ * an account) goes in, so nothing public can recreate it. Uses the platform's
+ * own SHA-256 (Web Crypto, in browsers and in Node). The error never repeats
+ * the token.
+ */
+export async function contributionStatusName(claimToken) {
+  if (!isClaimToken(claimToken)) throw new Error('Not a claim token.');
+  const digest = await globalThis.crypto.subtle.digest('SHA-256', new TextEncoder().encode(claimToken));
+  const hex = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+  return `${STATUS_RECORD_PREFIX}${hex}`;
+}
+
+/** A name `contributionStatusName` could have made. */
+export function isContributionStatusName(name) {
+  return typeof name === 'string' && name.startsWith(STATUS_RECORD_PREFIX)
+    && /^[0-9a-f]{64}$/.test(name.slice(STATUS_RECORD_PREFIX.length));
+}
+
+/** Whether `kind` and `status` are in the closed vocabulary, and go together. */
+export function knownContribution(kind, status) {
+  return typeof kind === 'string' && Object.hasOwn(CONTRIBUTION_KINDS, kind)
+    && typeof status === 'string' && Object.hasOwn(CONTRIBUTION_KINDS[kind].statuses, status);
+}
+
+/**
+ * The `ContributionStatus` record's fields: these five and nothing else, each
+ * checked, so no other value (a token, a creator, a note) can reach a record
+ * everyone can read.
+ */
+export function contributionStatusFields({ kind, status, trailKey, trailName, decidedAt }) {
+  if (!knownContribution(kind, status)) throw new Error(`Unknown contribution status: ${kind} ${status}`);
+  if (!isTrailKey(trailKey)) throw new Error(`Not a trail key: ${trailKey}`);
+  const name = String(trailName ?? '').trim();
+  if (!name) throw new Error('A status needs the trail\'s name.');
+  if (!Number.isFinite(decidedAt)) throw new Error('Not a time.');
+  return { kind, status, trailKey, trailName: name, decidedAt: { value: decidedAt, type: 'TIMESTAMP' } };
+}
+
+/**
+ * The status records to write when `trailKey` is featured: one per distinct
+ * status name among that trail's nominations (sorted, so the order never
+ * depends on the query's). Nominations sent before the app wrote a claim
+ * token have none: they are counted in `withoutToken` and get nothing.
+ */
+export function nominationStatusNames(nominations, trailKey) {
+  const names = new Set();
+  let withoutToken = 0;
+  for (const n of nominations ?? []) {
+    if (n?.fields?.trailKey !== trailKey) continue;
+    if (isContributionStatusName(n.statusName)) names.add(n.statusName);
+    else withoutToken += 1;
+  }
+  return { names: [...names].sort(), withoutToken };
+}
+
+/**
+ * When a status says the decision was made. Publishing again (Feature again,
+ * Change note or length) keeps the first time if the record already says the
+ * same thing (kind, status and trail), so a republish rewrites the same
+ * record rather than a newer one.
+ */
+export function statusDecidedAt(existing, { kind, status, trailKey }, now) {
+  const f = existing?.fields;
+  if (f && f.kind === kind && f.status === status && f.trailKey === trailKey && Number.isFinite(f.decidedAt)) return f.decidedAt;
+  return now;
+}
+
+/**
+ * Whether a CloudKit error says the record type isn't in this environment's
+ * schema (as `ContributionStatus` isn't in Production until it is deployed).
+ * Read from the error's text, which is all CloudKit JS gives; unverified
+ * against a live container, so anything else counts as a real failure.
+ */
+export function isUnknownRecordType(error) {
+  const text = `${error?.reason ?? ''} ${error?.message ?? ''}`;
+  return /did not find record type/i.test(text);
+}
+
+/**
+ * What Unfeature's confirm offers after looking up the statuses to withdraw
+ * (`error` is the lookup's, or null):
+ * - `checked`: the count is known; Unfeature withdraws them;
+ * - `none`: the type isn't in this environment's schema (Production before
+ *   the deploy), so there is nothing to withdraw; Unfeature as before;
+ * - `unchecked`: the lookup failed. Unfeaturing could leave statuses that no
+ *   screen can withdraw, so only an explicit "Unfeature anyway" is offered,
+ *   with that warning. (Not hidden altogether: if CloudKit words the
+ *   unknown-type error differently, Production could otherwise not unfeature
+ *   at all until the deploy.)
+ */
+export function unfeatureLookup(error) {
+  if (!error) return 'checked';
+  return isUnknownRecordType(error) ? 'none' : 'unchecked';
+}
+
+/** An error as a clause, without its own full stop. */
+export function errorClause(error) {
+  return describeError(error).replace(/\.$/, '');
+}
+
+/** The Feature confirm's line about nominators. `canTell`: how many can be told, or null when unknown. */
+export function featureTellText(canTell) {
+  if (canTell === null || canTell === undefined) {
+    return 'Its nominators are told too: each nomination sent by a version of the app that can hear back shows Featured in their My contributions.';
+  }
+  if (canTell === 0) return 'None of its nominators can be told yet: their nominations were sent before the app could hear back.';
+  return `It also tells ${canTell} nominator${canTell === 1 ? '' : 's'}: their My contributions shows Featured.`;
+}
+
+/** What telling the nominators did (`featureTrailAndTell`'s `told`), as sentences after "Featured …". */
+export function toldText(told) {
+  const blocked = told.blocked
+    ? ` ${told.blocked} couldn't be told: another record already has that name (a crafted nomination, most likely).` : '';
+  if (told.error) {
+    const done = told.planned
+      ? `Told ${told.written} of ${told.planned} nominators; the rest failed: `
+      : 'Couldn\'t tell its nominators: ';
+    return `${done}${errorClause(told.error)}. To finish, open Featured, Change note or length, and Feature (Keep).${blocked}`;
+  }
+  if (!told.written) return blocked.trim();
+  return `Told ${told.written} nominator${told.written === 1 ? '' : 's'}.${blocked}`;
+}
+
+/**
+ * The status records Unfeature withdraws: this trail's, of this kind and
+ * status, and only under a name the dashboard makes. A later kind on the
+ * same trail (a suggestion that was added) is never touched.
+ */
+export function statusesToWithdraw(records, trailKey, kind = 'nomination', status = 'featured') {
+  return (records ?? []).filter((r) => isContributionStatusName(r?.recordName) && r.fields?.trailKey === trailKey
+    && r.fields?.kind === kind && r.fields?.status === status);
 }

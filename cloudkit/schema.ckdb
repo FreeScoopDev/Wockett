@@ -198,6 +198,22 @@ DEFINE SCHEMA
         GRANT READ TO "_world"
     );
 
+    RECORD TYPE ContributionStatus (
+        "___createTime" TIMESTAMP SORTABLE,
+        "___createdBy"  REFERENCE,
+        "___etag"       STRING,
+        "___modTime"    TIMESTAMP,
+        "___modifiedBy" REFERENCE,
+        "___recordID"   REFERENCE QUERYABLE,
+        decidedAt       TIMESTAMP,
+        kind            STRING,
+        status          STRING,
+        trailKey        STRING QUERYABLE,
+        trailName       STRING,
+        GRANT READ, CREATE, WRITE TO Moderator,
+        GRANT READ TO "_world"
+    );
+
     RECORD TYPE FeaturedTrail (
         "___createTime" TIMESTAMP SORTABLE,
         "___createdBy"  REFERENCE,
@@ -319,6 +335,7 @@ DEFINE SCHEMA
         "___modTime"    TIMESTAMP,
         "___modifiedBy" REFERENCE,
         "___recordID"   REFERENCE QUERYABLE,
+        claimToken      STRING,
         latitude        DOUBLE,
         lengthMeters    DOUBLE,
         longitude       DOUBLE,
