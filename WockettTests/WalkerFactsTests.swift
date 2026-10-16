@@ -625,22 +625,28 @@ struct WalkerFactsTests {
         #expect(model.hasAnswered)
     }
 
-    @Test("A question can't be answered twice while its first answer is still sending")
+    @Test("A question can't be answered twice while its first answer is still sending", .timeLimit(.minutes(1)))
     func cardNoDoubleSend() async throws {
-        var sent = 0
-        var release: CheckedContinuation<Void, Never>?
-        let model = TrailReportCardModel(trail: ref, policy: try policy(Clock())) { _, _ in
-            sent += 1
-            await withCheckedContinuation { release = $0 }
+        var sent: [String] = []
+        var waiting: [CheckedContinuation<Void, Never>] = []
+        let model = TrailReportCardModel(trail: ref, policy: try policy(Clock())) { _, value in
+            sent.append(value)
+            await withCheckedContinuation { waiting.append($0) }
             return .sent
         }
         let first = Task { await model.answer(.dogs, "noDogs") }
-        while release == nil { await Task.yield() }
-        await model.answer(.dogs, "leashRequired")
-        #expect(sent == 1)
-        #expect(!model.canAnswer(.dogs))
-        release?.resume()
+        while waiting.isEmpty { await Task.yield() }
+        #expect(!model.canAnswer(.dogs), "locked while sending")
+        // A second tap mid-send, in its own task so a broken guard fails here
+        // rather than hanging the test on its own send.
+        let second = Task { await model.answer(.dogs, "leashRequired") }
+        for _ in 0..<50 { await Task.yield() }
+        #expect(sent == ["noDogs"])
+        for c in waiting { c.resume() }
         await first.value
+        while waiting.count < sent.count { await Task.yield() }
+        for c in waiting.dropFirst() { c.resume() }
+        await second.value
         #expect(model.selected(.dogs) == "noDogs")
     }
 
