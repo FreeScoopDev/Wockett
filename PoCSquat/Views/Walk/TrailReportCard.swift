@@ -85,8 +85,9 @@ final class TrailReportCardModel {
         }
     }
 
-    /// Answers can't be changed once sent (CloudKit refuses a second), and
-    /// one is in flight at a time per question.
+    /// Answers can't be changed once sent (the phone locks the question;
+    /// CloudKit would accept another, and the dashboard counts the newest),
+    /// and one is in flight at a time per question.
     func canAnswer(_ fact: WalkerFact) -> Bool {
         switch states[fact] {
         case nil, .failed?: return !closed
@@ -157,10 +158,6 @@ struct TrailReportCard: View {
                 WktSection(title: Self.title) { questions }
             }
         }
-        // The ask counts once half the card has been on screen.
-        .onScrollVisibilityChange(threshold: 0.5) { visible in
-            if visible { model.markShown() }
-        }
         .communityTermsSheet($termsGate)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("summary.trailReport")
@@ -172,6 +169,12 @@ struct TrailReportCard: View {
                 .font(.wktBodyText)
                 .foregroundColor(.earthMuted)
                 .fixedSize(horizontal: false, vertical: true)
+                // The ask counts once this intro line is on screen: a small
+                // fixed part, so it works however tall the card grows at the
+                // largest text sizes (critic run 2).
+                .onScrollVisibilityChange(threshold: 0.5) { visible in
+                    if visible { model.markShown() }
+                }
             ForEach(model.facts, id: \.self) { fact in
                 VStack(alignment: .leading, spacing: 6) {
                     Text(fact.question)

@@ -191,7 +191,7 @@ enum TrailFactReports {
             do { try await probe() } catch { probeError = error }
             guard debugSaveAllowed(probeError: probeError) else {
                 let transient: [CKError.Code] = [.networkUnavailable, .networkFailure, .serviceUnavailable,
-                                                 .requestRateLimited, .zoneBusy]
+                                                 .requestRateLimited, .zoneBusy, .notAuthenticated]
                 if let code = (probeError as? CKError)?.code, transient.contains(code), let probeError { throw probeError }
                 throw TrailFactReportSchemaMissing()
             }

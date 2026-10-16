@@ -9,8 +9,8 @@ import UIKit
 
 /// Walker reports, the app half (spec feat/trail-walker-reports, PR 2): the
 /// vocabulary mirrors docs/staff/walker-facts.js, a report holds the trail,
-/// the fact and the answer and nothing else, one per person per fact per
-/// trail, the questions follow the frequency rules, the trail reaches the
+/// the fact and the answer and nothing else, under a random name (the phone
+/// locks each answered question; the dashboard counts each creator once), the questions follow the frequency rules, the trail reaches the
 /// summary in memory only, and "Walkers say" reads published summaries only.
 @MainActor
 struct WalkerFactsTests {
@@ -264,6 +264,12 @@ struct WalkerFactsTests {
         calls = []
         await #expect(throws: CKError.self) {
             _ = try await TrailFactReports.guardedSave(checked: false, probe: { calls.append("probe"); throw CKError(.networkUnavailable) },
+                                                       save: { calls.append("save") })
+        }
+        #expect(calls == ["probe"])
+        // Signed out: the sign-in message, not "schema missing".
+        await #expect(throws: CKError.self) {
+            _ = try await TrailFactReports.guardedSave(checked: false, probe: { throw CKError(.notAuthenticated) },
                                                        save: { calls.append("save") })
         }
         #expect(calls == ["probe"])
