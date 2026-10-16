@@ -563,7 +563,7 @@ struct WalkerFactsTests {
                            outcome: @escaping (WalkerFact, String) -> TrailFactReports.Outcome = { _, _ in .sent })
         -> (TrailReportCardModel, () -> [String]) {
         var sent: [String] = []
-        let model = TrailReportCardModel(trail: ref, policy: p) { fact, value in
+        let model = TrailReportCardModel(trail: ref, policy: p) { @MainActor fact, value in
             sent.append("\(fact.rawValue)=\(value)")
             return outcome(fact, value)
         }
@@ -633,25 +633,28 @@ struct WalkerFactsTests {
 
     @Test("A question can't be answered twice while its first answer is still sending", .timeLimit(.minutes(1)))
     func cardNoDoubleSend() async throws {
+        // Everything on the main actor, so the test's bookkeeping is never
+        // raced by the send (CI hung on an earlier version that wasn't).
         var sent: [String] = []
         var waiting: [CheckedContinuation<Void, Never>] = []
-        let model = TrailReportCardModel(trail: ref, policy: try policy(Clock())) { _, value in
+        let send: @MainActor (WalkerFact, String) async -> TrailFactReports.Outcome = { _, value in
             sent.append(value)
             await withCheckedContinuation { waiting.append($0) }
             return .sent
         }
-        let first = Task { await model.answer(.dogs, "noDogs") }
-        while waiting.isEmpty { await Task.yield() }
+        let model = TrailReportCardModel(trail: ref, policy: try policy(Clock()), send: send)
+        func settle() async { for _ in 0..<200 { await Task.yield() } }
+        let first = Task { @MainActor in await model.answer(.dogs, "noDogs") }
+        await settle()
+        try #require(waiting.count == 1, "the first answer is mid-send")
         #expect(!model.canAnswer(.dogs), "locked while sending")
         // A second tap mid-send, in its own task so a broken guard fails here
         // rather than hanging the test on its own send.
-        let second = Task { await model.answer(.dogs, "leashRequired") }
-        for _ in 0..<50 { await Task.yield() }
+        let second = Task { @MainActor in await model.answer(.dogs, "leashRequired") }
+        await settle()
         #expect(sent == ["noDogs"])
-        for c in waiting { c.resume() }
+        while !waiting.isEmpty { waiting.removeFirst().resume() ; await settle() }
         await first.value
-        while waiting.count < sent.count { await Task.yield() }
-        for c in waiting.dropFirst() { c.resume() }
         await second.value
         #expect(model.selected(.dogs) == "noDogs")
     }
