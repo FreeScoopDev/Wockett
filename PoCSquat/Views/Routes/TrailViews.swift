@@ -399,9 +399,7 @@ struct TrailDetailView: View {
             Button {
                 rememberPace()
                 // The trail goes with the walk, for the summary's questions.
-                var started = plan
-                started.trail = TrailRef(item: item)
-                onStart(started)
+                onStart(plan.started(from: item))
             } label: {
                 // "Start Hike" on a hikeable trail; the session started gets
                 // the same word from the same plan (`TrailWalkPlan.wording`).
@@ -480,7 +478,7 @@ struct TrailFactsCard: View {
     var walkerLines: [WalkerFactLine] = []
 
     /// Which parts show, in order. Pure, so the rules are tested.
-    enum Part: Equatable { case mapData, walkers }
+    enum Part: Hashable { case mapData, walkers }
 
     static func parts(facts: [TrailFacts.Fact], walkerLines: [WalkerFactLine]) -> [Part] {
         (facts.isEmpty ? [] : [.mapData]) + (walkerLines.isEmpty ? [] : [.walkers])
@@ -492,9 +490,14 @@ struct TrailFactsCard: View {
     var body: some View {
         let parts = Self.parts(facts: facts, walkerLines: walkerLines)
         if !parts.isEmpty {
+            // Rendered in `parts` order, so the tested order is the shown one.
             VStack(alignment: .leading, spacing: WktSpacing.betweenSections) {
-                if parts.contains(.mapData) { mapFacts }
-                if parts.contains(.walkers) { walkersSay }
+                ForEach(parts, id: \.self) { part in
+                    switch part {
+                    case .mapData: mapFacts
+                    case .walkers: walkersSay
+                    }
+                }
             }
         }
     }

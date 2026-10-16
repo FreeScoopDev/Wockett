@@ -31,6 +31,25 @@ final class TrailReportCardModel {
     @ObservationIgnored private let policy: TrailReportAskPolicy
     @ObservationIgnored private let send: (WalkerFact, String) async -> TrailFactReports.Outcome
 
+    /// The card for a summary, or nil when the policy says not to ask.
+    /// Records nothing: the ask counts once the card is seen (`markShown`).
+    static func forSummary(trail: TrailRef?, session: WalkSession, justFinished: Bool, walkInProgress: Bool,
+                           policy: TrailReportAskPolicy? = nil) -> TrailReportCardModel? {
+        let policy = policy ?? TrailReportAskPolicy()
+        guard let trail, policy.shouldAsk(trail: trail, session: session, justFinished: justFinished,
+                                          walkInProgress: walkInProgress) else { return nil }
+        return TrailReportCardModel(trail: trail, policy: policy)
+    }
+
+    @ObservationIgnored private var shown = false
+
+    /// The card came into view or was used: the ask is spent, once.
+    func markShown() {
+        guard !shown else { return }
+        shown = true
+        policy.noteAsked(trail)
+    }
+
     /// Nil arguments build the real ones here, on the main actor: a default
     /// argument is evaluated outside it.
     init(trail: TrailRef, policy: TrailReportAskPolicy? = nil,
@@ -84,6 +103,7 @@ final class TrailReportCardModel {
     /// One tap: sends this answer.
     func answer(_ fact: WalkerFact, _ value: String) async {
         guard canAnswer(fact), fact.knows(value) else { return }
+        markShown()
         states[fact] = .sending(value)
         switch await send(fact, value) {
         case .sent:
@@ -91,18 +111,22 @@ final class TrailReportCardModel {
             if policy.noteAnswered(trail) { showThanks = true }
         case .alreadyAnswered:
             states[fact] = .alreadyAnswered
-            policy.noteAnswered(trail)
+            policy.noteAnswered(trail, thank: false)
         case .failed(let message):
             states[fact] = .failed(message)
         }
     }
 
     /// "Not now" or "Skip": the card goes; the trail is not asked about again.
-    func close() { closed = true }
+    func close() {
+        markShown()
+        closed = true
+    }
 
     /// "Don't ask again": no more questions after any walk, until the
     /// Settings switch turns them back on.
     func stopAsking() {
+        markShown()
         policy.asksOff = true
         closed = true
     }
@@ -132,6 +156,10 @@ struct TrailReportCard: View {
             if model.asking {
                 WktSection(title: Self.title) { questions }
             }
+        }
+        // The ask counts once half the card has been on screen.
+        .onScrollVisibilityChange(threshold: 0.5) { visible in
+            if visible { model.markShown() }
         }
         .communityTermsSheet($termsGate)
         .accessibilityElement(children: .contain)

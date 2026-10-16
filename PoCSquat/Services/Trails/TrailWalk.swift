@@ -51,6 +51,14 @@ struct TrailWalkPlan: Equatable {
     /// decodes geometry, and the planner runs on every render.
     var trail: TrailRef?
 
+    /// This plan as started from `item`'s own Start: carrying the trail, for
+    /// the summary's questions. Nil-trail for unnamed or keyless paths.
+    func started(from item: TrailListItem) -> TrailWalkPlan {
+        var plan = self
+        plan.trail = TrailRef(item: item)
+        return plan
+    }
+
     /// What a session of this plan is called: the Start button's word and the
     /// session's are the same value.
     func wording(activityMode: ActivityMode) -> SessionWording {

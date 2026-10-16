@@ -112,23 +112,22 @@ struct WalkerFactsTests {
         SHA256.hash(data: Data(text.utf8)).map { String(format: "%02x", $0) }.joined()
     }
 
-    @Test("A report is named report.<sha256 of trailKey, fact and reporter>: one per person per fact per trail")
-    func recordName() {
-        let name = TrailFactReports.recordName(trailKey: "nc:w123", fact: .dogs, reporter: "_me")
-        #expect(name == "report." + sha("nc:w123\ndogs\n_me"))
-        #expect(name.wholeMatch(of: /report\.[0-9a-f]{64}/) != nil)
-        #expect(name == TrailFactReports.recordName(trailKey: "nc:w123", fact: .dogs, reporter: "_me"), "stable")
-        #expect(name != TrailFactReports.recordName(trailKey: "nc:w124", fact: .dogs, reporter: "_me"))
-        #expect(name != TrailFactReports.recordName(trailKey: "nc:w123", fact: .surface, reporter: "_me"))
-        #expect(name != TrailFactReports.recordName(trailKey: "nc:w123", fact: .dogs, reporter: "_you"))
-        #expect(!name.contains("_me") && !name.contains("nc:w123"), "nothing readable in the name")
+    @Test("A report's name is random: nobody can compute it from public ids to test whether someone reported a trail")
+    func recordName() throws {
+        let a = try #require(TrailFactReports.record(trail: ref, fact: .dogs, value: "noDogs"))
+        let b = try #require(TrailFactReports.record(trail: ref, fact: .dogs, value: "noDogs"))
+        let name = a.recordID.recordName
+        #expect(name.wholeMatch(of: /report\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/) != nil)
+        #expect(name != b.recordID.recordName, "the same person, trail, fact and answer: still a new name")
+        #expect(name != "report." + sha("nc:w123\ndogs\n_me"), "not the old guessable hash")
+        #expect(!name.contains("nc:w123"), "nothing readable in the name")
     }
 
     @Test("A report holds trailKey, region, fact and value, and nothing else: no name, no point, no note")
     func recordFields() throws {
-        let record = try #require(TrailFactReports.record(trail: ref, fact: .surface, value: "packedDirt", reporter: "_me"))
+        let record = try #require(TrailFactReports.record(trail: ref, fact: .surface, value: "packedDirt"))
         #expect(record.recordType == "TrailFactReport")
-        #expect(record.recordID.recordName == TrailFactReports.recordName(trailKey: "nc:w123", fact: .surface, reporter: "_me"))
+        #expect(record.recordID.recordName.hasPrefix("report."))
         #expect(record.allKeys().sorted() == ["fact", "region", "trailKey", "value"])
         #expect(record["trailKey"] as? String == "nc:w123")
         #expect(record["region"] as? String == "nc")
@@ -138,8 +137,8 @@ struct WalkerFactsTests {
 
     @Test("No record for an answer outside the vocabulary")
     func recordRefusesUnknownValues() {
-        #expect(TrailFactReports.record(trail: ref, fact: .dogs, value: "maybe", reporter: "_me") == nil)
-        #expect(TrailFactReports.record(trail: ref, fact: .stroller, value: "Yes", reporter: "_me") == nil)
+        #expect(TrailFactReports.record(trail: ref, fact: .dogs, value: "maybe") == nil)
+        #expect(TrailFactReports.record(trail: ref, fact: .stroller, value: "Yes") == nil)
     }
 
     @Test("The schema's TrailFactReport has exactly the fields the app writes")
@@ -172,14 +171,15 @@ struct WalkerFactsTests {
     private static let neverFires: OptimisticVote.Sleep = { _ in try await Task.sleep(for: .seconds(86_400)) }
     private static let firesNow: OptimisticVote.Sleep = { _ in }
 
-    @Test("Sending saves one record under the reporter's name")
+    @Test("Sending saves one report record")
     func submitSends() async {
         let store = FakeReports()
         let outcome = await TrailFactReportSubmission.submit(ref, fact: .dogs, value: "noDogs", store: store,
                                                              canPost: {}, knownReporter: { nil }, sleep: Self.neverFires)
         #expect(outcome == .sent)
-        #expect(store.saved.map(\.recordID.recordName)
-                == [TrailFactReports.recordName(trailKey: "nc:w123", fact: .dogs, reporter: "_me")])
+        #expect(store.saved.count == 1)
+        #expect(store.saved.first?.recordType == "TrailFactReport")
+        #expect(store.saved.first?["value"] as? String == "noDogs")
     }
 
     @Test("A suspended account, or one that skipped the Terms, sends nothing")
@@ -201,7 +201,7 @@ struct WalkerFactsTests {
         let outcome = await TrailFactReportSubmission.submit(ref, fact: .dogs, value: "noDogs", store: store,
                                                              canPost: {}, knownReporter: { nil }, sleep: Self.neverFires)
         #expect(outcome == .failed("Sign in to iCloud in the Settings app to answer."))
-        #expect(store.saved.isEmpty, "a report with no reporter could not be one per person")
+        #expect(store.saved.isEmpty, "the dashboard counts each creator once: no anonymous reports")
     }
 
     @Test("A second answer to the same question is 'already answered'; a slow save gives up at the deadline")
@@ -228,6 +228,32 @@ struct WalkerFactsTests {
         #expect(!TrailFactReports.debugSaveAllowed(probeError: CKError(.invalidArguments)), "trailKey not queryable")
         #expect(!TrailFactReports.debugSaveAllowed(probeError: CKError(.networkUnavailable)))
         #expect(TrailFactReports.outcome(of: TrailFactReportSchemaMissing()) == .failed(TrailFactReports.schemaMissingMessage))
+    }
+
+    @Test("A Debug save probes first, saves nothing when refused, and probes only until one passes")
+    func guardedSaveOrder() async throws {
+        var calls: [String] = []
+        // Refused: "did not find record type".
+        await #expect(throws: TrailFactReportSchemaMissing.self) {
+            _ = try await TrailFactReports.guardedSave(checked: false, probe: { calls.append("probe"); throw CKError(.unknownItem) },
+                                                       save: { calls.append("save") })
+        }
+        #expect(calls == ["probe"], "nothing saved")
+        // A network failure is the network's message, still nothing saved.
+        calls = []
+        await #expect(throws: CKError.self) {
+            _ = try await TrailFactReports.guardedSave(checked: false, probe: { calls.append("probe"); throw CKError(.networkUnavailable) },
+                                                       save: { calls.append("save") })
+        }
+        #expect(calls == ["probe"])
+        // Allowed: probe, then save; and a passed probe is not repeated.
+        calls = []
+        let checked = try await TrailFactReports.guardedSave(checked: false, probe: { calls.append("probe") },
+                                                             save: { calls.append("save") })
+        #expect(checked)
+        _ = try await TrailFactReports.guardedSave(checked: checked, probe: { calls.append("probe") },
+                                                   save: { calls.append("save") })
+        #expect(calls == ["probe", "save", "save"])
     }
 
     @Test("Under unit tests the app's report store can't reach CloudKit")
@@ -452,9 +478,11 @@ struct WalkerFactsTests {
 
     @Test("Head back now, a recording's line and turning round all keep the trail")
     func routeCopiesKeepTheTrail() throws {
-        var plan = try #require(TrailWalkPlanner.plan(for: keyedItem, from: line[0], target: .roundTrip(meters: 800)))
-        #expect(plan.trail == nil, "the planner leaves it to whoever starts the walk")
-        plan.trail = TrailRef(item: keyedItem)
+        let planned = try #require(TrailWalkPlanner.plan(for: keyedItem, from: line[0], target: .roundTrip(meters: 800)))
+        #expect(planned.trail == nil, "the planner leaves it to whoever starts the walk")
+        let plan = planned.started(from: keyedItem)
+        #expect(plan.trail == TrailRef(item: keyedItem), "the detail's Start carries the trail")
+        #expect(plan == planned, "and changes nothing else about the walk")
         let route = plan.navigableRoute(activityMode: .walking)
         #expect(route.trail?.trailKey == "nc:w1")
         #expect(route.followingRecordedLine().trail?.trailKey == "nc:w1")
@@ -481,6 +509,44 @@ struct WalkerFactsTests {
             return outcome(fact, value)
         }
         return (model, { sent })
+    }
+
+    @Test("The summary's card is decided without spending the ask; the ask is spent once, when the card is seen or used")
+    func askSpentWhenSeen() async throws {
+        let clock = Clock()
+        let p = try policy(clock)
+        #expect(TrailReportCardModel.forSummary(trail: ref, session: walk(), justFinished: false, walkInProgress: false, policy: p) == nil)
+        #expect(TrailReportCardModel.forSummary(trail: ref, session: walk(), justFinished: true, walkInProgress: true, policy: p) == nil)
+        let model = try #require(TrailReportCardModel.forSummary(trail: ref, session: walk(), justFinished: true,
+                                                                 walkInProgress: false, policy: p))
+        #expect(!p.hasAsked("nc:w123"), "a card never scrolled to costs nothing")
+        #expect(p.defaults.object(forKey: TrailReportAskPolicy.lastAskKey) == nil)
+        model.markShown()
+        #expect(p.hasAsked("nc:w123"))
+        let first = p.defaults.object(forKey: TrailReportAskPolicy.lastAskKey) as? Date
+        clock.now += 60
+        model.markShown()
+        #expect(p.defaults.object(forKey: TrailReportAskPolicy.lastAskKey) as? Date == first, "once")
+
+        let other = try policy(Clock())
+        let (used, _) = cardModel(other)
+        await used.answer(.dogs, "noDogs")
+        #expect(other.hasAsked("nc:w123"), "answering means it was seen")
+        let (closed, _) = cardModel(try policy(Clock()))
+        closed.close()
+        let (stopped, _) = cardModel(try policy(Clock()))
+        stopped.stopAsking()
+        for m in [closed, stopped] { #expect(m.asking == false) }
+    }
+
+    @Test("An answer CloudKit already had doesn't use up the first-answer thank-you")
+    func alreadyAnsweredKeepsThanks() async throws {
+        let p = try policy(Clock())
+        let (again, _) = cardModel(p) { _, _ in .alreadyAnswered }
+        await again.answer(.dogs, "noDogs")
+        #expect(!again.showThanks)
+        #expect(p.hasAnswered("nc:w123"))
+        #expect(p.noteAnswered(trail("nc:w9")), "the first real answer is still thanked")
     }
 
     @Test("Every question is offered, liked included; one tap sends one answer, and it can't be changed")
@@ -726,6 +792,18 @@ struct WalkerFactsTests {
         clock.now += TrailFactSummaryService.retryAfterFailure
         await relaunched.refreshIfStale(keys: ["nc:w123"])
         #expect(store.asked.count == 3)
+    }
+
+    @Test("A fetch cancelled by closing the detail is not a failure: reopening fetches at once")
+    func cancelledFetch() async throws {
+        let store = FakeSummaries()
+        store.error = CancellationError()
+        let service = TrailFactSummaryService(store: store, defaults: try defaults(), now: { Date(timeIntervalSince1970: 0) })
+        await service.refreshIfStale(keys: ["nc:w1"])
+        #expect(service.staleKeys(["nc:w1"]) == ["nc:w1"])
+        store.error = CKError(.networkUnavailable)
+        await service.refreshIfStale(keys: ["nc:w1"])
+        #expect(service.staleKeys(["nc:w1"]).isEmpty, "a real failure waits")
     }
 
     @Test("The cache keeps the newest trails only")

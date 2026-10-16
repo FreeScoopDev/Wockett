@@ -104,6 +104,8 @@ struct ActivitySummaryView: View {
                     header
                     if ActivitySummaryContent.hasRoute(session) { routeMap }
                     ActivityStatTiles(session: session)
+                    // High up, so it is seen before Done; it counts as asked only once seen.
+                    if let trailReport { TrailReportCard(model: trailReport, noun: wording.noun) }
 
                     if !shownRecords.isEmpty { prBanner }
                     if isJustFinished, let line = stopEncouragement {
@@ -116,7 +118,6 @@ struct ActivitySummaryView: View {
                     // its saved splits; a ride never shows them.
                     if mode.hasPaceAndSplits, !splitRows.isEmpty { unitSplitsSection }
                     if isJustFinished, !splits.isEmpty { checkpointsSection }
-                    if let trailReport { TrailReportCard(model: trailReport, noun: wording.noun) }
                     if isJustFinished, session.customRouteId != nil, onExcludeFromRouteStats != nil { routeStatsPrompt }
                     if canSaveAsRoute { saveAsRouteSection }
                     if onSave != nil { saveToHistoryButton }
@@ -166,16 +167,13 @@ struct ActivitySummaryView: View {
         dismiss()
     }
 
-    /// Whether to ask about the trail: once per summary, within the
-    /// policy's limits. Showing the card counts as the ask.
+    /// Whether to ask about the trail: decided once per summary, within the
+    /// policy's limits. The ask is spent when the card is seen, not here.
     private func decideTrailReport() {
         guard !trailReportDecided else { return }
         trailReportDecided = true
-        let policy = TrailReportAskPolicy()
-        guard let trail, policy.shouldAsk(trail: trail, session: session, justFinished: isJustFinished,
-                                           walkInProgress: ActiveWalkStore.shared.isWalkInProgress) else { return }
-        policy.noteAsked(trail)
-        trailReport = TrailReportCardModel(trail: trail, policy: policy)
+        trailReport = TrailReportCardModel.forSummary(trail: trail, session: session, justFinished: isJustFinished,
+                                                      walkInProgress: ActiveWalkStore.shared.isWalkInProgress)
     }
 
     private func animateRings() {

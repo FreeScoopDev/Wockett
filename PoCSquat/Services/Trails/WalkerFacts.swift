@@ -1,5 +1,4 @@
 import CloudKit
-import CryptoKit
 import Foundation
 import OSLog
 
@@ -115,23 +114,26 @@ enum WalkerFact: String, CaseIterable, Codable {
 enum TrailFactReports {
     static let recordType = "TrailFactReport"
 
-    /// `report.<sha256 of "trailKey\nfact\nreporter">`: the same for one person,
-    /// one fact and one trail on any of their devices, so CloudKit refuses a
-    /// second answer (spec, PR 1 decisions). A hash, so the dashboard can't
-    /// read the reporter out of it.
-    static func recordName(trailKey: String, fact: WalkerFact, reporter: String) -> String {
-        let digest = SHA256.hash(data: Data("\(trailKey)\n\(fact.rawValue)\n\(reporter)".utf8))
-        return "report." + digest.map { String(format: "%02x", $0) }.joined()
+    /// `report.<random UUID>`. Not a hash of (trail, fact, account), as the
+    /// spec first had it (critic run 1 on PR 2): every input to that hash is
+    /// public (the account id is the creator on every public record a person
+    /// made, trail keys are in the packs), so anyone could compute the name
+    /// for someone else and try to save it; CloudKit refusing the duplicate
+    /// would tell them that person reported on that trail, a location history
+    /// read without read access. A random name tells nothing. One answer per
+    /// person still holds where it matters: the dashboard counts each creator
+    /// once per trail and fact (PR 1 decisions), and this phone asks about a
+    /// trail once and locks each answered question.
+    static func recordName() -> String {
+        "report." + UUID().uuidString.lowercased()
     }
 
     /// The record for one answer: `trailKey`, `region`, `fact` and `value`,
     /// and nothing else. Not `TrailRef.write(to:)`: that adds the name and a
     /// point. Nil for a value outside the vocabulary.
-    static func record(trail: TrailRef, fact: WalkerFact, value: String, reporter: String) -> CKRecord? {
+    static func record(trail: TrailRef, fact: WalkerFact, value: String) -> CKRecord? {
         guard fact.knows(value), !trail.trailKey.isEmpty else { return nil }
-        let record = CKRecord(recordType: recordType,
-                              recordID: CKRecord.ID(recordName: recordName(trailKey: trail.trailKey, fact: fact,
-                                                                           reporter: reporter)))
+        let record = CKRecord(recordType: recordType, recordID: CKRecord.ID(recordName: recordName()))
         record["trailKey"] = trail.trailKey
         record["region"] = trail.region
         record["fact"] = fact.rawValue
@@ -141,7 +143,8 @@ enum TrailFactReports {
 
     enum Outcome: Equatable {
         case sent
-        /// CloudKit already has this person's answer to this question.
+        /// CloudKit refused a record name it already has. Unlikely with random
+        /// names; kept so a duplicate save is never shown as a network error.
         case alreadyAnswered
         case failed(String)
     }
@@ -172,6 +175,30 @@ enum TrailFactReports {
         guard let probeError else { return true }
         return (probeError as? CKError)?.code == .permissionFailure
     }
+
+    /// A Debug build's save: probe once, save only if the probe allows it,
+    /// and return whether the probe has passed, so later saves skip it (a
+    /// value, not `inout`: two quick taps save at once, and an `inout` on
+    /// the store's property across a suspension would trap). A
+    /// probe that failed for the network rethrows that error (the usual
+    /// "check your connection"); any other refusal is
+    /// `TrailFactReportSchemaMissing`. Either way nothing is saved.
+    static func guardedSave(checked: Bool,
+                            probe: () async throws -> Void,
+                            save: () async throws -> Void) async throws -> Bool {
+        if !checked {
+            var probeError: Error?
+            do { try await probe() } catch { probeError = error }
+            guard debugSaveAllowed(probeError: probeError) else {
+                let transient: [CKError.Code] = [.networkUnavailable, .networkFailure, .serviceUnavailable,
+                                                 .requestRateLimited, .zoneBusy]
+                if let code = (probeError as? CKError)?.code, transient.contains(code), let probeError { throw probeError }
+                throw TrailFactReportSchemaMissing()
+            }
+        }
+        try await save()
+        return true
+    }
 }
 
 /// Thrown by a Debug build's store when `TrailFactReport` is not in the
@@ -197,24 +224,24 @@ final class CloudKitTrailFactReportStore: TrailFactReportStore {
     }
 
     func save(_ record: CKRecord) async throws {
+        let db = container.publicCloudDatabase
         #if DEBUG
-        if !schemaChecked {
-            let probe = CKQuery(recordType: TrailFactReports.recordType,
+        let log = log
+        schemaChecked = try await TrailFactReports.guardedSave(checked: schemaChecked, probe: {
+            let query = CKQuery(recordType: TrailFactReports.recordType,
                                 predicate: NSPredicate(format: "trailKey == %@", "schema-check"))
-            var probeError: Error?
             do {
-                _ = try await container.publicCloudDatabase.records(matching: probe, resultsLimit: 1)
+                _ = try await db.records(matching: query, resultsLimit: 1)
             } catch {
-                probeError = error
+                log.error("TrailFactReport probe: \(error.localizedDescription, privacy: .public)")
+                throw error
             }
-            guard TrailFactReports.debugSaveAllowed(probeError: probeError) else {
-                log.error("TrailFactReport not saved: probe said \(probeError?.localizedDescription ?? "nothing", privacy: .public)")
-                throw TrailFactReportSchemaMissing()
-            }
-            schemaChecked = true
-        }
+        }, save: {
+            _ = try await db.save(record)
+        })
+        #else
+        _ = try await db.save(record)
         #endif
-        _ = try await container.publicCloudDatabase.save(record)
     }
 }
 
@@ -235,8 +262,8 @@ enum TrailFactReportSubmission {
 
     /// Sends one answer. The screen asks for the Terms first
     /// (`CommunityTermsGate`); `canPost` refuses a suspended account, and an
-    /// action that skipped the gate. Needs the reporter's account: without
-    /// one, a report could not be one per person.
+    /// action that skipped the gate. Needs a signed-in iCloud account (the
+    /// dashboard counts each creator once); the account is not in the record.
     static func submit(_ trail: TrailRef, fact: WalkerFact, value: String,
                        store: TrailFactReportStore,
                        canPost: @escaping () async throws -> Void = { try await SuspensionService.shared.ensureCanPost(needsTerms: true) },
@@ -246,10 +273,10 @@ enum TrailFactReportSubmission {
         do {
             try await canPost()
             let saved: Bool? = try await OptimisticVote.withDeadline(deadline, sleep: sleep) {
-                guard let reporter = (try? await store.currentUserRecordName()) ?? knownReporter() else {
+                guard ((try? await store.currentUserRecordName()) ?? knownReporter()) != nil else {
                     throw CKError(.notAuthenticated)
                 }
-                guard let record = TrailFactReports.record(trail: trail, fact: fact, value: value, reporter: reporter) else {
+                guard let record = TrailFactReports.record(trail: trail, fact: fact, value: value) else {
                     throw CKError(.invalidArguments)
                 }
                 try Task.checkCancellation()
@@ -314,18 +341,21 @@ struct TrailReportAskPolicy {
         return true
     }
 
-    /// The card was shown: this trail is not asked about again, and no other
-    /// for a week.
+    /// The card was seen (scrolled into view, or used): this trail is not
+    /// asked about again, and no other for a week. Not when the summary
+    /// merely opened: the card may sit below the fold, and Done is always
+    /// in reach (critic run 1 on PR 2).
     func noteAsked(_ trail: TrailRef) {
         remember(trail.trailKey, in: Self.askedKey)
         defaults.set(now(), forKey: Self.lastAskKey)
     }
 
-    /// An answer reached CloudKit. True the first time ever, for the thank-you.
+    /// An answer reached CloudKit. True the first time ever, for the
+    /// thank-you; `thank: false` records the trail without using that up.
     @discardableResult
-    func noteAnswered(_ trail: TrailRef) -> Bool {
+    func noteAnswered(_ trail: TrailRef, thank: Bool = true) -> Bool {
         remember(trail.trailKey, in: Self.answeredKey)
-        guard !defaults.bool(forKey: Self.thankedKey) else { return false }
+        guard thank, !defaults.bool(forKey: Self.thankedKey) else { return false }
         defaults.set(true, forKey: Self.thankedKey)
         return true
     }

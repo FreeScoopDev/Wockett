@@ -184,6 +184,8 @@ final class TrailFactSummaryService {
             }
             trimAndSave()
         } catch {
+            // A detail closed mid-fetch cancels it: not a failure to wait out.
+            if Task.isCancelled || error is CancellationError || (error as? CKError)?.code == .operationCancelled { return }
             log.error("Walker summaries unavailable: \(error.localizedDescription, privacy: .public)")
             let time = now()
             for key in wanted { failedAt[key] = time }
