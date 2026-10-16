@@ -104,9 +104,9 @@ enum ContributionStatuses {
 
     /// The per-name answers inside a thrown `partialFailure` (its
     /// `partialErrorsByItemID`): `unknownItem` is no record, Sent; other
-    /// errors give no answer. Records that did arrive are not in the error,
-    /// so those names keep what is cached until the next fetch. Nil for any
-    /// other error, which fails the whole fetch.
+    /// errors give no answer. The error carries only the failed IDs, so
+    /// `CloudKitContributionStatusStore.lookup` asks again for the rest. Nil
+    /// for any other error, which fails the whole fetch.
     static func answers(fromPartialFailure error: Error) -> [String: ContributionStatusLookup]? {
         guard let ck = error as? CKError, ck.code == .partialFailure,
               let partial = ck.partialErrorsByItemID else { return nil }
