@@ -42,7 +42,8 @@ test('one person reporting an item from two devices counts once', async () => {
 });
 
 test('one account cannot outvote everyone by creating many reports', () => {
-  const flood = Array.from({ length: 50 }, (_, i) => raw(`report.${i}`, '_x', 'p1', T0 + i));
+  const reasons = ['spam', 'offensive', 'unsafe', 'personalInfo', 'other'];
+  const flood = Array.from({ length: 50 }, (_, i) => raw(`report.${i}`, '_x', 'p1', T0 + i, reasons[i % 5], `note ${i}`));
   assert.equal(onePerReporter(flood).length, 1);
 });
 
@@ -143,4 +144,21 @@ test('other record types are not collapsed as reports', async () => {
     { ...raw('v2', '_a', 'p1', T0 + 1), recordType: 'CommunityVote' },
   ]), { recordType: 'CommunityVote' });
   assert.equal(records.length, 2);
+});
+
+test('the day of an owner request is the UTC day: an hour apart across UTC midnight is two days, a day apart within one is one', () => {
+  const req = (name, iso) => raw(name, '_owner', 'c1', Date.parse(iso), 'ownerRequest');
+  const across = onePerReporter([req('late', '2026-10-12T23:30:00Z'), req('early', '2026-10-13T00:30:00Z')]);
+  assert.deepEqual(across.map((r) => r.recordName).sort(), ['early', 'late']);
+  const within = onePerReporter([req('morning', '2026-10-12T00:30:00Z'), req('night', '2026-10-12T23:30:00Z')]);
+  assert.deepEqual(within.map((r) => r.recordName), ['night']);
+});
+
+test('equal timestamps give the same answer whatever order the records arrive in', () => {
+  const a = raw('report.a', '_a', 'p1', T0);
+  const b = raw('report.b', '_a', 'p1', T0);
+  assert.deepEqual(onePerReporter([a, b]).map((r) => r.recordName), onePerReporter([b, a]).map((r) => r.recordName));
+  const qa = raw('q.a', '_o', 'c1', T0, 'ownerRequest');
+  const qb = raw('q.b', '_o', 'c1', T0, 'ownerRequest');
+  assert.deepEqual(onePerReporter([qa, qb]).map((r) => r.recordName), onePerReporter([qb, qa]).map((r) => r.recordName));
 });

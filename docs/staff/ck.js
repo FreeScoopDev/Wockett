@@ -212,14 +212,19 @@ export function onePerReporter(records) {
     }
     return `${who}\n${target}\nreport`;
   };
-  const at = (r) => r.created?.timestamp ?? 0;
+  // Later first by creation time, then by name, so equal timestamps don't
+  // make the result depend on the order the records arrive in.
+  const later = (a, b) => {
+    const d = (a.created?.timestamp ?? 0) - (b.created?.timestamp ?? 0);
+    return d !== 0 ? d > 0 : String(a.recordName) > String(b.recordName);
+  };
   const kept = new Map();
   for (const r of records) {
     const key = keyOf(r);
     if (key === null) continue;
     const best = kept.get(key);
     const newest = key.includes('\nrequest@');
-    if (!best || (newest ? at(r) > at(best) : at(r) < at(best))) kept.set(key, r);
+    if (!best || (newest ? later(r, best) : later(best, r))) kept.set(key, r);
   }
   return records.filter((r) => {
     const key = keyOf(r);
