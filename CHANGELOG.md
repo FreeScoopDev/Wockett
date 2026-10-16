@@ -100,6 +100,29 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   publish, un-publish and deletion.
 
 - **Climb** on outdoor walks, runs and rides: how far up you went, with how far down beneath it, on the summary and again from Activity History, in feet in the US and metres elsewhere. A hiker's first question after a walk is "how much climbing was that?", and Wockett could not answer it: nothing read the altitude every GPS fix already carries. It is worked out on the phone during the activity from those same fixes, so it works offline and costs no extra battery (no new location request, no higher accuracy, no barometer yet). Fixes with an unknown altitude or one worse than 15 m are ignored, the altitude is averaged over the last five fixes, and a change counts only once it passes 3 m, so GPS altitude jittering on a flat walk should add little or nothing (without the average, ±2.5 m of jitter could add up to a hundred metres of made-up climb; how noisy a real iPhone's altitude is has not been measured yet); after a gap in fixes the level starts again rather than counting the jump. The figure is final when the activity ends: nothing "corrects" it afterwards against a map, which is what people report doubling their gain in other apps. The tile appears only from 5 m of climb; an activity with no usable altitude shows none, so "no data" never reads as "flat". The climb so far survives the app being closed mid-walk. Saved as a new field on the walk record in iCloud (`CD_elevationData`), which must be deployed to CloudKit Production before 1.17 ships, alongside the splits field. Measured only in tests and the simulator, which has no real altitude; a walk up a real hill is still owed.
+- Wockett Staff: a Trail suggestions tab, and the schema for trail
+  suggestions (Phase 2, Feature B, first of five PRs). The app does not send
+  suggestions yet; this is where Joe will review them once it does, so the
+  review tool and the record's shape are settled first. A `TrailSuggestion`
+  (name, note, region, the Feature A fact chips, the trimmed and simplified
+  line as an encoded polyline, its point count and length, and a claim
+  token) can be created by any signed-in iCloud user and read only by a
+  Moderator, like a nomination: a suggested line is a place someone walked.
+  The tab groups suggestions of the same path by how much their lines
+  overlap rather than by name, because two walkers rarely name an unmapped
+  path alike; draws the lines; links the start to Maps and the
+  OpenStreetMap editor; warns about very short or very long paths,
+  straight-line GPS gaps and anything over the size caps the app will
+  enforce (re-checked here, since anyone can write a record); and offers
+  Accept, Decline and a GPX download made on the page. Accept tells each
+  device that suggested the path through the same `ContributionStatus`
+  mechanism as featured nominations (kind `suggestion`, status `added`; the
+  status carries no name, since anyone can read it), and publishes nothing
+  else: accepted paths reach other walkers only in a later
+  PR, after a collect-only trial (Joe, 2026-10-16). Decline tells no one,
+  because there is no negative status. A removal request can be met by
+  deleting one person's suggestions by the identifier the app shows them.
+  No claim token, account or status name reaches History or the page.
 
 ### Changed
 - Each nomination now carries a random claim token, readable only by the
@@ -162,6 +185,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   releases; until then section 15 (continued use) is the only cover for the new
   trail reports licence sentence for people who agreed before. A lawyer still needs
   to read both pages.
+- Wockett Staff counts each person once per reported item, keeping their
+  first report, and at most two of a challenge owner's requests to delete per
+  UTC day (the app allows one per local day, and a local day spans at most
+  two UTC days, so a request the next morning, after a dismissal, still
+  reopens the challenge). The app now names reports randomly, so a person
+  reporting from a second device, or after a reinstall, leaves a second
+  record that CloudKit used to refuse; without this, one account could
+  inflate an item's count, or reopen an item it had already reported after a
+  dismissal.
 
 ### Fixed
 - Wockett Staff: Feature and Suspend always failed with "Unknown length:
@@ -214,6 +246,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - Wockett Staff no longer prints the word "null" under some lists (an empty
   queue's hint, the "showing the newest" note) when there was nothing to show.
+- A report of a post, route or challenge, and a challenge owner's request to
+  delete one, is now saved under a random name. The name used to be worked
+  out from the item and the reporter's account, both of which anyone can see,
+  so anyone could work it out and use it to tell whether that account had
+  reported the item. The phone now remembers
+  what it has sent itself: reporting the same item again from it still says
+  "You've already reported this", and asking to delete the same challenge
+  twice in a day still says you've asked today, without saving a second
+  record. A report from another device is saved, and the staff dashboard
+  counts each person once per item. A save that fails for any reason now
+  offers the email, rather than reading a name clash as "already reported".
 
 ### Internal
 - The status vocabulary is mirrored from `docs/staff/contribution-status.js`
@@ -260,6 +303,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   file lacked them although Development already held three, so importing it
   (the release's first CloudKit step) would have tried to drop them.
   `cloudkit-schema-check.sh` passes on the file.
+- Three contribution-status tests can no longer fail a correct build on a
+  busy CI runner. Each had a one-minute time limit, and two waited for a
+  held fetch by yielding the main actor in a loop. On CI a test's clock
+  also counts the time it queues behind every other main-actor test, which
+  is how the same limit failed the walker-report test twice (#252). The fake
+  store now tells the test when the fetch is held, and the limits are
+  five-minute hang guards.
 
 ## [1.16] - 2026-10-13
 
