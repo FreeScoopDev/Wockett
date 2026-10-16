@@ -1078,6 +1078,51 @@ export function isUnknownRecordType(error) {
 }
 
 /**
+ * What Unfeature's confirm offers after looking up the statuses to withdraw
+ * (`error` is the lookup's, or null):
+ * - `checked`: the count is known; Unfeature withdraws them;
+ * - `none`: the type isn't in this environment's schema (Production before
+ *   the deploy), so there is nothing to withdraw; Unfeature as before;
+ * - `unchecked`: the lookup failed. Unfeaturing could leave statuses that no
+ *   screen can withdraw, so only an explicit "Unfeature anyway" is offered,
+ *   with that warning. (Not hidden altogether: if CloudKit words the
+ *   unknown-type error differently, Production could otherwise not unfeature
+ *   at all until the deploy.)
+ */
+export function unfeatureLookup(error) {
+  if (!error) return 'checked';
+  return isUnknownRecordType(error) ? 'none' : 'unchecked';
+}
+
+/** An error as a clause, without its own full stop. */
+export function errorClause(error) {
+  return describeError(error).replace(/\.$/, '');
+}
+
+/** The Feature confirm's line about nominators. `canTell`: how many can be told, or null when unknown. */
+export function featureTellText(canTell) {
+  if (canTell === null || canTell === undefined) {
+    return 'Its nominators are told too: each nomination sent by a version of the app that can hear back shows Featured in their My contributions.';
+  }
+  if (canTell === 0) return 'None of its nominators can be told yet: their nominations were sent before the app could hear back.';
+  return `It also tells ${canTell} nominator${canTell === 1 ? '' : 's'}: their My contributions shows Featured.`;
+}
+
+/** What telling the nominators did (`featureTrailAndTell`'s `told`), as sentences after "Featured …". */
+export function toldText(told) {
+  const blocked = told.blocked
+    ? ` ${told.blocked} couldn't be told: another record already has that name (a crafted nomination, most likely).` : '';
+  if (told.error) {
+    const done = told.planned
+      ? `Told ${told.written} of ${told.planned} nominators; the rest failed: `
+      : 'Couldn\'t tell its nominators: ';
+    return `${done}${errorClause(told.error)}. To finish, open Featured, Change note or length, and Feature (Keep).${blocked}`;
+  }
+  if (!told.written) return blocked.trim();
+  return `Told ${told.written} nominator${told.written === 1 ? '' : 's'}.${blocked}`;
+}
+
+/**
  * The status records Unfeature withdraws: this trail's, of this kind and
  * status, and only under a name the dashboard makes. A later kind on the
  * same trail (a suggestion that was added) is never touched.

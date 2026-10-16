@@ -15,7 +15,8 @@ import {
   groupNominations, nominationQueue, FEATURE_LENGTHS, BLURB_LIMIT, mapsLink, featuredRows, formatDistance,
   ACTIVITY_KINDS,
   tallyWalkerReports, summaryRows, summaryRecordName, summaryStanding, verdictText, factLabel, valueLabel, countsOf,
-  MIN_AGREEING, AGREEMENT, RETENTION_MONTHS, WALKER_FACTS, CONTRIBUTION_KINDS, knownContribution, nominationStatusNames, isUnknownRecordType,
+  MIN_AGREEING, AGREEMENT, RETENTION_MONTHS, WALKER_FACTS, CONTRIBUTION_KINDS, knownContribution, nominationStatusNames,
+  unfeatureLookup, errorClause, featureTellText, toldText,
 } from './logic.js';
 import {
   removeItem, dismissItem, suspendAccount, liftSuspension, itemsOf, OWNED_TYPES, featureTrailAndTell, unfeatureTrailAndWithdraw, dismissNominations,
@@ -561,10 +562,8 @@ function confirmFeature(trail, current = null, canTell = null) {
     // the note and the end change), so the dialog names that one.
     el('h2', { class: 'title', id: 'dialog-title' }, `Feature “${current?.trail.trailName ?? trail.trailName}”?`),
     el('p', {}, 'It shows under Featured near you for everyone within 10 miles, with your note.'),
-    el('p', { class: canTell ? '' : 'small muted' }, canTell
-      ? `It also tells ${canTell} nominator${canTell === 1 ? '' : 's'}: their My contributions shows Featured. `
-      : 'Its nominators are told too: each nomination sent by a version of the app that can hear back shows Featured in their My contributions. ',
-    'What everyone can read says only the trail, Featured and when; nothing about who nominated it.'),
+    el('p', { class: canTell ? '' : 'small muted' }, `${featureTellText(canTell)} `,
+      'What everyone can read says only the trail, Featured and when; nothing about who nominated it.'),
     current ? el('p', { class: 'small muted' },
       `Keeps the name and place first featured: ${current.trail.trailName}. To change them, unfeature it first.`) : null,
     el('label', {}, 'Your note (shown in the app) ', el('textarea', { name: 'blurb', maxlength: BLURB_LIMIT, required: true }, current?.blurb ?? '')),
@@ -586,9 +585,10 @@ function confirmFeature(trail, current = null, canTell = null) {
       trailsActedOn.set(trail.trailKey, Date.now());
       dialog.close();
       const featured = `Featured “${out.trail.trailName}” ${out.until === null ? 'until you unfeature it' : `until ${new Date(out.until).toLocaleDateString()}`}.`;
-      say(`${featured} ${toldText(out.told)}`.trim(), { error: Boolean(out.told.error) });
-      // Redrawing clears the status line: an error stays until Refresh.
-      if (!out.told.error) setTimeout(() => render(), 600);
+      const notice = Boolean(out.told.error || out.told.blocked);
+      say(`${featured} ${toldText(out.told)}`.trim(), { error: notice });
+      // Redrawing clears the status line: an error or a skipped nominator stays until Refresh.
+      if (!notice) setTimeout(() => render(), 600);
     } catch (error) {
       dialog.close();
       fail(error);
@@ -651,23 +651,6 @@ async function renderFeatured(seq) {
   rows.length ? null : el('p', { class: 'muted' }, 'Feature a trail from Nominations.'));
 }
 
-/** An error as a clause, without its own full stop. */
-function errorClause(error) {
-  return describeError(error).replace(/\.$/, '');
-}
-
-/** What telling the nominators did, as a sentence after "Featured …". */
-function toldText(told) {
-  if (told.error) {
-    const done = told.planned ? `Told ${told.written} of ${told.planned} nominators, then: ` : 'Couldn\'t tell its nominators: ';
-    return `${done}${errorClause(told.error)}. To finish, open Featured, Change note or length, and Feature (Keep).`;
-  }
-  const blocked = told.blocked
-    ? ` ${told.blocked} couldn't be told: another record already has that name (a crafted nomination, most likely).` : '';
-  if (!told.written) return blocked.trim();
-  return `Told ${told.written} nominator${told.written === 1 ? '' : 's'}.${blocked}`;
-}
-
 /**
  * Unfeature asks with the number of nominators whose Featured status it
  * withdraws. Clearing a feature that has already ended keeps them: the
@@ -681,23 +664,26 @@ async function confirmUnfeature(f) {
     try {
       ({ records: statuses } = await findNominationStatuses(store, { trailKey: f.trail.trailKey }));
     } catch (error) {
-      // No such type here yet (Production before the deploy): nothing to withdraw.
-      if (!isUnknownRecordType(error)) lookupError = error;
+      lookupError = error;
     }
     say('');
   }
+  const lookup = f.ended ? 'checked' : unfeatureLookup(lookupError);
   const n = statuses.length;
   const form = el('form', { method: 'dialog' },
     el('h2', { class: 'title', id: 'dialog-title' }, `Unfeature “${f.trail.trailName}”?`),
     el('p', {}, 'It leaves Featured near you within about 30 minutes. The trail itself stays in the app.'),
     f.ended ? el('p', { class: 'small muted' }, 'Nominators told it was featured keep seeing that: it was.')
-      : lookupError ? el('p', { class: 'status error' }, `Couldn't check for nominators told it was featured: ${errorClause(lookupError)}. `
-        + 'Unfeaturing now would leave them seeing Featured, with no way left to withdraw it, so try again in a minute.')
+      : lookup === 'unchecked' ? el('p', { class: 'status error' }, `Couldn't check for nominators told it was featured: ${errorClause(lookupError)}. `
+        + 'Cancel and try again in a minute. Unfeature anyway only if this keeps happening: anyone already told would keep '
+        + 'seeing Featured, and no screen could withdraw it.')
         : n ? el('p', {}, `It also withdraws the Featured status ${n} nominator${n === 1 ? '' : 's'} see${n === 1 ? 's' : ''} in My contributions. `
           + 'They go back to Sent.') : null,
     el('div', { class: 'actions' },
       el('button', { class: 'btn', value: 'cancel', formnovalidate: true }, 'Cancel'),
-      lookupError ? null : el('button', { class: 'btn primary', value: 'unfeature' }, f.ended ? 'Clear' : 'Unfeature')));
+      lookup === 'unchecked'
+        ? el('button', { class: 'btn danger', value: 'unfeature' }, 'Unfeature anyway')
+        : el('button', { class: 'btn primary', value: 'unfeature' }, f.ended ? 'Clear' : 'Unfeature')));
   form.addEventListener('submit', async (event) => {
     if (event.submitter?.value !== 'unfeature') return;
     event.preventDefault();

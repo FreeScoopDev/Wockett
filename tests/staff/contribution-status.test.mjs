@@ -8,6 +8,7 @@ import {
   CONTRIBUTION_KINDS, STATUS_RECORD_PREFIX, isClaimToken, contributionStatusName, isContributionStatusName,
   knownContribution, contributionStatusFields, nominationStatusNames, statusDecidedAt, statusesToWithdraw,
   groupReports, queue, groupNominations, NON_ITEM_TARGETS, actionFields, isUnknownRecordType,
+  unfeatureLookup, toldText, featureTellText,
 } from '../../docs/staff/logic.js';
 import {
   publishNominationStatuses, findNominationStatuses, withdrawNominationStatuses,
@@ -231,7 +232,7 @@ test('telling nominators writes History first, then one status per token, for th
   assert.equal(h.targetType, 'contribution');
   assert.equal(h.targetRecordName, 'nc:w1');
   assert.equal(h.reportCount, 2);
-  assert.deepEqual(JSON.parse(h.snapshot), { trailKey: 'nc:w1', trailName: 'Lake Loop', kind: 'nomination', status: 'featured', count: 2 });
+  assert.deepEqual(JSON.parse(h.snapshot), { trailKey: 'nc:w1', trailName: 'Lake Loop', kind: 'nomination', status: 'featured', count: 2, blocked: 0 });
   assert.deepEqual(statusWrites(store).map((c) => c[2]), [NAME_A, NAME_B]);
   for (const c of statusWrites(store)) {
     assert.deepEqual(c[3], { kind: 'nomination', status: 'featured', trailKey: 'nc:w1', trailName: 'Lake Loop', decidedAt: { value: NOW, type: 'TIMESTAMP' } });
@@ -276,10 +277,20 @@ test('a status name already used by another record is skipped, and can\'t stop t
   assert.deepEqual(out, { written: 2, planned: 2, blocked: 1, withoutToken: 0, error: null });
   assert.deepEqual(statusWrites(store).map((c) => [c[0], c[2]]), [['createNamed', NAME_B], ['createNamed', NAME_C]]);
   assert.equal(history(store)[0].reportCount, 2);
+  assert.equal(JSON.parse(history(store)[0].snapshot).blocked, 1, 'History says one was skipped');
 
   const all = fakeStore({ nominations: [nom('n1', NAME_A)], existing: squatted });
   assert.deepEqual(await publishNominationStatuses(all, { trail, now: NOW }), { written: 0, planned: 0, blocked: 1, withoutToken: 0, error: null });
   assert.ok(!all.calls.some((c) => c[0] === 'create' || c[0] === 'createNamed' || c[0] === 'replaceNamed'), 'nothing written, no History');
+});
+
+test('when every writable status fails, the skipped count still reaches the page', async () => {
+  const squatted = new Map([[NAME_A, { recordName: NAME_A, recordType: 'TrailNomination', fields: {} }]]);
+  const store = fakeStore({ nominations: [nom('n1', NAME_A), nom('n2', NAME_B)], existing: squatted, failWriteAt: 1 });
+  const out = await featureTrailAndTell(store, { trail, blurb: 'Shady', length: '30d', now: NOW });
+  assert.equal(out.told.blocked, 1);
+  assert.equal(out.told.error.ckErrorCode, 'NETWORK_ERROR');
+  assert.match(toldText(out.told), /1 couldn't be told/);
 });
 
 test('one status that fails doesn\'t stop the rest; History says how many were written', async () => {
@@ -323,7 +334,7 @@ test('a failure on the first status takes History back; part-way, History says h
   assert.deepEqual(fix[3], {
     ...actionFields({ target: 'nc:w1', type: 'contribution', action: 'statusPublished', reportCount: 3, snapshot: '' }),
     reportCount: 2, note: 'Stopped part-way: 2 of 3 written.',
-    snapshot: JSON.stringify({ trailKey: 'nc:w1', trailName: 'Lake Loop', kind: 'nomination', status: 'featured', count: 2, planned: 3 }),
+    snapshot: JSON.stringify({ trailKey: 'nc:w1', trailName: 'Lake Loop', kind: 'nomination', status: 'featured', count: 2, blocked: 0, planned: 3 }),
   });
 });
 
@@ -358,6 +369,34 @@ test('Feature stands even when telling the nominators fails, and the status name
   await assert.rejects(featureTrailAndTell(failing, { trail, blurb: 'Shady', length: '30d', now: NOW }));
   assert.equal(statusWrites(failing).length, 0);
   assert.ok(!history(failing).some((h) => h.action === 'statusPublished'));
+});
+
+// MARK: What the page says and offers
+
+test('Unfeature proceeds when the count is known or the type does not exist yet; any other failure needs "anyway"', () => {
+  assert.equal(unfeatureLookup(null), 'checked');
+  assert.equal(unfeatureLookup({ serverErrorCode: 'BAD_REQUEST', reason: 'did not find record type: ContributionStatus' }), 'none');
+  assert.equal(unfeatureLookup({ ckErrorCode: 'NETWORK_ERROR' }), 'unchecked');
+  assert.equal(unfeatureLookup({ ckErrorCode: 'ACCESS_DENIED', reason: 'not allowed' }), 'unchecked');
+});
+
+test('the Feature confirm says how many nominators it tells, none, or that it tells them in general', () => {
+  assert.equal(featureTellText(2), 'It also tells 2 nominators: their My contributions shows Featured.');
+  assert.equal(featureTellText(1), 'It also tells 1 nominator: their My contributions shows Featured.');
+  assert.match(featureTellText(0), /^None of its nominators can be told yet/);
+  assert.match(featureTellText(null), /^Its nominators are told too/);
+});
+
+test('the message after Feature says who was told, who was skipped, and how to finish', () => {
+  assert.equal(toldText({ written: 0, planned: 0, blocked: 0, error: null }), '');
+  assert.equal(toldText({ written: 2, planned: 2, blocked: 0, error: null }), 'Told 2 nominators.');
+  assert.equal(toldText({ written: 1, planned: 1, blocked: 1, error: null }),
+    'Told 1 nominator. 1 couldn\'t be told: another record already has that name (a crafted nomination, most likely).');
+  assert.equal(toldText({ written: 2, planned: 3, blocked: 0, error: { ckErrorCode: 'NETWORK_ERROR' } }),
+    'Told 2 of 3 nominators; the rest failed: Couldn\'t reach iCloud. Check the connection and try again. To finish, open Featured, Change note or length, and Feature (Keep).');
+  assert.match(toldText({ written: 0, planned: null, blocked: 0, error: { ckErrorCode: 'NETWORK_ERROR' } }), /^Couldn't tell its nominators: Couldn't reach iCloud/);
+  // No token can be in the text: told carries counts and an error only.
+  assert.ok(!toldText({ written: 1, planned: 1, blocked: 0, error: null }).includes('status.'));
 });
 
 // MARK: Withdrawing

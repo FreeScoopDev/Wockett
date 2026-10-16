@@ -405,7 +405,7 @@ export async function publishNominationStatuses(store, { trail, now = Date.now()
   if (!todo.length) return { written: 0, planned: 0, blocked, withoutToken, error: null };
   const fields = actionFields({
     target: trail.trailKey, type: 'contribution', action: 'statusPublished', reportCount: todo.length,
-    snapshot: JSON.stringify({ trailKey: trail.trailKey, trailName: trail.trailName, ...NOMINATION, count: todo.length }),
+    snapshot: JSON.stringify({ trailKey: trail.trailKey, trailName: trail.trailName, ...NOMINATION, count: todo.length, blocked }),
   });
   const written = await store.create('ModerationAction', fields);
   let done = 0;
@@ -423,7 +423,11 @@ export async function publishNominationStatuses(store, { trail, now = Date.now()
   }
   if (done < todo.length) {
     await settleHistory(store, written, fields, done, todo.length, 'written');
-    if (done === 0) throw firstError;
+    if (done === 0) {
+      // The skipped names still matter to the page: carried on the error.
+      try { firstError.blocked = blocked; } catch { /* a frozen error just has no count */ }
+      throw firstError;
+    }
   }
   return { written: done, planned: todo.length, blocked, withoutToken, error: firstError };
 }
@@ -487,7 +491,7 @@ export async function featureTrailAndTell(store, options) {
   try {
     told = await publishNominationStatuses(store, { trail: out.trail, now: options.now ?? Date.now() });
   } catch (error) {
-    told = { written: 0, planned: null, blocked: 0, withoutToken: 0, error };
+    told = { written: 0, planned: null, blocked: Number.isInteger(error?.blocked) ? error.blocked : 0, withoutToken: 0, error };
   }
   return { ...out, told };
 }
