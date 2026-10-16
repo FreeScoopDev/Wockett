@@ -142,7 +142,32 @@ struct CommunityReportRecordTests {
         #expect(store.saved.count == 1)
         #expect(await CommunityReportSubmission.submit(report(target: "post-10"), store: store, ledger: book) == .sent,
                 "another item is a new report")
+        #expect(await CommunityReportSubmission.submit(report(), store: store, ledger: book) == .alreadyReported,
+                "the first item is still remembered after another")
         #expect(store.saved.count == 2)
+    }
+
+    @Test("The phone's record of sent reports is the app's own defaults, under a key that must not change")
+    func ledgerStorage() {
+        #expect(CommunityReportLedger().defaults === UserDefaults.standard)
+        #expect(CommunityReportLedger.key == "communityReportsSent_v1", "renaming it forgets every report sent")
+        let book = ledger()
+        book.record("a")
+        book.record("b")
+        #expect(book.contains("a") && book.contains("b") && !book.contains("c"))
+    }
+
+    @Test("A send cancelled mid-save is failed, and not remembered")
+    func cancelledNotRemembered() async {
+        let store = FakeStore()
+        store.hangs = true
+        let book = ledger()
+        let r = report()
+        let task = Task { await CommunityReportSubmission.submit(r, store: store, ledger: book, sleep: { _ in try await Task.sleep(for: .seconds(600)) }) }
+        try? await Task.sleep(for: .milliseconds(100))
+        task.cancel()
+        #expect(await task.value == .failed)
+        #expect(!book.contains(CommunityReportLedger.reportEntry(target: "post-9")))
     }
 
     @Test("A report that wasn't saved is not remembered, so reporting again sends it")

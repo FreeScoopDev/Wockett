@@ -200,7 +200,36 @@ struct ChallengeDeletionTests {
                                                 sleep: Self.neverFires) == .sent)
         #expect(await ChallengeDeletion.request(try challenge("c2"), others: 1, store: reports, ledger: ledger, on: day2,
                                                 timeZone: utc, sleep: Self.neverFires) == .sent)
+        #expect(await ChallengeDeletion.request(c, others: 1, store: reports, ledger: ledger, on: day2, timeZone: utc,
+                                                sleep: Self.neverFires) == .alreadySent, "remembered after another challenge")
         #expect(reports.saved.count == 3)
+    }
+
+    @Test("What a request saves: the owner's request on the challenge, with its note")
+    func requestSavesOwnerRequest() async throws {
+        let reports = FakeReports()
+        #expect(await ChallengeDeletion.request(try challenge(), others: 1, store: reports,
+                                                ledger: CommunityReportLedger(defaults: defaults()), sleep: Self.neverFires) == .sent)
+        let saved = try #require(reports.saved.first)
+        #expect(saved.recordType == "CommunityReport")
+        #expect(saved.recordID.recordName.hasPrefix("report."))
+        #expect(saved["reason"] as? String == "ownerRequest")
+        #expect(saved["targetRecordName"] as? String == "c1")
+        #expect(saved["note"] as? String == "The person who created it asked to delete it. 1 other person has joined.")
+    }
+
+    @Test("A request cancelled mid-save is not remembered")
+    func requestCancelledNotRemembered() async throws {
+        let ledger = CommunityReportLedger(defaults: defaults())
+        let utc = try #require(TimeZone(identifier: "UTC"))
+        let day = Date(timeIntervalSince1970: 2_000_000_000)
+        let c = try challenge()
+        let task = Task { await ChallengeDeletion.request(c, others: 1, store: HangingReports(), ledger: ledger, on: day,
+                                                          timeZone: utc, sleep: Self.neverFires) }
+        try? await Task.sleep(for: .milliseconds(100))
+        task.cancel()
+        guard case .failed = await task.value else { Issue.record("a cancelled request is a failure"); return }
+        #expect(!ledger.contains(ChallengeDeletion.requestEntry(for: c, on: day, timeZone: utc)))
     }
 
     @Test("'Today' is the person's own day, not UTC's")
@@ -253,6 +282,10 @@ struct ChallengeDeletionTests {
         let outcome = await ChallengeDeletion.request(try challenge(), others: 2, store: reports,
                                                       ledger: CommunityReportLedger(defaults: defaults()), sleep: Self.neverFires)
         #expect(outcome == .failed("Couldn't send the request. Check your connection and try again."))
+        reports.error = CKError(.notAuthenticated)
+        let signedOut = await ChallengeDeletion.request(try challenge(), others: 2, store: reports,
+                                                        ledger: CommunityReportLedger(defaults: defaults()), sleep: Self.neverFires)
+        #expect(signedOut == .failed("Sign in to iCloud in the Settings app to send it."))
     }
 
     @Test("The words say what happens")
