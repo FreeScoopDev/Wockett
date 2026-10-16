@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  WALKER_FACTS, MIN_AGREEING, AGREEMENT, RETENTION_MONTHS, walkerVerdict, tallyWalkerReports, summaryRecordName,
+  WALKER_FACTS, MIN_AGREEING, AGREEMENT, verdictText, RETENTION_MONTHS, walkerVerdict, tallyWalkerReports, summaryRecordName,
   summaryFields, summaryStanding, summaryRows, retentionCutoff, expiredReports, isPublishableFact, countsOf,
   groupReports, queue, ACTIVITY_KINDS, DAY, walkerId,
 } from '../../docs/staff/logic.js';
@@ -91,6 +91,15 @@ test('3 or more agreeing must also be at least 2 in 3 of those who answered; jus
   assert.equal(walkerVerdict('surface', counts({ paved: 5, packedDirt: 3 })).status, 'split', '5 of 8 is 0.625');
   assert.equal(walkerVerdict('surface', counts({ paved: 6, packedDirt: 3 })).status, 'ready', '6 of 9');
   assert.equal(walkerVerdict('surface', counts({ paved: 2, packedDirt: 1, rockyOrRooty: 1 })).status, 'tooFew', '2 of 4');
+});
+
+test('the verdict in words gives the numbers the rule used', () => {
+  const words = (counts) => verdictText('surface', walkerVerdict('surface', counts));
+  assert.equal(words({ paved: 2, packedDirt: 1 }), 'Not enough walkers agree yet: 2 gave the same answer, 3 needed');
+  assert.equal(words({ paved: 3, packedDirt: 2 }), 'Walkers disagree: the most given answer has 3 of 5, under 2 in 3');
+  assert.equal(words({ paved: 3, packedDirt: 1 }), 'Ready to publish: Paved (3 of 4 walkers agree)');
+  assert.equal(words({ paved: 2, packedDirt: 2 }), 'Walkers are tied, so nothing is published');
+  assert.match(verdictText('liked', walkerVerdict('liked', { up: 9 })), /^Counted only\. No summary is published/);
 });
 
 test('a tie publishes nothing', () => {
@@ -245,6 +254,10 @@ test('Publish writes History first, then creates or replaces the summary; a fail
   assert.equal(fresh.calls[1][2].action, 'published');
   assert.equal(fresh.calls[1][2].targetType, 'trailFact');
   assert.equal(fresh.calls[2][1], 'TrailFactSummary');
+  const mixed = fakeStore();
+  await publishSummary(mixed, { trailKey: 'nc:w1', fact: 'dogs', counts: { leashRequired: 3, noDogs: 1 }, now: NOW });
+  assert.equal(mixed.calls[1][2].reportCount, 4, 'History counts every walker; the summary states the 3 who agree');
+  assert.equal(mixed.calls[2][3].walkers, 3);
   const again = fakeStore({ exists: 'factsummary.dogs.nc.w1' });
   await publishSummary(again, { trailKey: 'nc:w1', fact: 'dogs', counts: { leashRequired: 4 }, now: NOW });
   assert.deepEqual(again.calls.map((c) => c[0]), ['fetch', 'create', 'replaceNamed']);

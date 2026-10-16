@@ -222,10 +222,13 @@ export async function publishSummary(store, { trailKey, fact, counts, now = Date
   const fields = summaryFields(trailKey, fact, counts, now);
   const recordName = summaryRecordName(trailKey, fact);
   const exists = (await store.fetch([recordName])).has(recordName);
+  const known = Object.fromEntries(Object.entries(counts).filter(([v, n]) => knownValue(fact, v) && Number.isInteger(n)));
   const written = await store.create('ModerationAction', actionFields({
-    target: recordName, type: 'trailFact', action: 'published', reportCount: fields.walkers,
-    snapshot: JSON.stringify({ trailKey, fact, value: fields.value, walkers: fields.walkers,
-      counts: Object.fromEntries(Object.entries(counts).filter(([v, n]) => knownValue(fact, v) && Number.isInteger(n))) }),
+    // reportCount: every walker counted for this fact; the snapshot's `walkers`
+    // is how many gave the published answer (what the app shows).
+    target: recordName, type: 'trailFact', action: 'published',
+    reportCount: Object.values(known).reduce((sum, n) => sum + Math.max(n, 0), 0),
+    snapshot: JSON.stringify({ trailKey, fact, value: fields.value, walkers: fields.walkers, counts: known }),
   }));
   try {
     if (exists) await store.replaceNamed('TrailFactSummary', recordName, fields);
