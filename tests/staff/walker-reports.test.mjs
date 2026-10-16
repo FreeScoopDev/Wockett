@@ -257,6 +257,12 @@ test('Publish writes History first, then creates or replaces the summary; a fail
   const mixed = fakeStore();
   await publishSummary(mixed, { trailKey: 'nc:w1', fact: 'dogs', counts: { leashRequired: 3, noDogs: 1 }, now: NOW });
   assert.equal(mixed.calls[1][2].reportCount, 4, 'History counts every walker; the summary states the 3 who agree');
+  assert.deepEqual(JSON.parse(mixed.calls[1][2].snapshot),
+    { trailKey: 'nc:w1', fact: 'dogs', value: 'leashRequired', walkers: 3, counts: { leashRequired: 3, noDogs: 1 } });
+  const crafted = fakeStore();
+  await publishSummary(crafted, { trailKey: 'nc:w1', fact: 'dogs', counts: { leashRequired: 3, noDogs: 1, bogus: 5 }, now: NOW });
+  assert.equal(crafted.calls[1][2].reportCount, 4, 'an unknown answer is not a walker');
+  assert.deepEqual(JSON.parse(crafted.calls[1][2].snapshot).counts, { leashRequired: 3, noDogs: 1 });
   assert.equal(mixed.calls[2][3].walkers, 3);
   const again = fakeStore({ exists: 'factsummary.dogs.nc.w1' });
   await publishSummary(again, { trailKey: 'nc:w1', fact: 'dogs', counts: { leashRequired: 4 }, now: NOW });

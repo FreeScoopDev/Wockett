@@ -895,7 +895,7 @@ function confirmDeleteByIdentifier({ records, more }) {
       ? `Delete ${n} walker report${n === 1 ? '' : 's'} from this identifier?`
       : 'No walker reports from this identifier'),
     n ? el('p', {}, 'This can\'t be undone. History keeps the count, not the identifier. Published summaries hold no one\'s answers and stay; '
-      + `check the trails they reported if a summary now rests on fewer than ${MIN_AGREEING} walkers.`)
+      + 'check the trails they reported: a summary may no longer clear the rule (the tab marks it).')
       : el('p', {}, `Check the identifier was pasted whole. Reports deleted already, or older than ${RETENTION_MONTHS} months, won't be found.`),
     more ? el('p', { class: 'small muted' }, 'There are more than one load can hold (5,000): run this again afterwards for the rest.') : null,
     el('div', { class: 'actions' },
