@@ -292,14 +292,25 @@ final class HowToVideoTests: XCTestCase {
 
         let name = app.textFields["Route name…"]
         XCTAssertTrue(name.waitForExistence(timeout: 5), "Save as Custom Route must ask for a name")
+        // The field appears near the bottom of the summary and the keyboard
+        // slides up over it; typing before it has focus was lost twice
+        // ("Neither element nor any descendant has keyboard focus").
+        let canHit = NSPredicate(format: "hittable == true")
+        XCTAssertEqual(XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: canHit, object: name)], timeout: 10),
+                       .completed, "The route name field never became tappable")
         name.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10), "Tapping the name field must raise the keyboard")
+        let focused = XCTNSPredicateExpectation(predicate: NSPredicate(format: "hasKeyboardFocus == true"), object: name)
+        XCTAssertEqual(XCTWaiter().wait(for: [focused], timeout: 10), .completed, "The route name field must have focus")
         name.typeText("Morning Loop")
         let saveName = app.buttons["Save"]
         XCTAssertTrue(saveName.waitForExistence(timeout: 5), "The name field's Save is missing")
+        XCTAssertEqual(XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: canHit, object: saveName)], timeout: 10),
+                       .completed, "The name field's Save never became tappable")
         saveName.tap()
         // CONTAINS, not an exact title: the saved state swaps the button's symbol too.
         let saved = app.buttons.matching(NSPredicate(format: "label CONTAINS 'Saved as Custom Route'")).firstMatch
-        if !saved.waitForExistence(timeout: 10) {
+        if !saved.waitForExistence(timeout: 15) {
             let tree = XCTAttachment(string: app.debugDescription)
             tree.name = "Accessibility tree after Save"
             tree.lifetime = .keepAlways
