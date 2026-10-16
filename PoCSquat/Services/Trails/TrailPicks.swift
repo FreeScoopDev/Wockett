@@ -1,6 +1,5 @@
 import CloudKit
 import CoreLocation
-import CryptoKit
 import Foundation
 import Observation
 import OSLog
@@ -83,26 +82,32 @@ enum TrailNominations {
     static let recordType = "TrailNomination"
     static let noteLimit = 300
 
-    /// `nomination.<hash>`: the same for one person and one trail on any of
-    /// their devices, so CloudKit refuses a second (as reports and votes). A
-    /// hash, so the dashboard can't read the nominator out of it. With no
-    /// known nominator every nomination gets its own name.
-    static func recordName(trailKey: String, nominator: String?) -> String {
-        guard let nominator else { return "nomination.\(UUID().uuidString.lowercased())" }
-        let digest = SHA256.hash(data: Data("\(trailKey)\n\(nominator)".utf8))
-        return "nomination." + digest.map { String(format: "%02x", $0) }.joined()
+    /// `nomination.<random UUID>`. Until Feature C it was a hash of the trail
+    /// key and the nominator's account, so CloudKit refused a second from
+    /// the same person. Both inputs are public (the account is the creator
+    /// on every public record a person made; trail keys are in the packs), so
+    /// anyone could compute that name for someone else and try to save it:
+    /// CloudKit refusing would tell them that account nominated that trail,
+    /// without any read access (C1 critic, runs 1 and 2). A random name tells
+    /// nothing, as for walker reports. One per person per trail still holds
+    /// where it counts: this phone sends a trail once (`ContributionService`),
+    /// and the dashboard keeps one nomination per creator per trail.
+    static func recordName() -> String {
+        "nomination." + UUID().uuidString.lowercased()
     }
 
     static func trimmedNote(_ note: String) -> String {
         String(note.trimmingCharacters(in: .whitespacesAndNewlines).prefix(noteLimit))
     }
 
-    /// The trail and the note; nothing about who nominated it.
-    static func record(for trail: TrailRef, note: String, nominator: String?) -> CKRecord {
-        let record = CKRecord(recordType: recordType,
-                              recordID: CKRecord.ID(recordName: recordName(trailKey: trail.trailKey, nominator: nominator)))
+    /// The trail, the note and the claim token; nothing about who nominated
+    /// it. The token is readable only by a Moderator, like the rest of the
+    /// record; the dashboard turns it into the status record's name.
+    static func record(for trail: TrailRef, note: String, claimToken: String) -> CKRecord {
+        let record = CKRecord(recordType: recordType, recordID: CKRecord.ID(recordName: recordName()))
         trail.write(to: record)
         record["note"] = trimmedNote(note)
+        record["claimToken"] = claimToken
         return record
     }
 
@@ -112,31 +117,59 @@ enum TrailNominations {
         case failed(String)
     }
 
+    static let signInMessage = "Sign in to iCloud in the Settings app to nominate a trail."
+    static let failedMessage = "Couldn't send your nomination. Check your connection and try again."
+    static let schemaMissingMessage = "This test build won't send nominations until the contribution-status schema is in CloudKit Development."
+
     static func outcome(of error: Error) -> Outcome {
         if let access = error as? CommunityAccessError { return .failed(access.message) }
+        if error is TrailFactReportSchemaMissing { return .failed(schemaMissingMessage) }
         switch (error as? CKError)?.code {
+        // A random name can't clash; kept so a clash is never shown as a
+        // network error.
         case .serverRecordChanged?: return .alreadyNominated
-        case .notAuthenticated?: return .failed("Sign in to iCloud in the Settings app to nominate a trail.")
-        default: return .failed("Couldn't send your nomination. Check your connection and try again.")
+        case .notAuthenticated?: return .failed(signInMessage)
+        default: return .failed(failedMessage)
         }
     }
 }
 
 /// The CloudKit side of nominating, behind a protocol for tests.
 protocol TrailNominationStore: AnyObject {
-    func currentUserRecordName() async throws -> String
     func save(_ record: CKRecord) async throws
 }
 
 final class CloudKitTrailNominationStore: TrailNominationStore {
     private let container = CKContainer(identifier: WockettCloud.containerID)
-
-    func currentUserRecordName() async throws -> String {
-        try await container.userRecordID().recordName
-    }
+    private let log = Logger(subsystem: "com.wockett.app", category: "TrailNominations")
+    #if DEBUG
+    private var schemaChecked = false
+    #endif
 
     func save(_ record: CKRecord) async throws {
-        _ = try await container.publicCloudDatabase.save(record)
+        let db = container.publicCloudDatabase
+        #if DEBUG
+        // A Debug build saving `claimToken` before the schema is imported
+        // would add the field to Development by itself. `claimToken` and
+        // `ContributionStatus` arrive in one import (C1), so the probe asks
+        // for the type the app can read: a query that can't create it. The
+        // same guard as walker reports (`TrailFactReports.guardedSave`).
+        let log = log
+        schemaChecked = try await TrailFactReports.guardedSave(checked: schemaChecked, probe: {
+            let query = CKQuery(recordType: ContributionStatuses.recordType,
+                                predicate: NSPredicate(format: "trailKey == %@", "schema-check"))
+            do {
+                _ = try await db.records(matching: query, resultsLimit: 1)
+            } catch {
+                log.error("ContributionStatus probe: \(error.localizedDescription, privacy: .public)")
+                throw error
+            }
+        }, save: {
+            _ = try await db.save(record)
+        })
+        #else
+        _ = try await db.save(record)
+        #endif
     }
 }
 
@@ -144,23 +177,33 @@ final class CloudKitTrailNominationStore: TrailNominationStore {
 enum TrailNominationSubmission {
     nonisolated static let deadline: Duration = .seconds(15)
 
+    /// Sends one nomination with a fresh claim token, and keeps the token on
+    /// this phone once CloudKit has the record (never for one that wasn't
+    /// sent). A trail this phone already nominated is not sent again.
     static func submit(_ trail: TrailRef, note: String,
                        store: TrailNominationStore,
+                       contributions: ContributionService,
                        // No Terms: a nomination is read only by moderators, never
                        // shown to anyone, and the Terms sheet is about what is public.
                        canPost: @escaping () async throws -> Void = { try await SuspensionService.shared.ensureCanPost(needsTerms: false) },
-                       knownNominator: @escaping () -> String? = { MyAccount.recordName },
+                       makeToken: @escaping () -> String = { ContributionStatuses.newClaimToken() },
+                       now: @escaping () -> Date = Date.init,
                        deadline: Duration = deadline,
                        sleep: @escaping OptimisticVote.Sleep = { try await Task.sleep(for: $0) }) async -> TrailNominations.Outcome {
+        if contributions.hasNominated(trail.trailKey) { return .alreadyNominated }
         do {
             try await canPost()
+            let token = makeToken()
+            let record = TrailNominations.record(for: trail, note: note, claimToken: token)
             let saved: Bool? = try await OptimisticVote.withDeadline(deadline, sleep: sleep) {
-                let nominator = (try? await store.currentUserRecordName()) ?? knownNominator()
                 try Task.checkCancellation()
-                try await store.save(TrailNominations.record(for: trail, note: note, nominator: nominator))
+                try await store.save(record)
                 return true
             }
-            return saved == nil ? .failed("Couldn't send your nomination. Check your connection and try again.") : .sent
+            guard saved != nil else { return .failed(TrailNominations.failedMessage) }
+            contributions.noteSent(Contribution(claimToken: token, kind: .nomination, trailKey: trail.trailKey,
+                                                trailName: trail.trailName, sentAt: now()))
+            return .sent
         } catch {
             return TrailNominations.outcome(of: error)
         }

@@ -1,0 +1,84 @@
+import SwiftUI
+
+// MARK: - My contributions
+//
+// Settings > Community > My contributions, and the nomination thank-you's
+// "My contributions" button: each trail this phone nominated, when, and
+// Sent or Featured (spec feat/contribution-status, criterion 4). Asks
+// CloudKit every time it opens and on pull to refresh.
+
+struct MyContributionsView: View {
+    var service: ContributionService = .shared
+
+    var body: some View {
+        ZStack {
+            Color.earthBg.ignoresSafeArea()
+            List {
+                if service.contributions.isEmpty {
+                    WktEmptyState(symbol: .trailPick, title: ContributionMessages.emptyTitle,
+                                  message: ContributionMessages.emptyMessage)
+                        .accessibilityElement(children: .contain)
+                        .accessibilityIdentifier("contributions.empty")
+                        .listRowBackground(Color.clear)
+                } else {
+                    Section {
+                        ForEach(service.contributions) { item in
+                            ContributionRow(item: item)
+                                .listRowBackground(Color.earthCard)
+                        }
+                    } footer: {
+                        Text(ContributionMessages.footer)
+                            .font(.wktLabel).foregroundColor(.earthMuted)
+                    }
+                }
+            }
+            .scrollContentBackground(.hidden)
+            .refreshable { await service.refresh() }
+        }
+        .navigationTitle(ContributionMessages.screenTitle)
+        .navigationBarTitleDisplayMode(.inline)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("contributions.root")
+        .task { await service.refresh() }
+    }
+}
+
+/// The trail, the day it was sent, and its status as a chip.
+private struct ContributionRow: View {
+    let item: Contribution
+
+    var body: some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(item.trailName)
+                    .font(.wktRowTitle)
+                    .foregroundColor(.earthCream)
+                Text("Nominated \(item.sentAt.formatted(date: .abbreviated, time: .omitted))")
+                    .font(.wktLabel)
+                    .foregroundColor(.earthMuted)
+            }
+            Spacer(minLength: 8)
+            WktStatusChip(text: item.statusLabel, dot: item.hasStatus ? .earthGreen : .earthMuted)
+        }
+        .padding(.vertical, 4)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("contributions.row")
+    }
+}
+
+/// "Your nomination of Lake Loop is now Featured", once, at the top of the
+/// Trails list (criterion 5).
+struct ContributionFeaturedBanner: View {
+    let text: String
+    let onClose: () -> Void
+
+    var body: some View {
+        WktBanner(symbol: .trailPick, tint: .earthGreen, title: text,
+                  detail: "Walkers nearby see it in Trails. Thanks for the tip.") {
+            WktPillButton(title: "OK", action: onClose)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("routes.contributionFeatured")
+    }
+}

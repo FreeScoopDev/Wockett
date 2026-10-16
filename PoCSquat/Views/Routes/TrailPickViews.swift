@@ -35,9 +35,11 @@ struct TrailNominateButton: View {
 struct TrailNominationSheet: View {
     let trail: TrailRef
     var store: TrailNominationStore = CloudKitTrailNominationStore()
+    var contributions: ContributionService = .shared
     @Environment(\.dismiss) private var dismiss
     @State private var note = ""
     @State private var phase: Phase = .writing
+    @State private var showContributions = false
 
     enum Phase: Equatable {
         case writing
@@ -51,13 +53,13 @@ struct TrailNominationSheet: View {
                 Color.earthBg.ignoresSafeArea()
                 switch phase {
                 case .writing, .sending: form
-                case .done(.sent): answer(.success, "Thanks for the tip.",
-                                          "The Wockett team reads every nomination. The best show up as Featured for walkers nearby.")
+                case .done(.sent): answer(.success, "Thanks for the tip.", ContributionMessages.thanksDetail, contributionsLink: true)
                 case .done(.alreadyNominated): answer(.success, "You've nominated this trail already.",
-                                                      "Thanks. One nomination per trail is plenty.")
+                                                      ContributionMessages.alreadyDetail, contributionsLink: true)
                 case .done(.failed(let message)): answer(.warning, "Couldn't send it", message)
                 }
             }
+            .navigationDestination(isPresented: $showContributions) { MyContributionsView(service: contributions) }
             .navigationTitle("Nominate a Trail")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -73,6 +75,8 @@ struct TrailNominationSheet: View {
                 }
             }
         }
+        // A trail this phone nominated already says so before anything is typed.
+        .onAppear { if phase == .writing, contributions.hasNominated(trail.trailKey) { phase = .done(.alreadyNominated) } }
         .interactiveDismissDisabled(phase == .sending)
         .presentationDetents([.medium, .large])
         .accessibilityElement(children: .contain)
@@ -105,8 +109,11 @@ struct TrailNominationSheet: View {
         .disabled(phase == .sending)
     }
 
-    private func answer(_ symbol: WktSymbol, _ title: String, _ detail: String) -> some View {
-        WktResultView(symbol: symbol, title: title, detail: detail) { dismiss() }
+    private func answer(_ symbol: WktSymbol, _ title: String, _ detail: String, contributionsLink: Bool = false) -> some View {
+        WktResultView(symbol: symbol, title: title, detail: detail,
+                      secondary: contributionsLink ? WktResultView.Secondary(title: ContributionMessages.screenTitle) { showContributions = true } : nil) {
+            dismiss()
+        }
     }
 
     private func send() {
@@ -114,7 +121,8 @@ struct TrailNominationSheet: View {
         let trail = trail
         let note = note
         let store = store
-        Task { phase = .done(await TrailNominationSubmission.submit(trail, note: note, store: store)) }
+        let contributions = contributions
+        Task { phase = .done(await TrailNominationSubmission.submit(trail, note: note, store: store, contributions: contributions)) }
     }
 }
 

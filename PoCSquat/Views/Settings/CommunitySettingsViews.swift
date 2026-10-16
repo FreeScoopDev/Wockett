@@ -5,9 +5,9 @@ import UIKit
 //
 // Blocked people (synced through your private iCloud, BlockListSync) and
 // Delete my community data (CommunityDataDeletion). Audit 2026-10-12,
-// finding 15.
+// finding 15. My contributions (MyContributionsView) since Feature C.
 
-/// The two rows Settings shows under Community.
+/// The rows Settings shows under Community.
 struct CommunitySettingsSection: View {
     /// "Don't ask again" for the post-walk trail questions, stored inverted.
     @AppStorage(TrailReportAskPolicy.offKey) private var trailQuestionsOff = false
@@ -24,6 +24,21 @@ struct CommunitySettingsSection: View {
             }
             .tint(.earthGreenFill)
             .accessibilityIdentifier("settings.trailQuestions")
+            .listRowBackground(Color.earthCard)
+
+            NavigationLink {
+                MyContributionsView()
+            } label: {
+                Label {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(ContributionMessages.screenTitle)
+                        Text("Trails you nominated, and whether they're featured")
+                            .font(.wktLabel).foregroundColor(.earthMuted)
+                    }
+                } icon: { Image(wkt: .trailPick).wktIcon(.row, tint: .earthGreen) }
+                    .foregroundColor(.earthGreen)
+            }
+            .accessibilityIdentifier("settings.myContributions")
             .listRowBackground(Color.earthCard)
 
             NavigationLink {

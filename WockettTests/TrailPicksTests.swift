@@ -5,7 +5,8 @@ import Foundation
 @testable import PoCSquat
 
 /// Trail nominations and featured trails (2026-10-10): what a nomination
-/// holds, one per person per trail, and which list rows a feature matches.
+/// holds, and which list rows a feature matches. Claim tokens and the
+/// one-per-trail rule: ContributionStatusTests.
 @MainActor
 struct TrailPicksTests {
 
@@ -75,37 +76,27 @@ struct TrailPicksTests {
 
     // MARK: Nominations
 
-    @Test("A nomination holds the trail and the note, and nothing about the nominator")
+    @Test("A nomination holds the trail, the note and its claim token, and nothing about the nominator")
     func nominationRecord() throws {
         let ref = try #require(TrailRef(item: item("Lake Loop", [section(1, "Lake Loop", key: "nc:w9")])))
-        let record = TrailNominations.record(for: ref, note: "  Great views \n", nominator: "_me")
+        let record = TrailNominations.record(for: ref, note: "  Great views \n", claimToken: "T")
         #expect(record.recordType == "TrailNomination")
         #expect(record["trailKey"] as? String == "nc:w9")
         #expect(record["trailName"] as? String == "Lake Loop")
         #expect(record["region"] as? String == "nc")
         #expect(record["note"] as? String == "Great views")
-        #expect(Set(record.allKeys()) == ["trailKey", "trailName", "region", "latitude", "longitude", "lengthMeters", "note"])
-        #expect(!record.recordID.recordName.contains("_me"))
+        #expect(Set(record.allKeys()) == ["trailKey", "trailName", "region", "latitude", "longitude", "lengthMeters", "note", "claimToken"])
+        #expect(record.recordID.recordName.hasPrefix("nomination."))
     }
 
     @Test("The note is kept to 300 characters")
     func noteCap() throws {
         let ref = try #require(TrailRef(item: item("Lake Loop", [section(1, "Lake Loop", key: "nc:w9")])))
-        let record = TrailNominations.record(for: ref, note: String(repeating: "x", count: 400), nominator: nil)
+        let record = TrailNominations.record(for: ref, note: String(repeating: "x", count: 400), claimToken: "T")
         #expect((record["note"] as? String)?.count == 300)
     }
 
-    @Test("One person and one trail make one record name; anyone else, or another trail, another")
-    func oneNominationEach() {
-        let a = TrailNominations.recordName(trailKey: "nc:w1", nominator: "_me")
-        #expect(a == TrailNominations.recordName(trailKey: "nc:w1", nominator: "_me"))
-        #expect(a != TrailNominations.recordName(trailKey: "nc:w1", nominator: "_you"))
-        #expect(a != TrailNominations.recordName(trailKey: "nc:w2", nominator: "_me"))
-        #expect(TrailNominations.recordName(trailKey: "nc:w1", nominator: nil)
-                != TrailNominations.recordName(trailKey: "nc:w1", nominator: nil))
-    }
-
-    @Test("A second nomination is 'already nominated'; other errors say what to do")
+    @Test("A clash is 'already nominated'; other errors say what to do")
     func outcomes() {
         #expect(TrailNominations.outcome(of: CKError(.serverRecordChanged)) == .alreadyNominated)
         #expect(TrailNominations.outcome(of: CKError(.notAuthenticated))
@@ -119,7 +110,6 @@ struct TrailPicksTests {
     private final class FakeNominations: TrailNominationStore {
         var saved: [CKRecord] = []
         var error: Error?
-        func currentUserRecordName() async throws -> String { "_me" }
         func save(_ record: CKRecord) async throws {
             if let error { throw error }
             saved.append(record)
@@ -128,18 +118,26 @@ struct TrailPicksTests {
 
     private static let neverFires: OptimisticVote.Sleep = { _ in try await Task.sleep(for: .seconds(86_400)) }
 
-    @Test("Sending saves once under the nominator's record name; a suspended account saves nothing")
+    private func contributions() throws -> ContributionService {
+        let suite = "wkt.tests.trailPicks.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defaults.removePersistentDomain(forName: suite)
+        return ContributionService(store: NoContributionStatusStore(), defaults: defaults)
+    }
+
+    @Test("Sending saves once; a suspended account saves nothing")
     func submit() async throws {
         let ref = try #require(TrailRef(item: item("Lake Loop", [section(1, "Lake Loop", key: "nc:w9")])))
         let store = FakeNominations()
-        let sent = await TrailNominationSubmission.submit(ref, note: "", store: store, canPost: {},
-                                                          knownNominator: { nil }, sleep: Self.neverFires)
+        let sent = await TrailNominationSubmission.submit(ref, note: "", store: store, contributions: try contributions(),
+                                                          canPost: {}, sleep: Self.neverFires)
         #expect(sent == .sent)
-        #expect(store.saved.first?.recordID.recordName == TrailNominations.recordName(trailKey: "nc:w9", nominator: "_me"))
+        #expect(store.saved.count == 1)
+        #expect(store.saved.first?.recordID.recordName.hasPrefix("nomination.") == true)
         let paused = FakeNominations()
-        let refused = await TrailNominationSubmission.submit(ref, note: "", store: paused,
+        let refused = await TrailNominationSubmission.submit(ref, note: "", store: paused, contributions: try contributions(),
                                                              canPost: { throw CommunityAccessError.suspended(until: nil) },
-                                                             knownNominator: { nil }, sleep: Self.neverFires)
+                                                             sleep: Self.neverFires)
         #expect(refused == .failed(CommunityAccessError.suspended(until: nil).message))
         #expect(paused.saved.isEmpty)
     }
