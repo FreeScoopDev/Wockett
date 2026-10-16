@@ -939,7 +939,8 @@ private struct ActiveSessionScreen: View {
         // -WKTUITest for the same reason as at launch: a granted (even provisional)
         // status lets session banners render in the simulator, and a banner wakes
         // the smoke tests' interruption monitor mid-tap (Xcode Cloud, 2026-09-09).
-        if !isWKTUITestMode {
+        // Also under -WKTDemo, so a walk in a how-to recording raises no banners.
+        if !isWKTUITestMode, !isWKTDemoMode {
             await NotificationService.shared.requestQuietDeliveryIfNeverAsked()
         }
         for pet in petStore.activePets { session.petJoined(pet.id) }

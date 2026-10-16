@@ -35,6 +35,14 @@ enum AppModelContainer {
     ])
 
     static let shared: ModelContainer = {
+        #if DEBUG
+        // -WKTDemo (how-to videos): in memory only, before CloudKit is tried, so
+        // the demo seed never reaches the user's store. See DemoMode.
+        if let demo = DemoMode.container(arguments: ProcessInfo.processInfo.arguments) {
+            return demo
+        }
+        #endif
+
         // Attempt 1: CloudKit-backed persistent store (skipped under tests)
         if !isRunningUnderTests {
             let cloudConfig = ModelConfiguration(

@@ -47,8 +47,17 @@ final class RouteManager: NSObject, ObservableObject, CLLocationManagerDelegate 
     // Monotonically-increasing token: each new search increments this so stale
     // tasks from a cancelled search can't overwrite isGenerating or suggestedRoutes.
     private var searchGeneration = 0
+    /// Answers every location request instead of CoreLocation, with no
+    /// permission prompt. Only `-WKTDemo` passes one (DemoMode, debug builds);
+    /// the app passes nil otherwise, which is the path users run.
+    private let fixedLocation: CLLocation?
 
-    override init() {
+    override convenience init() {
+        self.init(fixedLocation: nil)
+    }
+
+    init(fixedLocation: CLLocation?) {
+        self.fixedLocation = fixedLocation
         super.init()
         locationManager.delegate = self
         locationManager.desiredAccuracy = kCLLocationAccuracyHundredMeters
@@ -461,6 +470,7 @@ final class RouteManager: NSObject, ObservableObject, CLLocationManagerDelegate 
         if isWKTUITestMode {
             return CLLocation(latitude: 40.7589, longitude: -73.9851)
         }
+        if let fixedLocation { return fixedLocation }
         if authStatus == .notDetermined { locationManager.requestWhenInUseAuthorization() }
         guard authStatus == .authorizedWhenInUse || authStatus == .authorizedAlways else { return nil }
         if let cached = locationManager.location, -cached.timestamp.timeIntervalSinceNow < maxAge { return cached }

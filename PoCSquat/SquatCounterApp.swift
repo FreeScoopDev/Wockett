@@ -2,13 +2,17 @@ import SwiftUI
 import SwiftData
 import BackgroundTasks
 import UserNotifications
+import CoreLocation
 
 // MARK: - UI Test Detection
 
 #if DEBUG
 let isWKTUITestMode = ProcessInfo.processInfo.arguments.contains("-WKTUITest")
+/// `-WKTDemo`: seeded, in-memory demo state for the how-to videos (DemoMode).
+let isWKTDemoMode = DemoMode.isRequested(by: ProcessInfo.processInfo.arguments)
 #else
 let isWKTUITestMode = false
+let isWKTDemoMode = false
 #endif
 
 // MARK: - App Entry Point
@@ -31,10 +35,22 @@ struct SquatCounterApp: App {
         UNUserNotificationCenter.current().delegate = AppNotificationDelegate.shared
         // Construct all shared stores before @StateObject wraps them — same pattern as PetStore.
         _petStore     = StateObject(wrappedValue: PetStore(context: AppModelContainer.shared.mainContext))
+        let routeStore   = CustomRouteStore()
+        let historyStore = WalkHistoryStore()
+        #if DEBUG
+        // -WKTDemo: seeded before the first frame, so a recording never shows
+        // an empty screen filling in. The stores are on the in-memory demo
+        // container (AppModelContainer.shared). A no-op without the flag.
+        let arguments = ProcessInfo.processInfo.arguments
+        DemoMode.seedIfRequested(arguments: arguments, history: historyStore, routes: routeStore)
+        let fixedLocation = DemoMode.location(arguments: arguments)
+        #else
+        let fixedLocation: CLLocation? = nil
+        #endif
         _stepManager  = StateObject(wrappedValue: StepManager())
-        _routeManager = StateObject(wrappedValue: RouteManager())
-        _routeStore   = StateObject(wrappedValue: CustomRouteStore())
-        _historyStore = StateObject(wrappedValue: WalkHistoryStore())
+        _routeManager = StateObject(wrappedValue: RouteManager(fixedLocation: fixedLocation))
+        _routeStore   = StateObject(wrappedValue: routeStore)
+        _historyStore = StateObject(wrappedValue: historyStore)
         _tabRouter    = StateObject(wrappedValue: TabRouter())
         // Tip jar. Starts the Transaction.updates listener and reconciles the
         // supporter ledger against StoreKit's history. Must run for the whole
@@ -188,11 +204,17 @@ struct SquatCounterApp: App {
                 // before the Live Activity reap, so the reap and Home's
                 // hasRestorableWalk check both see consistent session state.
                 ActiveWalkStore.shared.configure(historyStore: historyStore)
-                ActiveWalkStore.shared.salvageStaleWalkIfNeeded()
+                // Not in demo mode: salvaging a real walk's checkpoint would save
+                // it into the throwaway demo store and delete the checkpoint.
+                if !isWKTDemoMode { ActiveWalkStore.shared.salvageStaleWalkIfNeeded() }
                 if ActiveWalkStore.shared.session == nil {
                     await WalkLiveActivityManager.shared.endAllActivities()
                 }
                 #if DEBUG
+                // -WKTDemo: a clean start for a recording. The seed went in at
+                // init; every step below can raise a permission sheet or a banner
+                // (notification authorisation, Health) or touch the user's iCloud.
+                if isWKTDemoMode { return }
                 if isWKTUITestMode {
                     DevSeedStore.seedScreenshotDemo(history: historyStore, pets: petStore, routes: routeStore)
                     return
