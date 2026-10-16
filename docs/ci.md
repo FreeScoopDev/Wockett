@@ -8,10 +8,11 @@ expressed as a file in this repo** — Xcode Cloud has no workflow-as-code forma
 Without this document, the definition of what gates `main` lives in one web UI
 and nowhere else.
 
-## The three required checks on `main`
+## The required checks on `main`
 
-`main` is protected: no direct pushes, no force-push, no deletion, and these three
-checks must pass before a PR can merge.
+`main` is protected: no direct pushes, no force-push, no deletion, and these five
+checks must pass before a PR can merge. `.claude/app.json` → `requiredChecks` is
+the list; `~/.claude/toolkit/bin/repo-check.sh .` confirms the ruleset matches it.
 
 **The protection is a repository *ruleset*, not legacy branch protection.** This
 matters when checking it: `gh api repos/FreeScoopDev/Wockett/branches/main/protection`
@@ -26,6 +27,8 @@ was read as "protection was removed" on 2026-09-08. Use this instead:
 | `Unit tests (iOS)` | GitHub Actions | `macos-26` (Xcode 26.6) | Free: public repository |
 | `Language-consistency guard` | GitHub Actions | `ubuntu-latest` | 1× |
 | `SwiftLint` | GitHub Actions | `ubuntu-latest`, `ghcr.io/realm/swiftlint` container | 1× |
+| `Critic verdict` | GitHub Actions | `ubuntu-latest` | 1× |
+| `Staff dashboard tests` | GitHub Actions | `ubuntu-latest`, Node 22 | 1× |
 
 Anything else reported on a PR is advisory and does not gate the merge.
 
@@ -39,6 +42,7 @@ test job cost 140 of the 2,000 free minutes a month.
 | --- | --- | --- |
 | `language-guard` | **Yes** | Greps `Views/`, `Intents/` and `WocketWidget` for hardcoded walk-specific copy (`"End Walk"`, `"Walk History"`, …). Fails the build if any reappear — user-facing copy must read the session's `ActivityMode`. |
 | `swiftlint` | **Yes** (since 2026-09-09) | Runs SwiftLint 0.65.1 (the image tag pinned in `guards.yml`; 0.57.0 until 2026-09-26) from `ghcr.io/realm/swiftlint` against `.swiftlint.yml`. Fails on any error-severity violation. |
+| `staff-dashboard` | **Yes** (since 2026-10-15) | `node --test` on `tests/staff/` and `tests/c/`: the moderator dashboard's rules (`docs/staff/logic.js`, `actions.js`) and the challenge link page's (`docs/c/link.js`). Required because the dashboard acts on live CloudKit data: a wrong rule removes or misreports real users' content. |
 
 ### Reading the SwiftLint result
 

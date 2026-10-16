@@ -16,7 +16,8 @@
     "Unit tests (iOS)",
     "Language-consistency guard",
     "SwiftLint",
-    "Critic verdict"
+    "Critic verdict",
+    "Staff dashboard tests"
   ],
   "criticMinLines": 40,
   "reviewFocus": [
