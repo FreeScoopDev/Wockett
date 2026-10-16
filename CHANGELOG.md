@@ -255,7 +255,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   Development and deploying to Production before the app version that writes
   reports ships. A test reads the schema file and fails if a report becomes
   readable by anyone but a moderator.
-
+- `cloudkit/schema.ckdb` now lists the walk record's `CD_elevationData`,
+  `CD_elevationData_ckAsset`, `CD_isHike` and `CD_unitSplitsData` fields. The
+  file lacked them although Development already held three, so importing it
+  (the release's first CloudKit step) would have tried to drop them.
+  `cloudkit-schema-check.sh` passes on the file.
 
 ## [1.16] - 2026-10-13
 
