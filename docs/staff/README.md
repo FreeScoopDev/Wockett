@@ -167,8 +167,10 @@ rules need an ordinary account to be proved.
   compared (the 20 km cap is also checked as grouping measures length, so a
   line across the 180th meridian is over it), and grouping has two hard
   ceilings, on work (every distance measured counts) and on index memory:
-  past either, the rest are shown ungrouped with a note, so crafted records
-  can't freeze the tab for more than a second or two. Each card
+  past either, the rest are shown ungrouped with a note. No line is read
+  past 2,001 points, no name or note counted past its cap, and a card draws
+  at most 21 lines, so crafted records cost a few seconds at most (measured
+  in node with 2,000 of them). Each card
   draws the group's lines together (the one Accept uses on top, a dot at
   its start), links the start to Apple Maps and to the OpenStreetMap editor,
   shows the names, facts and notes given, and lists what to check: very

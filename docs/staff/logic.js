@@ -1261,11 +1261,12 @@ export const OVERLAP_STEP_M = 25;
  */
 export const GROUPING_BUDGET = 40_000_000;
 /**
- * The most index entries alive at once, for memory (about 100 MB): a
- * separate ceiling. A 5 km walk is about 1,500 entries, so this is several
- * thousand walks indexed; past it, the rest are shown ungrouped.
+ * The most index entries alive at once, for memory: about 100 MB (measured
+ * at about 81 bytes an entry in node, critic run 4), reached before the work
+ * budget. A 5 km walk is about 1,500 entries, so this is several hundred
+ * walks indexed at once; past it, the rest are shown ungrouped.
  */
-export const MAX_INDEX_ENTRIES = 8_000_000;
+export const MAX_INDEX_ENTRIES = 1_200_000;
 /** What building one index entry, or making one sample, costs in budget units (measured: each is about this many distance checks). */
 export const INDEX_ENTRY_WORK = 10;
 export const SAMPLE_WORK = 5;
@@ -1282,15 +1283,21 @@ export const TOKENS_PER_SUGGESTER = 5;
 const EARTH_RADIUS_M = 6_371_008.8;
 const rad = (deg) => (deg * Math.PI) / 180;
 
-/** Characters as a person counts them (grapheme clusters), where the platform can tell; else code points. */
-export function textLength(text) {
+/**
+ * Characters as a person counts them (grapheme clusters), where the platform
+ * can tell; else code points. With `max`, counting stops past it (the answer
+ * is then `max + 1`), so a crafted megabyte costs no more than `max` characters.
+ */
+export function textLength(text, max = Infinity) {
   const s = String(text ?? '');
-  if (typeof Intl !== 'undefined' && typeof Intl.Segmenter === 'function') {
-    let n = 0;
-    for (const _ of new Intl.Segmenter('en', { granularity: 'grapheme' }).segment(s)) n += 1;
-    return n;
+  let n = 0;
+  const units = typeof Intl !== 'undefined' && typeof Intl.Segmenter === 'function'
+    ? new Intl.Segmenter('en', { granularity: 'grapheme' }).segment(s) : s;
+  for (const _ of units) {
+    n += 1;
+    if (n > max) return n;
   }
-  return [...s].length;
+  return n;
 }
 
 /**
@@ -1300,9 +1307,10 @@ export function textLength(text) {
  * coordinate), or a point off the globe. An empty text is no points.
  * Suggestions are written by any signed-in iCloud user, so nothing about the
  * text is trusted. Arithmetic, not bit operators, so a long run can't wrap
- * round 32 bits into a plausible number.
+ * round 32 bits into a plausible number. With `maxPoints`, it stops after
+ * that many points (a text that holds more is then not checked further).
  */
-export function decodePolyline(text, precision = 5) {
+export function decodePolyline(text, precision = 5, maxPoints = Infinity) {
   if (typeof text !== 'string') return null;
   const factor = 10 ** precision;
   const points = [];
@@ -1335,6 +1343,8 @@ export function decodePolyline(text, precision = 5) {
     const longitude = lng / factor;
     if (Math.abs(latitude) > 90 || Math.abs(longitude) > 180) return null;
     points.push({ latitude, longitude });
+    // Enough to know it is over a cap (and to draw it): the rest isn't read.
+    if (points.length >= maxPoints) return points;
   }
   return points;
 }
@@ -1546,7 +1556,9 @@ export function suggestionOf(record) {
   const note = typeof f.note === 'string' ? f.note.trim() : '';
   const region = typeof f.region === 'string' && /^[a-z]{2}$/.test(f.region) ? f.region : '';
   const tooLong = typeof f.line === 'string' && f.line.length > LINE_CHAR_LIMIT;
-  const points = tooLong ? null : decodePolyline(f.line);
+  // At most one point over the cap is read: a crafted 40,000-character line
+  // holds 20,000 points, and only 'over 2,000' matters.
+  const points = tooLong ? null : decodePolyline(f.line, 5, SUGGESTION_CAPS.points + 1);
   const line = points && points.length >= 2 ? points : null;
   const lengthMeters = line ? lineLength(line) : 0;
   const stretch = line ? longestStretch(line) : 0;
@@ -1565,12 +1577,14 @@ export function suggestionOf(record) {
     else if (lengthMeters > LONG_SUGGESTION_M && lengthMeters <= SUGGESTION_CAPS.meters) warnings.push('long');
     if (stretch > STRAIGHT_STRETCH_M) warnings.push('straight');
     const claimedLength = f.lengthMeters;
-    if (f.pointCount !== line.length || !Number.isFinite(claimedLength)
+    // Past the cap only "more than 2,000" is known, so a count says something different only if it is within it.
+    const countOff = line.length > SUGGESTION_CAPS.points ? !(f.pointCount > SUGGESTION_CAPS.points) : f.pointCount !== line.length;
+    if (countOff || !Number.isFinite(claimedLength)
         || Math.abs(claimedLength - lengthMeters) > Math.max(50, lengthMeters * 0.1)) warnings.push('mismatch');
   }
   if (!name) warnings.push('noName');
-  else if (textLength(name) > SUGGESTION_CAPS.name) warnings.push('name');
-  if (textLength(note) > SUGGESTION_CAPS.note) warnings.push('note');
+  else if (textLength(name, SUGGESTION_CAPS.name) > SUGGESTION_CAPS.name) warnings.push('name');
+  if (textLength(note, SUGGESTION_CAPS.note) > SUGGESTION_CAPS.note) warnings.push('note');
   if (!region) warnings.push('region');
   return {
     recordName: record.recordName,
@@ -1591,7 +1605,7 @@ export function suggestionIssueText(code, s = {}) {
   switch (code) {
     case 'unreadable': return 'Its line can\'t be read (not an encoded polyline of at least two points).';
     case 'lineTooLong': return `Its line is over ${LINE_CHAR_LIMIT.toLocaleString('en-US')} characters, so it is over the caps and wasn't read.`;
-    case 'points': return `Over the caps: ${s.pointCount?.toLocaleString('en-US')} points (at most ${SUGGESTION_CAPS.points.toLocaleString('en-US')}).`;
+    case 'points': return `Over the caps: more than ${SUGGESTION_CAPS.points.toLocaleString('en-US')} points.`;
     case 'meters': return `Over the caps: ${formatDistance(s.lengthMeters)} long (at most ${formatDistance(SUGGESTION_CAPS.meters)}).`;
     case 'short': return `Very short: ${Math.round(s.lengthMeters ?? 0)} m. A path this short is often a sidewalk or a stub the map leaves out on purpose.`;
     case 'long': return `Very long: ${formatDistance(s.lengthMeters)}. Check it is one path, not a walk along several.`;
@@ -1644,9 +1658,11 @@ export function suggestionDecisions(actions) {
  *   per walker (their newest); `notes`, newest first.
  * - `acceptedName`: the name it was last accepted as ('' if never);
  * - `ungrouped`: true when the work budget ran out before it was compared.
+ * `meter`, if given, is filled with the work done (`spent`, `indexes`,
+ * `entries`), for tests.
  * Waiting groups first (most walkers, then newest), then the rest, newest first.
  */
-export function groupSuggestions(records, actions = [], budget = GROUPING_BUDGET, maxEntries = MAX_INDEX_ENTRIES) {
+export function groupSuggestions(records, actions = [], budget = GROUPING_BUDGET, maxEntries = MAX_INDEX_ENTRIES, meter = {}) {
   const decisions = suggestionDecisions(actions);
   const items = (records ?? []).filter((r) => r && typeof r.recordName === 'string').map((r) => {
     const s = suggestionOf(r);
@@ -1675,7 +1691,7 @@ export function groupSuggestions(records, actions = [], budget = GROUPING_BUDGET
   // single step can blow far past a ceiling before it is checked.
   let spent = 0;
   let entries = 0;
-  const spend = (n) => { spent += n; };
+  const spend = (n) => { spent += n; meter.spent = spent; };
   const outOfBudget = () => spent > budget || entries > maxEntries;
   const anchors = [];
   const ungrouped = [];
@@ -1691,6 +1707,8 @@ export function groupSuggestions(records, actions = [], budget = GROUPING_BUDGET
       if (!g.index) {
         g.index = lineIndex(g.members[0].line, OVERLAP_TOLERANCE_M);
         entries += g.index.entries;
+        meter.indexes = (meter.indexes ?? 0) + 1;
+        meter.entries = entries;
         spend(g.index.entries * INDEX_ENTRY_WORK);
       }
       if (!samples) {
@@ -1796,7 +1814,7 @@ export function suggestionStatusNames(members, limit = TOKENS_PER_SUGGESTER) {
 export function acceptPlan(group, name) {
   const accepted = String(name ?? '').trim();
   if (!accepted) throw new Error('An accepted suggestion needs a name.');
-  if (textLength(accepted) > SUGGESTION_CAPS.name) throw new Error(`A trail name is at most ${SUGGESTION_CAPS.name} characters.`);
+  if (textLength(accepted, SUGGESTION_CAPS.name) > SUGGESTION_CAPS.name) throw new Error(`A trail name is at most ${SUGGESTION_CAPS.name} characters.`);
   const line = group?.line;
   if (!line || !line.line || line.problems?.length || line.pointCount > SUGGESTION_CAPS.points
       || !(line.lengthMeters <= SUGGESTION_CAPS.meters)) {
@@ -1819,7 +1837,7 @@ export function declinePlan(group) {
   const recordNames = (group?.members ?? []).map((m) => m.recordName);
   if (!recordNames.length) throw new Error('Nothing to decline.');
   // The name shown, unless it is over the caps (only something other than the app writes one): History keeps no more.
-  const name = textLength(group.name ?? '') <= SUGGESTION_CAPS.name ? (group.name ?? '') : '';
+  const name = textLength(group.name ?? '', SUGGESTION_CAPS.name) <= SUGGESTION_CAPS.name ? (group.name ?? '') : '';
   return { recordName: group.line?.recordName ?? recordNames[0], recordNames, snapshot: { name, recordNames, count: recordNames.length } };
 }
 

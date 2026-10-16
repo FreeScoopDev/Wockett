@@ -581,7 +581,7 @@ test('every warning and problem code has words of its own', () => {
   const texts = codes.map((c) => suggestionIssueText(c, s));
   assert.equal(new Set(texts).size, codes.length);
   for (const [i, t] of texts.entries()) assert.notEqual(t, codes[i], codes[i]);
-  assert.match(suggestionIssueText('points', s), /2,001 points \(at most 2,000\)/);
+  assert.equal(suggestionIssueText('points', s), 'Over the caps: more than 2,000 points.');
   assert.match(suggestionIssueText('meters', s), /21 km \(13 mi\) long \(at most 20 km/);
 });
 
@@ -1133,7 +1133,7 @@ test('a suggestion the budget stopped part-way through its comparisons is flagge
   // The memory ceiling works the same way.
   const tight = groupSuggestions(records, [], GROUPING_BUDGET, 1);
   assert.ok(tight.find((g) => g.members.some((m) => m.recordName === 'C')).ungrouped);
-  assert.deepEqual([GROUPING_BUDGET, MAX_INDEX_ENTRIES, INDEX_ENTRY_WORK, SAMPLE_WORK], [40_000_000, 8_000_000, 10, 5]);
+  assert.deepEqual([GROUPING_BUDGET, MAX_INDEX_ENTRIES, INDEX_ENTRY_WORK, SAMPLE_WORK], [40_000_000, 1_200_000, 10, 5]);
 });
 
 test('the index finds exactly the points within the tolerance, and charges every distance it measures', () => {
@@ -1169,6 +1169,65 @@ test('the index finds exactly the points within the tolerance, and charges every
   let spent = 0;
   assert.equal(blob.near({ x: 5, y: 45 }, (n) => { spent += n; }), false);
   assert.ok(spent >= 1999, `${spent} units for one miss`);
+});
+
+test('a flood of over-cap records costs little: at most 2,001 points are read from any line, and long text is not counted to the end', () => {
+  // 40,000 characters of the smallest point there is: 20,000 points.
+  const flood = 'A?@?'.repeat(10_000);
+  assert.equal(flood.length, LINE_CHAR_LIMIT);
+  assert.equal(decodePolyline(flood).length, 20_000);
+  assert.equal(decodePolyline(flood, 5, 2001).length, 2001);
+  const claimed = suggestionOf(sugg('s', null, { line: flood, pointCount: 20_000, lengthMeters: 0 })).lengthMeters;
+  const records = Array.from({ length: 2000 }, (_, k) => sugg(`f${k}`, null, { line: flood, created: k, pointCount: 20_000, lengthMeters: claimed }));
+  const t = performance.now();
+  const items = records.map((r) => suggestionOf(r));
+  const groups = groupSuggestions(records);
+  const ms = performance.now() - t;
+  for (const s of items) {
+    assert.ok(s.line.length <= 2001, `${s.line.length} points kept`);
+    assert.deepEqual(s.problems, ['points']);
+    assert.ok(!s.warnings.includes('mismatch'), 'a count over the cap agrees with "more than 2,000"');
+  }
+  assert.equal(groups.length, 2000);
+  assert.ok(ms < 15_000, `${Math.round(ms)} ms (13 s and 3 GB before)`);
+  assert.ok(suggestionOf(sugg('s', null, { line: flood, pointCount: 10, lengthMeters: claimed })).warnings.includes('mismatch'), 'a count within the cap is wrong');
+  // A megabyte of note or name is over the cap without being counted.
+  const big = 'x'.repeat(1_000_000);
+  let t2 = performance.now();
+  assert.equal(textLength(big, 300), 301);
+  assert.ok(suggestionOf(sugg('s', path(60), { note: big, name: big })).warnings.includes('note'));
+  assert.ok(performance.now() - t2 < 200, `${Math.round(performance.now() - t2)} ms`);
+  t2 = performance.now();
+  assert.equal(textLength('👨‍👩‍👧‍👦'.repeat(5000), 80), 81, 'stops counting past the cap');
+  assert.ok(performance.now() - t2 < 50);
+  assert.equal(textLength('abc'), 3);
+  assert.equal(textLength('x'.repeat(81), 80), 81);
+  assert.equal(textLength('x'.repeat(80), 80), 80);
+  assert.equal(textLength('x'.repeat(5000), 80), 81, 'stops at the cap, not the end');
+});
+
+test('the budget is checked before every anchor, and building an index is charged for its entries', () => {
+  // 50 separate paths (5 km, 80 m apart), and a shorter line crossing all of their boxes.
+  const anchors = Array.from({ length: 50 }, (_, k) => sugg(`a${k}`, seg([k * 80, 0], [k * 80 + 40, 5000], 50), { created: k }));
+  const probe = sugg('probe', seg([0, 1500], [3990, 1520]), { created: 99 });
+  const full = {};
+  groupSuggestions([...anchors, probe], [], GROUPING_BUDGET, MAX_INDEX_ENTRIES, full);
+  assert.ok(full.indexes >= 40, `${full.indexes} indexes with room to spare`);
+  assert.ok(full.spent >= full.entries * INDEX_ENTRY_WORK, 'every entry built is charged');
+  // A budget that runs out after the first index: the probe stops, flagged, without building the rest.
+  for (const budget of [1, 1000, 10_000]) {
+    const meter = {};
+    const groups = groupSuggestions([...anchors, probe], [], budget, MAX_INDEX_ENTRIES, meter);
+    assert.ok((meter.indexes ?? 0) <= 2, `budget ${budget}: ${meter.indexes} indexes`);
+    assert.equal(groups.reduce((n, g) => n + g.members.length, 0), 51);
+  }
+});
+
+test('a card draws the accepted line and at most 20 others', () => {
+  const app = staff('app.js');
+  assert.match(fn(app, 'suggestionSvg'), /\.slice\(0, 20\)\.map\(\(m\) => m\.line\)/);
+  assert.match(fn(app, 'suggestionCard'), /clip\(g\.name, 200\)/);
+  assert.match(fn(app, 'suggestionCard'), /clip\(n\.note, 600\)/);
 });
 
 test('samples are made once per line, every 25 m, and land where the line is', () => {

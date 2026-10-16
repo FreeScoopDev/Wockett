@@ -991,7 +991,8 @@ const SUGGESTION_FILTERS = { waiting: 'Waiting', accepted: 'Accepted', declined:
 
 /** The group's lines in one drawing, the accepted one on top, with a dot at its start. */
 function suggestionSvg(group) {
-  const others = group.members.filter((m) => m.line && m !== group.line).map((m) => m.line);
+  // At most 20 others: a flood of duplicates must not become megabytes of drawing.
+  const others = group.members.filter((m) => m.line && m !== group.line).slice(0, 20).map((m) => m.line);
   const lines = group.line ? [...others, group.line.line] : others;
   const { paths, at } = routePaths(lines, 160, 120, 10);
   if (!at) return null;
@@ -1020,6 +1021,12 @@ function suggestionSvg(group) {
     svg.append(dot);
   }
   return svg;
+}
+
+/** At most `n` UTF-16 units of `text`, with … when cut: crafted text over the caps can be any size. */
+function clip(text, n) {
+  const s = String(text ?? '');
+  return s.length > n ? `${s.slice(0, n)}…` : s;
 }
 
 /** Saves `text` as a file on this computer: made on the page, nothing is sent anywhere. */
@@ -1061,7 +1068,7 @@ function suggestionCard(g) {
           line?.region ? el('span', { class: 'chip' }, line.region.toUpperCase()) : null,
           g.state === 'waiting' ? null : el('span', { class: 'chip' }, SUGGESTION_FILTERS[g.state]),
           issues.length ? el('span', { class: 'chip warn' }, `${issues.length} to check`) : null),
-        el('div', { class: 'title' }, g.name || 'No name'),
+        el('div', { class: 'title' }, clip(g.name, 200) || 'No name'),
         el('div', { class: 'small muted' }, line
           ? `${formatDistance(line.lengthMeters)} · ${line.pointCount.toLocaleString('en-US')} points`
           : 'No line within the caps'),
@@ -1069,9 +1076,9 @@ function suggestionCard(g) {
           `${suggestionCount(g.members.length)} from ${g.walkers} walker${g.walkers === 1 ? '' : 's'}, latest ${ago(g.latestAt)}`,
           decided && g.pending ? ` · ${decided} decided before, ${g.pending} new` : ''),
         g.acceptedName ? el('div', { class: 'small' }, `Accepted as “${g.acceptedName}”`) : null)),
-    g.names.length > 1 ? el('div', { class: 'small' }, 'Names given: ', g.names.map((v) => `${v.name} (${v.count})`).join(', ')) : null,
+    g.names.length > 1 ? el('div', { class: 'small' }, 'Names given: ', g.names.slice(0, 10).map((v) => `${clip(v.name, 120)} (${v.count})`).join(', ')) : null,
     factChips.length ? el('div', { class: 'reasons' }, factChips) : null,
-    g.notes.length ? el('ul', { class: 'notes' }, g.notes.slice(0, 10).map((n) => el('li', {}, `“${n.note}” `, el('span', { class: 'muted small' }, ago(n.at))))) : null,
+    g.notes.length ? el('ul', { class: 'notes' }, g.notes.slice(0, 10).map((n) => el('li', {}, `“${clip(n.note, 600)}” `, el('span', { class: 'muted small' }, ago(n.at))))) : null,
     issues.length ? el('ul', { class: 'notes status error' }, issues.map((t) => el('li', {}, t))) : null,
     el('div', { class: 'actions small' },
       maps ? el('a', { href: maps, target: '_blank', rel: 'noopener noreferrer' }, 'Start in Maps') : null,
@@ -1160,7 +1167,7 @@ function confirmAcceptSuggestion(group) {
       + `It is recorded as accepted (${suggestionCount(group.members.length)}, all leave the queue), with the longest line within the caps.`),
     el('p', {}, acceptTellText(tell), ' What everyone can read says only Added and when: not the name, the line or who suggested it.'),
     el('label', {}, 'Accept it as (edit if needed) ',
-      el('input', { name: 'name', required: true, value: group.name, autocomplete: 'off' })),
+      el('input', { name: 'name', required: true, value: clip(group.name, 200), autocomplete: 'off' })),
     el('p', { class: 'small status error', hidden: true, 'data-role': 'problem' }),
     el('label', {}, 'Note (optional, History only)', el('textarea', { name: 'note', maxlength: 1000 })),
     el('div', { class: 'actions' },
