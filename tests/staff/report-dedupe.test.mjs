@@ -5,7 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { groupReports } from '../../docs/staff/logic.js';
-import { onePerReporter, pagedQuery, reportedByAuthor } from '../../docs/staff/ck.js';
+import { onePerReporter, pagedQuery, reportedByAuthor, REQUESTS_PER_UTC_DAY } from '../../docs/staff/ck.js';
 
 const DAY = 86_400_000;
 const T0 = Date.UTC(2026, 9, 16, 12);
@@ -15,7 +15,8 @@ const raw = (name, who, target, created, reason = 'spam', note = '') => ({
   recordName: name, recordType: 'CommunityReport',
   created: { timestamp: created, userRecordName: who },
   fields: {
-    targetRecordName: { value: target }, targetType: { value: 'post' },
+    // The app sends owner requests only for challenges.
+    targetRecordName: { value: target }, targetType: { value: reason === 'ownerRequest' ? 'challenge' : 'post' },
     reason: { value: reason }, note: { value: note },
   },
 });
@@ -92,10 +93,27 @@ test('reports with no creator or no target are all kept', () => {
   assert.equal(onePerReporter([anon('a1'), anon('a2'), noTarget('n1'), noTarget('n2')]).length, 4);
 });
 
-test('an owner asking to delete on two days counts on each; twice in one UTC day, once (the newest)', () => {
+test('an owner asking to delete on two days counts on each; within one UTC day, the oldest two', () => {
   const req = (name, created) => raw(name, '_owner', 'c1', created, 'ownerRequest');
-  const kept = onePerReporter([req('q1', T0), req('q2', T0 + 1000), req('q3', T0 + DAY)]);
-  assert.deepEqual(kept.map((r) => r.recordName).sort(), ['q2', 'q3']);
+  const kept = onePerReporter([req('q1', T0), req('q2', T0 + 1000), req('q3', T0 + 2000), req('q4', T0 + DAY)]);
+  assert.deepEqual(kept.map((r) => r.recordName).sort(), ['q1', 'q2', 'q4']);
+  assert.equal(REQUESTS_PER_UTC_DAY, 2, 'a local day overlaps at most two UTC days');
+});
+
+test('one account cannot keep reopening a challenge with requests the same UTC day', async () => {
+  const req = (name, h) => raw(name, '_owner', 'c1', T0 + h * 3600000, 'ownerRequest');
+  const { records } = await pagedQuery(db([req('q1', 0), req('q2', 2), req('q3', 4)]), { recordType: 'CommunityReport' });
+  const actions = [dismissal('c1', T0 + 1 * 3600000), dismissal('c1', T0 + 3 * 3600000)];
+  const [g] = groupReports(records, actions);
+  assert.equal(g.open, false, 'the third request in one UTC day does not reopen it');
+});
+
+test('"ownerRequest" on a post counts as a report, so it cannot reopen a post its sender already reported', async () => {
+  const forged = { ...raw('report.f', '_a', 'p1', T0 + 2 * DAY, 'ownerRequest') };
+  forged.fields = { ...forged.fields, targetType: { value: 'post' } };
+  const { records } = await pagedQuery(db([raw('report.s', '_a', 'p1', T0, 'spam'), forged]), { recordType: 'CommunityReport' });
+  const [g] = groupReports(records, [dismissal('p1', T0 + DAY)]);
+  assert.equal(g.open, false);
 });
 
 test('an owner in Los Angeles asking again the next morning, after a dismissal the same UTC day, reopens it', async () => {
@@ -124,8 +142,9 @@ test('the reporter never reaches the page, and the owner check still works on th
   const { records } = await pagedQuery(db([
     raw('report.q1', '_owner', 'c1', T0, 'ownerRequest'),
     raw('report.q2', '_owner', 'c1', T0 + 1000, 'ownerRequest'),
+    raw('report.q3', '_owner', 'c1', T0 + 2000, 'ownerRequest'),
   ]), { recordType: 'CommunityReport' });
-  assert.equal(records.length, 1);
+  assert.equal(records.length, 2);
   assert.equal(records[0].creator, undefined);
   assert.ok(!JSON.stringify(records).includes('_owner'));
   assert.equal(reportedByAuthor(records[0].recordName, '_owner'), true);
@@ -150,15 +169,17 @@ test('the day of an owner request is the UTC day: an hour apart across UTC midni
   const req = (name, iso) => raw(name, '_owner', 'c1', Date.parse(iso), 'ownerRequest');
   const across = onePerReporter([req('late', '2026-10-12T23:30:00Z'), req('early', '2026-10-13T00:30:00Z')]);
   assert.deepEqual(across.map((r) => r.recordName).sort(), ['early', 'late']);
-  const within = onePerReporter([req('morning', '2026-10-12T00:30:00Z'), req('night', '2026-10-12T23:30:00Z')]);
-  assert.deepEqual(within.map((r) => r.recordName), ['night']);
+  const within = onePerReporter([req('morning', '2026-10-12T00:30:00Z'), req('noon', '2026-10-12T12:00:00Z'),
+    req('night', '2026-10-12T23:30:00Z')]);
+  assert.deepEqual(within.map((r) => r.recordName).sort(), ['morning', 'noon']);
 });
 
 test('equal timestamps give the same answer whatever order the records arrive in', () => {
   const a = raw('report.a', '_a', 'p1', T0);
   const b = raw('report.b', '_a', 'p1', T0);
   assert.deepEqual(onePerReporter([a, b]).map((r) => r.recordName), onePerReporter([b, a]).map((r) => r.recordName));
-  const qa = raw('q.a', '_o', 'c1', T0, 'ownerRequest');
-  const qb = raw('q.b', '_o', 'c1', T0, 'ownerRequest');
-  assert.deepEqual(onePerReporter([qa, qb]).map((r) => r.recordName), onePerReporter([qb, qa]).map((r) => r.recordName));
+  const q = ['q.a', 'q.b', 'q.c'].map((n) => raw(n, '_o', 'c1', T0, 'ownerRequest'));
+  const names = (list) => onePerReporter(list).map((r) => r.recordName).sort();
+  assert.deepEqual(names(q), names([...q].reverse()));
+  assert.deepEqual(names([q[1], q[2], q[0]]), names(q));
 });

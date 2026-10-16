@@ -192,10 +192,13 @@ export function fewPerNominator(records, limit = TOKENS_PER_NOMINATOR) {
  * a reinstall, leaves two records, and any client can create more. The
  * oldest is kept so that a person who already reported an item cannot reopen
  * it after a dismissal by reporting again, as they never could before. An
- * owner's request to delete counts once per person per item per UTC day, the
- * newest: the app allows one per *local* day, and in the Americas an evening
- * request and the next morning's can share a UTC day, so keeping the oldest
- * would drop a request that comes after a dismissal (critic run 1).
+ * owner's request to delete a challenge keeps the oldest two per person per
+ * challenge per UTC day: the app allows one per *local* day, and a local day
+ * overlaps at most two UTC days (in the Americas an evening request and the
+ * next morning's share one), so two let a request after a dismissal through
+ * while capping reopens at two a day (critic runs 1 and 2). The request rule
+ * applies only to challenges: an "ownerRequest" on anything else counts as a
+ * report, so the reason can't be used to get around the rule above.
  * Records with no creator or no target are all kept. Old computed names and
  * new random ones are treated alike: names are never read. Done here, on the
  * raw records, so the reporter never leaves this file.
@@ -206,31 +209,31 @@ export function onePerReporter(records) {
     const target = r.fields?.targetRecordName?.value;
     if (!who || !target) return null;
     const reason = r.fields?.reason?.value;
-    if (typeof reason === 'string' && Object.hasOwn(REQUEST_REASONS, reason)) {
+    if (typeof reason === 'string' && Object.hasOwn(REQUEST_REASONS, reason) && r.fields?.targetType?.value === 'challenge') {
       const day = new Date(r.created?.timestamp ?? 0).toISOString().slice(0, 10);
       return `${who}\n${target}\nrequest@${day}`;
     }
     return `${who}\n${target}\nreport`;
   };
-  // Later first by creation time, then by name, so equal timestamps don't
+  const limitOf = (key) => (key.includes('\nrequest@') ? REQUESTS_PER_UTC_DAY : 1);
+  // Oldest first by creation time, then by name, so equal timestamps don't
   // make the result depend on the order the records arrive in.
-  const later = (a, b) => {
-    const d = (a.created?.timestamp ?? 0) - (b.created?.timestamp ?? 0);
-    return d !== 0 ? d > 0 : String(a.recordName) > String(b.recordName);
-  };
-  const kept = new Map();
+  const byAge = (a, b) => ((a.created?.timestamp ?? 0) - (b.created?.timestamp ?? 0))
+    || (String(a.recordName) < String(b.recordName) ? -1 : String(a.recordName) > String(b.recordName) ? 1 : 0);
+  const groups = new Map();
   for (const r of records) {
     const key = keyOf(r);
     if (key === null) continue;
-    const best = kept.get(key);
-    const newest = key.includes('\nrequest@');
-    if (!best || (newest ? later(r, best) : later(best, r))) kept.set(key, r);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(r);
   }
-  return records.filter((r) => {
-    const key = keyOf(r);
-    return key === null || kept.get(key) === r;
-  });
+  const kept = new Set();
+  for (const [key, list] of groups) for (const r of [...list].sort(byAge).slice(0, limitOf(key))) kept.add(r);
+  return records.filter((r) => keyOf(r) === null || kept.has(r));
 }
+
+/** Owner requests to delete one challenge counted per person per UTC day. */
+export const REQUESTS_PER_UTC_DAY = 2;
 
 /**
  * Who filed each report, kept inside this module and never returned: the
