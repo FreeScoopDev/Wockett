@@ -121,16 +121,16 @@ enum TrailNominations {
     static let failedMessage = "Couldn't send your nomination. Check your connection and try again."
     static let schemaMissingMessage = "This test build won't send nominations until the contribution-status schema is in CloudKit Development."
 
-    /// CloudKit refusing the record itself rather than the connection: what
-    /// a Release build sees if `claimToken` was never deployed to Production
-    /// (a field the schema lacks). The person still sees the generic message;
-    /// the log says what it most likely is.
     /// The Debug build's probe: a query for `ContributionStatus`, the type
     /// the app may read, which can't create anything.
     static func schemaProbeQuery() -> CKQuery {
         CKQuery(recordType: ContributionStatuses.recordType, predicate: NSPredicate(format: "trailKey == %@", "schema-check"))
     }
 
+    /// CloudKit refusing the record itself rather than the connection: what
+    /// a Release build sees if `claimToken` was never deployed to Production
+    /// (a field the schema lacks). The person still sees the generic message;
+    /// the log says what it most likely is.
     static func isRecordRefusal(_ error: Error) -> Bool {
         switch (error as? CKError)?.code {
         case .invalidArguments?, .serverRejectedRequest?: return true

@@ -522,6 +522,12 @@ final class SmokeTests: XCTestCase {
     /// nominates under -WKTUITest, and the status store is a stub then, so
     /// the list is empty and nothing reaches CloudKit.
     func testMyContributionsEmptyState() {
+        // An empty list whatever this simulator saved before: the argument
+        // domain is read ahead of the app's own defaults ("W10=" is "[]").
+        app.terminate()
+        app.launchArguments += ["-wkt_contributions_v1", "<data>W10=</data>"]
+        app.launch()
+
         XCTAssertTrue(el("home.statCard").waitForExistence(timeout: 10))
         selectTab("Settings")
         XCTAssertTrue(el("settings.root").waitForExistence(timeout: 30))

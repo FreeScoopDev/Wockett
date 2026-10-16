@@ -53,10 +53,10 @@ enum NotificationKind: Hashable {
     case waterBreak(Int)
     case walkReminder(UUID)
     case untrackedWalk
-    /// "Your nomination of <trail> is now Featured": once per contribution,
-    /// from the background-refresh task (`ContributionService`). Local only:
-    /// Wockett sends no remote push. One identifier, so several featured at
-    /// once are one notification.
+    /// "Your nomination of <trail> was featured by the Wockett team": at most
+    /// once per contribution, from the background-refresh task
+    /// (`ContributionService`). Local only: Wockett sends no remote push. One
+    /// identifier, so several featured at once are one notification.
     case contributionFeatured
 
     static let waterBreakMax = 12

@@ -93,6 +93,31 @@ enum ContributionStatuses {
         }
     }
 
+    /// Every per-name answer in a fetch's results.
+    static func answers(_ results: [CKRecord.ID: Result<CKRecord, Error>]) -> [String: ContributionStatusLookup] {
+        var out: [String: ContributionStatusLookup] = [:]
+        for (id, result) in results {
+            if let answer = answer(result) { out[id.recordName] = answer }
+        }
+        return out
+    }
+
+    /// The per-name answers inside a thrown `partialFailure` (its
+    /// `partialErrorsByItemID`): `unknownItem` is no record, Sent; other
+    /// errors give no answer. Records that did arrive are not in the error,
+    /// so those names keep what is cached until the next fetch. Nil for any
+    /// other error, which fails the whole fetch.
+    static func answers(fromPartialFailure error: Error) -> [String: ContributionStatusLookup]? {
+        guard let ck = error as? CKError, ck.code == .partialFailure,
+              let partial = ck.partialErrorsByItemID else { return nil }
+        var out: [String: ContributionStatusLookup] = [:]
+        for (key, itemError) in partial {
+            guard let id = key as? CKRecord.ID, let answer = answer(.failure(itemError)) else { continue }
+            out[id.recordName] = answer
+        }
+        return out
+    }
+
     /// The status a record gives `contribution`, or nil for anything this
     /// version can't trust: another type under the name, another name, a
     /// kind or status outside the vocabulary (or not each other's), another
@@ -275,9 +300,15 @@ final class CloudKitContributionStatusStore: ContributionStatusStore {
         var out: [String: ContributionStatusLookup] = [:]
         for start in stride(from: 0, to: names.count, by: Self.batch) {
             let ids = names[start..<min(start + Self.batch, names.count)].map { CKRecord.ID(recordName: $0) }
-            let results = try await db.records(for: ids, desiredKeys: ContributionStatuses.fields)
-            for (id, result) in results {
-                if let answer = ContributionStatuses.answer(result) { out[id.recordName] = answer }
+            do {
+                let results = try await db.records(for: ids, desiredKeys: ContributionStatuses.fields)
+                out.merge(ContributionStatuses.answers(results)) { _, new in new }
+            } catch {
+                // Should CloudKit report missing records as one thrown
+                // partial failure rather than per record, read it per record:
+                // otherwise one Sent nomination would hide every Featured one.
+                guard let partial = ContributionStatuses.answers(fromPartialFailure: error) else { throw error }
+                out.merge(partial) { _, new in new }
             }
         }
         return out
@@ -434,6 +465,9 @@ final class ContributionService {
     /// whatever is newly featured, taken (marked shown) for its banner.
     func bannerAfterRefresh() async -> [Contribution] {
         await refreshIfDue()
+        // The list closed mid-fetch: nobody will see a banner, so don't mark
+        // one shown (that would also stop its notification).
+        guard !Task.isCancelled else { return [] }
         return takeBanner()
     }
 

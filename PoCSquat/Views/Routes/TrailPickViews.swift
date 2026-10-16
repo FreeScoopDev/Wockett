@@ -59,7 +59,7 @@ struct TrailNominationSheet: View {
                 Color.earthBg.ignoresSafeArea()
                 switch phase {
                 case .writing, .sending: form
-                case .done(.sent): answer(.success, "Thanks for the tip.", ContributionMessages.thanksDetail, contributionsLink: true)
+                case .done(.sent): answer(.success, ContributionMessages.thanks, ContributionMessages.thanksDetail, contributionsLink: true)
                 case .done(.alreadyNominated): answer(.success, "You've nominated this trail already.",
                                                       ContributionMessages.alreadyDetail, contributionsLink: true)
                 case .done(.failed(let message)): answer(.warning, "Couldn't send it", message)

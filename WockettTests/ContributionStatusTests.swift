@@ -505,12 +505,14 @@ struct ContributionStatusTests {
     private final class GatedStatuses: ContributionStatusStore {
         var asked = 0
         var throwing: Error?
+        var gated = true
+        var answer: [String: ContributionStatusLookup] = [:]
         private var waiting: [CheckedContinuation<Void, Never>] = []
         func lookup(names: [String]) async throws -> [String: ContributionStatusLookup] {
             asked += 1
             if let throwing { throw throwing }
-            await withCheckedContinuation { waiting.append($0) }
-            return [:]
+            if gated { await withCheckedContinuation { waiting.append($0) } }
+            return answer
         }
         func release() { waiting.forEach { $0.resume() }; waiting = [] }
         var isWaiting: Bool { !waiting.isEmpty }
@@ -518,17 +520,62 @@ struct ContributionStatusTests {
 
     @Test("Two refreshes at once make one fetch", .timeLimit(.minutes(1)))
     func overlappingRefreshesJoin() async throws {
+        final class Flag { var on = false }
         let store = GatedStatuses()
         let s = ContributionService(store: store, defaults: try defaults())
         s.noteSent(contribution())
-        async let first = s.refresh()
+        let first = Task { @MainActor in await s.refresh() }
         while !store.isWaiting { await Task.yield() }
-        async let second = s.refresh()
-        for _ in 0..<50 { await Task.yield() }
+        // The second caller reaches the join without suspending once it
+        // starts (all on the main actor), so the flag means it is waiting.
+        let started = Flag()
+        let second = Task { @MainActor in
+            started.on = true
+            return await s.refresh()
+        }
+        while !started.on { await Task.yield() }
         store.release()
-        let results = await [first, second]
-        #expect(results == [true, true])
+        #expect(await first.value)
+        #expect(await second.value)
         #expect(store.asked == 1)
+    }
+
+    @Test("The Trails list closed mid-fetch: nothing is marked shown, so the banner (and its notification) still come",
+          .timeLimit(.minutes(1)))
+    func cancelledBannerKeepsIt() async throws {
+        let clock = Clock()
+        let store = GatedStatuses()
+        let a = contribution()
+        store.answer = [ContributionStatuses.recordName(claimToken: a.claimToken): .found(statusRecord(token: a.claimToken))]
+        store.gated = false
+        let s = ContributionService(store: store, defaults: try defaults(), now: { clock.now })
+        s.noteSent(a)
+        await s.refresh()
+        clock.now += 86_400
+        store.gated = true
+        let task = Task { @MainActor in await s.bannerAfterRefresh() }
+        while !store.isWaiting { await Task.yield() }
+        task.cancel()
+        store.release()
+        #expect(await task.value.isEmpty)
+        #expect(s.notificationDue.map(\.id) == [a.id])
+        #expect(s.takeBanner().map(\.id) == [a.id])
+    }
+
+    @Test("Missing records reported as one thrown partial failure are read per record, not as a failed fetch")
+    func partialFailureReadPerRecord() {
+        let missing = CKRecord.ID(recordName: "status.a")
+        let transient = CKRecord.ID(recordName: "status.b")
+        let error = CKError(.partialFailure, userInfo: [CKPartialErrorsByItemIDKey: [
+            missing: CKError(.unknownItem), transient: CKError(.networkFailure),
+        ]])
+        #expect(ContributionStatuses.answers(fromPartialFailure: error) == ["status.a": .missing])
+        #expect(ContributionStatuses.answers(fromPartialFailure: CKError(.networkFailure)) == nil)
+        #expect(ContributionStatuses.answers(fromPartialFailure: CKError(.partialFailure)) == nil, "no per-item errors: a failure")
+        let found = statusRecord(token: "T")
+        #expect(ContributionStatuses.answers([found.recordID: .success(found), missing: .failure(CKError(.unknownItem)),
+                                              transient: .failure(CKError(.networkFailure))])
+                == [found.recordID.recordName: .found(found), "status.a": .missing])
     }
 
     @Test("A cancelled fetch (a screen closed mid-fetch) is not a failure to wait out")
@@ -754,7 +801,7 @@ struct ContributionStatusTests {
             ("Views/Routes/TrailViews.swift", "featuredNews += await contributions.bannerAfterRefresh()"),
             ("Views/Routes/TrailViews.swift", "ContributionFeaturedBanner(text: news)"),
             ("Views/Routes/TrailPickViews.swift", "phase = Self.initialPhase(hasNominated: contributions.hasNominated(trail.trailKey))"),
-            ("Views/Routes/TrailPickViews.swift", "ContributionMessages.thanksDetail, contributionsLink: true"),
+            ("Views/Routes/TrailPickViews.swift", "ContributionMessages.thanks, ContributionMessages.thanksDetail, contributionsLink: true"),
             ("Views/Routes/TrailPickViews.swift", "WktResultView.Secondary(title: ContributionMessages.screenTitle)"),
             ("Views/Settings/MyContributionsView.swift", ".task { await service.refresh() }"),
             ("Views/Settings/MyContributionsView.swift", ".refreshable { await service.refresh() }"),
