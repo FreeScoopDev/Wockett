@@ -1252,6 +1252,15 @@ export const STRAIGHT_STRETCH_M = 500;
 export const OVERLAP_TOLERANCE_M = 30;
 export const OVERLAP_SHARE = 0.6;
 export const OVERLAP_STEP_M = 25;
+/**
+ * The most work grouping may do in one go, in points projected, samples
+ * checked and index entries built: about a second in node, measured on the
+ * worst shapes the critic found (2026-10-16). Real
+ * suggestions need a small part of it; past it the rest are shown ungrouped.
+ */
+export const GROUPING_BUDGET = 25_000_000;
+/** An index entry costs memory as well as time: it counts this much against the budget, which keeps every index together at about a million entries. */
+export const INDEX_ENTRY_COST = 20;
 /** The fact chips a suggestion may carry: Feature A's vocabulary, without `liked` (spec criterion 1). */
 export const SUGGESTION_FACTS = Object.freeze(['dogs', 'stroller', 'wheelchair', 'surface']);
 /**
@@ -1382,32 +1391,44 @@ function distanceToSegment(p, a, b) {
 
 /**
  * A line laid out for "is this point within `tolerance` of it?": projected
- * around its own first point, its segments filed in a grid of cells as wide
- * as the tolerance, each under every cell its box (grown by the tolerance)
- * covers. A point then checks only the segments filed under its own cell, so
- * a check costs a few segments, not all 2,000.
+ * around its own first point, cut into pieces no longer than the tolerance,
+ * each piece filed in a grid of cells as wide as the tolerance under every
+ * cell its box (grown by the tolerance) covers: at most 4 x 4 cells a piece.
+ * A point then checks only the pieces filed under its own cell. The index
+ * grows with the line's length (a 20 km line is about 11,000 entries),
+ * never with the area a long straight segment spans. `entries` says how many.
  */
-function lineIndex(points, tolerance) {
+export function lineIndex(points, tolerance) {
   const lat0 = points[0].latitude;
   const lng0 = points[0].longitude;
   const xy = project(points, lat0, lng0);
-  const cells = new Map();
-  const cell = (v) => Math.floor(v / tolerance);
+  const pieces = [];
   for (let i = 1; i < xy.length; i += 1) {
     const a = xy[i - 1];
     const b = xy[i];
+    const n = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) / tolerance));
+    for (let k = 0; k < n; k += 1) {
+      pieces.push([{ x: a.x + ((b.x - a.x) * k) / n, y: a.y + ((b.y - a.y) * k) / n },
+        { x: a.x + ((b.x - a.x) * (k + 1)) / n, y: a.y + ((b.y - a.y) * (k + 1)) / n }]);
+    }
+  }
+  const cells = new Map();
+  const cell = (v) => Math.floor(v / tolerance);
+  let entries = 0;
+  pieces.forEach(([a, b], i) => {
     for (let cx = cell(Math.min(a.x, b.x) - tolerance); cx <= cell(Math.max(a.x, b.x) + tolerance); cx += 1) {
       for (let cy = cell(Math.min(a.y, b.y) - tolerance); cy <= cell(Math.max(a.y, b.y) + tolerance); cy += 1) {
         const key = `${cx},${cy}`;
         if (!cells.has(key)) cells.set(key, []);
         cells.get(key).push(i);
+        entries += 1;
       }
     }
-  }
+  });
   return {
-    lat0, lng0,
+    lat0, lng0, entries,
     near(p) {
-      for (const i of cells.get(`${cell(p.x)},${cell(p.y)}`) ?? []) if (distanceToSegment(p, xy[i - 1], xy[i]) <= tolerance) return true;
+      for (const i of cells.get(`${cell(p.x)},${cell(p.y)}`) ?? []) if (distanceToSegment(p, pieces[i][0], pieces[i][1]) <= tolerance) return true;
       return false;
     },
   };
@@ -1418,11 +1439,13 @@ function lineIndex(points, tolerance) {
  * within the tolerance of the indexed line. Stops as soon as the answer is
  * known either way, so a pair that clearly differs costs little.
  */
-function sharesAtLeast(a, index, share, step) {
+function sharesAtLeast(a, index, share, step, spend = () => {}) {
   const samples = resample(project(a, index.lat0, index.lng0), step);
+  spend(a.length + samples.length);
   const need = Math.ceil(share * samples.length - 1e-9);
   let near = 0;
   for (let i = 0; i < samples.length; i += 1) {
+    spend(1);
     if (index.near(samples[i])) near += 1;
     if (near >= need) return true;
     if (near + (samples.length - i - 1) < need) return false;
@@ -1573,10 +1596,11 @@ export function suggestionDecisions(actions) {
  *   caps (ties: the oldest), or null when none is;
  * - `walkers`: distinct submitters; `facts`: each fact's answers, counted once
  *   per walker (their newest); `notes`, newest first.
- * - `acceptedName`: the name it was last accepted as ('' if never).
+ * - `acceptedName`: the name it was last accepted as ('' if never);
+ * - `ungrouped`: true when the work budget ran out before it was compared.
  * Waiting groups first (most walkers, then newest), then the rest, newest first.
  */
-export function groupSuggestions(records, actions = []) {
+export function groupSuggestions(records, actions = [], budget = GROUPING_BUDGET) {
   const decisions = suggestionDecisions(actions);
   const items = (records ?? []).filter((r) => r && typeof r.recordName === 'string').map((r) => {
     const s = suggestionOf(r);
@@ -1597,16 +1621,28 @@ export function groupSuggestions(records, actions = []) {
   // line that can't be read or is over the caps is a group of its own and is
   // never compared, which also bounds the work one crafted record can cost.
   const usable = items.filter((s) => s.line && !s.problems.length).sort((a, b) => b.lengthMeters - a.lengthMeters || a.created - b.created);
+  // A hard ceiling on the work, whatever the records say (anyone can create
+  // them): points projected, samples checked and index entries built. Past it,
+  // the rest are shown as groups of their own, marked `ungrouped`.
+  let spent = 0;
+  const spend = (n) => { spent += n; };
   const anchors = [];
+  const ungrouped = [];
   for (const s of usable) {
+    if (spent > budget) { ungrouped.push(s); continue; }
     const box = boxOf(s.line);
-    const home = anchors.find((g) => boxesMeet(g.box, box, OVERLAP_TOLERANCE_M)
-      && sharesAtLeast(s.line, g.index, OVERLAP_SHARE, OVERLAP_STEP_M));
+    const home = anchors.find((g) => {
+      if (spent > budget || !boxesMeet(g.box, box, OVERLAP_TOLERANCE_M)) return false;
+      // Built only when a line first comes near it.
+      if (!g.index) { g.index = lineIndex(g.members[0].line, OVERLAP_TOLERANCE_M); spend(g.index.entries * INDEX_ENTRY_COST); }
+      return sharesAtLeast(s.line, g.index, OVERLAP_SHARE, OVERLAP_STEP_M, spend);
+    });
     if (home) home.members.push(s);
-    else anchors.push({ box, index: lineIndex(s.line, OVERLAP_TOLERANCE_M), members: [s] });
+    else anchors.push({ box, index: null, members: [s] });
   }
   const loners = items.filter((s) => !s.line || s.problems.length).map((s) => ({ members: [s] }));
-  const groups = [...anchors, ...loners].map((g) => describeGroup(g.members.sort((a, b) => a.created - b.created)));
+  const groups = [...anchors, ...loners].map((g) => describeGroup(g.members.sort((a, b) => a.created - b.created)))
+    .concat(ungrouped.map((s) => ({ ...describeGroup([s]), ungrouped: true })));
   return groups.sort((a, b) => Number(b.state === 'waiting') - Number(a.state === 'waiting')
     || (a.state === 'waiting' ? b.walkers - a.walkers : 0) || b.latestAt - a.latestAt);
 }

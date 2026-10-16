@@ -1122,6 +1122,7 @@ async function renderSuggestions(seq) {
     }
   });
   const waiting = all.filter((g) => g.state === 'waiting').length;
+  const ungrouped = all.filter((g) => g.ungrouped).length;
   show(el('div', { class: 'toolbar' },
     el('div', { class: 'grow title' }, waiting ? `${waiting} path${waiting === 1 ? '' : 's'} waiting` : 'No suggestions waiting'),
     filter,
@@ -1132,6 +1133,8 @@ async function renderSuggestions(seq) {
     + `${Math.round(OVERLAP_SHARE * 100)}% of the shorter line within ${OVERLAP_TOLERANCE_M} m of the other), not by name. `
     + 'Collect-only for now: Accept tells the walkers it was added (Added in My contributions) and publishes nothing; '
     + 'Decline tells no one. The names and lines are never shown to other walkers yet.'),
+  ungrouped ? el('p', { class: 'small status error' }, `${suggestionCount(ungrouped)} shown ungrouped: too many overlapping lines to compare in one go `
+    + '(a flood of crafted records, most likely). Their duplicates may be in other cards.') : null,
   suggestions.hidden ? el('p', { class: 'small status error' },
     `${suggestionCount(suggestions.hidden)} left out: not named suggestion.<UUID> as the app names them, or named after its own claim token, `
     + 'so deciding it could put a token or an account into History. Only something other than the app makes one: delete it in CloudKit Console '

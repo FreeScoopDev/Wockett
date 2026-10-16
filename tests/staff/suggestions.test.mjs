@@ -8,6 +8,7 @@ import {
   decodePolyline, lineLength, overlapShare, sameLine, suggestionOf, suggestionIssueText, groupSuggestions, suggestionDecisions,
   suggestionStatusNames, acceptPlan, declinePlan, acceptTellText, suggestionToldText, suggestionHistoryText, gpxDocument, gpxFileName,
   osmEditLink, mapsLink, routePath, routePaths, contributionStatusFields, textLength, isTrailKey, longestStretch,
+  lineIndex, GROUPING_BUDGET, INDEX_ENTRY_COST,
   SUGGESTION_CAPS, LINE_CHAR_LIMIT, OVERLAP_TOLERANCE_M, OVERLAP_SHARE, OVERLAP_STEP_M, SHORT_SUGGESTION_M, LONG_SUGGESTION_M,
   STRAIGHT_STRETCH_M, TOKENS_PER_SUGGESTER, SUGGESTION_FACTS, SUGGESTION_STATUS_TRAIL_KEY,
   NON_ITEM_TARGETS, ACTIONS, ACTIVITY_KINDS, actionFields, groupReports, queue, groupNominations, statusesToWithdraw,
@@ -869,6 +870,9 @@ test('the share turns at exactly 60%, sampled every 25 m, within exactly the tol
   assert.equal(overlapShare([at(0, 0), at(0, 99)], [at(0, -200), at(0, 30)]), 0.6);
   assert.ok(sameLine([at(0, 0), at(0, 99)], [at(0, -200), at(0, 30)]));
   assert.ok(!sameLine([at(0, 0), at(0, 100)], [at(0, -200), at(0, 30)]), '0.5');
+  // The same with the near samples last: the early exit must not give up one sample too soon.
+  assert.ok(sameLine([at(0, 99), at(0, 0)], [at(0, -200), at(0, 30)]));
+  assert.ok(!sameLine([at(0, 110), at(0, 0)], [at(0, -200), at(0, 30)]), '0.5');
   const a = [at(0, 0), at(0, 220)];
   assert.ok(sameLine(a, [at(0, -2000), at(0, 105), at(3000, 105)]), '0.6');
   assert.ok(!sameLine(a, [at(0, -2000), at(0, 80), at(3000, 80)]), '0.5');
@@ -894,6 +898,40 @@ test('grouping stays fast: crafted over-cap lines are never compared, and 20 lon
   const ms = performance.now() - t;
   assert.equal(groups.length, 20);
   assert.ok(ms < 10_000, `${Math.round(ms)} ms (about 0.2 s alone; it took 19 s before early exit and the grid)`);
+});
+
+test('a long straight segment costs an index as long as it is, not as big as the area it spans (critic run 2)', () => {
+  // 19.8 km on the diagonal in two points: filed by area this was about 225,000 entries.
+  const diagonal = lineIndex([at(0, 0), at(14_000, 14_000)], OVERLAP_TOLERANCE_M);
+  assert.ok(diagonal.entries <= 15_000, `${diagonal.entries} entries`);
+  assert.ok(diagonal.near({ x: 7000 * 1.0, y: 7000 * 1.0 }), 'still finds the line in the middle');
+  const straight = lineIndex([at(0, 0), at(0, 19_800)], OVERLAP_TOLERANCE_M);
+  assert.ok(straight.entries <= 15_000, `${straight.entries} entries`);
+  assert.equal(INDEX_ENTRY_COST, 20);
+  assert.equal(GROUPING_BUDGET, 25_000_000);
+});
+
+test('grouping has a hard ceiling: past the budget the rest are shown ungrouped, never lost', () => {
+  const line = path(60);
+  const records = Array.from({ length: 6 }, (_, k) => sugg(`s${k}`, line, { created: k }));
+  const all = groupSuggestions(records);
+  assert.equal(all.length, 1);
+  const tight = groupSuggestions(records, [], 1);
+  assert.equal(tight.reduce((n, g) => n + g.members.length, 0), 6, 'every suggestion still shown');
+  assert.ok(tight.some((g) => g.ungrouped) && tight.length > 1);
+  // The critic's worst shapes, at full size: they finish, and every suggestion is on the page.
+  const diag = Array.from({ length: 60 }, (_, k) => sugg(`d${k}`, [at(k * 100, 0), at(k * 100 + 14_000, 14_000)], { created: k }));
+  const star = Array.from({ length: 300 }, (_, k) => {
+    const a = (k / 300) * Math.PI;
+    return sugg(`x${k}`, Array.from({ length: 200 }, (_, i) => at(Math.cos(a) * (i * 70 - 7000), Math.sin(a) * (i * 70 - 7000))), { created: k });
+  });
+  for (const [label, set] of [['diagonal', diag], ['star', star]]) {
+    const t = performance.now();
+    const groups = groupSuggestions(set);
+    const ms = performance.now() - t;
+    assert.equal(groups.reduce((n, g) => n + g.members.length, 0), set.length, label);
+    assert.ok(ms < 10_000, `${label}: ${Math.round(ms)} ms (about 0.4 s alone; 15 s and 2.9 GB for 60 diagonals before)`);
+  }
 });
 
 test('the decoder refuses a value too long to be a coordinate, and never yields NaN', () => {
@@ -1084,6 +1122,8 @@ test('the page offers the tab, counts the Accept confirm from the group as Accep
   assert.ok(screen.indexOf('Grouping suggestions') < screen.indexOf('groupSuggestions('), 'drawn again before grouping');
   assert.match(screen, /if \(!current\(seq\) \|\| !isUnknownRecordType\(error\)\) throw error;/);
   assert.match(screen, /suggestions\.hidden \? el\('p'/);
+  assert.match(screen, /const ungrouped = all\.filter\(\(g\) => g\.ungrouped\)\.length;/);
+  assert.match(screen, /ungrouped \? el\('p', \{ class: 'small status error' \}, `\$\{suggestionCount\(ungrouped\)\} shown ungrouped/);
   assert.match(screen, /groupSuggestions\(suggestions\.records, \[\.\.\.actions\.records, \.\.\.suggestionsDecided\]\)/);
   assert.match(app, /f\.targetType === 'suggestion' \|\| f\.targetType === 'trailSuggestions' \? el\('div', \{\}, suggestionHistoryText\(f\)\) : null,/);
 });
