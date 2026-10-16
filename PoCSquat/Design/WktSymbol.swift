@@ -62,6 +62,7 @@ enum WktSymbol {
     case wheelchair         // figure.roll (wheelchair=yes)
     case lit                // lightbulb (lit=yes)
     case maintainer         // building.2 (operator)
+    case stroller           // stroller (walkers say a trail suits one)
 
     // Health
     case sleep              // bed.double
@@ -167,6 +168,7 @@ enum WktSymbol {
     case send               // paperplane (use filled: true for paperplane.fill)
     case joinPerson         // person.badge.plus (join a challenge)
     case anyActivity        // sparkles (challenge open to any activity)
+    case copy               // doc.on.doc (copy a value)
 
     var name: String {
         switch self {
@@ -299,6 +301,8 @@ enum WktSymbol {
         case .send:           return "paperplane"
         case .joinPerson:     return "person.badge.plus"
         case .anyActivity:    return "sparkles"
+        case .stroller:       return "stroller"
+        case .copy:           return "doc.on.doc"
         }
     }
 

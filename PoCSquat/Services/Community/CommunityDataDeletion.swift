@@ -68,14 +68,19 @@ enum CommunityDataDeletion {
     /// WRITE, so the app can neither find nor delete them. A moderator can.
     static let undeletable: [UndeletableCommunityType] = [
         UndeletableCommunityType(recordType: "CommunityReport", title: "Reports you sent"),
-        UndeletableCommunityType(recordType: "TrailNomination", title: "Trail suggestions you sent")
+        UndeletableCommunityType(recordType: "TrailNomination", title: "Trail nominations you sent"),
+        UndeletableCommunityType(recordType: TrailFactReports.recordType, title: "Trail reports you sent")
     ]
 
     static let title = "Delete my community data"
     static let confirmTitle = "Delete all your community data?"
     static let confirmMessage = "This removes everything you shared in Community, for everyone: routes, posts, challenge entries, challenges only you are in, likes and Wocketts, and your community name. Your walks and pets stay. It can't be undone."
     static let explanation = "Deletes everything your iCloud account shared in Community. Your walks, pets and routes on this iPhone stay."
-    static let undeletableNote = "Reports and trail suggestions you sent can't be deleted from the app: only the Wockett team can see them. Email us to have them removed."
+    /// "Trail nominations" is "Nominate this trail"; "trail suggestions" is
+    /// kept for the later "suggest a missing trail" (terms patch, 2026-10-15).
+    static let undeletableNote = "Reports and trail nominations you sent, and your trail reports, can't be deleted from the app: only the Wockett team can see them. Email us with your identifier to have them removed."
+    static let identifierTitle = "Your identifier"
+    static let identifierExplanation = "The anonymous ID iCloud gives your account in Wockett's community. The Wockett team needs it to find and remove your reports, trail nominations and trail reports. The email below includes it."
     static let signInMessage = "Sign in to iCloud in the Settings app, then try again."
     /// How long one kind may take before it's reported as timed out.
     static let deadline: Duration = .seconds(30)
@@ -83,8 +88,10 @@ enum CommunityDataDeletion {
     /// The email for anything the app couldn't delete. Carries the account ID
     /// a moderator needs to find your records, which the app shows nowhere else.
     static func supportMailURL(account: String?) -> URL? {
-        var body = "Please delete my Wockett community data."
-        if let account { body += "\n\nMy community account ID: \(account)" }
+        var body = "Please delete my Wockett community data, including any reports, trail nominations and trail reports I sent."
+        // On its own line, exactly as iCloud gives it: the staff dashboard's
+        // "Delete one walker's reports" takes this string as it is.
+        if let account { body += "\n\nMy identifier: \(account)" }
         return SupportContact.mailURL(subject: "Delete my community data", body: body)
     }
 

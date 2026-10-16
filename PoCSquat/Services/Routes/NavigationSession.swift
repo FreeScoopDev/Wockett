@@ -1156,7 +1156,8 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
                                   lapCount: 1, isLoop: false, totalDistance: along + length,
                                   isCustomRoute: route.isCustomRoute, isCommunityRoute: route.isCommunityRoute,
                                   activityMode: route.activityMode, customRouteId: route.customRouteId,
-                                  path: back, pathIsRecording: route.pathIsRecording, isHike: route.isHike)
+                                  path: back, pathIsRecording: route.pathIsRecording, isHike: route.isHike,
+                                  trail: route.trail)
         route = next
         trailProgress = TrailProgress(route: next)
         currentWaypointIndex = 1
@@ -1203,6 +1204,8 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
         // A hike or not is fixed when the session starts, with its Health
         // workout type: a session that walked here stays a walk on the trail.
         next.isHike = route.isHike
+        // From here on it is a walk on this trail, which the summary may ask about.
+        next.trail = TrailRef(item: approach.item)
         route = next
         trailProgress = TrailProgress(route: next)
         currentWaypointIndex = 1

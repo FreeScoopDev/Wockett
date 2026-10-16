@@ -8,6 +8,8 @@ struct ActivitySummaryRequest: Identifiable {
     let id = UUID()
     let session: WalkSession
     let records: [PRType]
+    /// The named trail walked, for the summary's questions (memory only).
+    var trail: TrailRef?
     /// Checkpoint splits of a guided walk, read before the session stops.
     var splits: [(label: String, elapsed: TimeInterval)] = []
 }
@@ -62,6 +64,11 @@ final class ActiveWalkStore {
 
     var isActive: Bool { session != nil }
 
+    /// A walk is being recorded: a session exists and has not been ended.
+    /// False on the summary, where the stopped session is still held
+    /// (`releaseSession: false`). The trail questions never show while true.
+    var isWalkInProgress: Bool { session != nil && !sessionEnded }
+
     // MARK: - Ending a walk
 
     enum EndOutcome { case save, discard }
@@ -108,7 +115,7 @@ final class ActiveWalkStore {
                 if presentSummary {
                     pendingSummary = ActivitySummaryRequest(
                         session: walk, records: checkNewPRs(newSession: walk, against: previous),
-                        splits: session.splitTimes)
+                        trail: route.trail, splits: session.splitTimes)
                 }
             }
         case .discard:

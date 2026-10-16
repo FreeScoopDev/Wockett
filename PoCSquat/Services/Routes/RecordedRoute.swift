@@ -69,6 +69,6 @@ extension NavigableRoute {
                               totalDistance: totalDistance, isCustomRoute: isCustomRoute,
                               isCommunityRoute: isCommunityRoute, activityMode: activityMode,
                               customRouteId: customRouteId, path: line.path, pathIsRecording: true,
-                              turnaroundMeters: turnaroundMeters, isHike: isHike)
+                              turnaroundMeters: turnaroundMeters, isHike: isHike, trail: trail)
     }
 }
