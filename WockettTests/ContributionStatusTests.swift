@@ -39,9 +39,11 @@ struct ContributionStatusTests {
         var records: [String: CKRecord] = [:]
         var unanswered: Set<String> = []
         var error: Error?
+        var hangs = false
         var asked: [[String]] = []
         func lookup(names: [String]) async throws -> [String: ContributionStatusLookup] {
             asked.append(names.sorted())
+            if hangs { try await Task.sleep(for: .seconds(86_400)) }
             if let error { throw error }
             var out: [String: ContributionStatusLookup] = [:]
             for name in names where !unanswered.contains(name) {
@@ -233,11 +235,14 @@ struct ContributionStatusTests {
             .sorted()
     }
 
-    @Test("The schema has exactly the nomination fields the app writes, and the status fields it reads")
+    @Test("The schema has exactly the nomination fields the app writes, and every status field it reads")
     func schemaMatches() throws {
         let record = TrailNominations.record(for: lakeLoop, note: "x", claimToken: "T")
         #expect(try schemaFields("TrailNomination") == record.allKeys().sorted())
-        #expect(try schemaFields("ContributionStatus") == ContributionStatuses.fields.sorted())
+        let status = try schemaFields("ContributionStatus")
+        #expect(status == ["decidedAt", "kind", "status", "trailKey", "trailName"], "C1's record, as the app expects it")
+        #expect(Set(ContributionStatuses.fields).isSubset(of: status))
+        #expect(ContributionStatuses.fields.sorted() == ["kind", "status", "trailKey"], "exactly what the decode reads")
     }
 
     // MARK: Sending, and keeping the token
@@ -326,9 +331,24 @@ struct ContributionStatusTests {
         #expect(!contributions.hasNominated("nc:w9"), "a failed send can be tried again")
     }
 
-    @Test("A Debug build's missing schema says so; the guard is walker reports' (probe first, nothing saved when refused)")
+    // The Debug store's probe-then-save order is Feature A's tested
+    // `TrailFactReports.guardedSave`; the store itself needs CloudKit and is
+    // not reached by unit tests.
+    @Test("A Debug build's missing schema maps to its message, and its probe asks for ContributionStatus")
     func debugGuardMessage() {
         #expect(TrailNominations.outcome(of: TrailFactReportSchemaMissing()) == .failed(TrailNominations.schemaMissingMessage))
+        let probe = TrailNominations.schemaProbeQuery()
+        #expect(probe.recordType == "ContributionStatus", "the type the app reads, not the one it writes")
+    }
+
+    @Test("A record CloudKit refuses (a field Production lacks) is told apart in the log; the person sees the usual message")
+    func recordRefusal() {
+        #expect(TrailNominations.isRecordRefusal(CKError(.invalidArguments)))
+        #expect(TrailNominations.isRecordRefusal(CKError(.serverRejectedRequest)))
+        #expect(!TrailNominations.isRecordRefusal(CKError(.networkUnavailable)))
+        #expect(!TrailNominations.isRecordRefusal(CKError(.notAuthenticated)))
+        #expect(!TrailNominations.isRecordRefusal(CommunityAccessError.suspended(until: nil)))
+        #expect(TrailNominations.outcome(of: CKError(.invalidArguments)) == .failed(TrailNominations.failedMessage))
     }
 
     // MARK: Tolerant decode
@@ -410,7 +430,6 @@ struct ContributionStatusTests {
         store.records = [:]
         await s.refresh()
         #expect(s.contributions[0].statusLabel == "Sent", "withdrawn: no record")
-        #expect(s.contributions[0].reachedAt != nil, "but it was featured once, and that is remembered")
         #expect(ContributionService(store: store, defaults: d).contributions[0].statusLabel == "Sent", "saved")
     }
 
@@ -444,7 +463,104 @@ struct ContributionStatusTests {
         #expect(store.asked.count == 4)
     }
 
+    @Test("A fetch that never answers gives up at the deadline, keeps the cache and waits before trying again",
+          .timeLimit(.minutes(1)))
+    func hungFetchGivesUp() async throws {
+        let clock = Clock()
+        let store = FakeStatuses()
+        let a = contribution()
+        store.records[ContributionStatuses.recordName(claimToken: a.claimToken)] = statusRecord(token: a.claimToken)
+        let d = try defaults()
+        let s = ContributionService(store: store, defaults: d, now: { clock.now }, sleep: { _ in })
+        s.noteSent(a)
+        store.hangs = true
+        #expect(await s.refresh() == false)
+        #expect(s.contributions[0].statusLabel == "Sent")
+        #expect(s.lastFetch == nil)
+        #expect(await s.refreshIfDue() == false)
+        #expect(store.asked.count == 1, "a timed-out fetch counts as a failure: no retry for 10 minutes")
+        #expect(ContributionService.fetchDeadline == .seconds(10))
+    }
+
+    @Test("A per-name fetch result: a record, no record (Sent), or no answer for any other error")
+    func perNameAnswer() {
+        let record = statusRecord(token: "T")
+        #expect(ContributionStatuses.answer(.success(record)) == .found(record))
+        #expect(ContributionStatuses.answer(.failure(CKError(.unknownItem))) == .missing)
+        #expect(ContributionStatuses.answer(.failure(CKError(.networkFailure))) == nil, "a transient error keeps the cache")
+        #expect(ContributionStatuses.answer(.failure(CKError(.permissionFailure))) == nil)
+    }
+
+    @Test("A featured status is saved: a relaunch still shows Featured")
+    func statusPersists() async throws {
+        let store = FakeStatuses()
+        let a = contribution()
+        store.records[ContributionStatuses.recordName(claimToken: a.claimToken)] = statusRecord(token: a.claimToken)
+        let (s, d) = try service([a], store: store, clock: Clock())
+        await s.refresh()
+        #expect(ContributionService(store: FakeStatuses(), defaults: d).contributions.first?.statusLabel == "Featured")
+    }
+
+    /// A store whose lookup waits until `release()`.
+    private final class GatedStatuses: ContributionStatusStore {
+        var asked = 0
+        var throwing: Error?
+        private var waiting: [CheckedContinuation<Void, Never>] = []
+        func lookup(names: [String]) async throws -> [String: ContributionStatusLookup] {
+            asked += 1
+            if let throwing { throw throwing }
+            await withCheckedContinuation { waiting.append($0) }
+            return [:]
+        }
+        func release() { waiting.forEach { $0.resume() }; waiting = [] }
+        var isWaiting: Bool { !waiting.isEmpty }
+    }
+
+    @Test("Two refreshes at once make one fetch", .timeLimit(.minutes(1)))
+    func overlappingRefreshesJoin() async throws {
+        let store = GatedStatuses()
+        let s = ContributionService(store: store, defaults: try defaults())
+        s.noteSent(contribution())
+        async let first = s.refresh()
+        while !store.isWaiting { await Task.yield() }
+        async let second = s.refresh()
+        for _ in 0..<50 { await Task.yield() }
+        store.release()
+        let results = await [first, second]
+        #expect(results == [true, true])
+        #expect(store.asked == 1)
+    }
+
+    @Test("A cancelled fetch (a screen closed mid-fetch) is not a failure to wait out")
+    func cancelledFetchIsNotAFailure() async throws {
+        let store = GatedStatuses()
+        store.throwing = CancellationError()
+        let s = ContributionService(store: store, defaults: try defaults())
+        s.noteSent(contribution())
+        #expect(await s.refresh() == false)
+        store.throwing = CKError(.operationCancelled)
+        #expect(await s.refreshIfDue() == false)
+        #expect(store.asked == 2, "asked again at once, not 10 minutes later")
+        store.throwing = CKError(.networkUnavailable)
+        await s.refreshIfDue()
+        await s.refreshIfDue()
+        #expect(store.asked == 3, "a real failure does wait")
+    }
+
     // MARK: Saying so, once
+
+    @Test("The Trails list's step: refresh when due, then take what is newly featured, once")
+    func bannerAfterRefresh() async throws {
+        let clock = Clock()
+        let store = FakeStatuses()
+        let a = contribution()
+        store.records[ContributionStatuses.recordName(claimToken: a.claimToken)] = statusRecord(token: a.claimToken)
+        let (s, _) = try service([a], store: store, clock: clock)
+        #expect(await s.bannerAfterRefresh().map(\.id) == [a.id])
+        #expect(store.asked.count == 1)
+        #expect(await s.bannerAfterRefresh().isEmpty, "once")
+        #expect(store.asked.count == 1, "and no second fetch within the day")
+    }
 
     @Test("The banner announces a newly featured contribution once, even across relaunches and a re-feature")
     func bannerOnce() async throws {
@@ -466,19 +582,57 @@ struct ContributionStatusTests {
         #expect(relaunched.takeBanner().isEmpty, "withdrawn and featured again: still once")
     }
 
-    @Test("Banner and notification copy name the trail and say Featured")
+    @Test("A second contribution featured later gets its own banner and notification; the first isn't repeated")
+    func eachContributionSeparately() async throws {
+        let clock = Clock()
+        let store = FakeStatuses()
+        let a = contribution("AAAAAAAA-0000-4000-8000-000000000001", key: "nc:w9", name: "Lake Loop")
+        let b = contribution("BBBBBBBB-0000-4000-8000-000000000002", key: "nc:w10", name: "River Walk")
+        store.records[ContributionStatuses.recordName(claimToken: a.claimToken)] = statusRecord(token: a.claimToken)
+        let (s, _) = try service([a, b], store: store, clock: clock)
+        await s.refresh()
+        #expect(s.takeBanner().map(\.id) == [a.id])
+        store.records[ContributionStatuses.recordName(claimToken: b.claimToken)] = statusRecord(token: b.claimToken, trailKey: "nc:w10")
+        await s.refresh()
+        #expect(s.notificationDue.map(\.id) == [b.id])
+        #expect(s.takeBanner().map(\.id) == [b.id])
+
+        // The same for notifications: a told, then b featured a day later.
+        let nStore = FakeStatuses()
+        nStore.records[ContributionStatuses.recordName(claimToken: a.claimToken)] = statusRecord(token: a.claimToken)
+        let (t, _) = try service([a, b], store: nStore, clock: clock)
+        let (notes, center) = try notifications(.authorized)
+        #expect(await t.backgroundCheck(notifications: notes) == 1)
+        nStore.records[ContributionStatuses.recordName(claimToken: b.claimToken)] = statusRecord(token: b.claimToken, trailKey: "nc:w10")
+        clock.now += 86_400
+        #expect(await t.backgroundCheck(notifications: notes) == 1)
+        #expect(center.added.count == 2)
+        #expect(center.added.last?.content.body.contains("River Walk") == true)
+        #expect(center.added.last?.content.body.contains("Lake Loop") == false)
+    }
+
+    @Test("Banner and notification copy name the trail, stay true after a feature ends, and follow the kinds")
     func copy() {
         var a = contribution("A", name: "Lake Loop")
         #expect(ContributionMessages.banner(for: [a]) == nil, "Sent: nothing")
+        #expect(ContributionMessages.notification(for: [a]) == nil)
         a.status = "featured"
         var b = contribution("B", key: "nc:w10", name: "River Walk")
         b.status = "featured"
-        #expect(ContributionMessages.banner(for: [a]) == "Your nomination of Lake Loop is now Featured")
-        #expect(ContributionMessages.banner(for: [a, b]) == "Your nominations of Lake Loop and River Walk are now Featured")
+        #expect(ContributionMessages.banner(for: [a]) == "Your nomination of Lake Loop was featured by the Wockett team")
+        #expect(ContributionMessages.banner(for: [a, b])
+                == "Your nominations of Lake Loop and River Walk were featured by the Wockett team")
         let one = ContributionMessages.notification(for: [a])
-        #expect(one?.title == "Your nomination is Featured")
-        #expect(one?.body == "Your nomination of Lake Loop is now Featured. Walkers nearby see it in Trails. Thanks for the tip.")
-        #expect(ContributionMessages.notification(for: [a, b])?.title == "Your nominations are Featured")
+        #expect(one?.title == "Your nomination was featured")
+        #expect(one?.body == "Your nomination of Lake Loop was featured by the Wockett team. Thanks for the tip.")
+        #expect(ContributionMessages.notification(for: [a, b])?.title == "Your nominations were featured")
+        // Feature B's kind, alone and mixed: never "nominations" for a suggestion.
+        var c = contribution("C", key: "nc:w11", name: "Creek Path", kind: .suggestion)
+        c.status = "added"
+        #expect(ContributionMessages.banner(for: [c]) == "Your suggestion of Creek Path was added by the Wockett team")
+        #expect(ContributionMessages.banner(for: [a, c])
+                == "Your contributions for Lake Loop and Creek Path were taken up by the Wockett team")
+        #expect(ContributionMessages.notification(for: [a, c])?.title == "Your contributions were taken up")
         #expect(ContributionMessages.thanksDetail.contains("If it is featured you will see it here"))
     }
 
@@ -564,21 +718,52 @@ struct ContributionStatusTests {
 
     // MARK: The empty state
 
-    @Test("With nothing sent the screen is empty and explains nominating; one sent and it isn't")
-    func emptyState() throws {
-        let (s, _) = try service([], store: FakeStatuses(), clock: Clock())
-        #expect(s.contributions.isEmpty)
+    // The screen showing the empty state is WockettUITests
+    // testMyContributionsEmptyState; this holds only its words.
+    @Test("The empty state's words explain what nominating does")
+    func emptyStateCopy() {
         #expect(ContributionMessages.emptyMessage.contains("Nominate a trail"))
         #expect(ContributionMessages.emptyMessage.contains("Featured"))
-        s.noteSent(contribution())
-        #expect(!s.contributions.isEmpty)
     }
 
     // MARK: No remote push
 
-    @Test("Under tests the app's status store can't reach CloudKit")
+    @Test("Under tests the app's status store can't reach CloudKit, and the shared service uses it")
     func testsNeverReachCloudKit() {
         #expect(ContributionService.defaultStore() is NoContributionStatusStore)
+        #expect(ContributionService.shared.storeIsLocal)
+    }
+
+    @Test("The nomination sheet starts on 'already nominated' for a trail this device sent")
+    func sheetInitialPhase() {
+        #expect(TrailNominationSheet.initialPhase(hasNominated: true) == .done(.alreadyNominated))
+        #expect(TrailNominationSheet.initialPhase(hasNominated: false) == .writing)
+    }
+
+    /// A presence check, not behaviour: the views and the background task
+    /// can't be driven from a unit test, so this fails only if a call site
+    /// that the tested logic depends on is deleted or renamed.
+    @Test("The call sites exist: background task, Trails banner, sheet, screen and Settings row")
+    func wiringPresent() throws {
+        func source(_ path: String) throws -> String {
+            try String(contentsOf: repo.appendingPathComponent("PoCSquat/" + path), encoding: .utf8)
+        }
+        let checks: [(String, String)] = [
+            ("Services/Core/BackgroundTaskManager.swift", "await ContributionService.shared.backgroundCheck(notifications: .shared)"),
+            ("Views/Routes/TrailViews.swift", "featuredNews += contributions.takeBanner()"),
+            ("Views/Routes/TrailViews.swift", "featuredNews += await contributions.bannerAfterRefresh()"),
+            ("Views/Routes/TrailViews.swift", "ContributionFeaturedBanner(text: news)"),
+            ("Views/Routes/TrailPickViews.swift", "phase = Self.initialPhase(hasNominated: contributions.hasNominated(trail.trailKey))"),
+            ("Views/Routes/TrailPickViews.swift", "ContributionMessages.thanksDetail, contributionsLink: true"),
+            ("Views/Routes/TrailPickViews.swift", "WktResultView.Secondary(title: ContributionMessages.screenTitle)"),
+            ("Views/Settings/MyContributionsView.swift", ".task { await service.refresh() }"),
+            ("Views/Settings/MyContributionsView.swift", ".refreshable { await service.refresh() }"),
+            ("Views/Settings/CommunitySettingsViews.swift", "MyContributionsView()"),
+            ("Design/WktControls.swift", "WktSecondaryButton(title: secondary.title, action: secondary.action)"),
+        ]
+        for (file, call) in checks {
+            #expect(try source(file).contains(call), "\(file) no longer has \(call)")
+        }
     }
 
     @Test("No remote-push code path: nothing registers for pushes or subscribes, and contributions schedule only through NotificationService")

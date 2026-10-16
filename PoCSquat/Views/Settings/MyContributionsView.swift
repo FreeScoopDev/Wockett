@@ -4,7 +4,8 @@ import SwiftUI
 //
 // Settings > Community > My contributions, and the nomination thank-you's
 // "My contributions" button: each trail this phone nominated, when, and
-// Sent or Featured (spec feat/contribution-status, criterion 4). Asks
+// Sent or Featured (spec feat/contribution-status, criterion 4). The Trails
+// banner is `ContributionFeaturedBanner` in TrailPickViews.swift. Asks
 // CloudKit every time it opens and on pull to refresh.
 
 struct MyContributionsView: View {
@@ -63,22 +64,5 @@ private struct ContributionRow: View {
         .padding(.vertical, 4)
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("contributions.row")
-    }
-}
-
-/// "Your nomination of Lake Loop is now Featured", once, at the top of the
-/// Trails list (criterion 5).
-struct ContributionFeaturedBanner: View {
-    let text: String
-    let onClose: () -> Void
-
-    var body: some View {
-        WktBanner(symbol: .trailPick, tint: .earthGreen, title: text,
-                  detail: "Walkers nearby see it in Trails. Thanks for the tip.") {
-            WktPillButton(title: "OK", action: onClose)
-        }
-        .clipShape(RoundedRectangle(cornerRadius: 16))
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("routes.contributionFeatured")
     }
 }

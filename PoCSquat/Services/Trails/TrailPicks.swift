@@ -121,6 +121,23 @@ enum TrailNominations {
     static let failedMessage = "Couldn't send your nomination. Check your connection and try again."
     static let schemaMissingMessage = "This test build won't send nominations until the contribution-status schema is in CloudKit Development."
 
+    /// CloudKit refusing the record itself rather than the connection: what
+    /// a Release build sees if `claimToken` was never deployed to Production
+    /// (a field the schema lacks). The person still sees the generic message;
+    /// the log says what it most likely is.
+    /// The Debug build's probe: a query for `ContributionStatus`, the type
+    /// the app may read, which can't create anything.
+    static func schemaProbeQuery() -> CKQuery {
+        CKQuery(recordType: ContributionStatuses.recordType, predicate: NSPredicate(format: "trailKey == %@", "schema-check"))
+    }
+
+    static func isRecordRefusal(_ error: Error) -> Bool {
+        switch (error as? CKError)?.code {
+        case .invalidArguments?, .serverRejectedRequest?: return true
+        default: return false
+        }
+    }
+
     static func outcome(of error: Error) -> Outcome {
         if let access = error as? CommunityAccessError { return .failed(access.message) }
         if error is TrailFactReportSchemaMissing { return .failed(schemaMissingMessage) }
@@ -156,8 +173,7 @@ final class CloudKitTrailNominationStore: TrailNominationStore {
         // same guard as walker reports (`TrailFactReports.guardedSave`).
         let log = log
         schemaChecked = try await TrailFactReports.guardedSave(checked: schemaChecked, probe: {
-            let query = CKQuery(recordType: ContributionStatuses.recordType,
-                                predicate: NSPredicate(format: "trailKey == %@", "schema-check"))
+            let query = TrailNominations.schemaProbeQuery()
             do {
                 _ = try await db.records(matching: query, resultsLimit: 1)
             } catch {
@@ -205,6 +221,10 @@ enum TrailNominationSubmission {
                                                 trailName: trail.trailName, sentAt: now()))
             return .sent
         } catch {
+            if TrailNominations.isRecordRefusal(error) {
+                Logger(subsystem: "com.wockett.app", category: "TrailNominations")
+                    .error("Nomination refused by CloudKit; is TrailNomination.claimToken deployed? \(error.localizedDescription, privacy: .public)")
+            }
             return TrailNominations.outcome(of: error)
         }
     }

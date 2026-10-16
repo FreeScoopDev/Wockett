@@ -167,10 +167,7 @@ struct TrailsPanel: View {
         }
         .task { await featuredTrails.refreshIfStale() }
         // At most daily; a status that arrives now is announced now.
-        .task {
-            await contributions.refreshIfDue()
-            featuredNews += contributions.takeBanner()
-        }
+        .task { featuredNews += await contributions.bannerAfterRefresh() }
     }
 
     /// One card that opens and closes the unnamed paths, styled like a

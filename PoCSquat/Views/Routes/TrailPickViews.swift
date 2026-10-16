@@ -47,6 +47,12 @@ struct TrailNominationSheet: View {
         case done(TrailNominations.Outcome)
     }
 
+    /// Where the sheet starts: a trail this device nominated already says so
+    /// before anything is typed.
+    static func initialPhase(hasNominated: Bool) -> Phase {
+        hasNominated ? .done(.alreadyNominated) : .writing
+    }
+
     var body: some View {
         NavigationStack {
             ZStack {
@@ -76,7 +82,7 @@ struct TrailNominationSheet: View {
             }
         }
         // A trail this phone nominated already says so before anything is typed.
-        .onAppear { if phase == .writing, contributions.hasNominated(trail.trailKey) { phase = .done(.alreadyNominated) } }
+        .onAppear { if phase == .writing { phase = Self.initialPhase(hasNominated: contributions.hasNominated(trail.trailKey)) } }
         .interactiveDismissDisabled(phase == .sending)
         .presentationDetents([.medium, .large])
         .accessibilityElement(children: .contain)
@@ -127,6 +133,22 @@ struct TrailNominationSheet: View {
 }
 
 // MARK: - Featured
+
+/// "Your nomination of Lake Loop was featured by the Wockett team", once, at
+/// the top of the Trails list (spec feat/contribution-status, criterion 5).
+struct ContributionFeaturedBanner: View {
+    let text: String
+    let onClose: () -> Void
+
+    var body: some View {
+        WktBanner(symbol: .trailPick, tint: .earthGreen, title: text, detail: ContributionMessages.thanks) {
+            WktPillButton(title: "OK", action: onClose)
+        }
+        .clipShape(RoundedRectangle.wktCard)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("routes.contributionFeatured")
+    }
+}
 
 /// A featured trail in the list: its card, with Joe's note under it.
 struct FeaturedTrailCard: View {

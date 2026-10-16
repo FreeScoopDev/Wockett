@@ -61,11 +61,13 @@ enum ContributionKind: String, CaseIterable, Codable {
 enum ContributionStatuses {
     static let recordType = "ContributionStatus"
     /// `STATUS_RECORD_PREFIX` in contribution-status.js.
-    static let recordPrefix = "status."
+    nonisolated static let recordPrefix = "status."
     /// What the phone knows by itself: the team has the contribution.
     static let sentLabel = "Sent"
-    /// Only these are asked for: nothing else the record might grow.
-    static let fields = ["kind", "status", "trailKey", "trailName", "decidedAt"]
+    /// Only what the decode reads is asked for (`ContributionStatus` also
+    /// holds `trailName` and `decidedAt`; the row shows the name as nominated,
+    /// and `decidedAt` is never a reason to say anything again).
+    static let fields = ["kind", "status", "trailKey"]
 
     /// A fresh claim token: a random UUID, as written (upper case). The
     /// dashboard accepts either case; the name below hashes exactly this text.
@@ -79,6 +81,16 @@ enum ContributionStatuses {
     /// the token can work it out.
     nonisolated static func recordName(claimToken: String) -> String {
         recordPrefix + SHA256.hash(data: Data(claimToken.utf8)).map { String(format: "%02x", $0) }.joined()
+    }
+
+    /// One name's fetch result: a record, no record (`unknownItem`: Sent), or
+    /// nil for any other error, so a transient failure keeps what is cached
+    /// rather than turning Featured back into Sent.
+    static func answer(_ result: Result<CKRecord, Error>) -> ContributionStatusLookup? {
+        switch result {
+        case .success(let record): return .found(record)
+        case .failure(let error): return (error as? CKError)?.code == .unknownItem ? .missing : nil
+        }
     }
 
     /// The status a record gives `contribution`, or nil for anything this
@@ -115,10 +127,8 @@ struct Contribution: Codable, Equatable, Identifiable {
     /// The status the last answer gave (a vocabulary key), or nil: Sent.
     /// Back to nil if Joe withdraws the feature.
     var status: String?
-    /// When this phone first saw a status. Never cleared: what makes each
-    /// contribution announce itself once.
-    var reachedAt: Date?
-    /// The Trails banner has shown it.
+    /// The Trails banner has shown it. Never cleared: with `notified`, what
+    /// makes each contribution announce itself once.
     var bannerShown = false
     /// The local notification has been handed to the system for it.
     var notified = false
@@ -139,7 +149,6 @@ struct Contribution: Codable, Equatable, Identifiable {
         trailName = try c.decode(String.self, forKey: .trailName)
         sentAt = try c.decode(Date.self, forKey: .sentAt)
         status = try c.decodeIfPresent(String.self, forKey: .status)
-        reachedAt = try c.decodeIfPresent(Date.self, forKey: .reachedAt)
         bannerShown = try c.decodeIfPresent(Bool.self, forKey: .bannerShown) ?? false
         notified = try c.decodeIfPresent(Bool.self, forKey: .notified) ?? false
     }
@@ -183,31 +192,51 @@ enum ContributionMessages {
     static let screenTitle = "My contributions"
     static let emptyTitle = "No contributions yet"
     static let emptyMessage = "Nominate a trail you love from its page in Trails. The Wockett team reads every nomination, and the best show up as Featured for walkers nearby. Yours will be listed here, and if it is featured you will see it here."
-    static let footer = "Sent means the Wockett team has it. This list is kept on this iPhone only, so nominations sent before this version, or from another device, aren't in it."
+    static let footer = "Sent means the Wockett team has it. This list is kept on this device only (and in its backups), so nominations sent before this version, or from another device, aren't in it."
     static let thanksDetail = "The Wockett team reads every nomination. If it is featured you will see it here, in My contributions."
     static let alreadyDetail = "Thanks. One nomination per trail is plenty. If it is featured you will see it in My contributions."
 
-    /// "Your nomination of Lake Loop is now Featured". Nil when there is
-    /// nothing to say.
+    /// Under the banner's headline.
+    static let thanks = "Thanks for the tip."
+
+    /// "Your nomination of Lake Loop was featured by the Wockett team". Past
+    /// tense on purpose: a feature can end before the person reads it, and
+    /// this stays true. Nil when there is nothing to say.
     static func banner(for list: [Contribution]) -> String? {
         headline(for: list)
     }
 
-    /// The local notification: one, however many became featured at once.
+    /// The local notification: one, however many were featured at once.
     static func notification(for list: [Contribution]) -> (title: String, body: String)? {
-        guard let text = headline(for: list) else { return nil }
-        return (list.count == 1 ? "Your nomination is Featured" : "Your nominations are Featured",
-                text + ". Walkers nearby see it in Trails. Thanks for the tip.")
+        let shown = list.filter(\.hasStatus)
+        guard let text = headline(for: shown) else { return nil }
+        let kinds = Set(shown.map(\.kind))
+        let noun: String
+        if kinds.count == 1, let kind = shown.first?.contributionKind {
+            noun = kind.label.lowercased() + (shown.count == 1 ? "" : "s")
+        } else {
+            noun = "contributions"
+        }
+        let verb = shown.count == 1 ? "was" : "were"
+        let status = kinds.count == 1 ? (shown.first?.statusLabel.lowercased() ?? "featured") : "taken up"
+        return ("Your \(noun) \(verb) \(status)", text + ". " + thanks)
     }
 
+    /// One sentence for any number of contributions, worded from the
+    /// vocabulary: "Your nominations of A and B were featured by the Wockett
+    /// team"; mixed kinds (once Feature B adds suggestions) say
+    /// "contributions".
     private static func headline(for list: [Contribution]) -> String? {
         let shown = list.filter(\.hasStatus)
         guard let first = shown.first else { return nil }
-        if shown.count == 1 {
-            return "Your \((first.contributionKind ?? .nomination).label.lowercased()) of \(first.trailName) is now \(first.statusLabel)"
-        }
         let names = ListFormatter.localizedString(byJoining: shown.map(\.trailName))
-        return "Your nominations of \(names) are now Featured"
+        let kinds = Set(shown.map(\.kind))
+        guard kinds.count == 1, let kind = first.contributionKind else {
+            return "Your contributions for \(names) were taken up by the Wockett team"
+        }
+        let noun = kind.label.lowercased() + (shown.count == 1 ? "" : "s")
+        let verb = shown.count == 1 ? "was" : "were"
+        return "Your \(noun) of \(names) \(verb) \(first.statusLabel.lowercased()) by the Wockett team"
     }
 }
 
@@ -248,11 +277,7 @@ final class CloudKitContributionStatusStore: ContributionStatusStore {
             let ids = names[start..<min(start + Self.batch, names.count)].map { CKRecord.ID(recordName: $0) }
             let results = try await db.records(for: ids, desiredKeys: ContributionStatuses.fields)
             for (id, result) in results {
-                switch result {
-                case .success(let record): out[id.recordName] = .found(record)
-                case .failure(let error):
-                    if (error as? CKError)?.code == .unknownItem { out[id.recordName] = .missing }
-                }
+                if let answer = ContributionStatuses.answer(result) { out[id.recordName] = answer }
             }
         }
         return out
@@ -283,26 +308,34 @@ final class ContributionService {
     static let refreshInterval: TimeInterval = 86_400
     static let retryAfterFailure: TimeInterval = 600
     static let lastFetchKey = "wkt_contributions_lastFetch"
+    /// A fetch that takes longer gives up (and counts as failed), so a hung
+    /// CloudKit call can't hold the background task or a screen's refresh.
+    nonisolated static let fetchDeadline: Duration = .seconds(10)
 
     /// Newest first.
     private(set) var contributions: [Contribution]
-    private(set) var isRefreshing = false
 
     @ObservationIgnored private let store: ContributionStatusStore
     @ObservationIgnored private let ledger: ContributionLedger
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private let now: () -> Date
+    @ObservationIgnored private let sleep: OptimisticVote.Sleep
     @ObservationIgnored private var failedAt: Date?
     @ObservationIgnored private var inFlight: Task<Bool, Never>?
     @ObservationIgnored private let log = Logger(subsystem: "com.wockett.app", category: "Contributions")
 
-    init(store: ContributionStatusStore, defaults: UserDefaults = .standard, now: @escaping () -> Date = Date.init) {
+    init(store: ContributionStatusStore, defaults: UserDefaults = .standard, now: @escaping () -> Date = Date.init,
+         sleep: @escaping OptimisticVote.Sleep = { try await Task.sleep(for: $0) }) {
         self.store = store
         self.defaults = defaults
         self.ledger = ContributionLedger(defaults: defaults)
         self.now = now
+        self.sleep = sleep
         self.contributions = ledger.load()
     }
+
+    /// Whether this service reads a stand-in store (always, under tests).
+    var storeIsLocal: Bool { store is NoContributionStatusStore }
 
     /// When the last fetch worked.
     var lastFetch: Date? { defaults.object(forKey: Self.lastFetchKey) as? Date }
@@ -345,18 +378,24 @@ final class ContributionService {
         if let inFlight { return await inFlight.value }
         let task = Task { await self.fetch() }
         inFlight = task
-        isRefreshing = true
         let worked = await task.value
         inFlight = nil
-        isRefreshing = false
         return worked
     }
 
     private func fetch() async -> Bool {
         let names = Dictionary(contributions.map { (ContributionStatuses.recordName(claimToken: $0.claimToken), $0.claimToken) },
                                uniquingKeysWith: { first, _ in first })
+        let store = store
+        let wanted = Array(names.keys)
         do {
-            let answers = try await store.lookup(names: Array(names.keys))
+            guard let answers = try await OptimisticVote.withDeadline(Self.fetchDeadline, sleep: sleep, {
+                try await store.lookup(names: wanted)
+            }) else {
+                log.error("Contribution statuses: no answer in time")
+                failedAt = now()
+                return false
+            }
             apply(answers)
             defaults.set(now(), forKey: Self.lastFetchKey)
             failedAt = nil
@@ -373,7 +412,6 @@ final class ContributionService {
     /// keeps its place). A record names a status, or nothing: Sent. A name
     /// with no answer keeps what was cached.
     private func apply(_ answers: [String: ContributionStatusLookup]) {
-        let time = now()
         var changed = false
         for index in contributions.indices {
             var item = contributions[index]
@@ -382,7 +420,6 @@ final class ContributionService {
             case .missing?: item.status = nil
             case nil: continue
             }
-            if item.hasStatus, item.reachedAt == nil { item.reachedAt = time }
             if item != contributions[index] {
                 contributions[index] = item
                 changed = true
@@ -392,6 +429,13 @@ final class ContributionService {
     }
 
     // MARK: Saying so, once each
+
+    /// What the Trails list does when it opens: the daily refresh, then
+    /// whatever is newly featured, taken (marked shown) for its banner.
+    func bannerAfterRefresh() async -> [Contribution] {
+        await refreshIfDue()
+        return takeBanner()
+    }
 
     /// The contributions the Trails banner should announce, now marked as
     /// shown: a second call returns none of them. Featured at the moment and
