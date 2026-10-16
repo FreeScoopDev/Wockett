@@ -120,8 +120,10 @@ rules need an ordinary account to be proved.
   **Unfeature** first counts the nominators told, says so in its confirm,
   then withdraws their statuses (they go back to Sent in the app) before the
   trail leaves Featured; if withdrawing fails, the trail stays featured and
-  Unfeature can be run again. If the count can't be checked, Unfeature isn't
-  offered (it would leave statuses no screen can withdraw); where the type
+  Unfeature can be run again. If the count can't be checked, only
+  **Unfeature anyway** is offered, with a warning that anyone already told
+  keeps seeing Featured (no screen could withdraw it), and History notes it
+  was unchecked; where the type
   doesn't exist yet (Production before the schema deploy) there is nothing
   to withdraw and Unfeature works as before. **Clear** on a feature that has already ended
   keeps the statuses: it was featured.

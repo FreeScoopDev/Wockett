@@ -689,7 +689,8 @@ async function confirmUnfeature(f) {
     event.preventDefault();
     for (const b of form.querySelectorAll('button')) b.disabled = true;
     try {
-      const out = await unfeatureTrailAndWithdraw(store, { trail: f.trail, statuses });
+      const out = await unfeatureTrailAndWithdraw(store, { trail: f.trail, statuses,
+        note: lookup === 'unchecked' ? 'Unfeatured anyway: nominators\' statuses could not be checked, so any were left in place.' : '' });
       dialog.close();
       if (!out.unfeatured) {
         say(`Withdrew ${out.withdrawn.deleted} of ${n} nominators' statuses, then: ${errorClause(out.error)}. `
