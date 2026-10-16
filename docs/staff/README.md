@@ -12,6 +12,7 @@ write against the signed-in Apple ID's role.
 | `app.js` | The screens |
 | `logic.js` | The rules: grouping, open/resolved, snapshots, counts, route line, the walker-reports rule |
 | `walker-facts.js` | What walkers can report about a trail: the one copy of the facts and answers |
+| `contribution-status.js` | What a contribution status may say (`nomination`: `featured`; `suggestion`: `added`): the one copy |
 | `actions.js` | Remove and Dismiss, in order (snapshot first) |
 | `ck.js` | The only file that calls CloudKit JS |
 | `config.js` | Container and the public API tokens |
@@ -100,7 +101,32 @@ rules need an ordinary account to be proved.
   "Featured near you" for everyone within 10 miles, with your note;
   **Dismiss** clears it until it is nominated again. When nominations
   disagree on a trail's name or place, the card says so: check the map.
+  Featuring also **tells the nominators**: for each nomination of the trail
+  that carries a claim token (sent by an app version that can hear back), it
+  writes a `ContributionStatus` everyone can read, named
+  `status.<SHA-256 of the token>`, holding only `nomination`, `featured`, the
+  trail's key and name, and when. The phone that holds the token is the only
+  one that can work out the name. The token never reaches the page: `ck.js`
+  turns it into the name and drops it. History keeps the count, never a
+  token, a status record's name or a nominator. Older nominations have no token and get
+  nothing. Featuring again (or Change note or length) rewrites the same
+  records. If telling them fails, the trail stays featured and the message
+  says how to finish. Nothing is written where the schema has no
+  `ContributionStatus` yet (a first write would create it with CloudKit's
+  default grants). A status name already taken by another record (a crafted
+  nomination can choose its own record name) is skipped and counted, so it
+  can't stop the others.
 - **Featured**: what is featured, until when, with Change and Unfeature.
+  **Unfeature** first counts the nominators told, says so in its confirm,
+  then withdraws their statuses (they go back to Sent in the app) before the
+  trail leaves Featured; if withdrawing fails, the trail stays featured and
+  Unfeature can be run again. If the count can't be checked, only
+  **Unfeature anyway** is offered, with a warning that anyone already told
+  keeps seeing Featured (no screen could withdraw it), and History notes it
+  was unchecked; where the type
+  doesn't exist yet (Production before the schema deploy) there is nothing
+  to withdraw and Unfeature works as before. **Clear** on a feature that has already ended
+  keeps the statuses: it was featured.
 - **Walker reports**: what walkers answered after a hike ("Help the next
   walker"), grouped by trail and fact, with how many walkers gave each
   answer. Each walker counts once per trail and fact (their newest answer),

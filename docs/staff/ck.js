@@ -2,7 +2,7 @@
 // from Apple's CDN by index.html). Everything else works on plain records, so
 // the rules in logic.js are tested without a network.
 //
-import { isGone, isValidRecordName } from './logic.js';
+import { isGone, isValidRecordName, isClaimToken, contributionStatusName } from './logic.js';
 
 // Every call is made as the signed-in iCloud user. CloudKit's roles decide
 // what that user may read, write and delete; this file grants nothing.
@@ -14,10 +14,21 @@ import { isGone, isValidRecordName } from './logic.js';
  */
 export const CREATOR_TYPES = new Set(['SharedRoute', 'WocketAchievement', 'Challenge', 'ChallengeEntry', 'CommunityName']);
 
+/**
+ * Fields the page never holds. A nomination's `claimToken` is the secret its
+ * phone uses to find its own status record (spec feat/contribution-status):
+ * shown, logged or copied anywhere, it would tell whoever saw it which status
+ * is whose. `nominationStatusName` turns it into the status name here and
+ * nothing else keeps it.
+ */
+export const NEVER_PLAIN_FIELDS = new Set(['claimToken']);
+
 /** A CloudKit JS record as the plain shape logic.js uses. */
 export function plain(record) {
   const fields = {};
-  for (const [key, field] of Object.entries(record.fields ?? {})) fields[key] = field?.value;
+  for (const [key, field] of Object.entries(record.fields ?? {})) {
+    if (!NEVER_PLAIN_FIELDS.has(key)) fields[key] = field?.value;
+  }
   const out = {
     recordName: record.recordName,
     recordType: record.recordType,
@@ -180,15 +191,30 @@ export async function pagedQuery(db, query, { max = 1000, pageSize = 200, onlyCr
     for (const r of raw) if (r.created?.userRecordName) reportFilers.set(r.recordName, r.created.userRecordName);
   }
   const kept = query.recordType === 'TrailNomination' ? onePerNominator(raw) : raw;
-  const records = kept.slice(0, max).map((r) => {
+  const records = [];
+  for (const r of kept.slice(0, max)) {
     const out = plain(r);
     if (r.recordType === 'TrailFactReport') {
       const token = reporterToken(r.created?.userRecordName);
       if (token) out.reporter = token;
     }
-    return out;
-  });
+    if (r.recordType === 'TrailNomination') {
+      const statusName = await nominationStatusName(r);
+      if (statusName) out.statusName = statusName;
+    }
+    records.push(out);
+  }
   return { records, more: hasMorePages(response) || raw.length > max };
+}
+
+/**
+ * The status record name for a raw nomination's claim token, or undefined
+ * when it has none (sent before the app wrote one) or one that isn't a UUID.
+ * The token goes no further than this function.
+ */
+export async function nominationStatusName(record) {
+  const token = record?.fields?.claimToken?.value;
+  return isClaimToken(token) ? contributionStatusName(token) : undefined;
 }
 
 /**
