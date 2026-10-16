@@ -1221,6 +1221,19 @@ export function statusesToWithdraw(records, trailKey, kind = 'nomination', statu
  */
 export const SUGGESTION_CAPS = Object.freeze({ points: 2000, meters: 20_000, name: 80, note: 300 });
 /**
+ * One character can hold any number of combining marks, so a text is also
+ * over its cap past 32 UTF-16 units a character (2,560 for a name, 9,600
+ * for a note): room for 80 family emoji (11 units each), never a megabyte
+ * in one "character" (critic run 5).
+ */
+export const UNITS_PER_CHARACTER = 32;
+
+/** Whether `text` is over `max` characters, or over `max` x UNITS_PER_CHARACTER UTF-16 units. */
+export function overCap(text, max) {
+  const s = String(text ?? '');
+  return s.length > max * UNITS_PER_CHARACTER || textLength(s, max) > max;
+}
+/**
  * The longest encoded line the page will decode, in characters. 2,000 points
  * need at most about 24,000 (12 per point in the worst case); anything longer
  * is over the caps whatever it holds, and isn't decoded at all.
@@ -1583,8 +1596,8 @@ export function suggestionOf(record) {
         || Math.abs(claimedLength - lengthMeters) > Math.max(50, lengthMeters * 0.1)) warnings.push('mismatch');
   }
   if (!name) warnings.push('noName');
-  else if (textLength(name, SUGGESTION_CAPS.name) > SUGGESTION_CAPS.name) warnings.push('name');
-  if (textLength(note, SUGGESTION_CAPS.note) > SUGGESTION_CAPS.note) warnings.push('note');
+  else if (overCap(name, SUGGESTION_CAPS.name)) warnings.push('name');
+  if (overCap(note, SUGGESTION_CAPS.note)) warnings.push('note');
   if (!region) warnings.push('region');
   return {
     recordName: record.recordName,
@@ -1814,7 +1827,7 @@ export function suggestionStatusNames(members, limit = TOKENS_PER_SUGGESTER) {
 export function acceptPlan(group, name) {
   const accepted = String(name ?? '').trim();
   if (!accepted) throw new Error('An accepted suggestion needs a name.');
-  if (textLength(accepted, SUGGESTION_CAPS.name) > SUGGESTION_CAPS.name) throw new Error(`A trail name is at most ${SUGGESTION_CAPS.name} characters.`);
+  if (overCap(accepted, SUGGESTION_CAPS.name)) throw new Error(`A trail name is at most ${SUGGESTION_CAPS.name} characters.`);
   const line = group?.line;
   if (!line || !line.line || line.problems?.length || line.pointCount > SUGGESTION_CAPS.points
       || !(line.lengthMeters <= SUGGESTION_CAPS.meters)) {
@@ -1837,7 +1850,7 @@ export function declinePlan(group) {
   const recordNames = (group?.members ?? []).map((m) => m.recordName);
   if (!recordNames.length) throw new Error('Nothing to decline.');
   // The name shown, unless it is over the caps (only something other than the app writes one): History keeps no more.
-  const name = textLength(group.name ?? '', SUGGESTION_CAPS.name) <= SUGGESTION_CAPS.name ? (group.name ?? '') : '';
+  const name = overCap(group.name, SUGGESTION_CAPS.name) ? '' : (group.name ?? '');
   return { recordName: group.line?.recordName ?? recordNames[0], recordNames, snapshot: { name, recordNames, count: recordNames.length } };
 }
 

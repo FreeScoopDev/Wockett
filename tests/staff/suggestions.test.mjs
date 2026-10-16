@@ -8,7 +8,7 @@ import {
   decodePolyline, lineLength, overlapShare, sameLine, suggestionOf, suggestionIssueText, groupSuggestions, suggestionDecisions,
   suggestionStatusNames, acceptPlan, declinePlan, acceptTellText, suggestionToldText, suggestionHistoryText, gpxDocument, gpxFileName,
   osmEditLink, mapsLink, routePath, routePaths, contributionStatusFields, textLength, isTrailKey, longestStretch,
-  lineIndex, GROUPING_BUDGET, MAX_INDEX_ENTRIES, INDEX_ENTRY_WORK, SAMPLE_WORK, samplesOf, flatLength,
+  lineIndex, UNITS_PER_CHARACTER, GROUPING_BUDGET, MAX_INDEX_ENTRIES, INDEX_ENTRY_WORK, SAMPLE_WORK, samplesOf, flatLength,
   SUGGESTION_CAPS, LINE_CHAR_LIMIT, OVERLAP_TOLERANCE_M, OVERLAP_SHARE, OVERLAP_STEP_M, SHORT_SUGGESTION_M, LONG_SUGGESTION_M,
   STRAIGHT_STRETCH_M, TOKENS_PER_SUGGESTER, SUGGESTION_FACTS, SUGGESTION_STATUS_TRAIL_KEY,
   NON_ITEM_TARGETS, ACTIONS, ACTIVITY_KINDS, actionFields, groupReports, queue, groupNominations, statusesToWithdraw,
@@ -1221,6 +1221,22 @@ test('the budget is checked before every anchor, and building an index is charge
     assert.ok((meter.indexes ?? 0) <= 2, `budget ${budget}: ${meter.indexes} indexes`);
     assert.equal(groups.reduce((n, g) => n + g.members.length, 0), 51);
   }
+});
+
+const overCapName = (name) => suggestionOf(sugg('s', path(60), { name })).warnings.includes('name');
+
+test('a name or note can\'t hide a megabyte in one character (critic run 5)', () => {
+  const heavy = `e${'\u0301'.repeat(3000)}`;
+  assert.equal(textLength(heavy), 1);
+  const s = suggestionOf(sugg('s', path(60), { name: heavy, note: `x${'\u0301'.repeat(10_000)}` }));
+  assert.ok(s.warnings.includes('name') && s.warnings.includes('note'));
+  const [g] = groupSuggestions([sugg('s', path(60), { name: heavy })]);
+  assert.equal(declinePlan(g).snapshot.name, '');
+  assert.throws(() => acceptPlan(g, heavy), /at most 80/);
+  // Any real name fits: 80 family emoji are 880 units, 80 characters with one accent each are 160; 2,560 units is the most.
+  assert.ok(!suggestionOf(sugg('s', path(60), { name: 'é'.normalize('NFD').repeat(80) })).warnings.includes('name'));
+  assert.ok(!overCapName(`e${'\u0301'.repeat(2559)}`) && overCapName(`e${'\u0301'.repeat(2560)}`));
+  assert.equal(UNITS_PER_CHARACTER, 32);
 });
 
 test('a card draws the accepted line and at most 20 others', () => {

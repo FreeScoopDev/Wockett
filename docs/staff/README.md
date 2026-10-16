@@ -170,7 +170,10 @@ rules need an ordinary account to be proved.
   past either, the rest are shown ungrouped with a note. No line is read
   past 2,001 points, no name or note counted past its cap, and a card draws
   at most 21 lines, so crafted records cost a few seconds at most (measured
-  in node with 2,000 of them). Each card
+  in node with 2,000 of them). The ceilings are global: a flood of crafted
+  long lines anywhere can switch grouping off for every later suggestion
+  (shown ungrouped, with the note), until they are deleted in CloudKit
+  Console. Each card
   draws the group's lines together (the one Accept uses on top, a dot at
   its start), links the start to Apple Maps and to the OpenStreetMap editor,
   shows the names, facts and notes given, and lists what to check: very

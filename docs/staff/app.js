@@ -1057,7 +1057,7 @@ function suggestionCard(g) {
   const factChips = SUGGESTION_FACTS.filter((fact) => g.facts[fact]).flatMap((fact) => Object.entries(g.facts[fact])
     .map(([value, n]) => el('span', { class: 'chip' }, `${valueLabel(fact, value)} ×${n}`)));
   const decided = g.members.length - g.pending;
-  const maps = start ? mapsLink(start.latitude, start.longitude, g.name || 'Suggested path') : null;
+  const maps = start ? mapsLink(start.latitude, start.longitude, clip(g.name, 120) || 'Suggested path') : null;
   const osm = start ? osmEditLink(start.latitude, start.longitude) : null;
   return el('article', { class: 'card' },
     el('div', { class: 'row' },
@@ -1162,7 +1162,7 @@ function rememberDecision(action, { recordNames, name = '' }) {
 function confirmAcceptSuggestion(group) {
   const tell = suggestionStatusNames(group.members);
   const form = el('form', { method: 'dialog' },
-    el('h2', { class: 'title', id: 'dialog-title' }, `Accept “${group.name || 'this path'}”?`),
+    el('h2', { class: 'title', id: 'dialog-title' }, `Accept “${clip(group.name, 120) || 'this path'}”?`),
     el('p', {}, 'Collect-only for now: nothing is published, and no other walker sees the name or the line. '
       + `It is recorded as accepted (${suggestionCount(group.members.length)}, all leave the queue), with the longest line within the caps.`),
     el('p', {}, acceptTellText(tell), ' What everyone can read says only Added and when: not the name, the line or who suggested it.'),
@@ -1205,7 +1205,7 @@ function confirmAcceptSuggestion(group) {
 
 function confirmDeclineSuggestion(group) {
   const form = el('form', { method: 'dialog' },
-    el('h2', { class: 'title', id: 'dialog-title' }, `Decline “${group.name || 'this path'}”?`),
+    el('h2', { class: 'title', id: 'dialog-title' }, `Decline “${clip(group.name, 120) || 'this path'}”?`),
     el('p', {}, `${suggestionCount(group.members.length)} ${group.members.length === 1 ? 'leaves' : 'leave'} the queue. `
       + 'Nobody is told: there is no declined status, and their phones keep showing Sent. '
       + 'A later suggestion of the same path comes back.'),
