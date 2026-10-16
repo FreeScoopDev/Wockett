@@ -108,7 +108,7 @@ rules need an ordinary account to be proved.
   trail's key and name, and when. The phone that holds the token is the only
   one that can work out the name. The token never reaches the page: `ck.js`
   turns it into the name and drops it. History keeps the count, never a
-  token, a name or a nominator. Older nominations have no token and get
+  token, a status record's name or a nominator. Older nominations have no token and get
   nothing. Featuring again (or Change note or length) rewrites the same
   records. If telling them fails, the trail stays featured and the message
   says how to finish. Nothing is written where the schema has no

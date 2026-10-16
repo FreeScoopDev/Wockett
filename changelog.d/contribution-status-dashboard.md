@@ -1,11 +1,3 @@
-### Fixed
-- Wockett Staff: Feature and Suspend always failed with "Unknown length:
-  undefined" since they were added (#178, #180), so no trail could be
-  featured and no account suspended from the dashboard. The dialogs read
-  their "length" choice as `form.elements.length`, which is the number of
-  controls in the form. Found while running the new Feature step against a
-  fake CloudKit; both now work there.
-
 ### Added
 - Wockett Staff: featuring a nominated trail now tells its nominators. For
   each nomination that carries a claim token (a random code the app will
@@ -23,3 +15,11 @@
   before the Development dashboard features a trail and before any app build
   sends `claimToken`, or CloudKit creates them with its default grants. The
   dashboard checks the type exists before writing a status.
+
+### Fixed
+- Wockett Staff: Feature and Suspend always failed with "Unknown length:
+  undefined" since they were added (#178, #180), so no trail could be
+  featured and no account suspended from the dashboard. The dialogs read
+  their "length" choice as `form.elements.length`, which is the number of
+  controls in the form. Found while running the new Feature step against a
+  fake CloudKit; both now work there.

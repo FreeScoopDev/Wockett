@@ -470,6 +470,13 @@ test('Unfeature withdraws the statuses before the feature; a failure stops befor
   assert.deepEqual(after.calls.filter((c) => c[0] === 'delete').map((c) => c[1]), [[NAME_A], ['featured.nc.w1'], ['act2']],
     'the statusWithdrawn action (act1) stays; only unfeature\'s own (act2) is taken back');
 
+  // The note reaches the unfeatured action, with and without statuses to withdraw.
+  for (const statuses of [[], [status(NAME_A)]]) {
+    const noted = fakeStore();
+    await unfeatureTrailAndWithdraw(noted, { trail, statuses, note: 'Unfeatured anyway' });
+    assert.equal(history(noted).find((h) => h.action === 'unfeatured').note, 'Unfeatured anyway', `${statuses.length} statuses`);
+  }
+
   const nothing = fakeStore();
   assert.equal((await unfeatureTrailAndWithdraw(nothing, { trail, statuses: [] })).unfeatured, true);
   assert.deepEqual(nothing.calls.map((c) => c[0]), ['create', 'delete'], 'no statuses: Unfeature as before');
