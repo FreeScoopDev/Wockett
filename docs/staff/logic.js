@@ -1132,6 +1132,11 @@ export function withdrawnText(w) {
   return w ? `Withdrew the Featured status of ${nominationCount(w)}.` : '';
 }
 
+/** After Unfeature withdrew some statuses and then failed: "Withdrew 1 of 3 nominations' statuses". */
+export function partialWithdrawText(deleted, n) {
+  return `Withdrew ${deleted} of ${n} nomination${n === 1 ? '\'s status' : 's\' statuses'}`;
+}
+
 /** History's summary of a contribution-status action: "3 nominations: Featured". */
 export function contributionCountText(kind, count) {
   return kind === 'nomination' ? nominationCount(count) : `${count} contribution${count === 1 ? '' : 's'}`;

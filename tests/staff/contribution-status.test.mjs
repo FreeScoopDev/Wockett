@@ -8,7 +8,7 @@ import {
   CONTRIBUTION_KINDS, STATUS_RECORD_PREFIX, isClaimToken, contributionStatusName, isContributionStatusName,
   knownContribution, contributionStatusFields, nominationStatusNames, statusDecidedAt, statusesToWithdraw,
   groupReports, queue, groupNominations, NON_ITEM_TARGETS, actionFields, isUnknownRecordType,
-  unfeatureLookup, toldText, featureTellText, nominationCount, withdrawText, withdrawnText, contributionCountText,
+  unfeatureLookup, toldText, featureTellText, nominationCount, withdrawText, withdrawnText, partialWithdrawText, contributionCountText,
 } from '../../docs/staff/logic.js';
 import {
   publishNominationStatuses, findNominationStatuses, withdrawNominationStatuses,
@@ -425,6 +425,8 @@ test('Unfeature and History count nominations, not nominators', () => {
   assert.match(withdrawText(1), /of 1 nomination in/);
   assert.equal(withdrawnText(0), '');
   assert.equal(withdrawnText(3), 'Withdrew the Featured status of 3 nominations.');
+  assert.equal(partialWithdrawText(1, 1), 'Withdrew 1 of 1 nomination\'s status');
+  assert.equal(partialWithdrawText(2, 3), 'Withdrew 2 of 3 nominations\' statuses');
   assert.equal(contributionCountText('nomination', 3), '3 nominations');
   assert.equal(contributionCountText('suggestion', 1), '1 contribution');
 });
@@ -669,6 +671,7 @@ test('the page counts nominations to tell from the every-nomination query, never
   assert.match(app, /el\('p', \{\}, withdrawText\(n\)\)/);
   assert.match(app, /Unfeatured “\$\{f\.trail\.trailName\}”\. \$\{withdrawnText\(w\)\}/);
   assert.match(app, /const who = contributionCountText\(s\.kind, count\);/);
+  assert.match(app, /say\(`\$\{partialWithdrawText\(out\.withdrawn\.deleted, n\)\}, then: /);
   assert.ok(!/nominator\$\{/.test(app), 'no per-person count left in the page');
 });
 

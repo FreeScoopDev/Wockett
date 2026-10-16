@@ -16,7 +16,7 @@ import {
   ACTIVITY_KINDS,
   tallyWalkerReports, summaryRows, summaryRecordName, summaryStanding, verdictText, factLabel, valueLabel, countsOf,
   MIN_AGREEING, AGREEMENT, RETENTION_MONTHS, WALKER_FACTS, CONTRIBUTION_KINDS, knownContribution,
-  unfeatureLookup, errorClause, featureTellText, toldText, nominationCount, withdrawText, withdrawnText, contributionCountText,
+  unfeatureLookup, errorClause, featureTellText, toldText, withdrawText, withdrawnText, partialWithdrawText, contributionCountText,
 } from './logic.js';
 import {
   removeItem, dismissItem, suspendAccount, liftSuspension, itemsOf, OWNED_TYPES, featureTrailAndTell, unfeatureTrailAndWithdraw, dismissNominations,
@@ -702,7 +702,7 @@ async function confirmUnfeature(f) {
         note: lookup === 'unchecked' ? 'Unfeatured anyway: nominators\' statuses could not be checked, so any were left in place.' : '' });
       dialog.close();
       if (!out.unfeatured) {
-        say(`Withdrew ${out.withdrawn.deleted} of ${nominationCount(n)}' statuses, then: ${errorClause(out.error)}. `
+        say(`${partialWithdrawText(out.withdrawn.deleted, n)}, then: ${errorClause(out.error)}. `
           + 'It is still featured: Unfeature again to finish, or Change note or length and Feature to tell them again.', { error: true });
         return;
       }
