@@ -562,6 +562,32 @@ struct ContributionStatusTests {
         #expect(s.takeBanner().map(\.id) == [a.id])
     }
 
+    @Test("The CloudKit store: a thrown partial failure is read per record, and the records that arrived are asked for again")
+    func storeReadsPartialFailure() async throws {
+        let featured = statusRecord(token: "AAAAAAAA-0000-4000-8000-000000000001")
+        let missing = CKRecord.ID(recordName: ContributionStatuses.recordName(claimToken: "BBBBBBBB-0000-4000-8000-000000000002"))
+        var calls: [[String]] = []
+        var secondFails = false
+        let store = CloudKitContributionStatusStore { ids in
+            calls.append(ids.map(\.recordName).sorted())
+            if ids.contains(missing) {
+                throw CKError(.partialFailure, userInfo: [CKPartialErrorsByItemIDKey: [missing: CKError(.unknownItem)]])
+            }
+            if secondFails { throw CKError(.networkFailure) }
+            return [featured.recordID: .success(featured)]
+        }
+        let names = [featured.recordID.recordName, missing.recordName]
+        let out = try await store.lookup(names: names)
+        #expect(out == [featured.recordID.recordName: .found(featured), missing.recordName: .missing])
+        #expect(calls == [names.sorted(), [featured.recordID.recordName]], "only the rest asked again")
+        // The second ask failing fails the whole fetch, so nothing is cached as Sent.
+        secondFails = true
+        await #expect(throws: CKError.self) { _ = try await store.lookup(names: names) }
+        // Any other error fails it too.
+        let broken = CloudKitContributionStatusStore { _ in throw CKError(.networkUnavailable) }
+        await #expect(throws: CKError.self) { _ = try await broken.lookup(names: names) }
+    }
+
     @Test("Missing records reported as one thrown partial failure are read per record, not as a failed fetch")
     func partialFailureReadPerRecord() {
         let missing = CKRecord.ID(recordName: "status.a")
@@ -796,6 +822,8 @@ struct ContributionStatusTests {
             try String(contentsOf: repo.appendingPathComponent("PoCSquat/" + path), encoding: .utf8)
         }
         let checks: [(String, String)] = [
+            ("Services/Trails/Contributions.swift", "try await db.records(for: ids, desiredKeys: ContributionStatuses.fields)"),
+            ("Services/Trails/Contributions.swift", "AppModelContainer.isRunningUnderTests ? NoContributionStatusStore() : CloudKitContributionStatusStore()"),
             ("Services/Core/BackgroundTaskManager.swift", "await ContributionService.shared.backgroundCheck(notifications: .shared)"),
             ("Views/Routes/TrailViews.swift", "featuredNews += contributions.takeBanner()"),
             ("Views/Routes/TrailViews.swift", "featuredNews += await contributions.bannerAfterRefresh()"),

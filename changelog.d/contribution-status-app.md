@@ -13,9 +13,9 @@
   already looks for untracked walks, so it can be hours late), one local
   notification says it as well; if it finds out while you are using it, the
   banner is the only announcement. Each nomination is announced once on the
-  Trails list, and at most once by notification. No remote push: the phone asks, nobody tells it. It never asks for
-  notification permission; quiet delivery counts, and with notifications off
-  the banner still shows.
+  Trails list, and at most once by notification. No remote push: the phone
+  asks, nobody tells it. It never asks for notification permission; quiet
+  delivery counts, and with notifications off the banner still shows.
 
 ### Changed
 - Each nomination now carries a random claim token, readable only by the

@@ -292,23 +292,44 @@ protocol ContributionStatusStore: AnyObject {
 }
 
 final class CloudKitContributionStatusStore: ContributionStatusStore {
-    private let db = CKContainer(identifier: WockettCloud.containerID).publicCloudDatabase
+    /// One fetch by record ID: CloudKit's `records(for:desiredKeys:)`, or a
+    /// fake in tests.
+    typealias Fetch = ([CKRecord.ID]) async throws -> [CKRecord.ID: Result<CKRecord, Error>]
     /// CloudKit takes up to 400 IDs in one fetch.
     static let batch = 200
+
+    private let fetch: Fetch
+
+    init(fetch: @escaping Fetch) {
+        self.fetch = fetch
+    }
+
+    convenience init() {
+        let db = CKContainer(identifier: WockettCloud.containerID).publicCloudDatabase
+        self.init { ids in try await db.records(for: ids, desiredKeys: ContributionStatuses.fields) }
+    }
 
     func lookup(names: [String]) async throws -> [String: ContributionStatusLookup] {
         var out: [String: ContributionStatusLookup] = [:]
         for start in stride(from: 0, to: names.count, by: Self.batch) {
             let ids = names[start..<min(start + Self.batch, names.count)].map { CKRecord.ID(recordName: $0) }
             do {
-                let results = try await db.records(for: ids, desiredKeys: ContributionStatuses.fields)
-                out.merge(ContributionStatuses.answers(results)) { _, new in new }
+                out.merge(ContributionStatuses.answers(try await fetch(ids))) { _, new in new }
             } catch {
-                // Should CloudKit report missing records as one thrown
-                // partial failure rather than per record, read it per record:
-                // otherwise one Sent nomination would hide every Featured one.
-                guard let partial = ContributionStatuses.answers(fromPartialFailure: error) else { throw error }
+                // Should CloudKit report missing records as one thrown partial
+                // failure rather than per record, read the failed ones from it
+                // and ask again for the rest, whose records the error doesn't
+                // carry: otherwise one Sent nomination would hide every
+                // Featured one. If that second ask fails, the whole fetch fails
+                // (no `lastFetch`), so it is tried again soon.
+                guard let partial = ContributionStatuses.answers(fromPartialFailure: error),
+                      let failed = (error as? CKError)?.partialErrorsByItemID else { throw error }
                 out.merge(partial) { _, new in new }
+                let failedIDs = Set(failed.keys.compactMap { $0 as? CKRecord.ID })
+                let rest = ids.filter { !failedIDs.contains($0) }
+                if !rest.isEmpty {
+                    out.merge(ContributionStatuses.answers(try await fetch(rest))) { _, new in new }
+                }
             }
         }
         return out
