@@ -15,10 +15,11 @@ import {
   groupNominations, nominationQueue, FEATURE_LENGTHS, BLURB_LIMIT, mapsLink, featuredRows, formatDistance,
   ACTIVITY_KINDS,
   tallyWalkerReports, summaryRows, summaryRecordName, summaryStanding, verdictText, factLabel, valueLabel, countsOf,
-  MIN_AGREEING, AGREEMENT, RETENTION_MONTHS, WALKER_FACTS,
+  MIN_AGREEING, AGREEMENT, RETENTION_MONTHS, WALKER_FACTS, CONTRIBUTION_KINDS, knownContribution,
 } from './logic.js';
 import {
-  removeItem, dismissItem, suspendAccount, liftSuspension, itemsOf, OWNED_TYPES, featureTrail, unfeatureTrail, dismissNominations,
+  removeItem, dismissItem, suspendAccount, liftSuspension, itemsOf, OWNED_TYPES, featureTrailAndTell, unfeatureTrailAndWithdraw, dismissNominations,
+  findNominationStatuses,
   publishSummary, unpublishSummary, findExpiredReports, deleteExpiredReports, findReportsBy, deleteReportsBy,
 } from './actions.js';
 
@@ -457,7 +458,7 @@ function confirmSuspend({ account, authorName, reason = 'other' }) {
     say(`Suspending ${who}…`);
     try {
       const out = await suspendAccount(store, {
-        account, authorName, length: form.elements.length.value, reason: form.elements.reason.value,
+        account, authorName, length: form.elements.namedItem('length').value, reason: form.elements.reason.value,
         note: form.elements.note.value, removeItems: Boolean(form.elements.removeItems?.checked), moderator: me,
       });
       dialog.close();
@@ -556,6 +557,8 @@ function confirmFeature(trail, current = null) {
     // the note and the end change), so the dialog names that one.
     el('h2', { class: 'title', id: 'dialog-title' }, `Feature “${current?.trail.trailName ?? trail.trailName}”?`),
     el('p', {}, 'It shows under Featured near you for everyone within 10 miles, with your note.'),
+    el('p', { class: 'small muted' }, 'Its nominators are told too: each nomination sent by a version of the app that can hear back '
+      + 'shows Featured in their My contributions. What everyone can read says only the trail, Featured and when; nothing about who nominated it.'),
     current ? el('p', { class: 'small muted' },
       `Keeps the name and place first featured: ${current.trail.trailName}. To change them, unfeature it first.`) : null,
     el('label', {}, 'Your note (shown in the app) ', el('textarea', { name: 'blurb', maxlength: BLURB_LIMIT, required: true }, current?.blurb ?? '')),
@@ -569,14 +572,17 @@ function confirmFeature(trail, current = null) {
     event.preventDefault();
     for (const b of form.querySelectorAll('button')) b.disabled = true;
     try {
-      const length = form.elements.length.value;
-      const out = await featureTrail(store, length === 'keep'
+      // namedItem: `form.elements.length` is the number of controls, not the select named "length".
+      const length = form.elements.namedItem('length').value;
+      const out = await featureTrailAndTell(store, length === 'keep'
         ? { trail, blurb: form.elements.blurb.value, keepUntil: current.until }
         : { trail, blurb: form.elements.blurb.value, length });
       trailsActedOn.set(trail.trailKey, Date.now());
       dialog.close();
-      say(`Featured “${trail.trailName}” ${out.until === null ? 'until you unfeature it' : `until ${new Date(out.until).toLocaleDateString()}`}.`);
-      setTimeout(() => render(), 600);
+      const featured = `Featured “${out.trail.trailName}” ${out.until === null ? 'until you unfeature it' : `until ${new Date(out.until).toLocaleDateString()}`}.`;
+      say(`${featured} ${toldText(out.told)}`.trim(), { error: Boolean(out.told.error) });
+      // Redrawing clears the status line: an error stays until Refresh.
+      if (!out.told.error) setTimeout(() => render(), 600);
     } catch (error) {
       dialog.close();
       fail(error);
@@ -631,7 +637,7 @@ async function renderFeatured(seq) {
     mapsAnchor(f.trail),
     el('div', { class: 'actions' },
       el('button', { class: 'btn', onclick: () => confirmFeature(f.trail, f) }, 'Change note or length'),
-      el('button', { class: 'btn', onclick: () => confirmUnfeature(f) }, f.ended ? 'Clear' : 'Unfeature'))));
+      el('button', { class: 'btn', onclick: () => confirmUnfeature(f).catch(fail) }, f.ended ? 'Clear' : 'Unfeature'))));
   show(el('div', { class: 'toolbar' },
     el('div', { class: 'grow title' }, rows.length ? `${rows.length} featured` : 'No featured trails'),
     el('button', { class: 'btn', onclick: render }, 'Refresh')),
@@ -639,10 +645,47 @@ async function renderFeatured(seq) {
   rows.length ? null : el('p', { class: 'muted' }, 'Feature a trail from Nominations.'));
 }
 
-function confirmUnfeature(f) {
+/** An error as a clause, without its own full stop. */
+function errorClause(error) {
+  return describeError(error).replace(/\.$/, '');
+}
+
+/** What telling the nominators did, as a sentence after "Featured …". */
+function toldText(told) {
+  if (told.error) {
+    const done = told.planned ? `Told ${told.written} of ${told.planned} nominators, then: ` : 'Couldn\'t tell its nominators: ';
+    return `${done}${errorClause(told.error)}. To finish, open Featured, Change note or length, and Feature (Keep).`;
+  }
+  if (!told.written) return '';
+  return `Told ${told.written} nominator${told.written === 1 ? '' : 's'}.`;
+}
+
+/**
+ * Unfeature asks with the number of nominators whose Featured status it
+ * withdraws. Clearing a feature that has already ended keeps them: the
+ * trail was featured, and that stays true.
+ */
+async function confirmUnfeature(f) {
+  let statuses = [];
+  let lookupError = null;
+  if (!f.ended) {
+    say('Checking its nominators…');
+    try {
+      ({ records: statuses } = await findNominationStatuses(store, { trailKey: f.trail.trailKey }));
+    } catch (error) {
+      lookupError = error;
+    }
+    say('');
+  }
+  const n = statuses.length;
   const form = el('form', { method: 'dialog' },
     el('h2', { class: 'title', id: 'dialog-title' }, `Unfeature “${f.trail.trailName}”?`),
     el('p', {}, 'It leaves Featured near you within about 30 minutes. The trail itself stays in the app.'),
+    f.ended ? el('p', { class: 'small muted' }, 'Nominators told it was featured keep seeing that: it was.')
+      : lookupError ? el('p', { class: 'status error' }, `Couldn't check for nominators told it was featured: ${errorClause(lookupError)}. `
+        + 'Unfeaturing now leaves any such status in place.')
+        : n ? el('p', {}, `It also withdraws the Featured status ${n} nominator${n === 1 ? '' : 's'} see${n === 1 ? 's' : ''} in My contributions. `
+          + 'They go back to Sent.') : null,
     el('div', { class: 'actions' },
       el('button', { class: 'btn', value: 'cancel', formnovalidate: true }, 'Cancel'),
       el('button', { class: 'btn primary', value: 'unfeature' }, f.ended ? 'Clear' : 'Unfeature')));
@@ -651,10 +694,16 @@ function confirmUnfeature(f) {
     event.preventDefault();
     for (const b of form.querySelectorAll('button')) b.disabled = true;
     try {
-      await unfeatureTrail(store, { trail: f.trail });
-      trailsActedOn.set(`unfeatured:${f.trail.trailKey}`, Date.now());
+      const out = await unfeatureTrailAndWithdraw(store, { trail: f.trail, statuses });
       dialog.close();
-      say(`Unfeatured “${f.trail.trailName}”.`);
+      if (!out.unfeatured) {
+        say(`Withdrew ${out.withdrawn.deleted} of ${n} nominators' statuses, then: ${errorClause(out.withdrawn.error)}. `
+          + 'It is still featured: Unfeature again to finish.', { error: true });
+        return;
+      }
+      trailsActedOn.set(`unfeatured:${f.trail.trailKey}`, Date.now());
+      const w = out.withdrawn.deleted;
+      say(`Unfeatured “${f.trail.trailName}”.${w ? ` Withdrew ${w} nominator${w === 1 ? '\'s' : 's\''} status.` : ''}`);
       setTimeout(() => render(), 600);
     } catch (error) {
       dialog.close();
@@ -1021,9 +1070,23 @@ async function renderActivity(seq) {
 const ACTION_LABELS = {
   removed: 'Removed', dismissed: 'Dismissed', suspended: 'Suspended', lifted: 'Lifted', featured: 'Featured', unfeatured: 'Unfeatured',
   published: 'Published', unpublished: 'Un-published', expired: 'Deleted old reports', erased: 'Deleted on request',
+  statusPublished: 'Told nominators', statusWithdrawn: 'Withdrew status',
 };
 
-const TARGET_LABELS = { account: 'Account', trail: 'Trail', trailFact: 'Walker facts', walkerReports: 'Walker reports' };
+const TARGET_LABELS = { account: 'Account', trail: 'Trail', trailFact: 'Walker facts', walkerReports: 'Walker reports', contribution: 'Contributions' };
+
+/** "Lake Loop · 3 nominators: Featured" from a contribution-status action's snapshot (counts only). */
+function contributionSummary(f) {
+  try {
+    const s = JSON.parse(f.snapshot ?? '{}');
+    const count = s.count ?? f.reportCount ?? 0;
+    const who = s.kind === 'nomination' ? `nominator${count === 1 ? '' : 's'}` : `contributor${count === 1 ? '' : 's'}`;
+    const label = knownContribution(s.kind, s.status) ? CONTRIBUTION_KINDS[s.kind].statuses[s.status] : String(s.status ?? '');
+    return [s.trailName ?? s.trailKey, `${count} ${who}: ${label}`].filter(Boolean).join(' · ');
+  } catch {
+    return '';
+  }
+}
 
 /** "nc:w1 · Dogs: Dogs on leash (4 walkers)" from a walker-facts action's snapshot. */
 function walkerSummary(f) {
@@ -1079,9 +1142,10 @@ async function renderHistory(seq) {
       f.action === 'suspended' ? el('div', {}, suspensionSummary(f.snapshot)) : null,
       f.targetType === 'trail' ? el('div', {}, trailSummary(f.snapshot)) : null,
       f.targetType === 'trailFact' || f.targetType === 'walkerReports' ? el('div', {}, walkerSummary(f)) : null,
+      f.targetType === 'contribution' ? el('div', {}, contributionSummary(f)) : null,
       f.targetType === 'trail'
         ? (f.reportCount ? el('div', {}, `${f.reportCount} nomination${f.reportCount === 1 ? '' : 's'}`) : null)
-        : f.targetType === 'trailFact' || f.targetType === 'walkerReports'
+        : f.targetType === 'trailFact' || f.targetType === 'walkerReports' || f.targetType === 'contribution'
           ? null
           : el('div', {}, f.reason ? reasonLabel(f.reason) : 'No reason', f.reportCount ? ` · ${f.reportCount} report${f.reportCount === 1 ? '' : 's'}` : ''),
       f.note ? el('div', {}, `“${f.note}”`) : null,
