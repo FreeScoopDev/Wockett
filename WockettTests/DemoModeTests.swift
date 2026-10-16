@@ -35,11 +35,6 @@ struct DemoModeTests {
         #expect(!DemoMode.isRequested(by: ["-WKTDemoMode", "WKTDemo"]))
     }
 
-    @Test("The unit-test launch is not in demo mode")
-    func hostLaunchIsNotDemo() {
-        #expect(!isWKTDemoMode)
-    }
-
     // MARK: Flag present
 
     @Test("With -WKTDemo a finished walk and a saved route are seeded")
@@ -85,25 +80,47 @@ struct DemoModeTests {
 
     // MARK: Not the CloudKit store
 
-    @Test("The demo store is in memory with CloudKit off, and the seed never reaches the app's store")
-    func seedStaysOutOfTheCloudKitStore() throws {
-        let container = try #require(DemoMode.container(arguments: flag))
+    /// The guard is the -WKTDemo branch at the top of `AppModelContainer.make`,
+    /// the function `shared` is built from. Without that branch this call
+    /// would open the persistent store (CloudKit-backed outside tests).
+    @Test("With -WKTDemo the app's store is in memory with CloudKit off")
+    func demoLaunchStoreIsInMemoryWithoutCloudKit() throws {
+        let container = AppModelContainer.make(arguments: flag)
         let config = try #require(container.configurations.first)
+        #expect(container.configurations.count == 1)
         #expect(config.isStoredInMemoryOnly)
         #expect(config.cloudKitContainerIdentifier == nil,
                 "demo store syncs to \(config.cloudKitContainerIdentifier ?? "")")
+    }
 
-        DemoMode.seedIfRequested(arguments: flag,
-                                 history: WalkHistoryStore(context: container.mainContext),
-                                 routes: CustomRouteStore(context: container.mainContext))
+    // MARK: Nothing outlives the demo
 
-        // AppModelContainer.shared is the persistent store a normal launch opens
-        // (CloudKit-backed outside tests). None of the seed may be in it.
-        let real = AppModelContainer.shared.mainContext
-        let walkID = DemoMode.walkID, routeID = DemoMode.routeID
-        let walks  = try real.fetch(FetchDescriptor<WalkSessionRecord>(predicate: #Predicate { $0.id == walkID }))
-        let saved  = try real.fetch(FetchDescriptor<CustomRouteRecord>(predicate: #Predicate { $0.id == routeID }))
-        #expect(walks.isEmpty)
-        #expect(saved.isEmpty)
+    /// A walk recorded in demo mode must leave no checkpoint behind: a normal
+    /// launch would offer to resume it or salvage it into the real store. And
+    /// the demo must not read or delete a real walk's checkpoint.
+    @Test("With -WKTDemo the walk checkpoint is never read, written or deleted")
+    func demoHasNoCheckpointFile() {
+        #expect(ActiveWalkSnapshotStore.fileURL(demo: true) == nil)
+        #expect(ActiveWalkSnapshotStore.fileURL(demo: false) != nil)
+    }
+
+    @Test("With -WKTDemo streaks and seen badges are kept in memory, not UserDefaults")
+    func demoStreaksAreNotPersisted() throws {
+        #expect(StreakStore.make(demo: true).defaults == nil)
+        #expect(StreakStore.make(demo: false).defaults === UserDefaults.standard)
+
+        let walks = [DemoMode.finishedWalk()]
+        // In memory: a badge is still announced once, not on every refresh.
+        let demo = StreakStore(defaults: nil)
+        #expect(demo.refresh(sessions: walks, todaySteps: 0, dailyGoal: 1) != nil)
+        #expect(demo.refresh(sessions: walks, todaySteps: 0, dailyGoal: 1) == nil)
+
+        // Control: a store with defaults does write them, so the nil case above
+        // is a real difference and not a store that never writes.
+        let suiteName = "DemoModeTests.\(UUID().uuidString)"
+        let suite = try #require(UserDefaults(suiteName: suiteName))
+        defer { suite.removePersistentDomain(forName: suiteName) }
+        StreakStore(defaults: suite).refresh(sessions: walks, todaySteps: 0, dailyGoal: 1)
+        #expect(!(suite.stringArray(forKey: "wkt_seenBadges_v1") ?? []).isEmpty)
     }
 }

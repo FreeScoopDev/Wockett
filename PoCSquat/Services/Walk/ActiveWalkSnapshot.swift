@@ -158,14 +158,20 @@ enum ActiveWalkSnapshotStore {
     /// "saved for up to 4 hours, then automatically deleted."
     static let maxSnapshotAge: TimeInterval = 4 * 60 * 60
 
-    private static var fileURL: URL {
+    /// The checkpoint file, or nil under -WKTDemo. A walk in a how-to
+    /// recording is throwaway: its checkpoint must not outlive the demo, where
+    /// a normal launch would offer to resume it or salvage it into the real
+    /// (CloudKit) store. Nor may the demo read or delete a real walk's
+    /// checkpoint. So in demo mode every operation below is a no-op.
+    static func fileURL(demo: Bool = isWKTDemoMode) -> URL? {
+        guard !demo else { return nil }
         let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir.appendingPathComponent("active-walk-snapshot.json")
     }
 
     static func save(_ snapshot: ActiveWalkSnapshot) {
-        guard let data = try? JSONEncoder().encode(snapshot) else { return }
+        guard let fileURL = fileURL(), let data = try? JSONEncoder().encode(snapshot) else { return }
         // File protection: .completeUntilFirstUserAuthentication (default) — required because
         // checkpoints are written in the background mid-walk.
         var url = fileURL
@@ -193,11 +199,12 @@ enum ActiveWalkSnapshotStore {
 
     /// Raw read with no age check — for the salvage path.
     static func loadAnyAge() -> ActiveWalkSnapshot? {
-        guard let data = try? Data(contentsOf: fileURL) else { return nil }
+        guard let fileURL = fileURL(), let data = try? Data(contentsOf: fileURL) else { return nil }
         return try? JSONDecoder().decode(ActiveWalkSnapshot.self, from: data)
     }
 
     static func clear() {
+        guard let fileURL = fileURL() else { return }
         try? FileManager.default.removeItem(at: fileURL)
     }
 
