@@ -220,7 +220,7 @@ test('the query collapses nominations before the page sees them, and drops who m
   assert.equal(records.length, 1);
   assert.equal(records[0].creator, undefined);
   const other = await pagedQuery(db, { recordType: 'CommunityReport' });
-  assert.equal(other.records.length, 2, 'only nominations are collapsed');
+  assert.equal(other.records.length, 2, 'a report with no target is never collapsed (reports: tests/staff/report-dedupe.test.mjs)');
 });
 
 test('every description is listed with its count, so a moved point shows even with one name', () => {
