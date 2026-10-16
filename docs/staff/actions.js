@@ -369,8 +369,9 @@ const NOMINATION = { kind: 'nomination', status: 'featured' };
 /**
  * Every nomination of `trailKey`, not one per person (`everyNomination`):
  * each claim token belongs to the device that sent it, so someone who
- * nominated from two devices, or again after a reinstall, holds two, and
- * each device shows Featured only if its own token's status exists.
+ * nominated from two devices has two, and each device shows Featured only if
+ * its own token's status exists. ck.js caps it at `TOKENS_PER_NOMINATOR`
+ * per person, so one account can't make Feature write thousands.
  */
 function trailNominations(store, trailKey) {
   return store.query('TrailNomination', { equals: ['trailKey', trailKey], max: 5000, everyNomination: true });
@@ -386,10 +387,20 @@ export async function countNominationsToTell(store, { trailKey }) {
   return nominationStatusNames(records, trailKey).names.length;
 }
 
+/** `countNominationsToTell`, or null when the lookup fails: the confirm then says nominators are told, without a number. */
+export async function countNominationsToTellOrNull(store, options) {
+  try {
+    return await countNominationsToTell(store, options);
+  } catch (error) {
+    console.error(error);
+    return null;
+  }
+}
+
 /**
  * Tells a featured trail's nominators: one `ContributionStatus` per
- * nomination of the trail that carries a claim token, every one of them, so
- * a person's other devices are told too (ck.js has already turned each token
+ * nomination of the trail that carries a claim token, each device's (up to
+ * `TOKENS_PER_NOMINATOR` per person), so a person's other devices are told too (ck.js has already turned each token
  * into its record name, `statusName`; the token never reaches here).
  * Called after `featureTrail` has succeeded, with the trail as featured. Nominations without a token get nothing, and none at all
  * writes nothing: no History, no error.

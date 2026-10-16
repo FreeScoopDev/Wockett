@@ -103,9 +103,9 @@ rules need an ordinary account to be proved.
   disagree on a trail's name or place, the card says so: check the map.
   Featuring also **tells the nominators**: for every nomination of the trail
   that carries a claim token (sent by an app version that can hear back),
-  including a person's second device or a nomination sent again after a
-  reinstall (each token is one device's, so the queue's one-per-person count
-  is not used here), it
+  including a person's other devices (each token is one device's, so the
+  queue's one-per-person count is not used here; at most 5 per person per
+  trail, so one account can't make it write thousands), it
   writes a `ContributionStatus` everyone can read, named
   `status.<SHA-256 of the token>`, holding only `nomination`, `featured`, the
   trail's key and name, and when. The phone that holds the token is the only

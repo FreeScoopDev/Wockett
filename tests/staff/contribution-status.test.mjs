@@ -8,13 +8,13 @@ import {
   CONTRIBUTION_KINDS, STATUS_RECORD_PREFIX, isClaimToken, contributionStatusName, isContributionStatusName,
   knownContribution, contributionStatusFields, nominationStatusNames, statusDecidedAt, statusesToWithdraw,
   groupReports, queue, groupNominations, NON_ITEM_TARGETS, actionFields, isUnknownRecordType,
-  unfeatureLookup, toldText, featureTellText,
+  unfeatureLookup, toldText, featureTellText, nominationCount, withdrawText, withdrawnText, contributionCountText,
 } from '../../docs/staff/logic.js';
 import {
   publishNominationStatuses, findNominationStatuses, withdrawNominationStatuses,
-  featureTrailAndTell, unfeatureTrailAndWithdraw, countNominationsToTell,
+  featureTrailAndTell, unfeatureTrailAndWithdraw, countNominationsToTell, countNominationsToTellOrNull,
 } from '../../docs/staff/actions.js';
-import { plain, pagedQuery, nominationStatusName, connect, fetchExisting } from '../../docs/staff/ck.js';
+import { plain, pagedQuery, nominationStatusName, connect, fetchExisting, fewPerNominator, TOKENS_PER_NOMINATOR } from '../../docs/staff/ck.js';
 
 const NOW = Date.UTC(2026, 9, 16, 12, 0, 0);
 const TOKEN = 'E621E1F8-C36C-495A-93FC-0C247A3E6E5F';
@@ -207,6 +207,19 @@ test('every nomination of one person reaches the status path, each with its own 
   for (const secret of [TOKEN, TOKEN3, CREATOR, 'claimToken']) assert.ok(!JSON.stringify(every.records).includes(secret), secret);
 });
 
+test('one account can\'t make Feature write thousands: each person is told on at most a few devices per trail', async () => {
+  assert.equal(TOKENS_PER_NOMINATOR, 5);
+  const uuid = (i) => `00000000-0000-4000-8000-${i.toString(16).padStart(12, '0')}`;
+  // 20 crafted nominations from one account (newest first), one from someone else, one for another trail.
+  const raws = [...Array.from({ length: 20 }, (_, i) => rawNom(`f${i}`, uuid(i), { created: 100 - i })),
+    rawNom('o1', TOKEN2, { who: '_b0000000000000000' }), rawNom('k1', uuid(99), { key: 'nc:w2' })];
+  const db = { async performQuery() { return { records: raws, moreComing: false }; } };
+  const { records } = await pagedQuery(db, { recordType: 'TrailNomination' }, { everyNomination: true });
+  assert.deepEqual(records.map((r) => r.recordName), ['f0', 'f1', 'f2', 'f3', 'f4', 'o1', 'k1'], 'the newest five of the flood, and everyone else');
+  assert.equal(nominationStatusNames(records, 'nc:w1').names.length, 6);
+  assert.deepEqual(fewPerNominator(raws, 2).map((r) => r.recordName), ['f0', 'f1', 'o1', 'k1']);
+});
+
 test('plain() drops a claim token from any record, however it is fetched', async () => {
   for (const recordType of ['TrailNomination', 'ContributionStatus', 'WocketAchievement']) {
     const out = plain({ recordName: 'x', recordType, created: { timestamp: 1 }, fields: { claimToken: { value: TOKEN }, note: { value: 'hi' } } });
@@ -293,6 +306,7 @@ test('a status name already used by another record is skipped, and can\'t stop t
   assert.deepEqual(statusWrites(store).map((c) => [c[0], c[2]]), [['createNamed', NAME_B], ['createNamed', NAME_C]]);
   assert.equal(history(store)[0].reportCount, 2);
   assert.equal(JSON.parse(history(store)[0].snapshot).blocked, 1, 'History says one was skipped');
+  assert.equal(JSON.parse(history(store)[0].snapshot).count, 2, 'and counts only the ones it writes');
 
   const all = fakeStore({ nominations: [nom('n1', NAME_A)], existing: squatted });
   assert.deepEqual(await publishNominationStatuses(all, { trail, now: NOW }), { written: 0, planned: 0, blocked: 1, withoutToken: 0, error: null });
@@ -398,9 +412,34 @@ test('Unfeature proceeds when the count is known or the type does not exist yet;
 test('the Feature confirm says how many nominations it tells, that other devices count, none, or that it tells them in general', () => {
   assert.equal(featureTellText(2), 'It also tells 2 nominations: each shows Featured in My contributions on the device that sent it, '
     + 'so someone who nominated it from two devices sees it on both.');
-  assert.match(featureTellText(1), /^It also tells 1 nomination: /);
+  assert.equal(featureTellText(1), 'It also tells 1 nomination: each shows Featured in My contributions on the device that sent it, '
+    + 'so someone who nominated it from two devices sees it on both.');
   assert.match(featureTellText(0), /^None of its nominations can be told yet/);
-  assert.match(featureTellText(null), /^Its nominators are told too: .* on the device that sent it\.$/);
+  assert.match(featureTellText(null), /^Its nominations are told too: .* on the device that sent it\.$/);
+});
+
+test('Unfeature and History count nominations, not nominators', () => {
+  assert.equal(nominationCount(1), '1 nomination');
+  assert.equal(nominationCount(3), '3 nominations');
+  assert.equal(withdrawText(2), 'It also withdraws the Featured status of 2 nominations in My contributions, on every device that sent one. They go back to Sent.');
+  assert.match(withdrawText(1), /of 1 nomination in/);
+  assert.equal(withdrawnText(0), '');
+  assert.equal(withdrawnText(3), 'Withdrew the Featured status of 3 nominations.');
+  assert.equal(contributionCountText('nomination', 3), '3 nominations');
+  assert.equal(contributionCountText('suggestion', 1), '1 contribution');
+});
+
+test('a failed count still opens the Feature confirm, saying they are told without a number', async () => {
+  const failing = fakeStore();
+  failing.query = async () => { throw { ckErrorCode: 'NETWORK_ERROR' }; };
+  const error = console.error;
+  console.error = () => {};
+  try {
+    assert.equal(await countNominationsToTellOrNull(failing, { trailKey: 'nc:w1' }), null);
+  } finally {
+    console.error = error;
+  }
+  assert.equal(await countNominationsToTellOrNull(fakeStore({ nominations: [nom('n1', NAME_A)] }), { trailKey: 'nc:w1' }), 1);
 });
 
 test('the Feature confirm counts every nomination of the trail, as Feature writes them', async () => {
@@ -565,6 +604,7 @@ test('end to end through ck.js: no token, nominator or status name in History; n
   // What the page itself holds after loading nominations.
   const { records } = await store.query('TrailNomination');
   for (const secret of [TOKEN, TOKEN2, TOKEN3, CREATOR, other, 'claimToken']) assert.ok(!JSON.stringify(records).includes(secret));
+  assert.deepEqual(records.map((r) => r.recordName).sort(), ['nomination.w', 'nomination.y', 'nomination.z'], 'the queue still counts CREATOR once');
   assert.equal(JSON.parse(cloud.saved.find((r) => r.fields?.action?.value === 'statusPublished').fields.snapshot.value).count, 3);
 
   // Featuring again (Change note or length) rewrites the same three records, and nothing new.
@@ -591,11 +631,13 @@ test('end to end through ck.js: no token, nominator or status name in History; n
 
 test('end to end through ck.js: one of a person\'s two devices failing still tells the other, and History says 1 of 2', async () => {
   const cloud = fakeCloudKit([rawNom('nomination.w', TOKEN3, { created: 3 }), rawNom('nomination.x', TOKEN, { created: 2 })],
-    { failNames: [`status.${sha(TOKEN3)}`] });
+    { failNames: [TOKEN_NAME] });
   const store = connect({ CloudKit: cloud.CloudKit });
   const out = await featureTrailAndTell(store, { trail, blurb: 'Shady', length: '30d', now: NOW });
   assert.deepEqual([out.told.written, out.told.planned, out.told.error?.ckErrorCode], [1, 2, 'NETWORK_ERROR']);
-  assert.deepEqual([...cloud.byName.values()].filter((r) => r.recordType === 'ContributionStatus').map((r) => r.recordName), [TOKEN_NAME]);
+  // TOKEN's name sorts first, so the device after the failure is still told.
+  assert.ok(TOKEN_NAME < `status.${sha(TOKEN3)}`);
+  assert.deepEqual([...cloud.byName.values()].filter((r) => r.recordType === 'ContributionStatus').map((r) => r.recordName), [`status.${sha(TOKEN3)}`]);
   const told = cloud.byName.get(cloud.saved.find((r) => r.fields?.action?.value === 'statusPublished').recordName);
   assert.equal(told.fields.reportCount.value, 1, 'History corrected to the number written');
   assert.equal(told.fields.note.value, 'Stopped part-way: 1 of 2 written.');
@@ -619,7 +661,15 @@ test('the page counts nominations to tell from the every-nomination query, never
   // taken from them would leave out a person's other devices.
   const app = readFileSync(new URL('../../docs/staff/app.js', import.meta.url), 'utf8');
   assert.ok(!/nominationStatusNames\(/.test(app), 'app.js counts statuses from loaded nominations');
-  assert.match(app, /canTell = await countNominationsToTell\(store, \{ trailKey: trail\.trailKey \}\)/);
+  assert.ok(!/everyNomination/.test(app), 'the nomination queue must not ask for every nomination');
+  assert.match(app, /const canTell = await countNominationsToTellOrNull\(store, \{ trailKey: trail\.trailKey \}\);/);
+  assert.equal((app.match(/canTell =/g) ?? []).length, 1, 'the count is not replaced after it is taken');
+  assert.match(app, /\$\{featureTellText\(canTell\)\} /);
+  // The wording helpers, tested above, are what the page shows.
+  assert.match(app, /el\('p', \{\}, withdrawText\(n\)\)/);
+  assert.match(app, /Unfeatured “\$\{f\.trail\.trailName\}”\. \$\{withdrawnText\(w\)\}/);
+  assert.match(app, /const who = contributionCountText\(s\.kind, count\);/);
+  assert.ok(!/nominator\$\{/.test(app), 'no per-person count left in the page');
 });
 
 test('the two new History actions are known actions', () => {

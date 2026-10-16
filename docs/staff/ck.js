@@ -138,8 +138,9 @@ export function buildQuery(recordType, { equals, sinceMs, beforeMs, createdBy } 
  * (`plain` drops it).
  *
  * Not for telling nominators: each nomination's claim token belongs to the
- * device that sent it, so a status is written for every one
- * (`everyNomination`), or that person's other devices would show Sent forever.
+ * device that sent it, so a status is written for each one
+ * (`everyNomination`, capped by `fewPerNominator`), or that person's other
+ * devices would show Sent forever.
  */
 export function onePerNominator(records) {
   const seen = new Set();
@@ -150,6 +151,34 @@ export function onePerNominator(records) {
     const id = `${who}\n${key}`;
     if (seen.has(id)) return false;
     seen.add(id);
+    return true;
+  });
+}
+
+/**
+ * Tokens one person can have told about one trail: one per device they
+ * nominated from. Any client can create nominations with claim tokens of its
+ * choosing, so without a cap one account could make Feature write thousands
+ * of public statuses.
+ */
+export const TOKENS_PER_NOMINATOR = 5;
+
+/**
+ * At most `limit` nominations per person per trail, the newest (records
+ * arrive newest first): the status path's list, where a person's other
+ * devices count but a flood from one account doesn't. Like
+ * `onePerNominator`, done on the raw records so the nominator stays here.
+ */
+export function fewPerNominator(records, limit = TOKENS_PER_NOMINATOR) {
+  const seen = new Map();
+  return records.filter((r) => {
+    const who = r.created?.userRecordName;
+    const key = r.fields?.trailKey?.value;
+    if (!who || !key) return true;
+    const id = `${who}\n${key}`;
+    const n = seen.get(id) ?? 0;
+    if (n >= limit) return false;
+    seen.set(id, n + 1);
     return true;
   });
 }
@@ -185,7 +214,8 @@ export function reporterToken(account) {
 /**
  * Every page of a query, up to `max` records. `more` says some were left out.
  * Nominations come one per person per trail (`onePerNominator`) unless
- * `everyNomination` is set, as telling nominators needs.
+ * `everyNomination` is set, as telling nominators needs: then each device's
+ * nomination, up to `TOKENS_PER_NOMINATOR` per person (`fewPerNominator`).
  */
 export async function pagedQuery(db, query, { max = 1000, pageSize = 200, onlyCreator, everyNomination = false } = {}) {
   let raw = [];
@@ -202,7 +232,7 @@ export async function pagedQuery(db, query, { max = 1000, pageSize = 200, onlyCr
   if (query.recordType === 'CommunityReport') {
     for (const r of raw) if (r.created?.userRecordName) reportFilers.set(r.recordName, r.created.userRecordName);
   }
-  const kept = query.recordType === 'TrailNomination' && !everyNomination ? onePerNominator(raw) : raw;
+  const kept = query.recordType !== 'TrailNomination' ? raw : everyNomination ? fewPerNominator(raw) : onePerNominator(raw);
   const records = [];
   for (const r of kept.slice(0, max)) {
     const out = plain(r);
@@ -267,8 +297,9 @@ export function connect({ CloudKit, containerIdentifier, apiToken, environment }
     /**
      * Records of `recordType`, newest first, following pages up to `max`.
      * `equals` is [field, value]; `sinceMs` keeps records created since then,
-     * `beforeMs` records created before then. `everyNomination` keeps every
-     * nomination rather than one per person per trail (`onePerNominator`).
+     * `beforeMs` records created before then. `everyNomination` keeps each
+     * device's nomination (up to `TOKENS_PER_NOMINATOR` per person) rather
+     * than one per person per trail (`onePerNominator`).
      */
     query(recordType, { equals, sinceMs, beforeMs, max = 1000, pageSize = 200, everyNomination = false } = {}) {
       return pagedQuery(db, buildQuery(recordType, { equals, sinceMs, beforeMs }), { max, pageSize, everyNomination });

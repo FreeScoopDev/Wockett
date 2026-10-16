@@ -1110,11 +1110,31 @@ export function errorClause(error) {
  */
 export function featureTellText(canTell) {
   if (canTell === null || canTell === undefined) {
-    return 'Its nominators are told too: each nomination sent by a version of the app that can hear back shows Featured in My contributions on the device that sent it.';
+    return 'Its nominations are told too: each one sent by a version of the app that can hear back shows Featured in My contributions on the device that sent it.';
   }
   if (canTell === 0) return 'None of its nominations can be told yet: they were sent before the app could hear back.';
   return `It also tells ${canTell} nomination${canTell === 1 ? '' : 's'}: each shows Featured in My contributions on the device that sent it, `
     + 'so someone who nominated it from two devices sees it on both.';
+}
+
+/** "3 nominations" / "1 nomination": statuses are counted per nomination (one per claim token), not per person. */
+export function nominationCount(n) {
+  return `${n} nomination${n === 1 ? '' : 's'}`;
+}
+
+/** The Unfeature confirm's line about the statuses it withdraws (`n` > 0). */
+export function withdrawText(n) {
+  return `It also withdraws the Featured status of ${nominationCount(n)} in My contributions, on every device that sent one. They go back to Sent.`;
+}
+
+/** After Unfeature: what was withdrawn, as a sentence, or '' for nothing. */
+export function withdrawnText(w) {
+  return w ? `Withdrew the Featured status of ${nominationCount(w)}.` : '';
+}
+
+/** History's summary of a contribution-status action: "3 nominations: Featured". */
+export function contributionCountText(kind, count) {
+  return kind === 'nomination' ? nominationCount(count) : `${count} contribution${count === 1 ? '' : 's'}`;
 }
 
 /** What telling the nominators did (`featureTrailAndTell`'s `told`), as sentences after "Featured …". */
