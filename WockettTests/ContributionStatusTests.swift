@@ -393,6 +393,39 @@ struct ContributionStatusTests {
         #expect(list.first?.bannerShown == false && list.first?.notified == false)
     }
 
+    @Test("A stored status this version doesn't know reads Sent and announces nothing")
+    func unknownStoredStatus() throws {
+        let d = try defaults()
+        let json = """
+        [{"claimToken":"A","kind":"nomination","trailKey":"nc:w9","trailName":"Lake Loop","sentAt":0,"status":"shortlisted"}]
+        """
+        d.set(Data(json.utf8), forKey: ContributionLedger.key)
+        let s = ContributionService(store: FakeStatuses(), defaults: d)
+        #expect(s.contributions.first?.statusLabel == "Sent")
+        #expect(s.contributions.first?.hasStatus == false)
+        #expect(s.takeBanner().isEmpty)
+        #expect(s.notificationDue.isEmpty)
+    }
+
+    @Test("Only a nomination of the trail counts as nominated, not a suggestion with the same key")
+    func hasNominatedIsPerKind() throws {
+        let (s, _) = try service([contribution(kind: .suggestion)], store: FakeStatuses(), clock: Clock())
+        #expect(!s.hasNominated("nc:w9"))
+        s.noteSent(contribution("N"))
+        #expect(s.hasNominated("nc:w9"))
+    }
+
+    @Test("The CloudKit store asks in batches of 200")
+    func storeBatches() async throws {
+        var calls: [Int] = []
+        let store = CloudKitContributionStatusStore { ids in
+            calls.append(ids.count)
+            return [:]
+        }
+        _ = try await store.lookup(names: (0..<201).map { "status.\($0)" })
+        #expect(calls == [200, 1])
+    }
+
     // MARK: Fetching
 
     @Test("Asks for every token's status name and nothing else; a found status is Featured, a missing one Sent")
@@ -471,14 +504,24 @@ struct ContributionStatusTests {
         let a = contribution()
         store.records[ContributionStatuses.recordName(claimToken: a.claimToken)] = statusRecord(token: a.claimToken)
         let d = try defaults()
-        let s = ContributionService(store: store, defaults: d, now: { clock.now }, sleep: { _ in })
+        final class Deadline { var fires = false }
+        let deadline = Deadline()
+        // The deadline fires only when the test says so; otherwise it never does.
+        let s = ContributionService(store: store, defaults: d, now: { clock.now }, sleep: { _ in
+            if !deadline.fires { try await Task.sleep(for: .seconds(86_400)) }
+        })
         s.noteSent(a)
+        #expect(await s.refresh())
+        #expect(s.contributions[0].statusLabel == "Featured")
+        let fetchedAt = s.lastFetch
+        clock.now += 86_400
         store.hangs = true
+        deadline.fires = true
         #expect(await s.refresh() == false)
-        #expect(s.contributions[0].statusLabel == "Sent")
-        #expect(s.lastFetch == nil)
+        #expect(s.contributions[0].statusLabel == "Featured", "a timeout is no answer: the cache stays")
+        #expect(s.lastFetch == fetchedAt, "and it doesn't count as a fetch")
         #expect(await s.refreshIfDue() == false)
-        #expect(store.asked.count == 1, "a timed-out fetch counts as a failure: no retry for 10 minutes")
+        #expect(store.asked.count == 2, "a timed-out fetch counts as a failure: no retry for 10 minutes")
         #expect(ContributionService.fetchDeadline == .seconds(10))
     }
 
@@ -522,7 +565,7 @@ struct ContributionStatusTests {
     func overlappingRefreshesJoin() async throws {
         final class Flag { var on = false }
         let store = GatedStatuses()
-        let s = ContributionService(store: store, defaults: try defaults())
+        let s = ContributionService(store: store, defaults: try defaults(), sleep: Self.neverFires)
         s.noteSent(contribution())
         let first = Task { @MainActor in await s.refresh() }
         while !store.isWaiting { await Task.yield() }
@@ -548,7 +591,7 @@ struct ContributionStatusTests {
         let a = contribution()
         store.answer = [ContributionStatuses.recordName(claimToken: a.claimToken): .found(statusRecord(token: a.claimToken))]
         store.gated = false
-        let s = ContributionService(store: store, defaults: try defaults(), now: { clock.now })
+        let s = ContributionService(store: store, defaults: try defaults(), now: { clock.now }, sleep: Self.neverFires)
         s.noteSent(a)
         await s.refresh()
         clock.now += 86_400
@@ -604,7 +647,7 @@ struct ContributionStatusTests {
                 == [found.recordID.recordName: .found(found), "status.a": .missing])
     }
 
-    @Test("A cancelled fetch (a screen closed mid-fetch) is not a failure to wait out")
+    @Test("A store that reports cancellation (CancellationError, CloudKit's operationCancelled) is not a failure to wait out")
     func cancelledFetchIsNotAFailure() async throws {
         let store = GatedStatuses()
         store.throwing = CancellationError()
@@ -804,10 +847,10 @@ struct ContributionStatusTests {
     @Test("Under tests the app's status store can't reach CloudKit, and the shared service uses it")
     func testsNeverReachCloudKit() {
         #expect(ContributionService.defaultStore() is NoContributionStatusStore)
-        #expect(ContributionService.shared.storeIsLocal)
+        #expect(ContributionService.shared.store is NoContributionStatusStore)
     }
 
-    @Test("The nomination sheet starts on 'already nominated' for a trail this device sent")
+    @Test("The nomination sheet's start: 'already nominated' for a trail this device sent (the mapping; the sheet's init calls it)")
     func sheetInitialPhase() {
         #expect(TrailNominationSheet.initialPhase(hasNominated: true) == .done(.alreadyNominated))
         #expect(TrailNominationSheet.initialPhase(hasNominated: false) == .writing)
@@ -828,7 +871,8 @@ struct ContributionStatusTests {
             ("Views/Routes/TrailViews.swift", "featuredNews += contributions.takeBanner()"),
             ("Views/Routes/TrailViews.swift", "featuredNews += await contributions.bannerAfterRefresh()"),
             ("Views/Routes/TrailViews.swift", "ContributionFeaturedBanner(text: news)"),
-            ("Views/Routes/TrailPickViews.swift", "phase = Self.initialPhase(hasNominated: contributions.hasNominated(trail.trailKey))"),
+            ("Views/Routes/TrailPickViews.swift", "_phase = State(initialValue: Self.initialPhase(hasNominated: contributions.hasNominated(trail.trailKey)))"),
+            ("Services/Trails/TrailPicks.swift", "let query = TrailNominations.schemaProbeQuery()"),
             ("Views/Routes/TrailPickViews.swift", "ContributionMessages.thanks, ContributionMessages.thanksDetail, contributionsLink: true"),
             ("Views/Routes/TrailPickViews.swift", "WktResultView.Secondary(title: ContributionMessages.screenTitle)"),
             ("Views/Settings/MyContributionsView.swift", ".task { await service.refresh() }"),

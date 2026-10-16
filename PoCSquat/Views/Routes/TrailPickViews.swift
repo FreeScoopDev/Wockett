@@ -34,12 +34,21 @@ struct TrailNominateButton: View {
 /// Why it's worth it (optional), Send, then the answer.
 struct TrailNominationSheet: View {
     let trail: TrailRef
-    var store: TrailNominationStore = CloudKitTrailNominationStore()
-    var contributions: ContributionService = .shared
+    let store: TrailNominationStore
+    let contributions: ContributionService
     @Environment(\.dismiss) private var dismiss
     @State private var note = ""
-    @State private var phase: Phase = .writing
+    @State private var phase: Phase
     @State private var showContributions = false
+
+    /// A trail this device nominated already says so before anything is typed.
+    init(trail: TrailRef, store: TrailNominationStore = CloudKitTrailNominationStore(),
+         contributions: ContributionService = .shared) {
+        self.trail = trail
+        self.store = store
+        self.contributions = contributions
+        _phase = State(initialValue: Self.initialPhase(hasNominated: contributions.hasNominated(trail.trailKey)))
+    }
 
     enum Phase: Equatable {
         case writing
@@ -81,8 +90,6 @@ struct TrailNominationSheet: View {
                 }
             }
         }
-        // A trail this phone nominated already says so before anything is typed.
-        .onAppear { if phase == .writing { phase = Self.initialPhase(hasNominated: contributions.hasNominated(trail.trailKey)) } }
         .interactiveDismissDisabled(phase == .sending)
         .presentationDetents([.medium, .large])
         .accessibilityElement(children: .contain)

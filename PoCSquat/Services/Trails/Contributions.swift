@@ -367,7 +367,8 @@ final class ContributionService {
     /// Newest first.
     private(set) var contributions: [Contribution]
 
-    @ObservationIgnored private let store: ContributionStatusStore
+    /// Internal so a test can see which store `shared` holds.
+    @ObservationIgnored let store: ContributionStatusStore
     @ObservationIgnored private let ledger: ContributionLedger
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private let now: () -> Date
@@ -385,9 +386,6 @@ final class ContributionService {
         self.sleep = sleep
         self.contributions = ledger.load()
     }
-
-    /// Whether this service reads a stand-in store (always, under tests).
-    var storeIsLocal: Bool { store is NoContributionStatusStore }
 
     /// When the last fetch worked.
     var lastFetch: Date? { defaults.object(forKey: Self.lastFetchKey) as? Date }
@@ -453,7 +451,7 @@ final class ContributionService {
             failedAt = nil
             return true
         } catch {
-            if Task.isCancelled || error is CancellationError || (error as? CKError)?.code == .operationCancelled { return false }
+            if error is CancellationError || (error as? CKError)?.code == .operationCancelled { return false }
             log.error("Contribution statuses unavailable: \(error.localizedDescription, privacy: .public)")
             failedAt = now()
             return false

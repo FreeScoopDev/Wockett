@@ -85,6 +85,7 @@ struct TrailPicksTests {
         #expect(record["trailName"] as? String == "Lake Loop")
         #expect(record["region"] as? String == "nc")
         #expect(record["note"] as? String == "Great views")
+        #expect(record["claimToken"] as? String == "T")
         #expect(Set(record.allKeys()) == ["trailKey", "trailName", "region", "latitude", "longitude", "lengthMeters", "note", "claimToken"])
         #expect(record.recordID.recordName.hasPrefix("nomination."))
     }
