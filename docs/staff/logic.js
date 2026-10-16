@@ -737,9 +737,13 @@ export function featuredRows(records, now) {
 // creator for this page load (`walker-1`, …), never the account itself. It
 // is used only to count each walker once.
 
-/** Joe's rule (2026-10-15): at least this many distinct walkers answered the fact… */
-export const MIN_REPORTERS = 3;
-/** …and at least this share of them (2/3, kept as a fraction so 2 of 3 is exact) gave one value. */
+/**
+ * Joe's rule (approved 2026-10-15): at least this many distinct walkers gave
+ * the same answer… (it is also the smallest number a summary can state, so
+ * "Dogs on leash (3 walkers)" always means 3 walkers said so)
+ */
+export const MIN_AGREEING = 3;
+/** …and they are at least this share of everyone who answered the fact (2/3, kept as a fraction so 2 of 3 is exact). */
 export const AGREEMENT = Object.freeze({ numerator: 2, denominator: 3 });
 /** Reports older than this many months are deleted from the dashboard (Joe, 2026-10-15). */
 export const RETENTION_MONTHS = 12;
@@ -771,11 +775,12 @@ export function valueLabel(fact, value) {
  * The verdict for one trail and fact from how many distinct walkers gave each
  * value (`{ value: walkers }`). Pure, and the whole of Joe's rule:
  * - `countedOnly`: the fact is never published (`liked`);
- * - `tooFew`: fewer than MIN_REPORTERS walkers answered;
  * - `tie`: two values share the most walkers (nothing wins a tie);
- * - `split`: the top value has less than AGREEMENT of the walkers;
+ * - `tooFew`: fewer than MIN_AGREEING walkers gave the most given answer;
+ * - `split`: those walkers are less than AGREEMENT of everyone who answered;
  * - `ready`: publishable, with `value` and `agreeing`.
- * `walkers` is everyone who answered the fact; it is what a summary states.
+ * `walkers` is everyone who answered the fact; `agreeing` is how many gave
+ * the most given answer, and is the number a summary states.
  */
 export function walkerVerdict(fact, counts) {
   const entries = Object.entries(counts ?? {})
@@ -784,8 +789,8 @@ export function walkerVerdict(fact, counts) {
   const walkers = entries.reduce((sum, [, n]) => sum + n, 0);
   const base = { walkers, value: null, agreeing: entries[0]?.[1] ?? 0 };
   if (!isPublishableFact(fact)) return { ...base, status: 'countedOnly', publish: false };
-  if (walkers < MIN_REPORTERS) return { ...base, status: 'tooFew', publish: false };
   if (entries.length > 1 && entries[0][1] === entries[1][1]) return { ...base, status: 'tie', publish: false };
+  if (base.agreeing < MIN_AGREEING) return { ...base, status: 'tooFew', publish: false };
   const [value, agreeing] = entries[0];
   // agreeing / walkers >= numerator / denominator, in whole numbers.
   if (agreeing * AGREEMENT.denominator < walkers * AGREEMENT.numerator) return { ...base, status: 'split', publish: false };
@@ -800,11 +805,11 @@ export function verdictText(fact, verdict) {
     case 'countedOnly':
       return 'Counted only. No summary is published for this (Joe\'s decision, 2026-10-15); the app doesn\'t show it.';
     case 'tooFew':
-      return `Not enough walkers yet: ${verdict.walkers} of the ${MIN_REPORTERS} needed`;
+      return `Not enough walkers agree yet: ${verdict.agreeing} gave the same answer, ${MIN_AGREEING} needed`;
     case 'tie':
       return 'Walkers are tied, so nothing is published';
     case 'split':
-      return `Walkers disagree: the most given answer has ${verdict.agreeing} of ${verdict.walkers}, under ${AGREEMENT.numerator}/${AGREEMENT.denominator}`;
+      return `Walkers disagree: the most given answer has ${verdict.agreeing} of ${verdict.walkers}, under ${AGREEMENT.numerator} in ${AGREEMENT.denominator}`;
     default:
       return '';
   }
@@ -905,7 +910,8 @@ export function summaryFields(trailKey, fact, counts, now) {
     region: trailKey.slice(0, 2),
     fact,
     value: verdict.value,
-    walkers: verdict.walkers,
+    // How many gave this answer (never fewer than MIN_AGREEING), not everyone who answered.
+    walkers: verdict.agreeing,
     computedAt: { value: now, type: 'TIMESTAMP' },
   };
 }
@@ -938,7 +944,7 @@ export function summaryRows(records) {
 export function summaryStanding(summary, verdict) {
   if (!summary) return null;
   if (!verdict || !verdict.publish || !summary.known) return 'unsupported';
-  return summary.value === verdict.value && summary.walkers === verdict.walkers ? 'current' : 'outdated';
+  return summary.value === verdict.value && summary.walkers === verdict.agreeing ? 'current' : 'outdated';
 }
 
 /**

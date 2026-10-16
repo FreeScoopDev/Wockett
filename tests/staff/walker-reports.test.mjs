@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  WALKER_FACTS, MIN_REPORTERS, AGREEMENT, RETENTION_MONTHS, walkerVerdict, tallyWalkerReports, summaryRecordName,
+  WALKER_FACTS, MIN_AGREEING, AGREEMENT, verdictText, RETENTION_MONTHS, walkerVerdict, tallyWalkerReports, summaryRecordName,
   summaryFields, summaryStanding, summaryRows, retentionCutoff, expiredReports, isPublishableFact, countsOf,
   groupReports, queue, ACTIVITY_KINDS, DAY, walkerId,
 } from '../../docs/staff/logic.js';
@@ -66,29 +66,40 @@ test('the closed vocabulary is exactly the confirmed facts and answers', () => {
 
 // MARK: The rule
 
-test('the rule\'s constants are Joe\'s: 3 walkers, 2/3 agreeing, 12 months', () => {
-  assert.equal(MIN_REPORTERS, 3);
+test('the rule\'s constants are Joe\'s: 3 walkers agreeing, 2 in 3 of those who answered, 12 months', () => {
+  assert.equal(MIN_AGREEING, 3);
   assert.deepEqual({ ...AGREEMENT }, { numerator: 2, denominator: 3 });
   assert.equal(RETENTION_MONTHS, 12);
 });
 
-test('fewer than 3 walkers publish nothing, however much they agree', () => {
-  assert.equal(walkerVerdict('dogs', counts({ leashRequired: 2 })).status, 'tooFew');
-  assert.equal(walkerVerdict('dogs', counts({ leashRequired: 1, noDogs: 1 })).status, 'tooFew');
+test('fewer than 3 walkers giving the same answer publish nothing, however much they agree', () => {
+  assert.equal(walkerVerdict('dogs', counts({ leashRequired: 2 })).status, 'tooFew', '2 of 2');
+  assert.equal(walkerVerdict('dogs', counts({ leashRequired: 1 })).status, 'tooFew', '1 of 1');
+  const twoOfThree = walkerVerdict('surface', counts({ paved: 2, packedDirt: 1 }));
+  assert.deepEqual([twoOfThree.status, twoOfThree.agreeing, twoOfThree.walkers], ['tooFew', 2, 3],
+    '2 of 3 is two in three, but only 2 said so (Joe, 2026-10-15)');
   const three = walkerVerdict('dogs', counts({ leashRequired: 3 }));
-  assert.equal(three.status, 'ready');
-  assert.equal(three.value, 'leashRequired');
-  assert.equal(three.walkers, 3);
+  assert.deepEqual([three.status, three.value, three.agreeing, three.walkers], ['ready', 'leashRequired', 3, 3], '3 of 3');
 });
 
-test('exactly 2/3 agreeing is enough; just under is a split', () => {
-  const twoOfThree = walkerVerdict('surface', counts({ paved: 2, packedDirt: 1 }));
-  assert.deepEqual([twoOfThree.status, twoOfThree.value, twoOfThree.agreeing, twoOfThree.walkers], ['ready', 'paved', 2, 3]);
-  assert.equal(walkerVerdict('surface', counts({ paved: 4, packedDirt: 2 })).status, 'ready', '4 of 6');
+test('3 or more agreeing must also be at least 2 in 3 of those who answered; just under is a split', () => {
+  const threeOfFour = walkerVerdict('surface', counts({ paved: 3, packedDirt: 1 }));
+  assert.deepEqual([threeOfFour.status, threeOfFour.value, threeOfFour.agreeing, threeOfFour.walkers], ['ready', 'paved', 3, 4]);
+  assert.equal(walkerVerdict('surface', counts({ paved: 4, packedDirt: 2 })).status, 'ready', '4 of 6 is exactly 2 in 3');
   assert.equal(walkerVerdict('surface', counts({ paved: 3, packedDirt: 2 })).status, 'split', '3 of 5 is 0.6');
-  assert.equal(walkerVerdict('surface', counts({ paved: 2, packedDirt: 1, rockyOrRooty: 1 })).status, 'split', '2 of 4');
+  assert.equal(walkerVerdict('surface', counts({ paved: 3, packedDirt: 1, rockyOrRooty: 1 })).status, 'split', '3 of 5, three answers');
   assert.equal(walkerVerdict('surface', counts({ paved: 5, packedDirt: 3 })).status, 'split', '5 of 8 is 0.625');
   assert.equal(walkerVerdict('surface', counts({ paved: 6, packedDirt: 3 })).status, 'ready', '6 of 9');
+  assert.equal(walkerVerdict('surface', counts({ paved: 2, packedDirt: 1, rockyOrRooty: 1 })).status, 'tooFew', '2 of 4');
+});
+
+test('the verdict in words gives the numbers the rule used', () => {
+  const words = (counts) => verdictText('surface', walkerVerdict('surface', counts));
+  assert.equal(words({ paved: 2, packedDirt: 1 }), 'Not enough walkers agree yet: 2 gave the same answer, 3 needed');
+  assert.equal(words({ paved: 3, packedDirt: 2 }), 'Walkers disagree: the most given answer has 3 of 5, under 2 in 3');
+  assert.equal(words({ paved: 3, packedDirt: 1 }), 'Ready to publish: Paved (3 of 4 walkers agree)');
+  assert.equal(words({ paved: 2, packedDirt: 2 }), 'Walkers are tied, so nothing is published');
+  assert.match(verdictText('liked', walkerVerdict('liked', { up: 9 })), /^Counted only\. No summary is published/);
 });
 
 test('a tie publishes nothing', () => {
@@ -98,9 +109,12 @@ test('a tie publishes nothing', () => {
 });
 
 test('answers outside the vocabulary never count toward the rule', () => {
-  // Two real answers plus a crafted one would be 3 walkers if it counted.
-  assert.equal(walkerVerdict('dogs', { leashRequired: 2, bogus: 5 }).status, 'tooFew');
-  assert.equal(walkerVerdict('dogs', { leashRequired: 2, toString: 1 }).status, 'tooFew');
+  // Each case changes the verdict if the crafted answer counts: a crafted
+  // answer alone would publish, and next to real ones it would make a split.
+  for (const bad of ['bogus', 'toString', 'constructor', '__proto__', 'hasOwnProperty']) {
+    assert.equal(walkerVerdict('dogs', { [bad]: 3 }).status, 'tooFew', `${bad} alone`);
+    assert.equal(walkerVerdict('dogs', { leashRequired: 3, [bad]: 2 }).status, 'ready', `${bad} next to 3 real answers`);
+  }
 });
 
 // MARK: Counting walkers
@@ -185,13 +199,15 @@ test('one summary per trail and fact, named the same every time', () => {
   assert.throws(() => summaryRecordName('', 'dogs'));
 });
 
-test('the summary holds only the trail, fact, answer, walkers and when; walkers is everyone who answered', () => {
-  const f = summaryFields('nc:w1', 'surface', { paved: 2, packedDirt: 1 }, NOW);
+test('the summary holds only the trail, fact, answer, walkers and when; walkers is how many gave the answer', () => {
+  const f = summaryFields('nc:w1', 'surface', { paved: 3, packedDirt: 1 }, NOW);
   assert.deepEqual(f, {
     trailKey: 'nc:w1', region: 'nc', fact: 'surface', value: 'paved', walkers: 3,
     computedAt: { value: NOW, type: 'TIMESTAMP' },
   });
+  assert.equal(summaryFields('nc:w1', 'surface', { paved: 4, packedDirt: 2 }, NOW).walkers, 4, '4 of 6 states 4');
   assert.throws(() => summaryFields('nc:w1', 'surface', { paved: 2 }, NOW), /Not publishable/);
+  assert.throws(() => summaryFields('nc:w1', 'surface', { paved: 2, packedDirt: 1 }, NOW), /Not publishable/, '2 of 3');
   assert.throws(() => summaryFields('nc:w1', 'stroller', { yes: 2, no: 2 }, NOW), /Not publishable/);
   assert.throws(() => summaryFields('nc:w1', 'surface', { paved: 3, packedDirt: 2 }, NOW), /Not publishable/);
 });
@@ -218,7 +234,7 @@ test('no walker, token or account reaches a summary or its History entry', async
   for (const r of records) assert.ok(!written.includes(r.reporter), `${r.reporter} was written`);
   const summary = store.calls.find((c) => c[0] === 'createNamed');
   assert.deepEqual(Object.keys(summary[3]).sort(), ['computedAt', 'fact', 'region', 'trailKey', 'value', 'walkers']);
-  assert.equal(summary[3].walkers, 4);
+  assert.equal(summary[3].walkers, 3, 'the three who said leash, not all four');
 });
 
 test('the same account gets the same token for the page\'s life, and plain() never keeps it', () => {
@@ -238,6 +254,16 @@ test('Publish writes History first, then creates or replaces the summary; a fail
   assert.equal(fresh.calls[1][2].action, 'published');
   assert.equal(fresh.calls[1][2].targetType, 'trailFact');
   assert.equal(fresh.calls[2][1], 'TrailFactSummary');
+  const mixed = fakeStore();
+  await publishSummary(mixed, { trailKey: 'nc:w1', fact: 'dogs', counts: { leashRequired: 3, noDogs: 1 }, now: NOW });
+  assert.equal(mixed.calls[1][2].reportCount, 4, 'History counts every walker; the summary states the 3 who agree');
+  assert.deepEqual(JSON.parse(mixed.calls[1][2].snapshot),
+    { trailKey: 'nc:w1', fact: 'dogs', value: 'leashRequired', walkers: 3, counts: { leashRequired: 3, noDogs: 1 } });
+  const crafted = fakeStore();
+  await publishSummary(crafted, { trailKey: 'nc:w1', fact: 'dogs', counts: { leashRequired: 3, noDogs: 1, bogus: 5 }, now: NOW });
+  assert.equal(crafted.calls[1][2].reportCount, 4, 'an unknown answer is not a walker');
+  assert.deepEqual(JSON.parse(crafted.calls[1][2].snapshot).counts, { leashRequired: 3, noDogs: 1 });
+  assert.equal(mixed.calls[2][3].walkers, 3);
   const again = fakeStore({ exists: 'factsummary.dogs.nc.w1' });
   await publishSummary(again, { trailKey: 'nc:w1', fact: 'dogs', counts: { leashRequired: 4 }, now: NOW });
   assert.deepEqual(again.calls.map((c) => c[0]), ['fetch', 'create', 'replaceNamed']);
@@ -268,6 +294,7 @@ test('Un-publish writes History, then deletes the summary; a failed delete takes
 test('a published summary is current, outdated or no longer supported', () => {
   const [row] = summaryRows([{ recordName: 's', created: 1, fields: { trailKey: 'nc:w1', fact: 'dogs', value: 'noDogs', walkers: 3 } }]);
   assert.equal(summaryStanding(row, walkerVerdict('dogs', { noDogs: 3 })), 'current');
+  assert.equal(summaryStanding(row, walkerVerdict('dogs', { noDogs: 3, leashRequired: 1 })), 'current', 'still 3 saying no dogs');
   assert.equal(summaryStanding(row, walkerVerdict('dogs', { noDogs: 4 })), 'outdated');
   assert.equal(summaryStanding(row, walkerVerdict('dogs', { leashRequired: 3 })), 'outdated');
   assert.equal(summaryStanding(row, walkerVerdict('dogs', { noDogs: 2, leashRequired: 2 })), 'unsupported');

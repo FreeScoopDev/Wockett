@@ -15,7 +15,7 @@ import {
   groupNominations, nominationQueue, FEATURE_LENGTHS, BLURB_LIMIT, mapsLink, featuredRows, formatDistance,
   ACTIVITY_KINDS,
   tallyWalkerReports, summaryRows, summaryRecordName, summaryStanding, verdictText, factLabel, valueLabel, countsOf,
-  MIN_REPORTERS, AGREEMENT, RETENTION_MONTHS, WALKER_FACTS,
+  MIN_AGREEING, AGREEMENT, RETENTION_MONTHS, WALKER_FACTS,
 } from './logic.js';
 import {
   removeItem, dismissItem, suspendAccount, liftSuspension, itemsOf, OWNED_TYPES, featureTrail, unfeatureTrail, dismissNominations,
@@ -750,9 +750,9 @@ async function renderWalkerReports(seq) {
     el('button', { class: 'btn', onclick: () => askDeleteByIdentifier() }, 'Delete one walker\'s reports'),
     el('button', { class: 'btn danger', onclick: (e) => confirmDeleteOld(e.target) }, `Delete reports older than ${RETENTION_MONTHS} months`)),
   el('p', { class: 'small muted' },
-    `A fact can be published when at least ${MIN_REPORTERS} walkers answered and at least ${AGREEMENT.numerator}/${AGREEMENT.denominator} of them gave the same answer; `
+    `A fact can be published when at least ${MIN_AGREEING} walkers gave the same answer and they are at least ${AGREEMENT.numerator} in ${AGREEMENT.denominator} of everyone who answered it; `
     + 'a tie or a split publishes nothing. Each walker counts once per trail and fact. The app shows only what you publish, '
-    + `as the answer and the number of walkers; never who answered. “${WALKER_FACTS.liked.label}” is counted here only: `
+    + `as the answer and how many walkers gave it; never who answered. “${WALKER_FACTS.liked.label}” is counted here only: `
     + 'no summary is published for it and the app doesn\'t show it yet (Joe\'s decision, 2026-10-15).'),
   tally.ignored || tally.unattributed ? el('p', { class: 'small muted' },
     tally.ignored ? `${tally.ignored} report${tally.ignored === 1 ? '' : 's'} with an unknown trail, fact or answer ignored. ` : '',
@@ -768,7 +768,7 @@ function confirmPublish(trailKey, factRow, summary) {
   const { verdict, fact } = factRow;
   const form = el('form', { method: 'dialog' },
     el('h2', { class: 'title', id: 'dialog-title' }, `Publish “${valueLabel(fact, verdict.value)}” for ${trailKey}?`),
-    el('p', {}, `Everyone sees it on this trail's facts as what walkers say, with “${verdict.walkers} walkers”, after their next daily refresh. `
+    el('p', {}, `Everyone sees it on this trail's facts as what walkers say, with “${verdict.agreeing} walkers” (the ones who gave this answer), after their next daily refresh. `
       + 'Nothing about who answered is published.'),
     summary ? el('p', { class: 'small muted' }, `Replaces: ${summaryLine(summary)}.`) : null,
     el('div', { class: 'actions' },
@@ -895,7 +895,7 @@ function confirmDeleteByIdentifier({ records, more }) {
       ? `Delete ${n} walker report${n === 1 ? '' : 's'} from this identifier?`
       : 'No walker reports from this identifier'),
     n ? el('p', {}, 'This can\'t be undone. History keeps the count, not the identifier. Published summaries hold no one\'s answers and stay; '
-      + `check the trails they reported if a summary now rests on fewer than ${MIN_REPORTERS} walkers.`)
+      + 'check the trails they reported: a summary may no longer clear the rule (the tab marks it).')
       : el('p', {}, `Check the identifier was pasted whole. Reports deleted already, or older than ${RETENTION_MONTHS} months, won't be found.`),
     more ? el('p', { class: 'small muted' }, 'There are more than one load can hold (5,000): run this again afterwards for the rest.') : null,
     el('div', { class: 'actions' },
