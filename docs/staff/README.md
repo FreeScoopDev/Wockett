@@ -10,9 +10,9 @@ write against the signed-in Apple ID's role.
 | --- | --- |
 | `index.html`, `styles.css` | The page |
 | `app.js` | The screens |
-| `logic.js` | The rules: grouping, open/resolved, snapshots, counts, route line, the walker-reports rule |
+| `logic.js` | The rules: grouping, open/resolved, snapshots, counts, route line, the walker-reports rule, the trail-suggestion caps, polyline decoder and line-overlap grouping |
 | `walker-facts.js` | What walkers can report about a trail: the one copy of the facts and answers |
-| `contribution-status.js` | What a contribution status may say (`nomination`: `featured`; `suggestion`: `added`): the one copy |
+| `contribution-status.js` | What a contribution status may say (`nomination`: `featured`; `suggestion`: `added`), and the trail key a suggestion's status carries (`suggestion`): the one copy |
 | `actions.js` | Remove and Dismiss, in order (snapshot first) |
 | `ck.js` | The only file that calls CloudKit JS |
 | `config.js` | Container and the public API tokens |
@@ -155,6 +155,41 @@ rules need an ordinary account to be proved.
   keys are shown, not names: a report holds no name.
   Summaries are keyed by trail key, so a trail whose key changes in a pack
   rebuild loses its summaries.
+- **Trail suggestions**: paths walkers say the map lacks, sent from a walk
+  summary in the app (a later release). Only a Moderator can read a
+  `TrailSuggestion`. Suggestions of the same path are grouped by their
+  LINES, not their names: two are the same path when at least 60% of the
+  shorter line, sampled every 25 m, lies within 30 m of the longer one
+  (`OVERLAP_*` in `logic.js`), whichever way round it was walked. Each card
+  draws the group's lines together (the one Accept uses on top, a dot at
+  its start), links the start to Apple Maps and to the OpenStreetMap editor,
+  shows the names, facts and notes given, and lists what to check: very
+  short (under 300 m), very long (over 15 km), a straight stretch over
+  500 m with no points (a GPS gap or a straight path), a line that can't be
+  read, the record's own counts disagreeing with its line, and anything
+  over the caps the app enforces (2,000 points, 20 km, an 80-character name,
+  a 300-character note), re-checked here. The page measures each line
+  itself. **Accept** asks for the name to accept it as (filled in with the
+  most given one), records it in History with every suggestion of the
+  group, so they all leave the queue, and tells each device that sent one:
+  a `ContributionStatus` (`suggestion`, `added`, trail key `suggestion`
+  and when; no name, since the status is world-readable and the name stays
+  Moderator-only until accepted paths are public) per claim token, at most
+  5 per walker, like
+  telling nominators (same schema check first, squatted names skipped,
+  History corrected if some fail). For now that is all: nothing about a
+  suggestion is shown to other walkers (collect-only, spec
+  feat/trail-suggestions). **Decline** records the decision and tells no
+  one (there is no declined status). A later suggestion of the same path
+  brings the group back. **Download GPX** saves the accepted line as a
+  GPX file made on the page. **Delete one walker's suggestions** finds a
+  person's suggestions by the identifier the app shows them, counts them,
+  and deletes them on confirm; History keeps the count only. The page
+  never holds a claim token or an account: `ck.js` turns each token into
+  its status name and each account into a token like `suggester-2` that
+  means nothing outside this page load, and leaves out (and counts) any
+  suggestion whose record name holds its own token or account, because
+  Accept and Decline write record names into History.
 - **Activity**: counts for the last 7 and 30 days.
 - **History**: every action, with what was removed.
 

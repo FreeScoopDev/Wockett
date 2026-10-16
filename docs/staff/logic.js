@@ -9,9 +9,9 @@
 // reported something.
 
 import { WALKER_FACTS } from './walker-facts.js';
-import { CONTRIBUTION_KINDS, STATUS_RECORD_PREFIX } from './contribution-status.js';
+import { CONTRIBUTION_KINDS, STATUS_RECORD_PREFIX, SUGGESTION_STATUS_TRAIL_KEY } from './contribution-status.js';
 
-export { WALKER_FACTS, CONTRIBUTION_KINDS, STATUS_RECORD_PREFIX };
+export { WALKER_FACTS, CONTRIBUTION_KINDS, STATUS_RECORD_PREFIX, SUGGESTION_STATUS_TRAIL_KEY };
 
 /** The community types a moderator acts on, keyed by the app's `targetType`. */
 export const TYPES = {
@@ -159,7 +159,7 @@ export function reopenFailedRemovals(groups, live) {
 }
 
 /** Action targets that aren't community items, so never close reports. */
-export const NON_ITEM_TARGETS = ['trail', 'account', 'trailFact', 'walkerReports', 'contribution'];
+export const NON_ITEM_TARGETS = ['trail', 'account', 'trailFact', 'walkerReports', 'contribution', 'suggestion', 'trailSuggestions'];
 
 /**
  * Open groups, newest report first, or most reported first (ties: newest).
@@ -269,7 +269,7 @@ export function buildSnapshot(item, limit = SNAPSHOT_LIMIT) {
 }
 
 export const ACTIONS = ['removed', 'dismissed', 'suspended', 'lifted', 'featured', 'unfeatured', 'published', 'unpublished', 'expired', 'erased',
-  'statusPublished', 'statusWithdrawn'];
+  'statusPublished', 'statusWithdrawn', 'accepted', 'declined'];
 
 /** The fields of a `ModerationAction` record. */
 export function actionFields({ target, type, action, reason = '', note = '', reportCount = 0, snapshot = '' }) {
@@ -329,6 +329,7 @@ export const ACTIVITY_KINDS = [
   { key: 'report', label: 'Reports', recordType: 'CommunityReport' },
   { key: 'nomination', label: 'Trail nominations', recordType: 'TrailNomination' },
   { key: 'walkerReport', label: 'Walker reports', recordType: 'TrailFactReport' },
+  { key: 'suggestion', label: 'Trail suggestions', recordType: 'TrailSuggestion' },
   { key: 'action', label: 'Moderation actions', recordType: 'ModerationAction' },
 ];
 
@@ -356,11 +357,27 @@ export function parseWaypoints(json) {
  * two points.
  */
 export function routePath(points, width = 160, height = 120, pad = 8) {
-  if (points.length < 2) return '';
-  const lat0 = points.reduce((s, p) => s + p.latitude, 0) / points.length;
+  return routePaths([points], width, height, pad).paths[0];
+}
+
+/**
+ * `routePath` for several lines drawn in one box at one scale, so lines that
+ * overlap on the ground overlap in the drawing (a group of suggestions of one
+ * path). `paths[i]` is line i's path ('' for one with fewer than two points);
+ * `at(point)` places any point in the same box, or is null when nothing can
+ * be drawn.
+ */
+export function routePaths(lines, width = 160, height = 120, pad = 8) {
+  const usable = lines.map((points) => (Array.isArray(points) && points.length >= 2 ? points : null));
+  const all = usable.filter(Boolean).flat();
+  const none = { paths: lines.map(() => ''), at: null };
+  if (!all.length) return none;
+  const lat0 = all.reduce((s, p) => s + p.latitude, 0) / all.length;
   const k = Math.cos((lat0 * Math.PI) / 180);
-  const xs = points.map((p) => p.longitude * k);
-  const ys = points.map((p) => -p.latitude);
+  const xOf = (p) => p.longitude * k;
+  const yOf = (p) => -p.latitude;
+  const xs = all.map(xOf);
+  const ys = all.map(yOf);
   const minX = Math.min(...xs);
   const maxX = Math.max(...xs);
   const minY = Math.min(...ys);
@@ -368,15 +385,16 @@ export function routePath(points, width = 160, height = 120, pad = 8) {
   const spanX = maxX - minX;
   const spanY = maxY - minY;
   const span = Math.max(spanX, spanY);
-  if (span === 0) return '';
+  if (span === 0) return none;
   const scale = Math.min((width - 2 * pad) / (spanX || span), (height - 2 * pad) / (spanY || span));
   const offX = pad + ((width - 2 * pad) - spanX * scale) / 2;
   const offY = pad + ((height - 2 * pad) - spanY * scale) / 2;
-  return xs.map((x, i) => {
-    const px = (offX + (x - minX) * scale).toFixed(1);
-    const py = (offY + (ys[i] - minY) * scale).toFixed(1);
-    return `${i === 0 ? 'M' : 'L'}${px} ${py}`;
-  }).join(' ');
+  const at = (p) => ({ x: (offX + (xOf(p) - minX) * scale).toFixed(1), y: (offY + (yOf(p) - minY) * scale).toFixed(1) });
+  const paths = usable.map((points) => (points ? points.map((p, i) => {
+    const { x, y } = at(p);
+    return `${i === 0 ? 'M' : 'L'}${x} ${y}`;
+  }).join(' ') : ''));
+  return { paths, at };
 }
 
 // MARK: - Text
@@ -1028,10 +1046,20 @@ export function knownContribution(kind, status) {
 /**
  * The `ContributionStatus` record's fields: these five and nothing else, each
  * checked, so no other value (a token, a creator, a note) can reach a record
- * everyone can read.
+ * everyone can read. A suggestion's has four: no name.
  */
 export function contributionStatusFields({ kind, status, trailKey, trailName, decidedAt }) {
   if (!knownContribution(kind, status)) throw new Error(`Unknown contribution status: ${kind} ${status}`);
+  if (kind === 'suggestion') {
+    // A suggestion has no pack key: its status says `suggestion` there, and
+    // only a suggestion's may (contribution-status.js). And no name: until
+    // accepted paths are shown to everyone (spec feat/trail-suggestions, PR 4),
+    // a suggested path's name stays Moderator-only, and this record is
+    // world-readable and queryable by trailKey. The phone doesn't read it.
+    if (trailKey !== SUGGESTION_STATUS_TRAIL_KEY) throw new Error(`Not a suggestion's trail key: ${trailKey}`);
+    if (!Number.isFinite(decidedAt)) throw new Error('Not a time.');
+    return { kind, status, trailKey, decidedAt: { value: decidedAt, type: 'TIMESTAMP' } };
+  }
   if (!isTrailKey(trailKey)) throw new Error(`Not a trail key: ${trailKey}`);
   const name = String(trailName ?? '').trim();
   if (!name) throw new Error('A status needs the trail\'s name.');
@@ -1137,9 +1165,11 @@ export function partialWithdrawText(deleted, n) {
   return `Withdrew ${deleted} of ${n} nomination${n === 1 ? '\'s status' : 's\' statuses'}`;
 }
 
-/** History's summary of a contribution-status action: "3 nominations: Featured". */
+/** History's summary of a contribution-status action: "3 nominations: Featured", "1 suggestion: Added". */
 export function contributionCountText(kind, count) {
-  return kind === 'nomination' ? nominationCount(count) : `${count} contribution${count === 1 ? '' : 's'}`;
+  if (kind === 'nomination') return nominationCount(count);
+  if (kind === 'suggestion') return suggestionCount(count);
+  return `${count} contribution${count === 1 ? '' : 's'}`;
 }
 
 /** What telling the nominators did (`featureTrailAndTell`'s `told`), as sentences after "Featured …". */
@@ -1164,4 +1194,551 @@ export function toldText(told) {
 export function statusesToWithdraw(records, trailKey, kind = 'nomination', status = 'featured') {
   return (records ?? []).filter((r) => isContributionStatusName(r?.recordName) && r.fields?.trailKey === trailKey
     && r.fields?.kind === kind && r.fields?.status === status);
+}
+
+// MARK: - Trail suggestions (spec feat/trail-suggestions, PR 1)
+//
+// A walker who walked a path the trail packs don't have can suggest it from
+// the app (a later PR). Each suggestion is a `TrailSuggestion` that only a
+// Moderator can read: a name, an optional note, a few fact chips, the region
+// and the walk's line (trimmed at both ends by the app, simplified, encoded
+// as a Google polyline at precision 5). Here suggestions of the same path are
+// grouped by their LINES (two walkers rarely name a path alike), checked
+// against the caps, and accepted or declined. In this collect-only phase,
+// Accept tells the walkers (a `ContributionStatus`, kind `suggestion`, status
+// `added`) and publishes nothing else: no line or name is shown to anyone.
+//
+// A suggestion here carries `submitter`, a token ck.js gives each creator for
+// this page load (`suggester-2`), and `statusName`, which ck.js makes from
+// the claim token. Never the account, never the token.
+
+/**
+ * The size caps the app enforces before sending (spec criterion 1), checked
+ * again here: a record over them was made by something other than the app.
+ * `name` and `note` are in characters as a person counts them (grapheme
+ * clusters, like Swift's `String.count`).
+ */
+export const SUGGESTION_CAPS = Object.freeze({ points: 2000, meters: 20_000, name: 80, note: 300 });
+/**
+ * The longest encoded line the page will decode, in characters. 2,000 points
+ * need at most about 24,000 (12 per point in the worst case); anything longer
+ * is over the caps whatever it holds, and isn't decoded at all.
+ */
+export const LINE_CHAR_LIMIT = 40_000;
+/** Shorter than this is "very short": the app's own minimum for a suggestion is about 300 m (spec criterion 6). */
+export const SHORT_SUGGESTION_M = 300;
+/** Longer than this (and within the 20 km cap) is "very long": worth a second look on the map. */
+export const LONG_SUGGESTION_M = 15_000;
+/**
+ * Two consecutive points further apart than this are a straight stretch:
+ * a GPS gap drawn as a chord, or a genuinely straight path (a rail trail). The
+ * app simplifies at 5 m, so a real path that bends keeps points closer.
+ */
+export const STRAIGHT_STRETCH_M = 500;
+/**
+ * The overlap rule for grouping duplicates: two suggestions are the same path
+ * when at least OVERLAP_SHARE of the SHORTER line, sampled every
+ * OVERLAP_STEP_M metres, lies within OVERLAP_TOLERANCE_M of the longer line.
+ * 30 m is the "on a known trail" distance the app's detector uses (spec
+ * criterion 5): GPS on a wooded path wanders 5-20 m. The shorter line decides,
+ * so a walker who did half of a path is grouped with one who did all of it;
+ * the direction walked doesn't matter. Two paths 50 m apart, or two that
+ * only cross, stay apart. Groups are joined through any shared member, so
+ * three suggestions can be one group when the middle one overlaps both
+ * (two long paths joined that way run within 30 m of each other along the
+ * middle one: very likely one path).
+ */
+export const OVERLAP_TOLERANCE_M = 30;
+export const OVERLAP_SHARE = 0.6;
+export const OVERLAP_STEP_M = 25;
+/** The fact chips a suggestion may carry: Feature A's vocabulary, without `liked` (spec criterion 1). */
+export const SUGGESTION_FACTS = Object.freeze(['dogs', 'stroller', 'wheelchair', 'surface']);
+/**
+ * Statuses one person can be told for one group: one per device that
+ * suggested the path. Anyone can create suggestions with claim tokens of
+ * their choosing, so without a cap one account could make Accept write
+ * thousands of public statuses (as `TOKENS_PER_NOMINATOR` for nominations).
+ */
+export const TOKENS_PER_SUGGESTER = 5;
+
+const EARTH_RADIUS_M = 6_371_008.8;
+const rad = (deg) => (deg * Math.PI) / 180;
+
+/** Characters as a person counts them (grapheme clusters), where the platform can tell; else code points. */
+export function textLength(text) {
+  const s = String(text ?? '');
+  if (typeof Intl !== 'undefined' && typeof Intl.Segmenter === 'function') {
+    let n = 0;
+    for (const _ of new Intl.Segmenter('en', { granularity: 'grapheme' }).segment(s)) n += 1;
+    return n;
+  }
+  return [...s].length;
+}
+
+/**
+ * The points of a Google encoded polyline (precision 5: 1e-5 degrees), or
+ * null when the text isn't one: a character outside `?`..`~`, a value cut
+ * off at the end, or a point off the globe (which is also where a value
+ * too long to be a coordinate ends up). An empty text is no points.
+ * Suggestions are written by any signed-in iCloud user, so nothing about the
+ * text is trusted. Arithmetic, not bit operators, so a long run can't wrap
+ * round 32 bits into a plausible number.
+ */
+export function decodePolyline(text, precision = 5) {
+  if (typeof text !== 'string') return null;
+  const factor = 10 ** precision;
+  const points = [];
+  let i = 0;
+  let lat = 0;
+  let lng = 0;
+  while (i < text.length) {
+    const delta = [0, 0];
+    for (let k = 0; k < 2; k += 1) {
+      let result = 0;
+      let shift = 0;
+      let chunk;
+      do {
+        if (i >= text.length) return null;
+        chunk = text.charCodeAt(i) - 63;
+        i += 1;
+        if (chunk < 0 || chunk > 63) return null;
+        result += (chunk & 0x1f) * 2 ** shift;
+        shift += 5;
+      } while (chunk >= 0x20);
+      delta[k] = result % 2 === 1 ? -(result + 1) / 2 : result / 2;
+    }
+    lat += delta[0];
+    lng += delta[1];
+    const latitude = lat / factor;
+    const longitude = lng / factor;
+    if (Math.abs(latitude) > 90 || Math.abs(longitude) > 180) return null;
+    points.push({ latitude, longitude });
+  }
+  return points;
+}
+
+/** Great-circle distance between two points, in metres. */
+export function distanceMeters(a, b) {
+  const dLat = rad(b.latitude - a.latitude);
+  const dLng = rad(b.longitude - a.longitude);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.latitude)) * Math.cos(rad(b.latitude)) * Math.sin(dLng / 2) ** 2;
+  return 2 * EARTH_RADIUS_M * Math.asin(Math.min(1, Math.sqrt(h)));
+}
+
+/** A line's length along its points, in metres. */
+export function lineLength(points) {
+  let total = 0;
+  for (let i = 1; i < (points?.length ?? 0); i += 1) total += distanceMeters(points[i - 1], points[i]);
+  return total;
+}
+
+/** The longest gap between two consecutive points, in metres. */
+export function longestStretch(points) {
+  let longest = 0;
+  for (let i = 1; i < (points?.length ?? 0); i += 1) longest = Math.max(longest, distanceMeters(points[i - 1], points[i]));
+  return longest;
+}
+
+/** Points as metres on a flat map around `lat0`, `lng0` (fine at the scale of a walk). */
+function project(points, lat0, lng0) {
+  const k = Math.cos(rad(lat0));
+  return points.map((p) => ({ x: EARTH_RADIUS_M * rad(p.longitude - lng0) * k, y: EARTH_RADIUS_M * rad(p.latitude - lat0) }));
+}
+
+/** Points every `step` metres along a flat line, both ends included. */
+function resample(xy, step) {
+  const out = [xy[0]];
+  let carried = 0;
+  for (let i = 1; i < xy.length; i += 1) {
+    const a = xy[i - 1];
+    const b = xy[i];
+    const len = Math.hypot(b.x - a.x, b.y - a.y);
+    let at = step - carried;
+    while (at <= len) {
+      const t = at / len;
+      out.push({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
+      at += step;
+    }
+    carried = len - (at - step);
+  }
+  const last = xy[xy.length - 1];
+  const prev = out[out.length - 1];
+  if (prev.x !== last.x || prev.y !== last.y) out.push(last);
+  return out;
+}
+
+function distanceToSegment(p, a, b) {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const len2 = dx * dx + dy * dy;
+  const t = len2 === 0 ? 0 : Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / len2));
+  return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy));
+}
+
+function distanceToLine(p, xy) {
+  let best = Infinity;
+  for (let i = 1; i < xy.length; i += 1) best = Math.min(best, distanceToSegment(p, xy[i - 1], xy[i]));
+  return best;
+}
+
+/**
+ * The share (0-1) of line `a`, sampled every `step` metres, that lies within
+ * `tolerance` metres of line `b`. Lines of fewer than two points share nothing.
+ */
+export function overlapShare(a, b, tolerance = OVERLAP_TOLERANCE_M, step = OVERLAP_STEP_M) {
+  if (!Array.isArray(a) || !Array.isArray(b) || a.length < 2 || b.length < 2) return 0;
+  const lat0 = (a[0].latitude + b[0].latitude) / 2;
+  const lng0 = a[0].longitude;
+  const samples = resample(project(a, lat0, lng0), step);
+  const target = project(b, lat0, lng0);
+  let near = 0;
+  for (const s of samples) if (distanceToLine(s, target) <= tolerance) near += 1;
+  return near / samples.length;
+}
+
+/** Whether two lines' boxes, grown by `tolerance` metres, meet: a cheap test before sampling. */
+function boxesMeet(a, b, tolerance) {
+  const box = (pts) => pts.reduce((m, p) => ({
+    s: Math.min(m.s, p.latitude), n: Math.max(m.n, p.latitude), w: Math.min(m.w, p.longitude), e: Math.max(m.e, p.longitude),
+  }), { s: Infinity, n: -Infinity, w: Infinity, e: -Infinity });
+  const A = box(a);
+  const B = box(b);
+  const dLat = tolerance / 111_000;
+  const dLng = tolerance / (111_000 * Math.max(0.01, Math.cos(rad((A.s + A.n) / 2))));
+  return A.s - dLat <= B.n && B.s - dLat <= A.n && A.w - dLng <= B.e && B.w - dLng <= A.e;
+}
+
+/** The overlap rule (OVERLAP_TOLERANCE_M): the same path, walked any way round, in part or whole. */
+export function sameLine(a, b) {
+  if (!Array.isArray(a) || !Array.isArray(b) || a.length < 2 || b.length < 2) return false;
+  if (!boxesMeet(a, b, OVERLAP_TOLERANCE_M)) return false;
+  const [shorter, longer] = lineLength(a) <= lineLength(b) ? [a, b] : [b, a];
+  return overlapShare(shorter, longer) >= OVERLAP_SHARE;
+}
+
+/**
+ * One suggestion as the dashboard sees it: its text trimmed, its line
+ * decoded, its length measured here (never the record's say-so), its facts
+ * (only the vocabulary's), and what is wrong with it:
+ * - `problems`: why its line can't be the one accepted (unreadable, over the
+ *   point or length cap);
+ * - `warnings`: what to check (very short, very long, a straight stretch,
+ *   name or note over the caps, no name, no region, the record's own counts
+ *   disagreeing with its line).
+ */
+export function suggestionOf(record) {
+  const f = record?.fields ?? {};
+  const name = typeof f.name === 'string' ? f.name.trim() : '';
+  const note = typeof f.note === 'string' ? f.note.trim() : '';
+  const region = typeof f.region === 'string' && /^[a-z]{2}$/.test(f.region) ? f.region : '';
+  const tooLong = typeof f.line === 'string' && f.line.length > LINE_CHAR_LIMIT;
+  const points = tooLong ? null : decodePolyline(f.line);
+  const line = points && points.length >= 2 ? points : null;
+  const lengthMeters = line ? lineLength(line) : 0;
+  const stretch = line ? longestStretch(line) : 0;
+  const facts = {};
+  for (const fact of SUGGESTION_FACTS) if (knownValue(fact, f[fact])) facts[fact] = f[fact];
+  const problems = [];
+  const warnings = [];
+  if (!line) problems.push(tooLong ? 'lineTooLong' : 'unreadable');
+  else {
+    if (line.length > SUGGESTION_CAPS.points) problems.push('points');
+    if (lengthMeters > SUGGESTION_CAPS.meters) problems.push('meters');
+    if (lengthMeters < SHORT_SUGGESTION_M) warnings.push('short');
+    else if (lengthMeters > LONG_SUGGESTION_M && lengthMeters <= SUGGESTION_CAPS.meters) warnings.push('long');
+    if (stretch > STRAIGHT_STRETCH_M) warnings.push('straight');
+    const claimedLength = f.lengthMeters;
+    if (f.pointCount !== line.length || !Number.isFinite(claimedLength)
+        || Math.abs(claimedLength - lengthMeters) > Math.max(50, lengthMeters * 0.1)) warnings.push('mismatch');
+  }
+  if (!name) warnings.push('noName');
+  else if (textLength(name) > SUGGESTION_CAPS.name) warnings.push('name');
+  if (textLength(note) > SUGGESTION_CAPS.note) warnings.push('note');
+  if (!region) warnings.push('region');
+  return {
+    recordName: record.recordName,
+    created: Number.isFinite(record.created) ? record.created : 0,
+    submitter: typeof record.submitter === 'string' && record.submitter ? record.submitter : null,
+    statusName: isContributionStatusName(record.statusName) ? record.statusName : null,
+    name, note, region, facts, line,
+    pointCount: line ? line.length : 0,
+    lengthMeters,
+    longestStretch: stretch,
+    problems,
+    warnings,
+  };
+}
+
+/** What a warning or problem code means, in words for the card. */
+export function suggestionIssueText(code, s = {}) {
+  switch (code) {
+    case 'unreadable': return 'Its line can\'t be read (not an encoded polyline of at least two points).';
+    case 'lineTooLong': return `Its line is over ${LINE_CHAR_LIMIT.toLocaleString('en-US')} characters, so it is over the caps and wasn't read.`;
+    case 'points': return `Over the caps: ${s.pointCount?.toLocaleString('en-US')} points (at most ${SUGGESTION_CAPS.points.toLocaleString('en-US')}).`;
+    case 'meters': return `Over the caps: ${formatDistance(s.lengthMeters)} long (at most ${formatDistance(SUGGESTION_CAPS.meters)}).`;
+    case 'short': return `Very short: ${Math.round(s.lengthMeters ?? 0)} m. A path this short is often a sidewalk or a stub the map leaves out on purpose.`;
+    case 'long': return `Very long: ${formatDistance(s.lengthMeters)}. Check it is one path, not a walk along several.`;
+    case 'straight': return `A straight stretch of ${Math.round(s.longestStretch ?? 0)} m with no points: a GPS gap drawn as a line, or a genuinely straight path. Check it on the map.`;
+    case 'mismatch': return 'The record\'s own point count or length disagrees with its line (the page uses the line).';
+    case 'noName': return 'No name.';
+    case 'name': return `Over the caps: the name is over ${SUGGESTION_CAPS.name} characters.`;
+    case 'note': return `Over the caps: the note is over ${SUGGESTION_CAPS.note} characters.`;
+    case 'region': return 'No usable region.';
+    default: return String(code);
+  }
+}
+
+/**
+ * The latest decision about each suggestion, by record name, from the
+ * `accepted` / `declined` actions (targetType `suggestion`), each listing the
+ * record names it decided in its snapshot.
+ */
+export function suggestionDecisions(actions) {
+  const out = new Map();
+  for (const a of actions ?? []) {
+    const f = a?.fields ?? {};
+    if (f.targetType !== 'suggestion' || (f.action !== 'accepted' && f.action !== 'declined')) continue;
+    let names = [];
+    let named = '';
+    try {
+      const snap = JSON.parse(f.snapshot ?? '{}');
+      if (Array.isArray(snap.recordNames)) names = snap.recordNames.filter((n) => typeof n === 'string');
+      if (typeof snap.name === 'string') named = snap.name;
+    } catch { /* an unreadable snapshot decides nothing */ }
+    for (const name of names) {
+      const prev = out.get(name);
+      if (!prev || a.created > prev.at) out.set(name, { action: f.action, at: a.created, name: named });
+    }
+  }
+  return out;
+}
+
+/**
+ * Suggestions grouped by line overlap (`sameLine`), with each one's
+ * decision. A suggestion is decided by an action newer than itself; a group
+ * is `waiting` while any member isn't decided, else `accepted` if any member
+ * was, else `declined`. Suggestions whose line can't be read are each their
+ * own group. A group carries:
+ * - `name`: the name most of its members gave (ties: the first given), and
+ *   `names`, every name with how many gave it;
+ * - `line`: the member whose line would be accepted: the longest within the
+ *   caps (ties: the oldest), or null when none is;
+ * - `walkers`: distinct submitters; `facts`: each fact's answers, counted once
+ *   per walker (their newest); `notes`, newest first.
+ * - `acceptedName`: the name it was last accepted as ('' if never).
+ * Waiting groups first (most walkers, then newest), then the rest, newest first.
+ */
+export function groupSuggestions(records, actions = []) {
+  const decisions = suggestionDecisions(actions);
+  const items = (records ?? []).filter((r) => r && typeof r.recordName === 'string').map((r) => {
+    const s = suggestionOf(r);
+    const d = decisions.get(s.recordName);
+    const current = d && d.at > s.created;
+    return {
+      ...s,
+      decision: current ? d.action : null,
+      decidedAt: current ? d.at : null,
+      acceptedAs: current && d.action === 'accepted' ? d.name : '',
+    };
+  });
+  const parent = items.map((_, i) => i);
+  const find = (i) => (parent[i] === i ? i : (parent[i] = find(parent[i])));
+  for (let i = 0; i < items.length; i += 1) {
+    for (let j = i + 1; j < items.length; j += 1) {
+      if (find(i) !== find(j) && sameLine(items[i].line, items[j].line)) parent[find(j)] = find(i);
+    }
+  }
+  const byRoot = new Map();
+  items.forEach((s, i) => {
+    const root = find(i);
+    if (!byRoot.has(root)) byRoot.set(root, []);
+    byRoot.get(root).push(s);
+  });
+  const groups = [...byRoot.values()].map((members) => describeGroup(members.sort((a, b) => a.created - b.created)));
+  return groups.sort((a, b) => Number(b.state === 'waiting') - Number(a.state === 'waiting')
+    || (a.state === 'waiting' ? b.walkers - a.walkers : 0) || b.latestAt - a.latestAt);
+}
+
+function describeGroup(members) {
+  const pending = members.filter((m) => !m.decision);
+  const state = pending.length ? 'waiting' : members.some((m) => m.decision === 'accepted') ? 'accepted' : 'declined';
+  const votes = new Map();
+  for (const m of members) {
+    if (!m.name) continue;
+    const key = m.name.toLowerCase();
+    const v = votes.get(key) ?? { name: m.name, count: 0, first: m.created };
+    v.count += 1;
+    votes.set(key, v);
+  }
+  const names = [...votes.values()].sort((a, b) => b.count - a.count || a.first - b.first);
+  const usable = members.filter((m) => m.line && !m.problems.length);
+  const line = usable.reduce((best, m) => (!best || m.lengthMeters > best.lengthMeters ? m : best), null);
+  const walkers = new Set(members.map((m) => m.submitter ?? `record:${m.recordName}`)).size;
+  // The name it was last accepted as, if any member was.
+  const lastAccepted = members.filter((m) => m.acceptedAs).sort((a, b) => b.decidedAt - a.decidedAt)[0];
+  // Each walker's newest answer per fact.
+  const newestFirst = [...members].sort((a, b) => b.created - a.created);
+  const facts = {};
+  for (const fact of SUGGESTION_FACTS) {
+    const seen = new Set();
+    const counts = {};
+    for (const m of newestFirst) {
+      const who = m.submitter ?? `record:${m.recordName}`;
+      if (!m.facts[fact] || seen.has(who)) continue;
+      seen.add(who);
+      counts[m.facts[fact]] = (counts[m.facts[fact]] ?? 0) + 1;
+    }
+    if (Object.keys(counts).length) facts[fact] = counts;
+  }
+  return {
+    id: members[0].recordName,
+    members,
+    pending: pending.length,
+    state,
+    name: names[0]?.name ?? '',
+    names: names.map((v) => ({ name: v.name, count: v.count })),
+    acceptedName: lastAccepted?.acceptedAs ?? '',
+    line,
+    walkers,
+    facts,
+    notes: newestFirst.filter((m) => m.note).map((m) => ({ note: m.note, at: m.created })),
+    latestAt: Math.max(...members.map((m) => m.created)),
+  };
+}
+
+/**
+ * The status names Accept writes for a group: one per distinct claim token
+ * among ALL its members (pending or decided before: each is a device that
+ * sent this path), newest first, at most TOKENS_PER_SUGGESTER per walker.
+ * `withoutToken`: members with none (nothing to write); `capped`: members
+ * left out by the cap. Sorted, so the order never depends on the query's.
+ */
+export function suggestionStatusNames(members, limit = TOKENS_PER_SUGGESTER) {
+  const names = new Set();
+  const perWalker = new Map();
+  let withoutToken = 0;
+  let capped = 0;
+  for (const m of [...(members ?? [])].sort((a, b) => b.created - a.created)) {
+    if (!isContributionStatusName(m?.statusName)) { withoutToken += 1; continue; }
+    if (m.submitter) {
+      const n = perWalker.get(m.submitter) ?? 0;
+      if (n >= limit) { capped += 1; continue; }
+      perWalker.set(m.submitter, n + 1);
+    }
+    names.add(m.statusName);
+  }
+  return { names: [...names].sort(), withoutToken, capped };
+}
+
+/**
+ * What Accept records: the name as Joe accepted it (trimmed, 1-80
+ * characters; he may edit what the walkers wrote), the member whose line is
+ * accepted (re-checked against the caps here, whatever the page passed), and
+ * every member's record name, so each leaves the queue. The snapshot holds
+ * the name, region, length, point count and record names: never a claim
+ * token, a status name or who sent it.
+ */
+export function acceptPlan(group, name) {
+  const accepted = String(name ?? '').trim();
+  if (!accepted) throw new Error('An accepted suggestion needs a name.');
+  if (textLength(accepted) > SUGGESTION_CAPS.name) throw new Error(`A trail name is at most ${SUGGESTION_CAPS.name} characters.`);
+  const line = group?.line;
+  if (!line || !line.line || line.problems?.length || line.pointCount > SUGGESTION_CAPS.points
+      || !(line.lengthMeters <= SUGGESTION_CAPS.meters)) {
+    throw new Error('None of these suggestions has a line within the caps, so none can be accepted.');
+  }
+  const recordNames = (group.members ?? []).map((m) => m.recordName);
+  return {
+    name: accepted,
+    recordName: line.recordName,
+    recordNames,
+    snapshot: {
+      name: accepted, region: line.region, lengthMeters: Math.round(line.lengthMeters), pointCount: line.pointCount,
+      recordName: line.recordName, recordNames, count: recordNames.length,
+    },
+  };
+}
+
+/** What Decline records: every member's record name and the name shown. Nobody is told: there is no negative status. */
+export function declinePlan(group) {
+  const recordNames = (group?.members ?? []).map((m) => m.recordName);
+  if (!recordNames.length) throw new Error('Nothing to decline.');
+  return { recordName: group.line?.recordName ?? recordNames[0], recordNames, snapshot: { name: group.name ?? '', recordNames, count: recordNames.length } };
+}
+
+/** "1 suggestion" / "3 suggestions". */
+export function suggestionCount(n) {
+  return `${n} suggestion${n === 1 ? '' : 's'}`;
+}
+
+/** The Accept confirm's line about who is told (`n` from `suggestionStatusNames`). */
+export function acceptTellText({ names, withoutToken, capped }) {
+  const n = names.length;
+  const told = n
+    ? `It tells ${suggestionCount(n)}: each shows Added in My contributions on the device that sent it.`
+    : 'None of these can be told: none carries a claim token.';
+  const left = [withoutToken ? `${withoutToken} without a token` : '', capped ? `${capped} over the ${TOKENS_PER_SUGGESTER}-per-walker limit` : '']
+    .filter(Boolean).join(', ');
+  return left ? `${told} Not told: ${left}.` : told;
+}
+
+/** What telling the walkers did after Accept, as sentences (the suggestion twin of `toldText`). */
+export function suggestionToldText(told) {
+  const blocked = told.blocked
+    ? ` ${told.blocked} couldn't be told: another record already has that name (a crafted suggestion, most likely).` : '';
+  if (told.error) {
+    const done = told.planned
+      ? `Told ${told.written} of ${told.planned} suggestions; the rest failed: `
+      : 'Couldn\'t tell the walkers: ';
+    return `${done}${errorClause(told.error)}. To finish, show Accepted and Accept it again.${blocked}`;
+  }
+  if (!told.written) return blocked.trim();
+  return `Told ${suggestionCount(told.written)}.${blocked}`;
+}
+
+/** History's line for a suggestion action: "Lake Path · 3 suggestions", or the count deleted on request. */
+export function suggestionHistoryText(f) {
+  try {
+    const s = JSON.parse(f?.snapshot ?? '{}');
+    const count = Number.isInteger(s.count) ? s.count : (f?.reportCount ?? 0);
+    if (f?.targetType === 'trailSuggestions') return `${suggestionCount(count)} deleted at the walker's request`;
+    return [s.name, suggestionCount(count)].filter(Boolean).join(' · ');
+  } catch {
+    return '';
+  }
+}
+
+/** An OpenStreetMap editor link at a point (zoom 18), or null. Built only from the two numbers. */
+export function osmEditLink(latitude, longitude) {
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+  if (Math.abs(latitude) > 90 || Math.abs(longitude) > 180) return null;
+  return `https://www.openstreetmap.org/edit#map=18/${latitude.toFixed(5)}/${longitude.toFixed(5)}`;
+}
+
+function xmlText(s) {
+  return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', '\'': '&apos;' }[c]))
+    // Characters XML 1.0 can't hold at all.
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]/g, '');
+}
+
+/**
+ * A GPX 1.1 file of one line, made on the page (no network): the track is
+ * named `name`, and holds the points at the line's own precision (5
+ * decimals). Nothing else: no times, no walker, no token.
+ */
+export function gpxDocument(name, points) {
+  if (!Array.isArray(points) || points.length < 2) throw new Error('A GPX track needs a line of at least two points.');
+  const title = xmlText(name || 'Trail suggestion');
+  const pts = points.map((p) => `      <trkpt lat="${p.latitude.toFixed(5)}" lon="${p.longitude.toFixed(5)}"/>`).join('\n');
+  return '<?xml version="1.0" encoding="UTF-8"?>\n'
+    + '<gpx version="1.1" creator="Wockett Staff" xmlns="http://www.topografix.com/GPX/1/1">\n'
+    + `  <metadata><name>${title}</name></metadata>\n`
+    + `  <trk>\n    <name>${title}</name>\n    <trkseg>\n${pts}\n    </trkseg>\n  </trk>\n</gpx>\n`;
+}
+
+/** "wockett-suggestion-lake-path.gpx": letters and digits only, so no name can make a path. */
+export function gpxFileName(name) {
+  const slug = String(name ?? '').normalize('NFKD').replace(/[^\x00-\x7f]/g, '').toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40).replace(/-+$/, '');
+  return `wockett-suggestion${slug ? `-${slug}` : ''}.gpx`;
 }

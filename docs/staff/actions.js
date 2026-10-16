@@ -6,6 +6,7 @@ import {
   canSuspend, featureUntil, featuredRecordName, featuredFields,
   summaryRecordName, summaryFields, retentionCutoff, expiredReports, knownValue, walkerId, walkerVerdict,
   contributionStatusFields, nominationStatusNames, statusDecidedAt, statusesToWithdraw,
+  SUGGESTION_STATUS_TRAIL_KEY, acceptPlan, declinePlan, suggestionStatusNames,
 } from './logic.js';
 
 /**
@@ -428,22 +429,45 @@ export async function publishNominationStatuses(store, { trail, now = Date.now()
   if (!names.length) return { written: 0, planned: 0, blocked: 0, withoutToken, error: null };
   // Checked before anything is written: a trail with no usable name or key
   // throws here, with nothing to take back.
-  contributionStatusFields({ ...NOMINATION, trailKey: trail.trailKey, trailName: trail.trailName, decidedAt: now });
-  await store.query('ContributionStatus', { equals: ['trailKey', trail.trailKey], max: 1 });
+  return writeStatuses(store, {
+    names, withoutToken, target: trail.trailKey, now,
+    status: { ...NOMINATION, trailKey: trail.trailKey, trailName: trail.trailName },
+  });
+}
+
+/**
+ * Writes the `ContributionStatus` records `names`, each saying `status`
+ * (kind, status, trailKey, trailName), for nominations and suggestions
+ * alike. Checked before anything is written: fields a status can't hold throw
+ * here, with nothing to take back. Then the schema probe: if the
+ * environment's schema lacks the type, the first save would create it with
+ * CloudKit's default grants (anyone could create statuses), so nothing is
+ * written and the query's error is thrown. A name already held by a record of
+ * another type is skipped and counted in `blocked`. A "statusPublished"
+ * ModerationAction with the count comes first (never a token, a status name or
+ * who sent it); then each record, created, or replaced when it exists. One
+ * failed record doesn't stop the rest. If none could be written, the action
+ * is taken back and the first error thrown (carrying `blocked`); otherwise
+ * the action is corrected to the number written, returned with the first error.
+ */
+async function writeStatuses(store, { names, withoutToken, target, status, now }) {
+  const { kind, status: said, trailKey, trailName } = status;
+  contributionStatusFields({ kind, status: said, trailKey, trailName, decidedAt: now });
+  await store.query('ContributionStatus', { equals: ['trailKey', trailKey], max: 1 });
   const existing = await store.fetch(names);
   const todo = names.filter((n) => !existing.has(n) || existing.get(n)?.recordType === 'ContributionStatus');
   const blocked = names.length - todo.length;
   if (!todo.length) return { written: 0, planned: 0, blocked, withoutToken, error: null };
   const fields = actionFields({
-    target: trail.trailKey, type: 'contribution', action: 'statusPublished', reportCount: todo.length,
-    snapshot: JSON.stringify({ trailKey: trail.trailKey, trailName: trail.trailName, ...NOMINATION, count: todo.length, blocked }),
+    target, type: 'contribution', action: 'statusPublished', reportCount: todo.length,
+    snapshot: JSON.stringify({ trailKey, trailName, kind, status: said, count: todo.length, blocked }),
   });
   const written = await store.create('ModerationAction', fields);
   let done = 0;
   let firstError = null;
   for (const name of todo) {
-    const decidedAt = statusDecidedAt(existing.get(name), { ...NOMINATION, trailKey: trail.trailKey }, now);
-    const record = contributionStatusFields({ ...NOMINATION, trailKey: trail.trailKey, trailName: trail.trailName, decidedAt });
+    const decidedAt = statusDecidedAt(existing.get(name), { kind, status: said, trailKey }, now);
+    const record = contributionStatusFields({ kind, status: said, trailKey, trailName, decidedAt });
     try {
       if (existing.has(name)) await store.replaceNamed('ContributionStatus', name, record);
       else await store.createNamed('ContributionStatus', name, record);
@@ -550,4 +574,102 @@ export async function unfeatureTrailAndWithdraw(store, { trail, statuses = [], n
     return { unfeatured: false, withdrawn, error };
   }
   return { unfeatured: true, withdrawn, error: null };
+}
+
+// MARK: - Trail suggestions (spec feat/trail-suggestions, PR 1)
+
+const SUGGESTION = { kind: 'suggestion', status: 'added', trailKey: SUGGESTION_STATUS_TRAIL_KEY };
+
+/**
+ * Accepts a group of suggestions of one path: one "accepted" ModerationAction
+ * (targetType `suggestion`) naming the accepted name, the member whose line is
+ * accepted and every member's record name, so they all leave the queue
+ * (`acceptPlan` refuses a name or line over the caps before anything is
+ * written). In this collect-only phase that is all Accept records: no
+ * `CommunityTrail` or anything else anyone but a Moderator can read.
+ */
+export async function acceptSuggestions(store, { group, name, note = '' }) {
+  const plan = acceptPlan(group, name);
+  await store.create('ModerationAction', actionFields({
+    target: plan.recordName, type: 'suggestion', action: 'accepted', note, reportCount: plan.recordNames.length,
+    snapshot: JSON.stringify(plan.snapshot),
+  }));
+  return plan;
+}
+
+/**
+ * Tells the walkers whose suggestions are in `group` that it was added: one
+ * `ContributionStatus` (kind `suggestion`, status `added`, when; no name)
+ * per claim token among ALL the group's members, each device's, at most
+ * TOKENS_PER_SUGGESTER per walker. Same order and safeguards as telling
+ * nominators (`writeStatuses`). Nothing to tell writes nothing.
+ */
+export async function publishSuggestionStatuses(store, { group, name, target, now = Date.now() }) {
+  const { names, withoutToken, capped } = suggestionStatusNames(group?.members ?? []);
+  if (!names.length) return { written: 0, planned: 0, blocked: 0, withoutToken, capped, error: null };
+  const out = await writeStatuses(store, {
+    names, withoutToken, target, now, status: { ...SUGGESTION, trailName: String(name ?? '').trim() },
+  });
+  return { ...out, capped };
+}
+
+/**
+ * Accept, then tell the walkers. The decision stands whatever happens to the
+ * statuses: a failure there comes back as `told.error` (Accept again finishes
+ * the job, since writing again rewrites the same records).
+ */
+export async function acceptSuggestionsAndTell(store, { group, name, note = '', now = Date.now() }) {
+  const plan = await acceptSuggestions(store, { group, name, note });
+  let told;
+  try {
+    told = await publishSuggestionStatuses(store, { group, name: plan.name, target: plan.recordName, now });
+  } catch (error) {
+    told = { written: 0, planned: null, blocked: Number.isInteger(error?.blocked) ? error.blocked : 0, withoutToken: 0, capped: 0, error };
+  }
+  return { plan, told };
+}
+
+/**
+ * Declines a group: one "declined" ModerationAction with every member's
+ * record name, so they leave the queue (a later suggestion of the same path
+ * comes back). Nobody is told and no status is written or withdrawn: there is
+ * no negative status, ever (Joe, 2026-10-16).
+ */
+export async function declineSuggestions(store, { group, note = '' }) {
+  const plan = declinePlan(group);
+  await store.create('ModerationAction', actionFields({
+    target: plan.recordName, type: 'suggestion', action: 'declined', note, reportCount: plan.recordNames.length,
+    snapshot: JSON.stringify(plan.snapshot),
+  }));
+  return plan;
+}
+
+/**
+ * The suggestions one person sent, for a request to delete them (by email,
+ * with the identifier the app shows them: their CloudKit user record name).
+ * Refuses anything that isn't such an id before asking CloudKit.
+ */
+export async function findSuggestionsBy(store, { identifier, max = 5000 }) {
+  const account = walkerId(identifier);
+  if (!account) throw new Error('That isn\'t a Wockett identifier: it starts with _ and has only letters and digits.');
+  const { records, more } = await store.queryByCreator('TrailSuggestion', account, { max });
+  return { account, records, more };
+}
+
+/**
+ * Deletes the suggestions `findSuggestionsBy` found: an "erased" action with
+ * the count first (never the identifier), then the suggestions, 200 at a
+ * time. A status already written for an accepted one stays: it holds no
+ * identifier, and the phone that holds the token is the only one that can
+ * find it.
+ */
+export async function deleteSuggestionsBy(store, { records }) {
+  const names = (records ?? []).filter((r) => r?.recordType === 'TrailSuggestion').map((r) => r.recordName);
+  if (!names.length) return { deleted: 0, error: null };
+  const fields = actionFields({
+    target: 'TrailSuggestion', type: 'trailSuggestions', action: 'erased', reportCount: names.length,
+    snapshot: JSON.stringify({ count: names.length }),
+  });
+  const written = await store.create('ModerationAction', fields);
+  return deleteInChunks(store, names, written, fields);
 }
