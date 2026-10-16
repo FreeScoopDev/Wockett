@@ -1,0 +1,5 @@
+0.5 | 2.0 | Walked a route you want again?
+2.5 | 6.0 | Open the walk summary after you finish.
+6.5 | 11.0 | Tap Save as Custom Route.
+11.5 | 15.0 | Find it later under My Routes.
+15.5 | 20.0 | Wockett: save any walk as a route.

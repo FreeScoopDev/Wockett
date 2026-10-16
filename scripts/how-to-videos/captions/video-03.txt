@@ -1,0 +1,5 @@
+0.5 | 2.0 | Named trails, ready to walk.
+2.5 | 6.0 | Open Routes, then tap Trails.
+6.5 | 11.0 | Browse trails by name.
+11.5 | 16.0 | Open a trail to see its details.
+16.5 | 21.0 | Wockett: named trails for your next walk.

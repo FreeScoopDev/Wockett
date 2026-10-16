@@ -1,0 +1,6 @@
+0.5 | 2.0 | Send a friend a challenge in three taps.
+2.5 | 6.0 | Open Community, then tap Start a challenge.
+6.5 | 11.0 | Set the distance goal for your challenge.
+11.5 | 16.0 | Tap Share Challenge to send it.
+16.5 | 20.0 | Friends open it from a wockett.app link.
+20.5 | 24.0 | Wockett: start a challenge and share it.

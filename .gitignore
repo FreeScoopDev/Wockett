@@ -101,3 +101,10 @@ venv/
 # toolkit config (.claude/app.json) is the one tracked file.
 .claude/*
 !.claude/app.json
+
+# How-to video pipeline: raw clips and renders go to ~/Desktop/Apps/Wockett-videos,
+# outside the repo. These guard against one landing inside it by mistake.
+scripts/how-to-videos/raw/
+scripts/how-to-videos/*.mov
+scripts/how-to-videos/*.mp4
+scripts/how-to-videos/*.xcresult

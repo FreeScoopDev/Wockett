@@ -1,0 +1,6 @@
+0.5 | 2.0 | Draw your own route in minutes.
+2.5 | 6.0 | Open My Routes, then tap +.
+6.5 | 10.0 | Choose Loop to return to your start.
+10.5 | 14.0 | Tap Undo to remove the last point.
+14.5 | 19.0 | Tap Save when the route looks right.
+19.5 | 24.0 | Wockett: build your own walking route.

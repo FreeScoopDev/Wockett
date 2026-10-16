@@ -1,0 +1,5 @@
+0.5 | 2.0 | Going further than you planned?
+2.5 | 6.0 | During a route, tap Turn Around here.
+6.5 | 11.0 | Turn around at any point on the route.
+11.5 | 16.0 | Your route updates from this point.
+16.5 | 21.0 | Wockett: turn around, anywhere on your route.

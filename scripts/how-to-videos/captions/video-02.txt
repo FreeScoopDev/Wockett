@@ -1,0 +1,6 @@
+0.5 | 2.0 | Find a loop from your door.
+2.5 | 6.0 | Open Routes, then tap Find Routes.
+6.5 | 10.0 | Pick 20, 30 or 45 minutes.
+10.5 | 15.0 | Wockett suggests loops that start at your door.
+15.5 | 20.0 | Tap a route to see it on the map.
+20.5 | 24.0 | Wockett: find a loop from your door.
