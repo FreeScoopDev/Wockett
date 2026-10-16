@@ -19,7 +19,7 @@ import {
   unfeatureLookup, errorClause, featureTellText, toldText, withdrawText, withdrawnText, partialWithdrawText, contributionCountText,
   groupSuggestions, routePaths, suggestionIssueText, suggestionStatusNames, acceptTellText, suggestionToldText, suggestionHistoryText,
   osmEditLink, gpxDocument, gpxFileName, SUGGESTION_FACTS, OVERLAP_TOLERANCE_M, OVERLAP_SHARE, suggestionCount,
-  acceptPlan, isUnknownRecordType,
+  acceptPlan, isUnknownRecordType, overCap, SUGGESTION_CAPS,
 } from './logic.js';
 import {
   removeItem, dismissItem, suspendAccount, liftSuspension, itemsOf, OWNED_TYPES, featureTrailAndTell, unfeatureTrailAndWithdraw, dismissNominations,
@@ -1167,7 +1167,7 @@ function confirmAcceptSuggestion(group) {
       + `It is recorded as accepted (${suggestionCount(group.members.length)}, all leave the queue), with the longest line within the caps.`),
     el('p', {}, acceptTellText(tell), ' What everyone can read says only Added and when: not the name, the line or who suggested it.'),
     el('label', {}, 'Accept it as (edit if needed) ',
-      el('input', { name: 'name', required: true, value: clip(group.name, 200), autocomplete: 'off' })),
+      el('input', { name: 'name', required: true, value: overCap(group.name, SUGGESTION_CAPS.name) ? clip(group.name, 200) : group.name, autocomplete: 'off' })),
     el('p', { class: 'small status error', hidden: true, 'data-role': 'problem' }),
     el('label', {}, 'Note (optional, History only)', el('textarea', { name: 'note', maxlength: 1000 })),
     el('div', { class: 'actions' },

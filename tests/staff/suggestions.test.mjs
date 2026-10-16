@@ -1244,6 +1244,8 @@ test('a card draws the accepted line and at most 20 others', () => {
   assert.match(fn(app, 'suggestionSvg'), /\.slice\(0, 20\)\.map\(\(m\) => m\.line\)/);
   assert.match(fn(app, 'suggestionCard'), /clip\(g\.name, 200\)/);
   assert.match(fn(app, 'suggestionCard'), /clip\(n\.note, 600\)/);
+  // A name within the caps is offered whole (clipping by units could split an emoji); only one over them is clipped.
+  assert.match(fn(app, 'confirmAcceptSuggestion'), /value: overCap\(group\.name, SUGGESTION_CAPS\.name\) \? clip\(group\.name, 200\) : group\.name,/);
 });
 
 test('samples are made once per line, every 25 m, and land where the line is', () => {
