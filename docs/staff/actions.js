@@ -367,11 +367,31 @@ export async function deleteReportsBy(store, { records }) {
 const NOMINATION = { kind: 'nomination', status: 'featured' };
 
 /**
+ * Every nomination of `trailKey`, not one per person (`everyNomination`):
+ * each claim token belongs to the device that sent it, so someone who
+ * nominated from two devices, or again after a reinstall, holds two, and
+ * each device shows Featured only if its own token's status exists.
+ */
+function trailNominations(store, trailKey) {
+  return store.query('TrailNomination', { equals: ['trailKey', trailKey], max: 5000, everyNomination: true });
+}
+
+/**
+ * How many nominations of `trailKey` Feature would tell (one per claim
+ * token), for the Feature confirm. From the same query Feature uses, so the
+ * number is the one it writes, less any name a crafted record has taken.
+ */
+export async function countNominationsToTell(store, { trailKey }) {
+  const { records } = await trailNominations(store, trailKey);
+  return nominationStatusNames(records, trailKey).names.length;
+}
+
+/**
  * Tells a featured trail's nominators: one `ContributionStatus` per
- * nomination of the trail that carries a claim token (ck.js has already
- * turned each token into its record name, `statusName`; the token never
- * reaches here). Called after `featureTrail` has succeeded, with the trail
- * as featured. Nominations without a token get nothing, and none at all
+ * nomination of the trail that carries a claim token, every one of them, so
+ * a person's other devices are told too (ck.js has already turned each token
+ * into its record name, `statusName`; the token never reaches here).
+ * Called after `featureTrail` has succeeded, with the trail as featured. Nominations without a token get nothing, and none at all
  * writes nothing: no History, no error.
  *
  * Before anything is written, `ContributionStatus` is queried: if the
@@ -392,7 +412,7 @@ const NOMINATION = { kind: 'nomination', status: 'featured' };
  * corrected to the number written, returned with the first error.
  */
 export async function publishNominationStatuses(store, { trail, now = Date.now() }) {
-  const { records: nominations } = await store.query('TrailNomination', { equals: ['trailKey', trail.trailKey], max: 5000 });
+  const { records: nominations } = await trailNominations(store, trail.trailKey);
   const { names, withoutToken } = nominationStatusNames(nominations, trail.trailKey);
   if (!names.length) return { written: 0, planned: 0, blocked: 0, withoutToken, error: null };
   // Checked before anything is written: a trail with no usable name or key

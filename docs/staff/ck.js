@@ -128,10 +128,18 @@ export function buildQuery(recordType, { equals, sinceMs, beforeMs, createdBy } 
 
 /**
  * One nomination per person per trail, the newest (records arrive newest
- * first). The app names a nomination so CloudKit refuses a second, but any
- * client can create records under other names: without this, one account
- * could outvote everyone. Done here, on the raw records, because the
- * nominator never leaves this file (`plain` drops it).
+ * first), for the nomination queue's counts. Nothing on CloudKit's side stops
+ * a second: the app names each nomination with a random UUID (from the
+ * contribution-status app release; earlier versions derived the name from
+ * the account and trail), so one person nominating from two devices, or
+ * after a reinstall, leaves two, and any client can create more under names
+ * of its choosing. Without this, one account could outvote everyone. Done
+ * here, on the raw records, because the nominator never leaves this file
+ * (`plain` drops it).
+ *
+ * Not for telling nominators: each nomination's claim token belongs to the
+ * device that sent it, so a status is written for every one
+ * (`everyNomination`), or that person's other devices would show Sent forever.
  */
 export function onePerNominator(records) {
   const seen = new Set();
@@ -174,8 +182,12 @@ export function reporterToken(account) {
   return reporterTokens.get(account);
 }
 
-/** Every page of a query, up to `max` records. `more` says some were left out. */
-export async function pagedQuery(db, query, { max = 1000, pageSize = 200, onlyCreator } = {}) {
+/**
+ * Every page of a query, up to `max` records. `more` says some were left out.
+ * Nominations come one per person per trail (`onePerNominator`) unless
+ * `everyNomination` is set, as telling nominators needs.
+ */
+export async function pagedQuery(db, query, { max = 1000, pageSize = 200, onlyCreator, everyNomination = false } = {}) {
   let raw = [];
   let response = check(await db.performQuery(query, { resultsLimit: Math.min(pageSize, max) }));
   raw.push(...response.records);
@@ -190,7 +202,7 @@ export async function pagedQuery(db, query, { max = 1000, pageSize = 200, onlyCr
   if (query.recordType === 'CommunityReport') {
     for (const r of raw) if (r.created?.userRecordName) reportFilers.set(r.recordName, r.created.userRecordName);
   }
-  const kept = query.recordType === 'TrailNomination' ? onePerNominator(raw) : raw;
+  const kept = query.recordType === 'TrailNomination' && !everyNomination ? onePerNominator(raw) : raw;
   const records = [];
   for (const r of kept.slice(0, max)) {
     const out = plain(r);
@@ -255,10 +267,11 @@ export function connect({ CloudKit, containerIdentifier, apiToken, environment }
     /**
      * Records of `recordType`, newest first, following pages up to `max`.
      * `equals` is [field, value]; `sinceMs` keeps records created since then,
-     * `beforeMs` records created before then.
+     * `beforeMs` records created before then. `everyNomination` keeps every
+     * nomination rather than one per person per trail (`onePerNominator`).
      */
-    query(recordType, { equals, sinceMs, beforeMs, max = 1000, pageSize = 200 } = {}) {
-      return pagedQuery(db, buildQuery(recordType, { equals, sinceMs, beforeMs }), { max, pageSize });
+    query(recordType, { equals, sinceMs, beforeMs, max = 1000, pageSize = 200, everyNomination = false } = {}) {
+      return pagedQuery(db, buildQuery(recordType, { equals, sinceMs, beforeMs }), { max, pageSize, everyNomination });
     },
 
     /**

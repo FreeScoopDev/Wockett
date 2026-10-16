@@ -101,8 +101,11 @@ rules need an ordinary account to be proved.
   "Featured near you" for everyone within 10 miles, with your note;
   **Dismiss** clears it until it is nominated again. When nominations
   disagree on a trail's name or place, the card says so: check the map.
-  Featuring also **tells the nominators**: for each nomination of the trail
-  that carries a claim token (sent by an app version that can hear back), it
+  Featuring also **tells the nominators**: for every nomination of the trail
+  that carries a claim token (sent by an app version that can hear back),
+  including a person's second device or a nomination sent again after a
+  reinstall (each token is one device's, so the queue's one-per-person count
+  is not used here), it
   writes a `ContributionStatus` everyone can read, named
   `status.<SHA-256 of the token>`, holding only `nomination`, `featured`, the
   trail's key and name, and when. The phone that holds the token is the only
@@ -117,7 +120,9 @@ rules need an ordinary account to be proved.
   nomination can choose its own record name) is skipped and counted, so it
   can't stop the others.
 - **Featured**: what is featured, until when, with Change and Unfeature.
-  **Unfeature** first counts the nominators told, says so in its confirm,
+  The Feature confirm says how many nominations it tells, counted from the
+  same query Feature writes from.
+  **Unfeature** first counts the nominations told, says so in its confirm,
   then withdraws their statuses (they go back to Sent in the app) before the
   trail leaves Featured; if withdrawing fails, the trail stays featured and
   Unfeature can be run again. If the count can't be checked, only

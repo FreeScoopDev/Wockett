@@ -819,8 +819,10 @@ export function verdictText(fact, verdict) {
 
 /**
  * Reports counted per trail and fact. Each walker counts once per trail and
- * fact, with their newest answer: the app names a report so CloudKit refuses a
- * second, but any client can create records under other names. Reports with
+ * fact, with their newest answer. Nothing on CloudKit's side stops a second:
+ * the app names each report with a random UUID, so a walker can leave more
+ * than one (another device, a reinstall), and any client can create records
+ * under names of its choosing. Reports with
  * an unknown fact or value, or an impossible trail key, are ignored and
  * counted in `ignored`; reports whose walker is unknown can't be counted once
  * each, so they are left out and counted in `unattributed`.
@@ -1040,7 +1042,9 @@ export function contributionStatusFields({ kind, status, trailKey, trailName, de
 /**
  * The status records to write when `trailKey` is featured: one per distinct
  * status name among that trail's nominations (sorted, so the order never
- * depends on the query's). Nominations sent before the app wrote a claim
+ * depends on the query's). Pass every nomination, not one per person: each
+ * token is one device's, and a person's other devices are told only through
+ * their own. Nominations sent before the app wrote a claim
  * token have none: they are counted in `withoutToken` and get nothing.
  */
 export function nominationStatusNames(nominations, trailKey) {
@@ -1099,13 +1103,18 @@ export function errorClause(error) {
   return describeError(error).replace(/\.$/, '');
 }
 
-/** The Feature confirm's line about nominators. `canTell`: how many can be told, or null when unknown. */
+/**
+ * The Feature confirm's line about nominators. `canTell`: how many
+ * nominations can be told (one per claim token, so one per device that sent
+ * one, not one per person), or null when unknown.
+ */
 export function featureTellText(canTell) {
   if (canTell === null || canTell === undefined) {
-    return 'Its nominators are told too: each nomination sent by a version of the app that can hear back shows Featured in their My contributions.';
+    return 'Its nominators are told too: each nomination sent by a version of the app that can hear back shows Featured in My contributions on the device that sent it.';
   }
-  if (canTell === 0) return 'None of its nominators can be told yet: their nominations were sent before the app could hear back.';
-  return `It also tells ${canTell} nominator${canTell === 1 ? '' : 's'}: their My contributions shows Featured.`;
+  if (canTell === 0) return 'None of its nominations can be told yet: they were sent before the app could hear back.';
+  return `It also tells ${canTell} nomination${canTell === 1 ? '' : 's'}: each shows Featured in My contributions on the device that sent it, `
+    + 'so someone who nominated it from two devices sees it on both.';
 }
 
 /** What telling the nominators did (`featureTrailAndTell`'s `told`), as sentences after "Featured …". */
@@ -1114,12 +1123,12 @@ export function toldText(told) {
     ? ` ${told.blocked} couldn't be told: another record already has that name (a crafted nomination, most likely).` : '';
   if (told.error) {
     const done = told.planned
-      ? `Told ${told.written} of ${told.planned} nominators; the rest failed: `
+      ? `Told ${told.written} of ${told.planned} nominations; the rest failed: `
       : 'Couldn\'t tell its nominators: ';
     return `${done}${errorClause(told.error)}. To finish, open Featured, Change note or length, and Feature (Keep).${blocked}`;
   }
   if (!told.written) return blocked.trim();
-  return `Told ${told.written} nominator${told.written === 1 ? '' : 's'}.${blocked}`;
+  return `Told ${told.written} nomination${told.written === 1 ? '' : 's'}.${blocked}`;
 }
 
 /**

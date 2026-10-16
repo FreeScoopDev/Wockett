@@ -15,12 +15,12 @@ import {
   groupNominations, nominationQueue, FEATURE_LENGTHS, BLURB_LIMIT, mapsLink, featuredRows, formatDistance,
   ACTIVITY_KINDS,
   tallyWalkerReports, summaryRows, summaryRecordName, summaryStanding, verdictText, factLabel, valueLabel, countsOf,
-  MIN_AGREEING, AGREEMENT, RETENTION_MONTHS, WALKER_FACTS, CONTRIBUTION_KINDS, knownContribution, nominationStatusNames,
+  MIN_AGREEING, AGREEMENT, RETENTION_MONTHS, WALKER_FACTS, CONTRIBUTION_KINDS, knownContribution,
   unfeatureLookup, errorClause, featureTellText, toldText,
 } from './logic.js';
 import {
   removeItem, dismissItem, suspendAccount, liftSuspension, itemsOf, OWNED_TYPES, featureTrailAndTell, unfeatureTrailAndWithdraw, dismissNominations,
-  findNominationStatuses,
+  findNominationStatuses, countNominationsToTell,
   publishSummary, unpublishSummary, findExpiredReports, deleteExpiredReports, findReportsBy, deleteReportsBy,
 } from './actions.js';
 
@@ -530,8 +530,7 @@ async function renderNominations(seq) {
         g.notes.length ? el('ul', { class: 'notes' }, g.notes.slice(0, 10).map((n) => el('li', {}, `“${n.note}” `, el('span', { class: 'muted small' }, ago(n.at))))) : null,
         mapsAnchor(g.trail),
         el('div', { class: 'actions' },
-          el('button', { class: 'btn primary', onclick: () => confirmFeature(g.trail, featuredByKey.get(g.trailKey) ?? null,
-            nominationStatusNames(g.nominations, g.trailKey).names.length) },
+          el('button', { class: 'btn primary', onclick: () => confirmFeature(g.trail, featuredByKey.get(g.trailKey) ?? null) },
             featuredKeys.has(g.trailKey) ? 'Feature again' : 'Feature'),
           el('button', { class: 'btn', onclick: () => confirmDismissNominations(g) }, 'Dismiss')));
     } catch (error) {
@@ -550,9 +549,19 @@ async function renderNominations(seq) {
 
 /**
  * `current`: the feature being changed, so its note and end start filled in.
- * `canTell`: how many of the nominations shown can be told, when known.
+ * Counts the nominations Feature would tell first, from the same query
+ * Feature uses (every nomination, a person's other devices included); if
+ * that fails, the confirm says nominators are told without a number.
  */
-function confirmFeature(trail, current = null, canTell = null) {
+async function confirmFeature(trail, current = null) {
+  let canTell = null;
+  say('Checking its nominations…');
+  try {
+    canTell = await countNominationsToTell(store, { trailKey: trail.trailKey });
+  } catch (error) {
+    console.error(error);
+  }
+  say('');
   const keep = current && !current.ended
     ? el('option', { value: 'keep', selected: true },
       current.until === null ? 'Keep: until I unfeature it' : `Keep: until ${new Date(current.until).toLocaleDateString()}`)
@@ -677,8 +686,8 @@ async function confirmUnfeature(f) {
       : lookup === 'unchecked' ? el('p', { class: 'status error' }, `Couldn't check for nominators told it was featured: ${errorClause(lookupError)}. `
         + 'Cancel and try again in a minute. Unfeature anyway only if this keeps happening: anyone already told would keep '
         + 'seeing Featured, and no screen could withdraw it.')
-        : n ? el('p', {}, `It also withdraws the Featured status ${n} nominator${n === 1 ? '' : 's'} see${n === 1 ? 's' : ''} in My contributions. `
-          + 'They go back to Sent.') : null,
+        : n ? el('p', {}, `It also withdraws the Featured status of ${n} nomination${n === 1 ? '' : 's'} in My contributions, `
+          + 'on every device that sent one. They go back to Sent.') : null,
     el('div', { class: 'actions' },
       el('button', { class: 'btn', value: 'cancel', formnovalidate: true }, 'Cancel'),
       lookup === 'unchecked'
@@ -693,13 +702,13 @@ async function confirmUnfeature(f) {
         note: lookup === 'unchecked' ? 'Unfeatured anyway: nominators\' statuses could not be checked, so any were left in place.' : '' });
       dialog.close();
       if (!out.unfeatured) {
-        say(`Withdrew ${out.withdrawn.deleted} of ${n} nominators' statuses, then: ${errorClause(out.error)}. `
+        say(`Withdrew ${out.withdrawn.deleted} of ${n} nominations' statuses, then: ${errorClause(out.error)}. `
           + 'It is still featured: Unfeature again to finish, or Change note or length and Feature to tell them again.', { error: true });
         return;
       }
       trailsActedOn.set(`unfeatured:${f.trail.trailKey}`, Date.now());
       const w = out.withdrawn.deleted;
-      say(`Unfeatured “${f.trail.trailName}”.${w ? ` Withdrew ${w} nominator${w === 1 ? '\'s status' : 's\' statuses'}.` : ''}`);
+      say(`Unfeatured “${f.trail.trailName}”.${w ? ` Withdrew ${w} nomination${w === 1 ? '\'s status' : 's\' statuses'}.` : ''}`);
       setTimeout(() => render(), 600);
     } catch (error) {
       dialog.close();
@@ -1071,12 +1080,12 @@ const ACTION_LABELS = {
 
 const TARGET_LABELS = { account: 'Account', trail: 'Trail', trailFact: 'Walker facts', walkerReports: 'Walker reports', contribution: 'Contributions' };
 
-/** "Lake Loop · 3 nominators: Featured" from a contribution-status action's snapshot (counts only). */
+/** "Lake Loop · 3 nominations: Featured" from a contribution-status action's snapshot (counts only, one per claim token). */
 function contributionSummary(f) {
   try {
     const s = JSON.parse(f.snapshot ?? '{}');
     const count = s.count ?? f.reportCount ?? 0;
-    const who = s.kind === 'nomination' ? `nominator${count === 1 ? '' : 's'}` : `contributor${count === 1 ? '' : 's'}`;
+    const who = s.kind === 'nomination' ? `nomination${count === 1 ? '' : 's'}` : `contribution${count === 1 ? '' : 's'}`;
     const label = knownContribution(s.kind, s.status) ? CONTRIBUTION_KINDS[s.kind].statuses[s.status] : String(s.status ?? '');
     return [s.trailName ?? s.trailKey, `${count} ${who}: ${label}`].filter(Boolean).join(' · ');
   } catch {
