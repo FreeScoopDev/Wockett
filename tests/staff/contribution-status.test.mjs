@@ -428,7 +428,9 @@ test('Unfeature and History count nominations, not nominators', () => {
   assert.equal(partialWithdrawText(1, 1), 'Withdrew 1 of 1 nomination\'s status');
   assert.equal(partialWithdrawText(2, 3), 'Withdrew 2 of 3 nominations\' statuses');
   assert.equal(contributionCountText('nomination', 3), '3 nominations');
-  assert.equal(contributionCountText('suggestion', 1), '1 contribution');
+  assert.equal(contributionCountText('suggestion', 1), '1 suggestion');
+  assert.equal(contributionCountText('suggestion', 2), '2 suggestions');
+  assert.equal(contributionCountText('other', 1), '1 contribution');
 });
 
 test('a failed count still opens the Feature confirm, saying they are told without a number', async () => {

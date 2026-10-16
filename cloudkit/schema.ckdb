@@ -372,6 +372,28 @@ DEFINE SCHEMA
         GRANT READ TO "_world"
     );
 
+    RECORD TYPE TrailSuggestion (
+        "___createTime" TIMESTAMP QUERYABLE SORTABLE,
+        "___createdBy"  REFERENCE QUERYABLE,
+        "___etag"       STRING,
+        "___modTime"    TIMESTAMP,
+        "___modifiedBy" REFERENCE,
+        "___recordID"   REFERENCE QUERYABLE,
+        claimToken      STRING,
+        dogs            STRING,
+        lengthMeters    DOUBLE,
+        line            STRING,
+        name            STRING,
+        note            STRING,
+        pointCount      INT64,
+        region          STRING QUERYABLE,
+        stroller        STRING,
+        surface         STRING,
+        wheelchair      STRING,
+        GRANT READ, WRITE TO Moderator,
+        GRANT CREATE TO "_icloud"
+    );
+
     RECORD TYPE Users (
         "___createTime" TIMESTAMP,
         "___createdBy"  REFERENCE,

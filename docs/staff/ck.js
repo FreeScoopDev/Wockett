@@ -2,7 +2,7 @@
 // from Apple's CDN by index.html). Everything else works on plain records, so
 // the rules in logic.js are tested without a network.
 //
-import { isGone, isValidRecordName, isClaimToken, contributionStatusName } from './logic.js';
+import { isGone, isValidRecordName, isClaimToken, contributionStatusName, REQUEST_REASONS } from './logic.js';
 
 // Every call is made as the signed-in iCloud user. CloudKit's roles decide
 // what that user may read, write and delete; this file grants nothing.
@@ -15,11 +15,11 @@ import { isGone, isValidRecordName, isClaimToken, contributionStatusName } from 
 export const CREATOR_TYPES = new Set(['SharedRoute', 'WocketAchievement', 'Challenge', 'ChallengeEntry', 'CommunityName']);
 
 /**
- * Fields the page never holds. A nomination's `claimToken` is the secret its
- * phone uses to find its own status record (spec feat/contribution-status):
- * shown, logged or copied anywhere, it would tell whoever saw it which status
- * is whose. `nominationStatusName` turns it into the status name here and
- * nothing else keeps it.
+ * Fields the page never holds. A nomination's or suggestion's `claimToken` is
+ * the secret its phone uses to find its own status record (spec
+ * feat/contribution-status): shown, logged or copied anywhere, it would tell
+ * whoever saw it which status is whose. `claimStatusName` turns it into the
+ * status name here and nothing else keeps it.
  */
 export const NEVER_PLAIN_FIELDS = new Set(['claimToken']);
 
@@ -184,6 +184,58 @@ export function fewPerNominator(records, limit = TOKENS_PER_NOMINATOR) {
 }
 
 /**
+ * One report per person per item, for the Reports queue's counts.
+ * Until the app named reports randomly (fix/community-report-random-names)
+ * a report's name came from the item and the reporter's account, so CloudKit
+ * refused a second; anyone could compute that name, and the refusal told them
+ * who had reported what. Now one person reporting from two devices, or after
+ * a reinstall, leaves two records, and any client can create more. The
+ * oldest is kept so that a person who already reported an item cannot reopen
+ * it after a dismissal by reporting again, as they never could before. An
+ * owner's request to delete a challenge keeps the oldest two per person per
+ * challenge per UTC day: the app allows one per *local* day, and a local day
+ * overlaps at most two UTC days (in the Americas an evening request and the
+ * next morning's share one), so two let a request after a dismissal through
+ * while capping reopens at two a day (critic runs 1 and 2). The request rule
+ * applies only to challenges: an "ownerRequest" on anything else counts as a
+ * report, so the reason can't be used to get around the rule above.
+ * Records with no creator or no target are all kept. Old computed names and
+ * new random ones are treated alike: names are never read. Done here, on the
+ * raw records, so the reporter never leaves this file.
+ */
+export function onePerReporter(records) {
+  const keyOf = (r) => {
+    const who = r.created?.userRecordName;
+    const target = r.fields?.targetRecordName?.value;
+    if (!who || !target) return null;
+    const reason = r.fields?.reason?.value;
+    if (typeof reason === 'string' && Object.hasOwn(REQUEST_REASONS, reason) && r.fields?.targetType?.value === 'challenge') {
+      const day = new Date(r.created?.timestamp ?? 0).toISOString().slice(0, 10);
+      return `${who}\n${target}\nrequest@${day}`;
+    }
+    return `${who}\n${target}\nreport`;
+  };
+  const limitOf = (key) => (key.includes('\nrequest@') ? REQUESTS_PER_UTC_DAY : 1);
+  // Oldest first by creation time, then by name, so equal timestamps don't
+  // make the result depend on the order the records arrive in.
+  const byAge = (a, b) => ((a.created?.timestamp ?? 0) - (b.created?.timestamp ?? 0))
+    || (String(a.recordName) < String(b.recordName) ? -1 : String(a.recordName) > String(b.recordName) ? 1 : 0);
+  const groups = new Map();
+  for (const r of records) {
+    const key = keyOf(r);
+    if (key === null) continue;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(r);
+  }
+  const kept = new Set();
+  for (const [key, list] of groups) for (const r of [...list].sort(byAge).slice(0, limitOf(key))) kept.add(r);
+  return records.filter((r) => keyOf(r) === null || kept.has(r));
+}
+
+/** Owner requests to delete one challenge counted per person per UTC day. */
+export const REQUESTS_PER_UTC_DAY = 2;
+
+/**
  * Who filed each report, kept inside this module and never returned: the
  * page may only ask whether a report came from the item's own author
  * (`reportedByAuthor`), which is how an owner's request to delete is told
@@ -212,12 +264,53 @@ export function reporterToken(account) {
 }
 
 /**
+ * Trail suggestions: the same idea, a token per account for this page load
+ * (`suggester-1`, …), kept apart from the walker-report tokens so the page
+ * can't link a person's reports to their suggestions. Used to count walkers
+ * and to cap how many statuses one person's suggestions can make Accept write.
+ */
+const suggesterTokens = new Map();
+
+export function suggesterToken(account) {
+  if (typeof account !== 'string' || !account) return undefined;
+  if (!suggesterTokens.has(account)) suggesterTokens.set(account, `suggester-${suggesterTokens.size + 1}`);
+  return suggesterTokens.get(account);
+}
+
+/**
+ * The only record names a suggestion may have here: `suggestion.<UUID>`, as
+ * the app names them (spec feat/trail-suggestions, PR 1 decisions: random,
+ * never from the line, the account or the token).
+ */
+export const SUGGESTION_RECORD_NAME = /^suggestion\.[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$/;
+
+/**
+ * Whether a suggestion's record name can't go into History: anything but
+ * `suggestion.<UUID>`, or that UUID being the record's own claim token (in
+ * either case). Accept and Decline write the record names they decide into
+ * History, which must never hold a token, an account or a status name, and a
+ * crafted record can be named anything; so only the app's shape passes, and
+ * such a record never reaches the page.
+ */
+export function nameLeaks(record) {
+  const name = String(record?.recordName ?? '');
+  if (!SUGGESTION_RECORD_NAME.test(name)) return true;
+  const token = record?.fields?.claimToken?.value;
+  return typeof token === 'string' && name.slice('suggestion.'.length).toLowerCase() === token.toLowerCase();
+}
+
+/**
  * Every page of a query, up to `max` records. `more` says some were left out.
  * Nominations come one per person per trail (`onePerNominator`) unless
  * `everyNomination` is set, as telling nominators needs: then each device's
  * nomination, up to `TOKENS_PER_NOMINATOR` per person (`fewPerNominator`).
+ * Reports come one per person per item (`onePerReporter`), except in a query
+ * by creator (`onlyCreator`; none for reports today), which gets every one.
+ * Suggestions come with `submitter` and `statusName`, never the account or
+ * the token; `hidden` counts suggestions left out by `nameLeaks`.
  */
 export async function pagedQuery(db, query, { max = 1000, pageSize = 200, onlyCreator, everyNomination = false } = {}) {
+  let hidden = 0;
   let raw = [];
   let response = check(await db.performQuery(query, { resultsLimit: Math.min(pageSize, max) }));
   raw.push(...response.records);
@@ -232,7 +325,19 @@ export async function pagedQuery(db, query, { max = 1000, pageSize = 200, onlyCr
   if (query.recordType === 'CommunityReport') {
     for (const r of raw) if (r.created?.userRecordName) reportFilers.set(r.recordName, r.created.userRecordName);
   }
-  const kept = query.recordType !== 'TrailNomination' ? raw : everyNomination ? fewPerNominator(raw) : onePerNominator(raw);
+  // A suggestion whose name could put a token, an account or a status name
+  // into History (`nameLeaks`) is left out and counted, except when finding
+  // one account's records to delete them: deleting writes only a count.
+  if (query.recordType === 'TrailSuggestion' && onlyCreator === undefined) {
+    const before = raw.length;
+    raw = raw.filter((r) => !nameLeaks(r));
+    hidden = before - raw.length;
+  }
+  // A query by creator gets every record. None exists for reports today
+  // (CloudKit would need ___createdBy queryable on CommunityReport); if one is
+  // added, it must see each of a person's reports, not one per item.
+  const kept = query.recordType === 'CommunityReport' ? (onlyCreator !== undefined ? raw : onePerReporter(raw))
+    : query.recordType !== 'TrailNomination' ? raw : everyNomination ? fewPerNominator(raw) : onePerNominator(raw);
   const records = [];
   for (const r of kept.slice(0, max)) {
     const out = plain(r);
@@ -240,24 +345,31 @@ export async function pagedQuery(db, query, { max = 1000, pageSize = 200, onlyCr
       const token = reporterToken(r.created?.userRecordName);
       if (token) out.reporter = token;
     }
-    if (r.recordType === 'TrailNomination') {
-      const statusName = await nominationStatusName(r);
+    if (r.recordType === 'TrailSuggestion') {
+      const token = suggesterToken(r.created?.userRecordName);
+      if (token) out.submitter = token;
+    }
+    if (r.recordType === 'TrailNomination' || r.recordType === 'TrailSuggestion') {
+      const statusName = await claimStatusName(r);
       if (statusName) out.statusName = statusName;
     }
     records.push(out);
   }
-  return { records, more: hasMorePages(response) || raw.length > max };
+  return { records, more: hasMorePages(response) || raw.length > max, hidden };
 }
 
 /**
- * The status record name for a raw nomination's claim token, or undefined
- * when it has none (sent before the app wrote one) or one that isn't a UUID.
- * The token goes no further than this function.
+ * The status record name for a raw nomination's or suggestion's claim token,
+ * or undefined when it has none (sent before the app wrote one) or one that
+ * isn't a UUID. The token goes no further than this function.
  */
-export async function nominationStatusName(record) {
+export async function claimStatusName(record) {
   const token = record?.fields?.claimToken?.value;
   return isClaimToken(token) ? contributionStatusName(token) : undefined;
 }
+
+/** `claimStatusName`, under the name the nominations code and its tests know. */
+export const nominationStatusName = claimStatusName;
 
 /**
  * CloudKit JS fields from plain values. A value that is already

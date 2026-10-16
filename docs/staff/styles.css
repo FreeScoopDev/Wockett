@@ -63,6 +63,9 @@ main { max-width: 860px; margin: 0 auto; padding: 8px 16px 48px; }
 .notes li { overflow-wrap: anywhere; }
 svg.route { width: 120px; height: 90px; flex: none; background: var(--raised); border-radius: 12px; }
 svg.route path { fill: none; stroke: var(--green); stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; }
+svg.route path.other { stroke: var(--muted); stroke-width: 1.5; opacity: .7; }
+svg.route circle.start { fill: var(--green); stroke: var(--card); stroke-width: 1.5; }
+.actions.small { align-items: center; gap: 14px; }
 .actions { display: flex; flex-wrap: wrap; gap: 8px; }
 button.btn {
   font: inherit; font-weight: 700; border: 1px solid var(--line); background: var(--raised); color: var(--text);
