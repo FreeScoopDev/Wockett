@@ -631,31 +631,36 @@ struct WalkerFactsTests {
         #expect(model.hasAnswered)
     }
 
-    @Test("A question can't be answered twice while its first answer is still sending", .timeLimit(.minutes(1)))
+    @Test("A question can't be answered twice while its first answer is still sending")
     func cardNoDoubleSend() async throws {
-        // Everything on the main actor, so the test's bookkeeping is never
-        // raced by the send (CI hung on an earlier version that wasn't).
+        // The second tap is made by the fake send itself, from inside the
+        // first send: the first answer is suspended mid-send at that moment
+        // by construction, not by how the scheduler happened to run tasks.
+        // No extra tasks, no yields, no continuation to lose, so nothing
+        // here can wait, and no time limit is needed. The earlier version
+        // polled with 200-yield rounds under `.timeLimit(.minutes(1))`; wall
+        // time includes time queued behind other main-actor tests, and on CI
+        // run 38898279937 a synchronous test in this suite took 101 s, so
+        // the minute ran out on a correct build (as on PRs 186 and 196).
         var sent: [String] = []
-        var waiting: [CheckedContinuation<Void, Never>] = []
-        let send: @MainActor (WalkerFact, String) async -> TrailFactReports.Outcome = { _, value in
+        var card: TrailReportCardModel?
+        var midSend: (canAnswer: Bool, selected: String?)?
+        let send: @MainActor (WalkerFact, String) async -> TrailFactReports.Outcome = { fact, value in
             sent.append(value)
-            await withCheckedContinuation { waiting.append($0) }
+            if sent.count == 1, let card {
+                midSend = (card.canAnswer(fact), card.selected(fact))
+                await card.answer(.dogs, "leashRequired")   // the second tap
+            }
             return .sent
         }
         let model = TrailReportCardModel(trail: ref, policy: try policy(Clock()), send: send)
-        func settle() async { for _ in 0..<200 { await Task.yield() } }
-        let first = Task { @MainActor in await model.answer(.dogs, "noDogs") }
-        await settle()
-        try #require(waiting.count == 1, "the first answer is mid-send")
-        #expect(!model.canAnswer(.dogs), "locked while sending")
-        // A second tap mid-send, in its own task so a broken guard fails here
-        // rather than hanging the test on its own send.
-        let second = Task { @MainActor in await model.answer(.dogs, "leashRequired") }
-        await settle()
-        #expect(sent == ["noDogs"])
-        while !waiting.isEmpty { waiting.removeFirst().resume() ; await settle() }
-        await first.value
-        await second.value
+        card = model
+        defer { card = nil }   // the fake holds the model; let it go
+        await model.answer(.dogs, "noDogs")
+        let mid = try #require(midSend, "the second tap came while the first answer was sending")
+        #expect(!mid.canAnswer, "locked while sending")
+        #expect(mid.selected == "noDogs")
+        #expect(sent == ["noDogs"], "the tap mid-send sent nothing")
         #expect(model.selected(.dogs) == "noDogs")
     }
 
