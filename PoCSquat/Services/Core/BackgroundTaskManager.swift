@@ -5,8 +5,9 @@ import SwiftData
 // MARK: - BackgroundTaskManager
 //
 // Registers and handles BGTaskScheduler tasks:
-//   • healthkit-refresh  — updates today's step count and looks for a walk the
-//                          user did without tracking (BGAppRefreshTask, fast)
+//   • healthkit-refresh  — updates today's step count, looks for a walk the
+//                          user did without tracking, and checks whether a
+//                          nomination was featured (BGAppRefreshTask, fast)
 //   • cloudkit-sync      — CloudKit reconciliation after a walk finishes (BGProcessingTask, longer-running)
 //
 // Both tasks are triggered by the system opportunistically. The app schedules
@@ -65,6 +66,9 @@ final class BackgroundTaskManager {
         let fetchTask = Task {
             await refreshStepCount()
             await UntrackedWalkDetector.shared.check()
+            // A nomination Joe featured: one local notification, at most a
+            // daily CloudKit fetch, nothing at all with no contributions.
+            await ContributionService.shared.backgroundCheck(notifications: .shared)
             task.setTaskCompleted(success: true)
         }
 

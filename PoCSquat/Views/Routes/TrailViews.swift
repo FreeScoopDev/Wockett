@@ -33,6 +33,9 @@ struct TrailsPanel: View {
     /// while it is open shows next time, not as cards pushing the list down
     /// under a finger.
     @State private var shownFeatures: [FeaturedTrail] = []
+    private let contributions = ContributionService.shared
+    /// Contributions newly featured, announced once (`takeBanner` marks them).
+    @State private var featuredNews: [Contribution] = []
 
     /// Trails in this list that Joe features, in list order, each once. They
     /// stay in "Trails near you" too.
@@ -75,6 +78,12 @@ struct TrailsPanel: View {
     private var list: some View {
         ScrollView(showsIndicators: false) {
             LazyVStack(spacing: 10) {
+                if let news = ContributionMessages.banner(for: featuredNews) {
+                    ContributionFeaturedBanner(text: news) {
+                        withAnimation(.spring(response: 0.3)) { featuredNews = [] }
+                    }
+                    .padding(.horizontal, 20)
+                }
                 let picks = emptyMessage == nil ? featured : []
                 if !picks.isEmpty {
                     WktSectionHeader(title: "Featured near you")
@@ -152,8 +161,13 @@ struct TrailsPanel: View {
             }
             .padding(.bottom, 14)
         }
-        .onAppear { shownFeatures = featuredTrails.list }
+        .onAppear {
+            shownFeatures = featuredTrails.list
+            featuredNews += contributions.takeBanner()
+        }
         .task { await featuredTrails.refreshIfStale() }
+        // At most daily; a status that arrives now is announced now.
+        .task { featuredNews += await contributions.bannerAfterRefresh() }
     }
 
     /// One card that opens and closes the unnamed paths, styled like a

@@ -129,9 +129,16 @@ private struct WktButtonLabel: View {
 /// The answer at the end of a sheet's task ("Thanks. We'll review it."): a
 /// badge, a title, what happens next, and Done. One look in every sheet.
 struct WktResultView: View {
+    /// A second way on from the result, above Done ("My contributions").
+    struct Secondary {
+        let title: String
+        let action: () -> Void
+    }
+
     let symbol: WktSymbol
     let title: String
     let detail: String
+    var secondary: Secondary?
     let onDone: () -> Void
 
     /// A warning reads as one in every sheet: orange, the rest green.
@@ -147,6 +154,9 @@ struct WktResultView: View {
                 .font(.wktBodyText).foregroundColor(.earthMuted)
                 .multilineTextAlignment(.center)
             Spacer()
+            if let secondary {
+                WktSecondaryButton(title: secondary.title, action: secondary.action)
+            }
             WktPrimaryButton(title: "Done", action: onDone)
         }
         .padding(.horizontal, WktSpacing.screen)

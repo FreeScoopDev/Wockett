@@ -34,15 +34,32 @@ struct TrailNominateButton: View {
 /// Why it's worth it (optional), Send, then the answer.
 struct TrailNominationSheet: View {
     let trail: TrailRef
-    var store: TrailNominationStore = CloudKitTrailNominationStore()
+    let store: TrailNominationStore
+    let contributions: ContributionService
     @Environment(\.dismiss) private var dismiss
     @State private var note = ""
-    @State private var phase: Phase = .writing
+    @State private var phase: Phase
+    @State private var showContributions = false
+
+    /// A trail this device nominated already says so before anything is typed.
+    init(trail: TrailRef, store: TrailNominationStore = CloudKitTrailNominationStore(),
+         contributions: ContributionService = .shared) {
+        self.trail = trail
+        self.store = store
+        self.contributions = contributions
+        _phase = State(initialValue: Self.initialPhase(hasNominated: contributions.hasNominated(trail.trailKey)))
+    }
 
     enum Phase: Equatable {
         case writing
         case sending
         case done(TrailNominations.Outcome)
+    }
+
+    /// Where the sheet starts: a trail this device nominated already says so
+    /// before anything is typed.
+    static func initialPhase(hasNominated: Bool) -> Phase {
+        hasNominated ? .done(.alreadyNominated) : .writing
     }
 
     var body: some View {
@@ -51,13 +68,13 @@ struct TrailNominationSheet: View {
                 Color.earthBg.ignoresSafeArea()
                 switch phase {
                 case .writing, .sending: form
-                case .done(.sent): answer(.success, "Thanks for the tip.",
-                                          "The Wockett team reads every nomination. The best show up as Featured for walkers nearby.")
+                case .done(.sent): answer(.success, ContributionMessages.thanks, ContributionMessages.thanksDetail, contributionsLink: true)
                 case .done(.alreadyNominated): answer(.success, "You've nominated this trail already.",
-                                                      "Thanks. One nomination per trail is plenty.")
+                                                      ContributionMessages.alreadyDetail, contributionsLink: true)
                 case .done(.failed(let message)): answer(.warning, "Couldn't send it", message)
                 }
             }
+            .navigationDestination(isPresented: $showContributions) { MyContributionsView(service: contributions) }
             .navigationTitle("Nominate a Trail")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -105,8 +122,11 @@ struct TrailNominationSheet: View {
         .disabled(phase == .sending)
     }
 
-    private func answer(_ symbol: WktSymbol, _ title: String, _ detail: String) -> some View {
-        WktResultView(symbol: symbol, title: title, detail: detail) { dismiss() }
+    private func answer(_ symbol: WktSymbol, _ title: String, _ detail: String, contributionsLink: Bool = false) -> some View {
+        WktResultView(symbol: symbol, title: title, detail: detail,
+                      secondary: contributionsLink ? WktResultView.Secondary(title: ContributionMessages.screenTitle) { showContributions = true } : nil) {
+            dismiss()
+        }
     }
 
     private func send() {
@@ -114,11 +134,28 @@ struct TrailNominationSheet: View {
         let trail = trail
         let note = note
         let store = store
-        Task { phase = .done(await TrailNominationSubmission.submit(trail, note: note, store: store)) }
+        let contributions = contributions
+        Task { phase = .done(await TrailNominationSubmission.submit(trail, note: note, store: store, contributions: contributions)) }
     }
 }
 
 // MARK: - Featured
+
+/// "Your nomination of Lake Loop was featured by the Wockett team", once, at
+/// the top of the Trails list (spec feat/contribution-status, criterion 5).
+struct ContributionFeaturedBanner: View {
+    let text: String
+    let onClose: () -> Void
+
+    var body: some View {
+        WktBanner(symbol: .trailPick, tint: .earthGreen, title: text, detail: ContributionMessages.thanks) {
+            WktPillButton(title: "OK", action: onClose)
+        }
+        .clipShape(RoundedRectangle.wktCard)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("routes.contributionFeatured")
+    }
+}
 
 /// A featured trail in the list: its card, with Joe's note under it.
 struct FeaturedTrailCard: View {

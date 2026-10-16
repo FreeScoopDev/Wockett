@@ -514,6 +514,38 @@ final class SmokeTests: XCTestCase {
         XCTAssertTrue(firstCard.waitForExistence(timeout: 10))
     }
 
+    // MARK: - 7b. My contributions
+
+    /// Settings → Community → My contributions opens, and with nothing
+    /// nominated from this device it shows the empty state that explains
+    /// nominating (spec feat/contribution-status, criterion 4). Nothing
+    /// nominates under -WKTUITest, and the status store is a stub then, so
+    /// the list is empty and nothing reaches CloudKit.
+    func testMyContributionsEmptyState() {
+        // An empty list whatever this simulator saved before: the argument
+        // domain is read ahead of the app's own defaults ("W10=" is "[]").
+        app.terminate()
+        app.launchArguments += ["-wkt_contributions_v1", "<data>W10=</data>"]
+        app.launch()
+
+        XCTAssertTrue(el("home.statCard").waitForExistence(timeout: 10))
+        selectTab("Settings")
+        XCTAssertTrue(el("settings.root").waitForExistence(timeout: 30))
+
+        let row = el("settings.myContributions")
+        var swipes = 0
+        while !row.isHittable && swipes < 12 {
+            app.swipeUp()
+            swipes += 1
+        }
+        XCTAssertTrue(row.waitForExistence(timeout: 10), "My contributions missing from Settings → Community")
+        row.tap()
+
+        XCTAssertTrue(el("contributions.root").waitForExistence(timeout: 10), "My contributions did not open")
+        XCTAssertTrue(el("contributions.empty").waitForExistence(timeout: 10), "Empty state missing with nothing nominated")
+        XCTAssertTrue(app.staticTexts["No contributions yet"].exists)
+    }
+
     // MARK: - 8. Step goal editor
 
     /// Settings → Daily Step Goal opens the goal editor and Cancel closes it.

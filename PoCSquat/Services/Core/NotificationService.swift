@@ -53,6 +53,11 @@ enum NotificationKind: Hashable {
     case waterBreak(Int)
     case walkReminder(UUID)
     case untrackedWalk
+    /// "Your nomination of <trail> was featured by the Wockett team": at most
+    /// once per contribution, from the background-refresh task
+    /// (`ContributionService`). Local only: Wockett sends no remote push. One
+    /// identifier, so several featured at once are one notification.
+    case contributionFeatured
 
     static let waterBreakMax = 12
     static let sessionThread = "wkt.session"
@@ -69,6 +74,7 @@ enum NotificationKind: Hashable {
         case .waterBreak(let i):        return "waterBreak-\(i)"
         case .walkReminder(let id):     return "walkReminder-\(id.uuidString)"
         case .untrackedWalk:            return "untracked-walk"
+        case .contributionFeatured:     return "contribution-featured"
         }
     }
 
@@ -113,6 +119,7 @@ enum NotificationKind: Hashable {
         case .streakNudge, .petNudge, .untrackedWalk:                     return "wkt.nudges"
         case .hydration, .autoPause, .routeEvent, .checkpoint, .waterBreak: return NotificationKind.sessionThread
         case .walkReminder:                                               return "wkt.reminders"
+        case .contributionFeatured:                                       return "wkt.contributions"
         }
     }
 
@@ -127,6 +134,8 @@ enum NotificationKind: Hashable {
         case .weeklySummary:                                                return .passive
         case .hydration, .autoPause, .routeEvent, .checkpoint, .waterBreak: return .timeSensitive
         case .streakNudge, .petNudge, .walkReminder, .untrackedWalk:        return .active
+        // Good news about something the person did; it can wait for them.
+        case .contributionFeatured:                                         return .active
         }
     }
 
