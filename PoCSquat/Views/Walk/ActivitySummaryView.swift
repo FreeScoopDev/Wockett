@@ -172,8 +172,8 @@ struct ActivitySummaryView: View {
     private func decideTrailReport() {
         guard !trailReportDecided else { return }
         trailReportDecided = true
-        trailReport = TrailReportCardModel.forSummary(trail: trail, session: session, justFinished: isJustFinished,
-                                                      walkInProgress: ActiveWalkStore.shared.isWalkInProgress)
+        trailReport = TrailReportCardModel.forSummary(trail: trail, session: session, moment: moment,
+                                                      walkStore: ActiveWalkStore.shared)
     }
 
     private func animateRings() {

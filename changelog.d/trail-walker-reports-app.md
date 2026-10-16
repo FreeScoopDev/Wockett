@@ -8,8 +8,10 @@
   read. It asks at most once per trail and once a week, never during a walk,
   never for a trail already answered, and never after "Don't ask again"
   (also a switch in Settings > Community). The first answer gets a thank-you.
-  A walk restored after the app was closed mid-walk does not ask: the trail
-  is held only in memory, so nothing new is stored on the walk or synced.
+  A walk on a trail restored after the app was closed mid-walk does not ask:
+  the trail is held only in memory, so nothing new is stored on the walk or
+  synced. Each report gets a random record name, so nobody can test from
+  public ids whether someone reported on a trail.
 - The Trail facts card has a "Walkers say" section below the map facts, with
   one line per answer the Wockett team has published once at least 3 walkers
   agree, such as "Dogs on leash (4 walkers)". It is kept apart from the map

@@ -254,6 +254,9 @@ final class NoTrailFactReportStore: TrailFactReportStore {
 @MainActor
 enum TrailFactReportSubmission {
     nonisolated static let deadline: Duration = .seconds(15)
+    /// A report is Community Content (terms patch T2), so the account must
+    /// have agreed to the current Terms. Read by the default `canPost`.
+    static let needsTerms = true
 
     /// The app's store: never the CloudKit one under unit tests.
     static func defaultStore() -> TrailFactReportStore {
@@ -266,7 +269,7 @@ enum TrailFactReportSubmission {
     /// dashboard counts each creator once); the account is not in the record.
     static func submit(_ trail: TrailRef, fact: WalkerFact, value: String,
                        store: TrailFactReportStore,
-                       canPost: @escaping () async throws -> Void = { try await SuspensionService.shared.ensureCanPost(needsTerms: true) },
+                       canPost: @escaping () async throws -> Void = { try await SuspensionService.shared.ensureCanPost(needsTerms: needsTerms) },
                        knownReporter: @escaping () -> String? = { MyAccount.recordName },
                        deadline: Duration = deadline,
                        sleep: @escaping OptimisticVote.Sleep = { try await Task.sleep(for: $0) }) async -> TrailFactReports.Outcome {

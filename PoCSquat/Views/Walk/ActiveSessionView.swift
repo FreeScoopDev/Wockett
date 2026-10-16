@@ -104,8 +104,8 @@ private struct ActiveSessionScreen: View {
     @State private var endSessionOnDismiss    = false
     @State private var showActivitySummary    = false
     @State private var summarySession: WalkSession?
-    /// The trail this walk ended on, read from the session's own route as it
-    /// ends (a trail reached from the way there sets it on arrival).
+    /// The trail this walk ended on (`ActiveWalkStore.endedTrail`; a trail
+    /// reached from the way there sets it on arrival).
     @State private var summaryTrail: TrailRef?
     @State private var summaryPRs: [PRType]   = []
     @State private var summarySplits: [(label: String, elapsed: TimeInterval)] = []
@@ -889,8 +889,8 @@ private struct ActiveSessionScreen: View {
         if saveRoute { saveCurrentRoute() }
         let previous = historyStore.sessions
         summarySplits = session.splitTimes
-        summaryTrail = session.route.trail
         let saved = walkStore.end(.save, releaseSession: false)
+        summaryTrail = walkStore.endedTrail
         let prs = saved.map { checkNewPRs(newSession: $0, against: previous) } ?? []
         if routeCompleted, let saved {
             if !prs.isEmpty {

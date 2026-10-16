@@ -45,6 +45,10 @@ final class ActiveWalkStore {
     /// a discard: the walk is in Activity History, one tap from its summary.
     var pendingSummary: ActivitySummaryRequest?
 
+    /// The named trail of the walk `end(.save)` just saved, for the walk
+    /// screen's summary questions (memory only). Cleared with the session.
+    @ObservationIgnored private(set) var endedTrail: TrailRef?
+
     /// `shared` is the app's store; tests build their own with an in-memory
     /// history store. `.shared` defaults are resolved in the body, not as
     /// default arguments, which are evaluated off the main actor.
@@ -110,6 +114,7 @@ final class ActiveWalkStore {
                 walk.petDistances = pets
                 walk.isCommunityRoute = route.isCommunityRoute
                 historyStore.add(walk)
+                endedTrail = route.trail
                 BackgroundTaskManager.shared.scheduleCloudKitSync()
                 saved = walk
                 if presentSummary {
@@ -275,6 +280,7 @@ final class ActiveWalkStore {
         activeRoute = nil
         isStarted = false
         sessionEnded = false
+        endedTrail = nil
         // A walk ended another way (Live Activity) takes its question with it.
         endConfirmationRequested = false
     }

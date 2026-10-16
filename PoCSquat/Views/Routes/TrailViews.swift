@@ -485,6 +485,14 @@ struct TrailFactsCard: View {
     }
 
     static let walkersTitle = "Walkers say"
+
+    /// Each part's own caption, never shared.
+    static func caption(for part: Part) -> String {
+        switch part {
+        case .mapData: return TrailFacts.caption
+        case .walkers: return walkersCaption
+        }
+    }
     static let walkersCaption = "Combined answers from walkers after their walks, shown once at least \(TrailFactSummaries.minimumWalkers) agree. Not map data or a current report."
 
     var body: some View {
@@ -521,7 +529,7 @@ struct TrailFactsCard: View {
                 }
             }
             .wktCard()
-            Text(TrailFacts.caption)
+            Text(Self.caption(for: .mapData))
                 .font(.wktLabel)
                 .foregroundColor(.earthMuted)
                 .fixedSize(horizontal: false, vertical: true)
@@ -548,7 +556,7 @@ struct TrailFactsCard: View {
                 }
             }
             .wktCard()
-            Text(Self.walkersCaption)
+            Text(Self.caption(for: .walkers))
                 .font(.wktLabel)
                 .foregroundColor(.earthMuted)
                 .fixedSize(horizontal: false, vertical: true)

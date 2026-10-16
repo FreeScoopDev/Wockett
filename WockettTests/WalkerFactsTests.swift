@@ -43,7 +43,14 @@ struct WalkerFactsTests {
             if let key, let label, let publish { facts.append(JSFact(key: key, label: label, publish: publish, values: values)) }
             key = nil; label = nil; publish = nil; values = []
         }
-        for line in text.components(separatedBy: "\n") {
+        // Strict: inside WALKER_FACTS every line must be one this parser
+        // understands, so a value or fact written another way is an issue,
+        // never silently skipped.
+        let body = try #require(text.range(of: "export const WALKER_FACTS = Object.freeze({\n"))
+        let close = try #require(text.range(of: "\n});", range: body.upperBound..<text.endIndex))
+        let structural: Set<String> = ["    values: Object.freeze({", "    }),", "  }),"]
+        for line in text[body.upperBound..<close.lowerBound].components(separatedBy: "\n") {
+            if structural.contains(line) { continue }
             if let m = line.firstMatch(of: /^  (\w+): Object\.freeze\(\{$/) {
                 flush(); key = String(m.1)
             } else if let m = line.firstMatch(of: /^    label: '([^']*)',$/) {
@@ -52,6 +59,8 @@ struct WalkerFactsTests {
                 publish = m.1 == "true"
             } else if let m = line.firstMatch(of: /^      (\w+): '([^']*)',$/) {
                 values.append((String(m.1), String(m.2)))
+            } else {
+                Issue.record("walker-facts.js line the test can't read: \(line)")
             }
         }
         flush()
@@ -139,6 +148,8 @@ struct WalkerFactsTests {
     func recordRefusesUnknownValues() {
         #expect(TrailFactReports.record(trail: ref, fact: .dogs, value: "maybe") == nil)
         #expect(TrailFactReports.record(trail: ref, fact: .stroller, value: "Yes") == nil)
+        let keyless = TrailRef(trailKey: "", trailName: "X", region: "nc", latitude: 0, longitude: 0, lengthMeters: 0)
+        #expect(TrailFactReports.record(trail: keyless, fact: .dogs, value: "noDogs") == nil)
     }
 
     @Test("The schema's TrailFactReport has exactly the fields the app writes")
@@ -147,7 +158,7 @@ struct WalkerFactsTests {
         let start = try #require(schema.range(of: "RECORD TYPE TrailFactReport ("))
         let end = try #require(schema.range(of: ");", range: start.upperBound..<schema.endIndex))
         let fields = schema[start.upperBound..<end.lowerBound].components(separatedBy: "\n")
-            .compactMap { $0.firstMatch(of: /^\s+([a-zA-Z]\w*)\s+[A-Z]/).map { String($0.1) } }
+            .compactMap { $0.firstMatch(of: /^\s+"?([a-zA-Z]\w*)"?\s+[A-Z]/).map { String($0.1) } }
             .filter { $0 != "GRANT" }
         #expect(fields.sorted() == ["fact", "region", "trailKey", "value"])
     }
@@ -182,6 +193,11 @@ struct WalkerFactsTests {
         #expect(store.saved.first?["value"] as? String == "noDogs")
     }
 
+    @Test("The app's own check asks for the Terms: a report is community content")
+    func needsTerms() {
+        #expect(TrailFactReportSubmission.needsTerms)
+    }
+
     @Test("A suspended account, or one that skipped the Terms, sends nothing")
     func submitRefusedByAccess() async {
         for error in [CommunityAccessError.suspended(until: nil), .termsNotAgreed] {
@@ -201,6 +217,11 @@ struct WalkerFactsTests {
         let outcome = await TrailFactReportSubmission.submit(ref, fact: .dogs, value: "noDogs", store: store,
                                                              canPost: {}, knownReporter: { nil }, sleep: Self.neverFires)
         #expect(outcome == .failed("Sign in to iCloud in the Settings app to answer."))
+        let cached = FakeReports()
+        cached.me = nil
+        #expect(await TrailFactReportSubmission.submit(ref, fact: .dogs, value: "noDogs", store: cached, canPost: {},
+                                                       knownReporter: { "_cached" }, sleep: Self.neverFires) == .sent,
+                "the account this phone already knows is enough")
         #expect(store.saved.isEmpty, "the dashboard counts each creator once: no anonymous reports")
     }
 
@@ -395,6 +416,22 @@ struct WalkerFactsTests {
 
     // MARK: The trail reaches the summary in memory only
 
+    @Test("A walk ended on the walk screen hands its trail to the summary; the next session starts clean")
+    func endedTrailForTheWalkScreen() throws {
+        let store = ActiveWalkStore(historyStore: try inMemoryHistory())
+        let mgr = try #require(store.beginSession(route: trailRoute(trail: ref)))
+        mgr.writesSnapshots = false
+        #expect(store.endedTrail == nil)
+        store.end(.save, releaseSession: false)
+        #expect(store.endedTrail == ref)
+        store.endSession()
+        #expect(store.endedTrail == nil)
+        let discarded = try #require(store.beginSession(route: trailRoute(trail: ref)))
+        discarded.writesSnapshots = false
+        store.end(.discard, releaseSession: false)
+        #expect(store.endedTrail == nil, "a discarded walk has no summary to ask on")
+    }
+
     @Test("A walk ended away from the walk screen hands its trail to the summary")
     func pendingSummaryCarriesTheTrail() throws {
         let store = ActiveWalkStore(historyStore: try inMemoryHistory())
@@ -476,6 +513,22 @@ struct WalkerFactsTests {
         #expect(mgr.route.trail?.trailKey == "nc:w1")
     }
 
+    @Test("A walk restored on the way to a trail learns its trail on arrival, after the restart: it was walked then")
+    func restoredApproachGetsTrailOnArrival() throws {
+        let approach = TrailApproach(item: keyedItem)
+        let home = CLLocationCoordinate2D(latitude: 35.7881, longitude: -78.6345)
+        let access = CLLocationCoordinate2D(latitude: 35.78, longitude: -78.6345)
+        let route = approach.navigableRoute(from: home, to: access, distanceMeters: 1_100, activityMode: .walking)
+        let data = try JSONEncoder().encode(ActiveWalkSnapshot.RouteData(route))
+        let restored = try JSONDecoder().decode(ActiveWalkSnapshot.RouteData.self, from: data).navigableRoute
+        #expect(restored.trail == nil)
+        let mgr = NavigationSessionManager(route: restored)
+        mgr.writesSnapshots = false
+        mgr.checkArrival(at: CLLocation(coordinate: access, altitude: 0, horizontalAccuracy: 5,
+                                        verticalAccuracy: 5, timestamp: Date()))
+        #expect(try #require(mgr.beginTrailWalk()).trail?.trailKey == "nc:w1")
+    }
+
     @Test("Head back now, a recording's line and turning round all keep the trail")
     func routeCopiesKeepTheTrail() throws {
         let planned = try #require(TrailWalkPlanner.plan(for: keyedItem, from: line[0], target: .roundTrip(meters: 800)))
@@ -515,10 +568,15 @@ struct WalkerFactsTests {
     func askSpentWhenSeen() async throws {
         let clock = Clock()
         let p = try policy(clock)
-        #expect(TrailReportCardModel.forSummary(trail: ref, session: walk(), justFinished: false, walkInProgress: false, policy: p) == nil)
-        #expect(TrailReportCardModel.forSummary(trail: ref, session: walk(), justFinished: true, walkInProgress: true, policy: p) == nil)
-        let model = try #require(TrailReportCardModel.forSummary(trail: ref, session: walk(), justFinished: true,
-                                                                 walkInProgress: false, policy: p))
+        let idle = ActiveWalkStore(historyStore: try inMemoryHistory())
+        #expect(TrailReportCardModel.forSummary(trail: ref, session: walk(), moment: .history, walkStore: idle, policy: p) == nil)
+        let walking = ActiveWalkStore(historyStore: try inMemoryHistory())
+        let mgr = try #require(walking.beginSession(route: trailRoute(trail: ref)))
+        mgr.writesSnapshots = false
+        #expect(TrailReportCardModel.forSummary(trail: ref, session: walk(), moment: .justFinished, walkStore: walking,
+                                                policy: p) == nil, "never while a walk is recorded")
+        let model = try #require(TrailReportCardModel.forSummary(trail: ref, session: walk(), moment: .justFinished,
+                                                                 walkStore: idle, policy: p))
         #expect(!p.hasAsked("nc:w123"), "a card never scrolled to costs nothing")
         #expect(p.defaults.object(forKey: TrailReportAskPolicy.lastAskKey) == nil)
         model.markShown()
@@ -532,11 +590,15 @@ struct WalkerFactsTests {
         let (used, _) = cardModel(other)
         await used.answer(.dogs, "noDogs")
         #expect(other.hasAsked("nc:w123"), "answering means it was seen")
-        let (closed, _) = cardModel(try policy(Clock()))
+        let closedPolicy = try policy(Clock())
+        let (closed, _) = cardModel(closedPolicy)
         closed.close()
-        let (stopped, _) = cardModel(try policy(Clock()))
+        let stoppedPolicy = try policy(Clock())
+        let (stopped, _) = cardModel(stoppedPolicy)
         stopped.stopAsking()
         for m in [closed, stopped] { #expect(m.asking == false) }
+        #expect(closedPolicy.hasAsked("nc:w123"), "Not now / Skip means it was seen")
+        #expect(stoppedPolicy.hasAsked("nc:w123"), "Don't ask again means it was seen")
     }
 
     @Test("An answer CloudKit already had doesn't use up the first-answer thank-you")
@@ -561,6 +623,25 @@ struct WalkerFactsTests {
         #expect(!model.canAnswer(.dogs))
         #expect(model.canAnswer(.surface), "each question is separate and optional")
         #expect(model.hasAnswered)
+    }
+
+    @Test("A question can't be answered twice while its first answer is still sending")
+    func cardNoDoubleSend() async throws {
+        var sent = 0
+        var release: CheckedContinuation<Void, Never>?
+        let model = TrailReportCardModel(trail: ref, policy: try policy(Clock())) { _, _ in
+            sent += 1
+            await withCheckedContinuation { release = $0 }
+            return .sent
+        }
+        let first = Task { await model.answer(.dogs, "noDogs") }
+        while release == nil { await Task.yield() }
+        await model.answer(.dogs, "leashRequired")
+        #expect(sent == 1)
+        #expect(!model.canAnswer(.dogs))
+        release?.resume()
+        await first.value
+        #expect(model.selected(.dogs) == "noDogs")
     }
 
     @Test("An answer outside the vocabulary is never sent")
@@ -801,6 +882,9 @@ struct WalkerFactsTests {
         let service = TrailFactSummaryService(store: store, defaults: try defaults(), now: { Date(timeIntervalSince1970: 0) })
         await service.refreshIfStale(keys: ["nc:w1"])
         #expect(service.staleKeys(["nc:w1"]) == ["nc:w1"])
+        store.error = CKError(.operationCancelled)
+        await service.refreshIfStale(keys: ["nc:w1"])
+        #expect(service.staleKeys(["nc:w1"]) == ["nc:w1"], "CloudKit's own cancellation too")
         store.error = CKError(.networkUnavailable)
         await service.refreshIfStale(keys: ["nc:w1"])
         #expect(service.staleKeys(["nc:w1"]).isEmpty, "a real failure waits")
@@ -836,6 +920,8 @@ struct WalkerFactsTests {
 
     @Test("Walker lines are worded apart from the map data: their own heading and caption")
     func cardWording() {
+        #expect(TrailFactsCard.caption(for: .mapData) == TrailFacts.caption)
+        #expect(TrailFactsCard.caption(for: .walkers) == TrailFactsCard.walkersCaption)
         #expect(TrailFactsCard.walkersTitle == "Walkers say")
         #expect(TrailFacts.caption == "From the trail's map data, not a current report", "map caption untouched")
         #expect(TrailFactsCard.walkersCaption != TrailFacts.caption)

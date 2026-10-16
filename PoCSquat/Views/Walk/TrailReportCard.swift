@@ -33,11 +33,11 @@ final class TrailReportCardModel {
 
     /// The card for a summary, or nil when the policy says not to ask.
     /// Records nothing: the ask counts once the card is seen (`markShown`).
-    static func forSummary(trail: TrailRef?, session: WalkSession, justFinished: Bool, walkInProgress: Bool,
-                           policy: TrailReportAskPolicy? = nil) -> TrailReportCardModel? {
+    static func forSummary(trail: TrailRef?, session: WalkSession, moment: ActivitySummaryView.Moment,
+                           walkStore: ActiveWalkStore, policy: TrailReportAskPolicy? = nil) -> TrailReportCardModel? {
         let policy = policy ?? TrailReportAskPolicy()
-        guard let trail, policy.shouldAsk(trail: trail, session: session, justFinished: justFinished,
-                                          walkInProgress: walkInProgress) else { return nil }
+        guard let trail, policy.shouldAsk(trail: trail, session: session, justFinished: moment == .justFinished,
+                                          walkInProgress: walkStore.isWalkInProgress) else { return nil }
         return TrailReportCardModel(trail: trail, policy: policy)
     }
 
