@@ -374,41 +374,58 @@ const NOMINATION = { kind: 'nomination', status: 'featured' };
  * as featured. Nominations without a token get nothing, and none at all
  * writes nothing: no History, no error.
  *
+ * Before anything is written, `ContributionStatus` is queried: if the
+ * environment's schema lacks the type, the first save would create it with
+ * CloudKit's default grants (anyone could create statuses), so nothing is
+ * written and the query's error is thrown.
+ *
+ * A name already held by a record of another type is skipped and counted in
+ * `blocked`: nominations are created by anyone, under a record name they
+ * choose, so a crafted one could otherwise stop every nominator of the trail
+ * from being told.
+ *
  * A "statusPublished" ModerationAction with the count comes first (never a
  * token, a status name or a nominator); then each record, created, or
  * replaced when it exists, so publishing again rewrites the same records.
- * If none could be written, the action is taken back and the error thrown;
- * a failure part-way keeps the action, corrected to the number written, and
- * returns that number with the error.
+ * One failed record doesn't stop the rest. If none could be written, the
+ * action is taken back and the first error thrown; otherwise the action is
+ * corrected to the number written, returned with the first error.
  */
 export async function publishNominationStatuses(store, { trail, now = Date.now() }) {
   const { records: nominations } = await store.query('TrailNomination', { equals: ['trailKey', trail.trailKey], max: 5000 });
   const { names, withoutToken } = nominationStatusNames(nominations, trail.trailKey);
-  if (!names.length) return { written: 0, planned: 0, withoutToken, error: null };
+  if (!names.length) return { written: 0, planned: 0, blocked: 0, withoutToken, error: null };
   // Checked before anything is written: a trail with no usable name or key
   // throws here, with nothing to take back.
   contributionStatusFields({ ...NOMINATION, trailKey: trail.trailKey, trailName: trail.trailName, decidedAt: now });
+  await store.query('ContributionStatus', { equals: ['trailKey', trail.trailKey], max: 1 });
   const existing = await store.fetch(names);
+  const todo = names.filter((n) => !existing.has(n) || existing.get(n)?.recordType === 'ContributionStatus');
+  const blocked = names.length - todo.length;
+  if (!todo.length) return { written: 0, planned: 0, blocked, withoutToken, error: null };
   const fields = actionFields({
-    target: trail.trailKey, type: 'contribution', action: 'statusPublished', reportCount: names.length,
-    snapshot: JSON.stringify({ trailKey: trail.trailKey, trailName: trail.trailName, ...NOMINATION, count: names.length }),
+    target: trail.trailKey, type: 'contribution', action: 'statusPublished', reportCount: todo.length,
+    snapshot: JSON.stringify({ trailKey: trail.trailKey, trailName: trail.trailName, ...NOMINATION, count: todo.length }),
   });
   const written = await store.create('ModerationAction', fields);
   let done = 0;
-  for (const name of names) {
-    const decidedAt = statusDecidedAt(existing.get(name), NOMINATION.kind, NOMINATION.status, now);
+  let firstError = null;
+  for (const name of todo) {
+    const decidedAt = statusDecidedAt(existing.get(name), { ...NOMINATION, trailKey: trail.trailKey }, now);
     const record = contributionStatusFields({ ...NOMINATION, trailKey: trail.trailKey, trailName: trail.trailName, decidedAt });
     try {
       if (existing.has(name)) await store.replaceNamed('ContributionStatus', name, record);
       else await store.createNamed('ContributionStatus', name, record);
       done += 1;
     } catch (error) {
-      await settleHistory(store, written, fields, done, names.length, 'written');
-      if (done === 0) throw error;
-      return { written: done, planned: names.length, withoutToken, error };
+      firstError = firstError ?? error;
     }
   }
-  return { written: done, planned: names.length, withoutToken, error: null };
+  if (done < todo.length) {
+    await settleHistory(store, written, fields, done, todo.length, 'written');
+    if (done === 0) throw firstError;
+  }
+  return { written: done, planned: todo.length, blocked, withoutToken, error: firstError };
 }
 
 /**
@@ -470,7 +487,7 @@ export async function featureTrailAndTell(store, options) {
   try {
     told = await publishNominationStatuses(store, { trail: out.trail, now: options.now ?? Date.now() });
   } catch (error) {
-    told = { written: 0, planned: null, withoutToken: 0, error };
+    told = { written: 0, planned: null, blocked: 0, withoutToken: 0, error };
   }
   return { ...out, told };
 }
@@ -480,11 +497,22 @@ export async function featureTrailAndTell(store, options) {
  * `findNominationStatuses`). Withdrawn first so that a failure stops before
  * the trail leaves Featured, and Unfeature can simply be tried again: a
  * failure on the first batch throws; one part-way returns `unfeatured: false`
- * with the count. Then the trail is unfeatured as before.
+ * with the count and the error. If the statuses are withdrawn but the
+ * unfeature itself then fails, that also returns `unfeatured: false`, with
+ * how many were withdrawn, so the page can say the trail is still featured
+ * while its nominators see Sent.
  */
 export async function unfeatureTrailAndWithdraw(store, { trail, statuses = [], note = '' }) {
   const withdrawn = await withdrawNominationStatuses(store, { trail, records: statuses });
-  if (withdrawn.error) return { unfeatured: false, withdrawn };
-  await unfeatureTrail(store, { trail, note });
-  return { unfeatured: true, withdrawn };
+  if (withdrawn.error) return { unfeatured: false, withdrawn, error: withdrawn.error };
+  if (!withdrawn.deleted) {
+    await unfeatureTrail(store, { trail, note });
+    return { unfeatured: true, withdrawn, error: null };
+  }
+  try {
+    await unfeatureTrail(store, { trail, note });
+  } catch (error) {
+    return { unfeatured: false, withdrawn, error };
+  }
+  return { unfeatured: true, withdrawn, error: null };
 }

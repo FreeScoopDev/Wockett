@@ -7,7 +7,7 @@ import { createHash } from 'node:crypto';
 import {
   CONTRIBUTION_KINDS, STATUS_RECORD_PREFIX, isClaimToken, contributionStatusName, isContributionStatusName,
   knownContribution, contributionStatusFields, nominationStatusNames, statusDecidedAt, statusesToWithdraw,
-  groupReports, queue, groupNominations, NON_ITEM_TARGETS, actionFields,
+  groupReports, queue, groupNominations, NON_ITEM_TARGETS, actionFields, isUnknownRecordType,
 } from '../../docs/staff/logic.js';
 import {
   publishNominationStatuses, findNominationStatuses, withdrawNominationStatuses,
@@ -36,36 +36,52 @@ const NAME_C = `status.${'c'.repeat(64)}`;
 /**
  * A store like ck.js's `connect()`: `nominations` and `statuses` answer
  * queries; `existing` maps record names to what `fetch` finds; `failWriteAt`
- * fails the Nth status write; `failDeleteAt` the Nth non-History delete.
+ * fails the Nth status write and every one after; `failWriteNames` fails
+ * those names; `failDeleteAt` the Nth delete that isn't History or a
+ * feature; `failFeature` the FeaturedTrail write; `failFeaturedDelete` the
+ * FeaturedTrail delete; `failStatusQuery` is thrown by ContributionStatus
+ * queries. Each History record gets its own name (`act1`, `act2`, …).
  */
-function fakeStore({ nominations = [], statuses = [], existing = new Map(), failWriteAt = null, failDeleteAt = null, partly } = {}) {
+function fakeStore({ nominations = [], statuses = [], existing = new Map(), failWriteAt = null, failWriteNames = [], failDeleteAt = null, partly,
+  failFeature = false, failFeaturedDelete = false, failStatusQuery = null } = {}) {
   const calls = [];
   let writes = 0;
   let deletes = 0;
+  let acts = 0;
   const write = (kind) => async (recordType, recordName, fields) => {
     calls.push([kind, recordType, recordName, fields]);
+    if (recordType === 'FeaturedTrail' && failFeature) throw { ckErrorCode: 'ACCESS_DENIED' };
     if (recordType !== 'ContributionStatus') return;
     writes += 1;
+    if (failWriteNames.includes(recordName)) throw { ckErrorCode: 'SERVER_RECORD_CHANGED' };
     if (failWriteAt !== null && writes >= failWriteAt) throw { ckErrorCode: 'NETWORK_ERROR' };
   };
   return {
     calls,
     async query(recordType, options) {
       calls.push(['query', recordType, options]);
+      if (recordType === 'ContributionStatus' && failStatusQuery) throw failStatusQuery;
       return { records: recordType === 'ContributionStatus' ? statuses : nominations, more: false };
     },
     async fetch(names) { calls.push(['fetch', names]); return new Map(names.filter((n) => existing.has(n)).map((n) => [n, existing.get(n)])); },
-    async create(recordType, fields) { calls.push(['create', recordType, fields]); return { recordName: 'act1', recordType, created: 1, fields: {} }; },
+    async create(recordType, fields) { calls.push(['create', recordType, fields]); return { recordName: `act${++acts}`, recordType, created: 1, fields: {} }; },
     createNamed: write('createNamed'),
     replaceNamed: write('replaceNamed'),
     async delete(names) {
       calls.push(['delete', names]);
-      if (names[0] === 'act1') return;
+      if (/^act\d+$/.test(names[0])) return;
+      if (names[0].startsWith('featured.')) {
+        if (failFeaturedDelete) throw { ckErrorCode: 'NETWORK_ERROR' };
+        return;
+      }
       deletes += 1;
       if (failDeleteAt !== null && deletes >= failDeleteAt) throw { ckErrorCode: 'NETWORK_ERROR', ...(partly === undefined ? {} : { deleted: partly }) };
     },
   };
 }
+/** An existing status record as `fetch` returns it. */
+const stored = (recordName, fields = {}) => ({ recordName, recordType: 'ContributionStatus', created: 1,
+  fields: { kind: 'nomination', status: 'featured', trailKey: 'nc:w1', trailName: 'Lake Loop', decidedAt: 5, ...fields } });
 const statusWrites = (store) => store.calls.filter((c) => (c[0] === 'createNamed' || c[0] === 'replaceNamed') && c[1] === 'ContributionStatus');
 const history = (store) => store.calls.filter((c) => c[0] === 'create' && c[1] === 'ModerationAction').map((c) => c[2]);
 
@@ -78,7 +94,8 @@ test('the closed vocabulary is exactly nomination/featured and suggestion/added,
     nomination: ['featured'],
     suggestion: ['added'],
   });
-  assert.ok(Object.isFrozen(CONTRIBUTION_KINDS) && Object.isFrozen(CONTRIBUTION_KINDS.nomination.statuses));
+  assert.ok(Object.isFrozen(CONTRIBUTION_KINDS));
+  for (const kind of Object.values(CONTRIBUTION_KINDS)) assert.ok(Object.isFrozen(kind) && Object.isFrozen(kind.statuses));
 });
 
 test('a kind and status must both be known, and belong together', () => {
@@ -88,6 +105,8 @@ test('a kind and status must both be known, and belong together', () => {
   assert.ok(!knownContribution('suggestion', 'featured'));
   assert.ok(!knownContribution('nomination', 'rejected'));
   assert.ok(!knownContribution('Nomination', 'featured'), 'case matters');
+  assert.ok(!knownContribution(['nomination'], 'featured'), 'only strings');
+  assert.ok(!knownContribution('nomination', ['featured']), 'only strings');
   for (const odd of ['toString', '__proto__', 'constructor', 'hasOwnProperty']) {
     assert.ok(!knownContribution(odd, 'featured'), odd);
     assert.ok(!knownContribution('nomination', odd), odd);
@@ -121,7 +140,7 @@ test('the name comes from the token alone: nothing public about the trail or the
 
 test('only a UUID is a claim token; a bad one is refused without repeating it', async () => {
   assert.ok(isClaimToken(TOKEN) && isClaimToken(TOKEN.toLowerCase()));
-  for (const bad of ['', 'nc:w1', `${TOKEN} `, ` ${TOKEN}`, `x${TOKEN}`, `${TOKEN}0`, `0${TOKEN}`, TOKEN.replace(/-/g, ''), 'G621E1F8-C36C-495A-93FC-0C247A3E6E5F', null, 42, {}]) {
+  for (const bad of ['', 'nc:w1', `${TOKEN} `, ` ${TOKEN}`, `x${TOKEN}`, `${TOKEN}0`, `0${TOKEN}`, TOKEN.replace(/-/g, ''), 'E621E1F8-C36-495A-93FC-0C247A3E6E5F', 'G621E1F8-C36C-495A-93FC-0C247A3E6E5F', null, 42, {}]) {
     assert.ok(!isClaimToken(bad), String(bad));
   }
   const secret = 'not-a-uuid-but-secret-ish';
@@ -130,7 +149,7 @@ test('only a UUID is a claim token; a bad one is refused without repeating it', 
 
 test('only status.<64 lowercase hex> is a status name', () => {
   assert.ok(isContributionStatusName(NAME_A));
-  for (const bad of [`status.${'A'.repeat(64)}`, `status.${'a'.repeat(63)}`, `status.${'a'.repeat(65)}`, `x${NAME_A}`, `featured.${'a'.repeat(64)}`, undefined]) {
+  for (const bad of [`status.${'A'.repeat(64)}`, `status.${'a'.repeat(63)}`, `status.${'a'.repeat(65)}`, `x${NAME_A}`, `xtatus.${'a'.repeat(64)}`, `featured.${'a'.repeat(64)}`, undefined]) {
     assert.ok(!isContributionStatusName(bad), String(bad));
   }
 });
@@ -197,16 +216,16 @@ test('statuses are planned only for this trail\'s nominations that carry a token
 test('featuring a trail with no tokened nominations writes nothing at all, and is not an error', async () => {
   const store = fakeStore({ nominations: [nom('n1'), nom('n2')] });
   const out = await publishNominationStatuses(store, { trail, now: NOW });
-  assert.deepEqual(out, { written: 0, planned: 0, withoutToken: 2, error: null });
-  assert.deepEqual(store.calls.map((c) => c[0]), ['query']);
-  assert.deepEqual(store.calls[0][2].equals, ['trailKey', 'nc:w1'], 'asks for this trail\'s nominations');
+  assert.deepEqual(out, { written: 0, planned: 0, blocked: 0, withoutToken: 2, error: null });
+  assert.deepEqual(store.calls, [['query', 'TrailNomination', { equals: ['trailKey', 'nc:w1'], max: 5000 }]], 'asks for this trail\'s nominations');
 });
 
 test('telling nominators writes History first, then one status per token, for this trail only', async () => {
   const store = fakeStore({ nominations: [nom('n1', NAME_B), nom('n2', NAME_A), nom('n3'), nom('n9', NAME_C, 'nc:w2')] });
   const out = await publishNominationStatuses(store, { trail, now: NOW });
-  assert.deepEqual(out, { written: 2, planned: 2, withoutToken: 1, error: null });
-  assert.deepEqual(store.calls.map((c) => c[0]), ['query', 'fetch', 'create', 'createNamed', 'createNamed']);
+  assert.deepEqual(out, { written: 2, planned: 2, blocked: 0, withoutToken: 1, error: null });
+  assert.deepEqual(store.calls.map((c) => c[0]), ['query', 'query', 'fetch', 'create', 'createNamed', 'createNamed']);
+  assert.deepEqual(store.calls[1], ['query', 'ContributionStatus', { equals: ['trailKey', 'nc:w1'], max: 1 }], 'the schema check');
   const [h] = history(store);
   assert.equal(h.action, 'statusPublished');
   assert.equal(h.targetType, 'contribution');
@@ -223,20 +242,73 @@ test('publishing again replaces the same records with the same fields: no duplic
   // Run once, remember what was written, then run again against it.
   const first = fakeStore({ nominations: [nom('n1', NAME_A), nom('n2', NAME_B)] });
   await publishNominationStatuses(first, { trail, now: NOW });
-  const existing = new Map(statusWrites(first).map((c) => [c[2], { recordName: c[2], fields: { ...c[3], decidedAt: c[3].decidedAt.value } }]));
+  const existing = new Map(statusWrites(first).map((c) => [c[2], { recordName: c[2], recordType: 'ContributionStatus', fields: { ...c[3], decidedAt: c[3].decidedAt.value } }]));
   const again = fakeStore({ nominations: [nom('n1', NAME_A), nom('n2', NAME_B)], existing });
   await publishNominationStatuses(again, { trail, now: NOW + 86_400_000 });
   assert.deepEqual(statusWrites(again).map((c) => c[0]), ['replaceNamed', 'replaceNamed']);
   assert.deepEqual(statusWrites(again).map((c) => [c[2], c[3]]), statusWrites(first).map((c) => [c[2], c[3]]));
-  // A record that said something else is brought up to date.
-  assert.equal(statusDecidedAt({ fields: { kind: 'suggestion', status: 'added', decidedAt: 5 } }, 'nomination', 'featured', NOW), NOW);
-  assert.equal(statusDecidedAt({ fields: { kind: 'nomination', status: 'featured', decidedAt: 5 } }, 'nomination', 'featured', NOW), 5);
-  assert.equal(statusDecidedAt(undefined, 'nomination', 'featured', NOW), NOW);
+  // A record that said something else, or has no usable date, is brought up to date.
+  const same = { kind: 'nomination', status: 'featured', trailKey: 'nc:w1' };
+  assert.equal(statusDecidedAt({ fields: { ...same, decidedAt: 5 } }, same, NOW), 5);
+  assert.equal(statusDecidedAt({ fields: { ...same, kind: 'suggestion', decidedAt: 5 } }, same, NOW), NOW, 'kind differs');
+  assert.equal(statusDecidedAt({ fields: { ...same, status: 'added', decidedAt: 5 } }, same, NOW), NOW, 'status differs');
+  assert.equal(statusDecidedAt({ fields: { ...same, trailKey: 'nc:w2', decidedAt: 5 } }, same, NOW), NOW, 'trail differs');
+  assert.equal(statusDecidedAt({ fields: { ...same } }, same, NOW), NOW, 'no date');
+  assert.equal(statusDecidedAt({ fields: { ...same, decidedAt: '5' } }, same, NOW), NOW, 'not a number');
+  assert.equal(statusDecidedAt(undefined, same, NOW), NOW);
+});
+
+test('a nominator who arrives after the first feature gets a new record; the existing one is replaced as it was', async () => {
+  const store = fakeStore({ nominations: [nom('n1', NAME_A), nom('n2', NAME_B)], existing: new Map([[NAME_A, stored(NAME_A)]]) });
+  const out = await publishNominationStatuses(store, { trail, now: NOW });
+  assert.equal(out.written, 2);
+  const fields = (decidedAt) => ({ kind: 'nomination', status: 'featured', trailKey: 'nc:w1', trailName: 'Lake Loop', decidedAt: { value: decidedAt, type: 'TIMESTAMP' } });
+  assert.deepEqual(statusWrites(store).map((c) => [c[0], c[2], c[3]]), [
+    ['replaceNamed', NAME_A, fields(5)], ['createNamed', NAME_B, fields(NOW)],
+  ]);
+});
+
+test('a status name already used by another record is skipped, and can\'t stop the others being told', async () => {
+  // Anyone can create a nomination under a record name of their choosing, including a status name.
+  const squatted = new Map([[NAME_A, { recordName: NAME_A, recordType: 'TrailNomination', fields: {} }]]);
+  const store = fakeStore({ nominations: [nom('n1', NAME_A), nom('n2', NAME_B), nom('n3', NAME_C)], existing: squatted });
+  const out = await publishNominationStatuses(store, { trail, now: NOW });
+  assert.deepEqual(out, { written: 2, planned: 2, blocked: 1, withoutToken: 0, error: null });
+  assert.deepEqual(statusWrites(store).map((c) => [c[0], c[2]]), [['createNamed', NAME_B], ['createNamed', NAME_C]]);
+  assert.equal(history(store)[0].reportCount, 2);
+
+  const all = fakeStore({ nominations: [nom('n1', NAME_A)], existing: squatted });
+  assert.deepEqual(await publishNominationStatuses(all, { trail, now: NOW }), { written: 0, planned: 0, blocked: 1, withoutToken: 0, error: null });
+  assert.ok(!all.calls.some((c) => c[0] === 'create' || c[0] === 'createNamed' || c[0] === 'replaceNamed'), 'nothing written, no History');
+});
+
+test('one status that fails doesn\'t stop the rest; History says how many were written', async () => {
+  const store = fakeStore({ nominations: [nom('n1', NAME_A), nom('n2', NAME_B), nom('n3', NAME_C)], failWriteNames: [NAME_A] });
+  const out = await publishNominationStatuses(store, { trail, now: NOW });
+  assert.equal(out.written, 2);
+  assert.equal(out.planned, 3);
+  assert.equal(out.error.ckErrorCode, 'SERVER_RECORD_CHANGED');
+  assert.deepEqual(statusWrites(store).map((c) => c[2]), [NAME_A, NAME_B, NAME_C]);
+  const fix = store.calls.find((c) => c[0] === 'replaceNamed' && c[1] === 'ModerationAction');
+  assert.equal(fix[3].reportCount, 2);
+  assert.equal(fix[3].note, 'Stopped part-way: 2 of 3 written.');
+});
+
+test('nothing is written where the schema has no ContributionStatus: CloudKit would create it with default grants', async () => {
+  const missing = { serverErrorCode: 'BAD_REQUEST', reason: 'did not find record type: ContributionStatus' };
+  const store = fakeStore({ nominations: [nom('n1', NAME_A)], failStatusQuery: missing });
+  await assert.rejects(publishNominationStatuses(store, { trail, now: NOW }), missing);
+  assert.ok(!store.calls.some((c) => ['create', 'createNamed', 'replaceNamed', 'fetch'].includes(c[0])));
+  assert.ok(isUnknownRecordType(missing));
+  assert.ok(isUnknownRecordType(new Error('Did not find record type: X')));
+  assert.ok(!isUnknownRecordType({ ckErrorCode: 'NETWORK_ERROR' }));
+  assert.ok(!isUnknownRecordType(undefined));
 });
 
 test('a failure on the first status takes History back; part-way, History says how many were written', async () => {
   const first = fakeStore({ nominations: [nom('n1', NAME_A), nom('n2', NAME_B), nom('n3', NAME_C)], failWriteAt: 1 });
   await assert.rejects(publishNominationStatuses(first, { trail, now: NOW }), { ckErrorCode: 'NETWORK_ERROR' });
+  assert.equal(statusWrites(first).length, 3, 'every one tried');
   assert.deepEqual(first.calls.at(-1), ['delete', ['act1']]);
 
   const later = fakeStore({ nominations: [nom('n1', NAME_A), nom('n2', NAME_B), nom('n3', NAME_C)], failWriteAt: 3 });
@@ -270,15 +342,22 @@ test('Feature stands even when telling the nominators fails, and the status name
   assert.equal(out.told.error.ckErrorCode, 'NETWORK_ERROR');
   assert.ok(store.calls.some((c) => c[0] === 'replaceNamed' && c[1] === 'FeaturedTrail'), 'the feature was written');
   assert.equal(statusWrites(store)[0][3].trailName, 'Lake Loop');
-  // Feature's own History stays; only the status action was taken back.
+  // Feature's own History (act1) stays; only the status action (act2) was taken back.
   assert.deepEqual(history(store).map((h) => h.action), ['featured', 'statusPublished']);
-  assert.deepEqual(store.calls.filter((c) => c[0] === 'delete'), [['delete', ['act1']]]);
+  assert.deepEqual(store.calls.filter((c) => c[0] === 'delete'), [['delete', ['act2']]]);
 
   const ok = fakeStore({ nominations: [nom('n1', NAME_A)] });
   const done = await featureTrailAndTell(ok, { trail, blurb: 'Shady', length: '30d', now: NOW });
   assert.equal(done.told.written, 1);
-  assert.deepEqual(ok.calls.map((c) => c[0]), ['fetch', 'create', 'createNamed', 'query', 'fetch', 'create', 'createNamed'],
+  assert.deepEqual(ok.calls.map((c) => c[0]), ['fetch', 'create', 'createNamed', 'query', 'query', 'fetch', 'create', 'createNamed'],
     'featured first, then the statuses');
+  assert.deepEqual(statusWrites(ok)[0][3].decidedAt, { value: NOW, type: 'TIMESTAMP' }, 'the time given');
+
+  // A feature that fails tells no one.
+  const failing = fakeStore({ nominations: [nom('n1', NAME_A)], failFeature: true });
+  await assert.rejects(featureTrailAndTell(failing, { trail, blurb: 'Shady', length: '30d', now: NOW }));
+  assert.equal(statusWrites(failing).length, 0);
+  assert.ok(!history(failing).some((h) => h.action === 'statusPublished'));
 });
 
 // MARK: Withdrawing
@@ -290,7 +369,8 @@ const status = (recordName, fields = {}) => ({
 
 test('only this trail\'s nomination statuses, under a dashboard-made name, are withdrawn', async () => {
   const records = [status(NAME_A), status(NAME_B, { kind: 'suggestion', status: 'added' }), status(NAME_C, { trailKey: 'nc:w2' }),
-    status('featured.nc.w1'), status(`status.${'d'.repeat(64)}`)];
+    status('featured.nc.w1'), status(`status.${'d'.repeat(64)}`),
+    status(`status.${'e'.repeat(64)}`, { kind: 'suggestion' }), status(`status.${'f'.repeat(64)}`, { status: 'added' })];
   assert.deepEqual(statusesToWithdraw(records, 'nc:w1').map((r) => r.recordName), [NAME_A, `status.${'d'.repeat(64)}`]);
   const store = fakeStore({ statuses: records });
   const found = await findNominationStatuses(store, { trailKey: 'nc:w1' });
@@ -300,13 +380,17 @@ test('only this trail\'s nomination statuses, under a dashboard-made name, are w
 
 test('withdrawing writes History with the count, then deletes only those; nothing to withdraw writes nothing', async () => {
   const store = fakeStore();
-  const out = await withdrawNominationStatuses(store, { trail, records: [status(NAME_A), status(NAME_B, { kind: 'suggestion', status: 'added' })] });
+  // Whatever is passed, only this trail's nomination statuses are deleted.
+  const out = await withdrawNominationStatuses(store, { trail, records: [status(NAME_A), status(NAME_B, { kind: 'suggestion', status: 'added' }),
+    status(NAME_C, { trailKey: 'nc:w2' }), status('featured.nc.w1')] });
   assert.deepEqual(out, { deleted: 1, error: null });
   assert.deepEqual(store.calls.map((c) => c[0]), ['create', 'delete']);
   const [h] = history(store);
-  assert.equal(h.action, 'statusWithdrawn');
-  assert.equal(h.targetType, 'contribution');
-  assert.equal(h.reportCount, 1);
+  assert.deepEqual(h, actionFields({
+    target: 'nc:w1', type: 'contribution', action: 'statusWithdrawn', reportCount: 1,
+    snapshot: JSON.stringify({ trailKey: 'nc:w1', trailName: 'Lake Loop', kind: 'nomination', status: 'featured', count: 1 }),
+  }));
+  assert.ok(!JSON.stringify(h).includes('status.'), 'no status name in History');
   assert.deepEqual(store.calls[1], ['delete', [NAME_A]]);
 
   const none = fakeStore();
@@ -337,6 +421,15 @@ test('Unfeature withdraws the statuses before the feature; a failure stops befor
   const fix = later.calls.find((c) => c[0] === 'replaceNamed' && c[1] === 'ModerationAction');
   assert.equal(fix[3].reportCount, 210);
   assert.equal(fix[3].action, 'statusWithdrawn');
+
+  // Withdrawn, then the unfeature itself fails: reported, not thrown, with the count.
+  const after = fakeStore({ failFeaturedDelete: true });
+  const stuck = await unfeatureTrailAndWithdraw(after, { trail, statuses: [status(NAME_A)] });
+  assert.equal(stuck.unfeatured, false);
+  assert.equal(stuck.withdrawn.deleted, 1);
+  assert.equal(stuck.error.ckErrorCode, 'NETWORK_ERROR');
+  assert.deepEqual(after.calls.filter((c) => c[0] === 'delete').map((c) => c[1]), [[NAME_A], ['featured.nc.w1'], ['act2']],
+    'the statusWithdrawn action (act1) stays; only unfeature\'s own (act2) is taken back');
 
   const nothing = fakeStore();
   assert.equal((await unfeatureTrailAndWithdraw(nothing, { trail, statuses: [] })).unfeatured, true);
@@ -406,6 +499,13 @@ test('end to end through ck.js: no token, nominator or status name in History; n
   assert.equal(done.withdrawn.deleted, 2);
   assert.equal([...cloud.byName.values()].filter((r) => r.recordType === 'ContributionStatus').length, 0);
   assert.ok(!cloud.byName.has('featured.nc.w1'));
+  // Every History record of the whole run, Unfeature's included.
+  const allActions = cloud.saved.filter((r) => r.recordType === 'ModerationAction');
+  assert.deepEqual(allActions.map((r) => r.fields.action.value),
+    ['featured', 'statusPublished', 'featured', 'statusPublished', 'statusWithdrawn', 'unfeatured']);
+  for (const secret of [TOKEN, TOKEN2, CREATOR, other, 'claimToken', TOKEN_NAME, `status.${sha(TOKEN2)}`, sha(TOKEN), sha(TOKEN2)]) {
+    assert.ok(!JSON.stringify(allActions).includes(secret), `${secret} reached History`);
+  }
 });
 
 // MARK: History and the queues

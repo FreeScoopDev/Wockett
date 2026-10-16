@@ -111,12 +111,19 @@ rules need an ordinary account to be proved.
   token, a name or a nominator. Older nominations have no token and get
   nothing. Featuring again (or Change note or length) rewrites the same
   records. If telling them fails, the trail stays featured and the message
-  says how to finish.
+  says how to finish. Nothing is written where the schema has no
+  `ContributionStatus` yet (a first write would create it with CloudKit's
+  default grants). A status name already taken by another record (a crafted
+  nomination can choose its own record name) is skipped and counted, so it
+  can't stop the others.
 - **Featured**: what is featured, until when, with Change and Unfeature.
   **Unfeature** first counts the nominators told, says so in its confirm,
   then withdraws their statuses (they go back to Sent in the app) before the
   trail leaves Featured; if withdrawing fails, the trail stays featured and
-  Unfeature can be run again. **Clear** on a feature that has already ended
+  Unfeature can be run again. If the count can't be checked, Unfeature isn't
+  offered (it would leave statuses no screen can withdraw); where the type
+  doesn't exist yet (Production before the schema deploy) there is nothing
+  to withdraw and Unfeature works as before. **Clear** on a feature that has already ended
   keeps the statuses: it was featured.
 - **Walker reports**: what walkers answered after a hike ("Help the next
   walker"), grouped by trail and fact, with how many walkers gave each

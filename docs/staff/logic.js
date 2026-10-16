@@ -1057,12 +1057,24 @@ export function nominationStatusNames(nominations, trailKey) {
 /**
  * When a status says the decision was made. Publishing again (Feature again,
  * Change note or length) keeps the first time if the record already says the
- * same thing, so a republish rewrites the same record rather than a newer one.
+ * same thing (kind, status and trail), so a republish rewrites the same
+ * record rather than a newer one.
  */
-export function statusDecidedAt(existing, kind, status, now) {
+export function statusDecidedAt(existing, { kind, status, trailKey }, now) {
   const f = existing?.fields;
-  if (f && f.kind === kind && f.status === status && Number.isFinite(f.decidedAt)) return f.decidedAt;
+  if (f && f.kind === kind && f.status === status && f.trailKey === trailKey && Number.isFinite(f.decidedAt)) return f.decidedAt;
   return now;
+}
+
+/**
+ * Whether a CloudKit error says the record type isn't in this environment's
+ * schema (as `ContributionStatus` isn't in Production until it is deployed).
+ * Read from the error's text, which is all CloudKit JS gives; unverified
+ * against a live container, so anything else counts as a real failure.
+ */
+export function isUnknownRecordType(error) {
+  const text = `${error?.reason ?? ''} ${error?.message ?? ''}`;
+  return /did not find record type/i.test(text);
 }
 
 /**
