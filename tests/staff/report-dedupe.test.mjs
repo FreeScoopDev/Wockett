@@ -150,7 +150,7 @@ test('the reporter never reaches the page, and the owner check still works on th
   assert.equal(reportedByAuthor(records[0].recordName, '_owner'), true);
 });
 
-test('a query by creator, for erasing a person\'s reports, gets every one', async () => {
+test('a query by creator (none for reports today) gets every record, not one per item', async () => {
   const { records } = await pagedQuery(db([
     raw('report.1', '_a', 'p1', T0), raw('report.2', '_a', 'p1', T0 + 1),
   ]), { recordType: 'CommunityReport' }, { onlyCreator: '_a' });

@@ -269,7 +269,7 @@ export function reporterToken(account) {
  * `everyNomination` is set, as telling nominators needs: then each device's
  * nomination, up to `TOKENS_PER_NOMINATOR` per person (`fewPerNominator`).
  * Reports come one per person per item (`onePerReporter`), except in a query
- * by creator (`onlyCreator`), which gets every one.
+ * by creator (`onlyCreator`; none for reports today), which gets every one.
  */
 export async function pagedQuery(db, query, { max = 1000, pageSize = 200, onlyCreator, everyNomination = false } = {}) {
   let raw = [];
@@ -286,7 +286,9 @@ export async function pagedQuery(db, query, { max = 1000, pageSize = 200, onlyCr
   if (query.recordType === 'CommunityReport') {
     for (const r of raw) if (r.created?.userRecordName) reportFilers.set(r.recordName, r.created.userRecordName);
   }
-  // A query by creator is for erasing that person's records: every one.
+  // A query by creator gets every record. None exists for reports today
+  // (CloudKit would need ___createdBy queryable on CommunityReport); if one is
+  // added, it must see each of a person's reports, not one per item.
   const kept = query.recordType === 'CommunityReport' ? (onlyCreator !== undefined ? raw : onePerReporter(raw))
     : query.recordType !== 'TrailNomination' ? raw : everyNomination ? fewPerNominator(raw) : onePerNominator(raw);
   const records = [];
