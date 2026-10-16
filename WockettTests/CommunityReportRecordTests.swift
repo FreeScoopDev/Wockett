@@ -22,17 +22,36 @@ struct CommunityReportRecordTests {
         var user: Result<String, Error> = .success("_reporter1")
         var saveError: Error?
         var hangs = false
-        /// The lookup takes a moment (and ignores cancellation, like CloudKit).
-        var userDelay = false
+        /// The lookup waits until `answerLookup()` (and ignores cancellation, like CloudKit).
+        var holdsLookup = false
         var saved: [CKRecord] = []
+        private var lookupGate: CheckedContinuation<Void, Never>?
+        private var answered: CheckedContinuation<Void, Never>?
+        var lookupHeld: Bool { lookupGate != nil }
 
         func currentUserRecordName() async throws -> String {
-            if userDelay {
-                await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { c.resume() }
+            if holdsLookup {
+                await withCheckedContinuation { lookupGate = $0 }
+                // Everything here is on the main actor, so this runs after the
+                // caller's next step, which has no suspension before a save
+                // records itself: by then it has saved or stopped.
+                Task { @MainActor in
+                    self.answered?.resume()
+                    self.answered = nil
                 }
             }
             return try user.get()
+        }
+
+        /// Lets the held lookup answer, and returns once its caller has
+        /// either started the save or given up. An event, not a wait on time.
+        func answerLookup() async {
+            guard let gate = lookupGate else { return }
+            lookupGate = nil
+            await withCheckedContinuation { c in
+                answered = c
+                gate.resume()
+            }
         }
 
         func save(_ record: CKRecord) async throws {
@@ -192,13 +211,17 @@ struct CommunityReportRecordTests {
         #expect(waited == .seconds(15))
     }
 
+    /// The lookup answers only after the deadline has, and the test waits for
+    /// what the caller does next, not for 300 ms: a fixed wait could close
+    /// before a late save on a busy machine and pass a broken build.
     @Test("Past the deadline, a save not yet started is dropped")
-    func noSaveAfterDeadline() async {
+    func noSaveAfterDeadline() async throws {
         let store = FakeStore()
-        store.userDelay = true
+        store.holdsLookup = true
         let outcome = await CommunityReportSubmission.submit(report(), store: store, sleep: { _ in })
         #expect(outcome == .failed)
-        try? await Task.sleep(for: .milliseconds(300))
+        try #require(store.lookupHeld, "the lookup started and is still waiting")
+        await store.answerLookup()
         #expect(store.saved.isEmpty, "the email was offered; a late record would be a second report")
     }
 

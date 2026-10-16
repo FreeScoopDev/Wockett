@@ -131,6 +131,15 @@ way unless there's a strong reason; adding the first one is a real decision.
   must never hold notification authorization under `-WKTUITest` (launch and
   session start both skip the request), and the monitor ignores non-alerts.
   Cost a CI run on 2026-09-09.
+- **A test's wall time includes its queue time for the main actor.** On the
+  CI runner every main-actor test starts at once, so a test that waits for
+  nothing can take 100 s, and `.timeLimit(.minutes(1))` failed correct builds
+  (#186, #196, #252). Never set a `.timeLimit` (or any wall-clock hang guard)
+  under 5 minutes, and never wait in a new test by polling with
+  `Task.yield()` or short sleeps: each turn goes to the back of that queue
+  (#252's test made 600). Have the fake signal instead, with a continuation
+  the test awaits (a gate: `GatedStatuses.held()` in
+  `ContributionStatusTests`). Added 2026-10-16.
 - **`CLLocation.distance(from:)` is not a pure function.** For points within
   2° of each other it uses a flat projection whose scale is cached in one
   process-wide static and reused for any latitude within 0.005° (about
