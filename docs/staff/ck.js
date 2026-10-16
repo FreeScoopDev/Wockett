@@ -226,18 +226,25 @@ export function suggesterToken(account) {
 }
 
 /**
- * Whether a suggestion's record name holds its own claim token or its
- * creator's account (either case). The app names suggestions randomly, so
- * only a crafted record does; such a record never reaches the page, because
- * Accept and Decline write the record names they decide into History, which
- * must never hold a token or an account (spec feat/trail-suggestions).
+ * The only record names a suggestion may have here: `suggestion.<UUID>`, as
+ * the app names them (spec feat/trail-suggestions, PR 1 decisions: random,
+ * never from the line, the account or the token).
+ */
+export const SUGGESTION_RECORD_NAME = /^suggestion\.[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$/;
+
+/**
+ * Whether a suggestion's record name can't go into History: anything but
+ * `suggestion.<UUID>`, or that UUID being the record's own claim token (in
+ * either case). Accept and Decline write the record names they decide into
+ * History, which must never hold a token, an account or a status name, and a
+ * crafted record can be named anything; so only the app's shape passes, and
+ * such a record never reaches the page.
  */
 export function nameLeaks(record) {
-  const name = String(record?.recordName ?? '').toLowerCase();
+  const name = String(record?.recordName ?? '');
+  if (!SUGGESTION_RECORD_NAME.test(name)) return true;
   const token = record?.fields?.claimToken?.value;
-  const who = record?.created?.userRecordName;
-  return (typeof token === 'string' && token.length > 0 && name.includes(token.toLowerCase()))
-    || (typeof who === 'string' && who.length > 0 && name.includes(who.toLowerCase()));
+  return typeof token === 'string' && name.slice('suggestion.'.length).toLowerCase() === token.toLowerCase();
 }
 
 /**
@@ -264,9 +271,9 @@ export async function pagedQuery(db, query, { max = 1000, pageSize = 200, onlyCr
   if (query.recordType === 'CommunityReport') {
     for (const r of raw) if (r.created?.userRecordName) reportFilers.set(r.recordName, r.created.userRecordName);
   }
-  // A suggestion named after its own token or account is left out (and
-  // counted), except when finding one account's records to delete them:
-  // deleting writes only a count to History.
+  // A suggestion whose name could put a token, an account or a status name
+  // into History (`nameLeaks`) is left out and counted, except when finding
+  // one account's records to delete them: deleting writes only a count.
   if (query.recordType === 'TrailSuggestion' && onlyCreator === undefined) {
     const before = raw.length;
     raw = raw.filter((r) => !nameLeaks(r));

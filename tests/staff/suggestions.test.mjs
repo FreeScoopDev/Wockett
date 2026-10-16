@@ -7,7 +7,7 @@ import { createHash } from 'node:crypto';
 import {
   decodePolyline, lineLength, overlapShare, sameLine, suggestionOf, suggestionIssueText, groupSuggestions, suggestionDecisions,
   suggestionStatusNames, acceptPlan, declinePlan, acceptTellText, suggestionToldText, suggestionHistoryText, gpxDocument, gpxFileName,
-  osmEditLink, mapsLink, routePath, routePaths, contributionStatusFields, textLength, isTrailKey,
+  osmEditLink, mapsLink, routePath, routePaths, contributionStatusFields, textLength, isTrailKey, longestStretch,
   SUGGESTION_CAPS, LINE_CHAR_LIMIT, OVERLAP_TOLERANCE_M, OVERLAP_SHARE, OVERLAP_STEP_M, SHORT_SUGGESTION_M, LONG_SUGGESTION_M,
   STRAIGHT_STRETCH_M, TOKENS_PER_SUGGESTER, SUGGESTION_FACTS, SUGGESTION_STATUS_TRAIL_KEY,
   NON_ITEM_TARGETS, ACTIONS, ACTIVITY_KINDS, actionFields, groupReports, queue, groupNominations, statusesToWithdraw,
@@ -15,7 +15,7 @@ import {
 import {
   acceptSuggestions, acceptSuggestionsAndTell, publishSuggestionStatuses, declineSuggestions, findSuggestionsBy, deleteSuggestionsBy,
 } from '../../docs/staff/actions.js';
-import { pagedQuery, connect, nameLeaks, plain } from '../../docs/staff/ck.js';
+import { pagedQuery, connect, nameLeaks, plain, suggesterToken, reporterToken } from '../../docs/staff/ck.js';
 
 const NOW = Date.UTC(2026, 9, 16, 12, 0, 0);
 const TOKEN = 'E621E1F8-C36C-495A-93FC-0C247A3E6E5F';
@@ -319,12 +319,14 @@ test('Accept uses the longest line within the caps, and re-checks the caps and t
   const over = [...whole, ...Array.from({ length: 1950 }, (_, i) => at(1400 + (i % 2), 1400 + i * 0.2))];
   const groups = groupSuggestions([sugg('short', whole.slice(10, 60), { created: 1 }), sugg('whole', whole, { created: 2 }),
     sugg('over', over, { created: 3 })]);
-  assert.equal(groups.length, 1);
-  assert.equal(groups[0].line.recordName, 'whole', 'the over-cap line is longer but never used');
+  assert.deepEqual(groups.map((g) => g.members.map((m) => m.recordName)), [['short', 'whole'], ['over']],
+    'an over-cap line is a group of its own: never compared, never used');
+  assert.equal(groups[0].line.recordName, 'whole');
+  assert.equal(groups[1].line, null);
   const plan = acceptPlan(groups[0], '  Creek Path ');
   assert.equal(plan.name, 'Creek Path');
   assert.equal(plan.recordName, 'whole');
-  assert.deepEqual(plan.recordNames, ['short', 'whole', 'over'], 'every member leaves the queue');
+  assert.deepEqual(plan.recordNames, ['short', 'whole'], 'every member leaves the queue');
   assert.throws(() => acceptPlan(groups[0], '  '), /needs a name/);
   assert.throws(() => acceptPlan(groups[0], 'x'.repeat(81)), /at most 80/);
   assert.doesNotThrow(() => acceptPlan(groups[0], 'x'.repeat(80)));
@@ -622,7 +624,13 @@ test('GPX holds the line and the name, escaped, and nothing else', () => {
 
 // MARK: ck.js keeps the token and the account
 
-const rawSugg = (recordName, points, { token, who = CREATOR, created = 1, name = 'Creek Path' } = {}) => ({
+/** `suggestion.<UUID>` for a short tag, as the app names suggestions (a fixed UUID per tag). */
+const SN = (tag) => {
+  const h = sha(tag);
+  return `suggestion.${h.slice(0, 8)}-${h.slice(8, 12)}-4${h.slice(13, 16)}-8${h.slice(17, 20)}-${h.slice(20, 32)}`;
+};
+/** A raw CloudKit JS suggestion; `tag` becomes its `suggestion.<UUID>` name unless `recordName` is given. */
+const rawSugg = (tag, points, { token, who = CREATOR, created = 1, name = 'Creek Path', recordName = SN(tag) } = {}) => ({
   recordName, recordType: 'TrailSuggestion', created: { timestamp: created, userRecordName: who },
   fields: { name: { value: name }, note: { value: '' }, region: { value: 'nc' }, line: { value: encode(points) },
     pointCount: { value: points.length }, lengthMeters: { value: lineLength(points.map(round5)) },
@@ -632,8 +640,8 @@ const rawSugg = (recordName, points, { token, who = CREATOR, created = 1, name =
 test('a suggestion reaches the page with its status name and a page-load walker token, never its claim token or account', async () => {
   const line = path(60);
   const db = { async performQuery() {
-    return { records: [rawSugg('suggestion.1', line, { token: TOKEN }), rawSugg('suggestion.2', line, { token: TOKEN2 }),
-      rawSugg('suggestion.3', line, { who: OTHER }), rawSugg('suggestion.4', line, { token: 'junk', who: OTHER })], moreComing: false };
+    return { records: [rawSugg('1', line, { token: TOKEN }), rawSugg('2', line, { token: TOKEN2 }),
+      rawSugg('3', line, { who: OTHER }), rawSugg('4', line, { token: 'junk', who: OTHER })], moreComing: false };
   } };
   const { records, hidden } = await pagedQuery(db, { recordType: 'TrailSuggestion' });
   assert.equal(hidden, 0);
@@ -648,16 +656,31 @@ test('a suggestion reaches the page with its status name and a page-load walker 
 
 test('a suggestion whose record name holds its own token or account never reaches the page, and is counted', async () => {
   const line = path(60);
-  const leaky = [rawSugg(`suggestion.${TOKEN.toLowerCase()}`, line, { token: TOKEN }), rawSugg(`s.${CREATOR}`, line, { token: TOKEN2 }),
-    rawSugg('suggestion.ok', line, { token: TOKEN3 })];
-  assert.deepEqual(leaky.map(nameLeaks), [true, true, false]);
-  const db = { async performQuery() { return { records: leaky, moreComing: false }; } };
+  const leaky = [
+    rawSugg('x', line, { token: TOKEN, recordName: `suggestion.${TOKEN.toLowerCase()}` }),   // its own token
+    rawSugg('x', line, { token: TOKEN, recordName: `suggestion.${TOKEN}` }),                 // the same, as Swift writes it
+    rawSugg('x', line, { token: TOKEN2, recordName: `s.${CREATOR}` }),                       // its account
+    rawSugg('x', line, { token: TOKEN2, recordName: `suggestion.${CREATOR.toUpperCase()}` }),
+    rawSugg('x', line, { token: TOKEN2, recordName: `suggestion.${OTHER}` }),                // someone else's account
+    rawSugg('x', line, { token: TOKEN2, recordName: `status.${sha(TOKEN2)}` }),               // a status name
+    rawSugg('x', line, { token: TOKEN2, recordName: `suggestion.${TOKEN2.replace(/-/g, '')}` }),
+    rawSugg('x', line, { token: TOKEN2, recordName: `${SN('ok')}x` }),
+  ];
+  const fine = [rawSugg('ok', line, { token: TOKEN3 }), rawSugg('upper', line, { token: TOKEN3, recordName: SN('upper').toUpperCase().replace('SUGGESTION', 'suggestion') }),
+    rawSugg('empty', line, { token: '' }), rawSugg('none', line)];
+  assert.deepEqual(leaky.map(nameLeaks), leaky.map(() => true));
+  assert.deepEqual(fine.map(nameLeaks), fine.map(() => false), 'suggestion.<UUID> in either case, with any or no token, is fine');
+  const db = { async performQuery() { return { records: [...leaky, ...fine], moreComing: false }; } };
   const { records, hidden } = await pagedQuery(db, { recordType: 'TrailSuggestion' });
-  assert.deepEqual(records.map((r) => r.recordName), ['suggestion.ok']);
-  assert.equal(hidden, 2);
+  assert.deepEqual(records.map((r) => r.recordName), fine.map((r) => r.recordName));
+  assert.equal(hidden, leaky.length);
+  // Decline writes only what reached the page into History.
+  const store = fakeStore();
+  await declineSuggestions(store, { group: groupSuggestions(records)[0] });
+  for (const r of leaky) assert.ok(!JSON.stringify(store.calls).includes(r.recordName), r.recordName);
   // Finding one account's suggestions to delete them still finds them: deleting writes only a count.
   const mine = await pagedQuery(db, { recordType: 'TrailSuggestion' }, { onlyCreator: CREATOR });
-  assert.equal(mine.records.length, 3);
+  assert.equal(mine.records.length, leaky.length + fine.length, 'all of them are CREATOR\'s, and all can be deleted');
 });
 
 // MARK: Removal on request
@@ -741,11 +764,11 @@ test('end to end: Accept tells each device once, and no token, account or status
   const line = path(80);
   // CREATOR suggested the path from two devices; OTHER once; someone before tokens existed; and a different path.
   const cloud = fakeCloudKit([
-    rawSugg('suggestion.a', line, { token: TOKEN, created: 1 }),
-    rawSugg('suggestion.b', [...path(80, { jitter: 6, seed: 9 })].reverse(), { token: TOKEN3, created: 2, name: 'creek path' }),
-    rawSugg('suggestion.c', path(80, { jitter: 6, seed: 4 }), { token: TOKEN2, who: OTHER, created: 3, name: 'Old Mill Trail' }),
-    rawSugg('suggestion.d', line.slice(0, 40), { who: '_z000000000000000', created: 4 }),
-    rawSugg('suggestion.e', path(80, { north: 4000 }), { token: '11111111-2222-4333-8444-555555555555', who: OTHER, created: 5 }),
+    rawSugg('a', line, { token: TOKEN, created: 1 }),
+    rawSugg('b', [...path(80, { jitter: 6, seed: 9 })].reverse(), { token: TOKEN3, created: 2, name: 'creek path' }),
+    rawSugg('c', path(80, { jitter: 6, seed: 4 }), { token: TOKEN2, who: OTHER, created: 3, name: 'Old Mill Trail' }),
+    rawSugg('d', line.slice(0, 40), { who: '_z000000000000000', created: 4 }),
+    rawSugg('e', path(80, { north: 4000 }), { token: '11111111-2222-4333-8444-555555555555', who: OTHER, created: 5 }),
   ]);
   const store = connect({ CloudKit: cloud.CloudKit });
   const { records } = await store.query('TrailSuggestion', { max: 2000 });
@@ -764,7 +787,7 @@ test('end to end: Accept tells each device once, and no token, account or status
   }
   assert.deepEqual([...new Set(cloud.saved.map((r) => r.recordType))].sort(), ['ContributionStatus', 'ModerationAction'], 'no CommunityTrail');
   // Nothing of the suggestion itself is in a record everyone can read: no name given or accepted, no note, no line.
-  for (const text of ['Creek Path', 'creek path', 'Old Mill Trail', encode(line), 'suggestion.a']) {
+  for (const text of ['Creek Path', 'creek path', 'Old Mill Trail', encode(line), SN('a')]) {
     assert.ok(!JSON.stringify(statuses).includes(text), `${text} reached a world-readable status`);
   }
   const actions = cloud.saved.filter((r) => r.recordType === 'ModerationAction');
@@ -776,7 +799,7 @@ test('end to end: Accept tells each device once, and no token, account or status
     assert.ok(!gpxDocument(group.name, group.line.line).includes(secret), `${secret} reached the GPX`);
   }
   for (const name of [TOKEN_NAME, sha(TOKEN), sha(TOKEN2), sha(TOKEN3)]) assert.ok(!JSON.stringify(actions).includes(name), 'History holds counts, not status names');
-  assert.deepEqual(JSON.parse(actions[0].fields.snapshot.value).recordNames, ['suggestion.a', 'suggestion.b', 'suggestion.c', 'suggestion.d']);
+  assert.deepEqual(JSON.parse(actions[0].fields.snapshot.value).recordNames, [SN('a'), SN('b'), SN('c'), SN('d')]);
 
   // After Accept, the group has left the queue, and the other path is still waiting.
   const { records: actionRecords } = await store.query('ModerationAction');
@@ -790,18 +813,18 @@ test('end to end: Accept tells each device once, and no token, account or status
 
   // A removal request for OTHER deletes their two suggestions and nothing else; History keeps the count.
   const found = await findSuggestionsBy(store, { identifier: OTHER });
-  assert.deepEqual(found.records.map((r) => r.recordName).sort(), ['suggestion.c', 'suggestion.e']);
+  assert.deepEqual(found.records.map((r) => r.recordName).sort(), [SN('c'), SN('e')]);
   assert.ok(!JSON.stringify(found.records).includes(OTHER));
   const out = await deleteSuggestionsBy(store, found);
   assert.deepEqual(out, { deleted: 2, error: null });
-  assert.deepEqual(cloud.deleted.sort(), ['suggestion.c', 'suggestion.e']);
+  assert.deepEqual(cloud.deleted.sort(), [SN('c'), SN('e')]);
   assert.equal(cloud.byName.get(`status.${sha(TOKEN2)}`).recordType, 'ContributionStatus', 'their Added status stays');
   for (const secret of secrets) assert.ok(!JSON.stringify(cloud.saved).includes(secret), `${secret} reached History`);
 });
 
 test('end to end: one of a walker\'s two devices failing still tells the other, and History says 1 of 2', async () => {
   const line = path(60);
-  const cloud = fakeCloudKit([rawSugg('suggestion.a', line, { token: TOKEN }), rawSugg('suggestion.b', line, { token: TOKEN3, created: 2 })],
+  const cloud = fakeCloudKit([rawSugg('a', line, { token: TOKEN }), rawSugg('b', line, { token: TOKEN3, created: 2 })],
     { failNames: [TOKEN_NAME] });
   const store = connect({ CloudKit: cloud.CloudKit });
   const { records } = await store.query('TrailSuggestion');
@@ -815,6 +838,208 @@ test('end to end: one of a walker\'s two devices failing still tells the other, 
   for (const secret of [TOKEN, TOKEN3, CREATOR, sha(TOKEN), sha(TOKEN3)]) assert.ok(!JSON.stringify(toldAction).includes(secret), secret);
 });
 
+// MARK: Critic and test-auditor run 1 (2026-10-16)
+
+/** Points every `step` metres from `from` to `to` (each an [east, north] in metres). */
+function seg(from, to, step = 20) {
+  const n = Math.max(1, Math.round(Math.hypot(to[0] - from[0], to[1] - from[1]) / step));
+  return Array.from({ length: n + 1 }, (_, i) => at(from[0] + ((to[0] - from[0]) * i) / n, from[1] + ((to[1] - from[1]) * i) / n));
+}
+
+test('a short walk on a stretch two paths share joins one of them, never both into one group', () => {
+  const shared = seg([0, 0], [0, 400]);
+  const a = [...seg([-3000, 0], [0, 0]), ...shared.slice(1)];
+  const b = [...shared, ...seg([0, 400], [3000, 400]).slice(1)];
+  assert.ok(!sameLine(a, b));
+  assert.ok(sameLine(shared, a) && sameLine(shared, b), 'the short one lies along both');
+  const groups = groupSuggestions([sugg('a', a, { created: 1, statusName: NAME_A }), sugg('b', b, { created: 2, statusName: NAME_B }),
+    sugg('c', shared, { created: 3, statusName: NAME_C })]);
+  assert.equal(groups.length, 2);
+  const withC = groups.filter((g) => g.members.some((m) => m.recordName === 'c'));
+  assert.equal(withC.length, 1);
+  assert.equal(withC[0].members.length, 2);
+  // Accepting the group with C tells C and that group's own walker, never the other path's.
+  const told = suggestionStatusNames(withC[0].members).names;
+  assert.equal(told.length, 2);
+  assert.ok(told.includes(NAME_C) && !(told.includes(NAME_A) && told.includes(NAME_B)));
+});
+
+test('the share turns at exactly 60%, sampled every 25 m, within exactly the tolerance', () => {
+  // 99 m sampled at 0, 25, 50, 75, 99: three of five within 30 m of a line ending at 30 m.
+  assert.equal(overlapShare([at(0, 0), at(0, 99)], [at(0, -200), at(0, 30)]), 0.6);
+  assert.ok(sameLine([at(0, 0), at(0, 99)], [at(0, -200), at(0, 30)]));
+  assert.ok(!sameLine([at(0, 0), at(0, 100)], [at(0, -200), at(0, 30)]), '0.5');
+  const a = [at(0, 0), at(0, 220)];
+  assert.ok(sameLine(a, [at(0, -2000), at(0, 105), at(3000, 105)]), '0.6');
+  assert.ok(!sameLine(a, [at(0, -2000), at(0, 80), at(3000, 80)]), '0.5');
+  assert.ok(sameLine(northPath(80), northPath(80, 28)));
+  assert.ok(sameLine(northPath(80), northPath(80, 29.5)), 'within 30 m counts, right up to it');
+  assert.ok(!sameLine(northPath(80), northPath(80, 30.5)));
+  assert.ok(!sameLine(northPath(80), northPath(80, 32)));
+  // Sampled along the line, not just at its points: a V touches the straight line only at its ends.
+  assert.ok(!sameLine([at(0, 0), at(0, 1000)], [at(0, -10), at(600, 500), at(0, 1010)]));
+});
+
+test('grouping stays fast: crafted over-cap lines are never compared, and 20 long overlapping lines group in seconds, not minutes', () => {
+  const huge = (k) => sugg(`huge${k}`, null, { line: encode(Array.from({ length: 9001 }, (_, i) => at((i % 2) * 600 + k, i * 600))) });
+  let t = performance.now();
+  const crafted = groupSuggestions([huge(0), huge(5), huge(10)]);
+  assert.equal(crafted.length, 3);
+  // Generous for a busy CI runner: before these were bounded, this took over 100 s.
+  assert.ok(performance.now() - t < 5000, `${Math.round(performance.now() - t)} ms`);
+  // 20 lines of 2,000 points, ~15 km each, all in one box, 60 m apart: every pair is checked and differs.
+  const lines = Array.from({ length: 20 }, (_, k) => sugg(`l${k}`, Array.from({ length: 2000 }, (_, i) => at(i * 7.4, k * 60 + 20 * Math.sin(i / 30)))));
+  t = performance.now();
+  const groups = groupSuggestions(lines);
+  const ms = performance.now() - t;
+  assert.equal(groups.length, 20);
+  assert.ok(ms < 10_000, `${Math.round(ms)} ms (about 0.2 s alone; it took 19 s before early exit and the grid)`);
+});
+
+test('the decoder refuses a value too long to be a coordinate, and never yields NaN', () => {
+  for (const bad of ['_'.repeat(220) + '??' + '_ibE_ibE_ibE_ibE', `${'_'.repeat(210)}??????`, '~~~~~~~~~??', '______[?',
+    `${encode([{ latitude: 1, longitude: 1 }, { latitude: 1.1, longitude: 1.1 }])}\u007f??`]) {
+    assert.equal(decodePolyline(bad), null, JSON.stringify(bad.slice(0, 20)));
+  }
+  // Six chunks is enough for any coordinate: a delta of the whole globe still decodes.
+  assert.deepEqual(decodePolyline(encode([{ latitude: -90, longitude: -180 }, { latitude: 90, longitude: 180 }])),
+    [{ latitude: -90, longitude: -180 }, { latitude: 90, longitude: 180 }]);
+});
+
+test('the mismatch rule is 50 m or 10%, whichever is more, and a missing or NaN length is a mismatch', () => {
+  const near = (line, claimed) => suggestionOf(sugg('s', line, { lengthMeters: claimed })).warnings.includes('mismatch');
+  const short = seg([0, 0], [0, 300], 25);
+  const L = lineLength(short.map(round5));
+  assert.ok(!near(short, L + 45) && near(short, L + 55) && near(short, L - 55));
+  const long = seg([0, 0], [0, 2000], 25);
+  const L2 = lineLength(long.map(round5));
+  assert.ok(!near(long, L2 * 1.09) && near(long, L2 * 1.11));
+  assert.ok(near(short, NaN) && near(short, '300'));
+});
+
+test('the thresholds sit where the constants say: short 300 m, long 15 km, straight 500 m, over-cap 20 km', () => {
+  const w = (line) => suggestionOf(sugg('s', line));
+  assert.ok(w(seg([0, 0], [0, 290])).warnings.includes('short'));
+  assert.ok(!w(seg([0, 0], [0, 310])).warnings.includes('short'));
+  assert.ok(w(seg([0, 0], [0, 15_300], 50)).warnings.includes('long'));
+  assert.ok(!w(seg([0, 0], [0, 14_700], 50)).warnings.includes('long'));
+  const over = w(seg([0, 0], [0, 20_200], 50));
+  assert.deepEqual(over.problems, ['meters']);
+  assert.ok(!over.warnings.includes('long'), 'over the cap is a problem, not "very long"');
+  assert.deepEqual(w(seg([0, 0], [0, 19_900], 50)).problems, []);
+  // A gap between the first two points counts as much as one in the middle.
+  const gapFirst = [at(0, 0), ...seg([0, 600], [0, 1000])];
+  assert.ok(longestStretch(gapFirst) > 590);
+  assert.ok(w(gapFirst).warnings.includes('straight'));
+  assert.ok(!w([at(0, 0), ...seg([0, 300], [0, 1000])]).warnings.includes('straight'), '300 m');
+  // Characters as a person counts them, for the note too; a region is exactly two letters.
+  const family = '👨‍👩‍👧‍👦';
+  assert.ok(!w(seg([0, 0], [0, 500])).warnings.includes('note'));
+  assert.ok(!suggestionOf(sugg('s', seg([0, 0], [0, 500]), { note: family.repeat(300) })).warnings.includes('note'));
+  for (const region of ['abc', 'ncx', 'n', '']) assert.ok(suggestionOf(sugg('s', seg([0, 0], [0, 500]), { region })).warnings.includes('region'), region);
+  // The decode limit: at the limit it is read (and over the point cap); one more is not read.
+  assert.deepEqual(suggestionOf(sugg('s', null, { line: '?'.repeat(LINE_CHAR_LIMIT) })).problems, ['points']);
+});
+
+test('Accept takes a line exactly at the caps and an 80-character name as a person counts it', () => {
+  const [g] = groupSuggestions([sugg('s', path(60))]);
+  const line = { ...g.line, problems: [] };
+  assert.doesNotThrow(() => acceptPlan({ ...g, line: { ...line, pointCount: 2000 } }, 'Creek Path'));
+  assert.doesNotThrow(() => acceptPlan({ ...g, line: { ...line, lengthMeters: 20_000 } }, 'Creek Path'));
+  assert.doesNotThrow(() => acceptPlan(g, '👨‍👩‍👧‍👦'.repeat(80)));
+  assert.throws(() => acceptPlan({ ...g, line: { ...line, lengthMeters: NaN } }, 'Creek Path'));
+});
+
+test('Accept tells at most 5 devices per walker through the store, and the same device again costs nothing', async () => {
+  const line = path(60);
+  const names = Array.from({ length: 7 }, (_, i) => `status.${String(i).repeat(64)}`);
+  const [group] = groupSuggestions(names.map((n, i) => sugg(`s${i}`, line, { created: 10 - i, statusName: n, submitter: 'suggester-9' })));
+  const store = fakeStore();
+  const { told } = await acceptSuggestionsAndTell(store, { group, name: 'Creek Path', now: NOW });
+  assert.deepEqual([told.written, told.capped], [5, 2]);
+  assert.equal(statusWrites(store).length, 5);
+  // Six suggestions from one phone and one from a second: both phones are told.
+  const same = suggestionStatusNames([...Array.from({ length: 6 }, (_, i) => ({ recordName: `p${i}`, created: 10 - i, statusName: NAME_A, submitter: 'suggester-1' })),
+    { recordName: 'q', created: 1, statusName: NAME_B, submitter: 'suggester-1' }]);
+  assert.deepEqual([same.names, same.capped], [[NAME_A, NAME_B], 0]);
+});
+
+test('History names the trimmed accepted name and the line used; a skipped name still reaches the page when every write fails', async () => {
+  const line = path(60);
+  const [group] = groupSuggestions([sugg('first', line.slice(0, 40), { created: 1, statusName: NAME_A }), sugg('longest', line, { created: 2, statusName: NAME_B })]);
+  assert.equal(group.line.recordName, 'longest');
+  const store = fakeStore();
+  await acceptSuggestionsAndTell(store, { group, name: '  Mill Run ', now: NOW });
+  const [accepted, told] = history(store);
+  assert.equal(accepted.targetRecordName, 'longest');
+  assert.equal(JSON.parse(accepted.snapshot).name, 'Mill Run');
+  assert.equal(told.targetRecordName, 'longest');
+  assert.equal(JSON.parse(told.snapshot).trailName, 'Mill Run');
+  const decline = fakeStore();
+  await declineSuggestions(decline, { group });
+  assert.equal(history(decline)[0].targetRecordName, 'longest');
+  const squatted = fakeStore({ existing: new Map([[NAME_A, { recordName: NAME_A, recordType: 'TrailSuggestion', fields: {} }]]), failWriteAt: 1 });
+  const out = await acceptSuggestionsAndTell(squatted, { group, name: 'Mill Run', now: NOW });
+  assert.deepEqual([out.told.blocked, out.told.error.ckErrorCode], [1, 'NETWORK_ERROR']);
+  assert.equal(suggestionToldText({ written: 0, planned: 0, blocked: 0, error: null }), '');
+});
+
+test('Decline keeps no name over the caps in History, and a huge one can\'t stop it', async () => {
+  const [g] = groupSuggestions([sugg('s', path(60), { name: 'x'.repeat(10_000) })]);
+  assert.equal(declinePlan(g).snapshot.name, '');
+  const [ok] = groupSuggestions([sugg('s', path(60), { name: 'Creek Path' })]);
+  assert.equal(declinePlan(ok).snapshot.name, 'Creek Path');
+});
+
+test('groups are ordered newest first among equals, decided ones by time alone; notes newest first; one acceptance makes a group accepted', () => {
+  const one = path(60);
+  const two = path(60, { north: 3000 });
+  const three = path(60, { north: 6000 });
+  const waiting = groupSuggestions([sugg('old', one, { created: 1 }), sugg('new', two, { created: 2 })]);
+  assert.deepEqual(waiting.map((g) => g.id), ['new', 'old']);
+  const decidedGroups = groupSuggestions([sugg('big1', one, { created: 1, submitter: 'suggester-1' }), sugg('big2', one, { created: 2, submitter: 'suggester-2' }),
+    sugg('small', two, { created: 5 })], [decided('declined', ['big1', 'big2', 'small'], 10)]);
+  assert.deepEqual(decidedGroups.map((g) => g.id), ['small', 'big1'], 'decided: newest first, not most walkers');
+  const [mixed] = groupSuggestions([sugg('m1', three, { created: 1 }), sugg('m2', three, { created: 2 })],
+    [decided('declined', ['m1'], 10), decided('accepted', ['m2'], 11)]);
+  assert.equal(mixed.state, 'accepted');
+  const [noted] = groupSuggestions([sugg('n1', one, { created: 1, note: 'first' }), sugg('n2', one, { created: 2, note: 'second' })]);
+  assert.deepEqual(noted.notes.map((n) => n.note), ['second', 'first']);
+});
+
+test('a suggester\'s token is its own: the page can\'t link someone\'s walker reports to their suggestions', () => {
+  const who = '_linkcheck000000000000';
+  const walker = reporterToken(who);
+  const suggester = suggesterToken(who);
+  assert.match(walker, /^walker-\d+$/);
+  assert.match(suggester, /^suggester-\d+$/);
+  assert.equal(suggesterToken(who), suggester, 'stable for the page load');
+  assert.equal(suggesterToken(''), undefined);
+});
+
+test('GPX strips what XML can\'t hold, names an unnamed track, and file names never end in a dash; OSM refuses a point off the globe', () => {
+  const pts = [{ latitude: 1, longitude: 1 }, { latitude: 1.1, longitude: 1.1 }];
+  const gpx = gpxDocument('O\'Neil\u0002￿ Path', pts);
+  assert.match(gpx, /<name>O&apos;Neil Path<\/name>/);
+  assert.match(gpxDocument('', pts), /<name>Trail suggestion<\/name>/);
+  assert.equal(gpxFileName(`${'x'.repeat(39)} y`), `wockett-suggestion-${'x'.repeat(39)}.gpx`);
+  assert.equal(osmEditLink(0, 181), null);
+  assert.equal(osmEditLink(-90, -180), 'https://www.openstreetmap.org/edit#map=18/-90.00000/-180.00000');
+});
+
+test('a removal request deletes only suggestions, whatever else is passed', async () => {
+  const store = fakeStore();
+  await deleteSuggestionsBy(store, { records: [{ recordName: 's1', recordType: 'TrailSuggestion' }, { recordName: 'a1', recordType: 'ModerationAction' },
+    { recordName: 'n1', recordType: 'TrailNomination' }] });
+  assert.deepEqual(store.calls.filter((c) => c[0] === 'delete').map((c) => c[1]), [['s1']]);
+});
+
+test('a very large group still draws: no spread of every point', () => {
+  const lines = Array.from({ length: 70 }, (_, k) => Array.from({ length: 2000 }, (_, i) => ({ latitude: 35 + i * 1e-5, longitude: -78 + k * 1e-5 })));
+  const { paths } = routePaths(lines);
+  assert.equal(paths.filter(Boolean).length, 70);
+});
+
 // MARK: The page and the schema
 
 const staff = (file) => readFileSync(new URL(`../../docs/staff/${file}`, import.meta.url), 'utf8');
@@ -825,19 +1050,42 @@ test('nothing in the dashboard writes a CommunityTrail: collect-only until PR 4'
   }
 });
 
+/** One function's source in app.js, from its declaration to the next top-level function. */
+function fn(app, name) {
+  const start = app.indexOf(`function ${name}(`);
+  assert.ok(start >= 0, `${name} is in app.js`);
+  const end = app.indexOf('\nfunction ', start + 1);
+  const end2 = app.indexOf('\nasync function ', start + 1);
+  return app.slice(start, Math.min(...[end, end2].filter((n) => n > 0)));
+}
+
 test('the page offers the tab, counts the Accept confirm from the group as Accept writes it, and saves GPX without a network', () => {
   assert.match(staff('index.html'), /<button data-view="suggestions">Trail suggestions<\/button>/);
   const app = staff('app.js');
   assert.match(app, /suggestions: renderSuggestions,/);
-  assert.match(app, /const tell = suggestionStatusNames\(group\.members\);/);
-  assert.match(app, /el\('p', \{\}, acceptTellText\(tell\), /);
-  assert.match(app, /acceptSuggestionsAndTell\(store, \{ group, name: form\.elements\.namedItem\('name'\)\.value, note: form\.elements\.note\.value \}\)/);
-  assert.match(app, /saveFile\(gpxFileName\(g\.name\), gpxDocument\(g\.name, line\.line\), 'application\/gpx\+xml'\)/);
-  assert.match(app, /URL\.createObjectURL\(new Blob\(\[text\], \{ type \}\)\)/);
-  assert.doesNotMatch(app, /(?<![.\w])fetch\(|XMLHttpRequest|sendBeacon|WebSocket/, 'the page talks to CloudKit only through ck.js');
-  // Every destructive or deciding action asks first.
-  for (const value of ['accept', 'decline', 'delete']) assert.match(app, new RegExp(`event\\.submitter\\?\\.value !== '${value}'`));
-  assert.match(app, /suggestionHistoryText\(f\)/);
+  const accept = fn(app, 'confirmAcceptSuggestion');
+  assert.match(accept, /const tell = suggestionStatusNames\(group\.members\);\n/);
+  assert.doesNotMatch(accept, /tell\.names\s*=|tell\.names\.(splice|pop|shift|length\s*=)/, 'the count is not altered after it is taken');
+  assert.match(accept, /el\('p', \{\}, acceptTellText\(tell\), /);
+  // Asks first, re-checks the name in the dialog, then accepts, then remembers the decision.
+  assert.match(accept, /if \(event\.submitter\?\.value !== 'accept'\) return;[\s\S]*acceptPlan\(group, name\);[\s\S]*return;[\s\S]*await acceptSuggestionsAndTell\(store, \{ group, name, note: form\.elements\.note\.value \}\);\n\s*rememberDecision\('accepted', plan\);/);
+  assert.match(fn(app, 'confirmDeclineSuggestion'), /if \(event\.submitter\?\.value !== 'decline'\) return;[\s\S]*await declineSuggestions\(store,[\s\S]*rememberDecision\('declined', plan\);/);
+  assert.match(fn(app, 'confirmDeleteSuggestionsByIdentifier'), /if \(event\.submitter\?\.value !== 'delete'\) return;[\s\S]*await deleteSuggestionsBy\(store, \{ records \}\)/);
+  assert.match(fn(app, 'askDeleteSuggestionsByIdentifier'), /if \(event\.submitter\?\.value !== 'find'\) return;[\s\S]*await findSuggestionsBy\(/);
+  // GPX: the accepted name if any, made on the page.
+  assert.match(fn(app, 'suggestionCard'), /const name = g\.acceptedName \|\| g\.name;\n\s*saveFile\(gpxFileName\(name\), gpxDocument\(name, line\.line\), 'application\/gpx\+xml'\);/);
+  assert.match(fn(app, 'saveFile'), /URL\.createObjectURL\(new Blob\(\[text\], \{ type \}\)\)/);
+  // No network but CloudKit through ck.js: the only `fetch(` is the store's.
+  assert.deepEqual([...app.matchAll(/(\S*)fetch\(/g)].map((m) => m[1]).filter((pre) => !pre.endsWith('store.')), []);
+  assert.doesNotMatch(app, /XMLHttpRequest|sendBeacon|WebSocket|EventSource|import\(/);
+  // The suggestions screen: Delete is drawn before loading; the missing type reads as empty; left-out records are said.
+  const screen = fn(app, 'renderSuggestions');
+  assert.ok(screen.indexOf('deleteButton));') < screen.indexOf("store.query('TrailSuggestion'"), 'the removal button comes before anything slow');
+  assert.ok(screen.indexOf('Grouping suggestions') < screen.indexOf('groupSuggestions('), 'drawn again before grouping');
+  assert.match(screen, /if \(!current\(seq\) \|\| !isUnknownRecordType\(error\)\) throw error;/);
+  assert.match(screen, /suggestions\.hidden \? el\('p'/);
+  assert.match(screen, /groupSuggestions\(suggestions\.records, \[\.\.\.actions\.records, \.\.\.suggestionsDecided\]\)/);
+  assert.match(app, /f\.targetType === 'suggestion' \|\| f\.targetType === 'trailSuggestions' \? el\('div', \{\}, suggestionHistoryText\(f\)\) : null,/);
 });
 
 function schemaBlock(type) {

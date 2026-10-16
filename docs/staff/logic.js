@@ -376,12 +376,13 @@ export function routePaths(lines, width = 160, height = 120, pad = 8) {
   const k = Math.cos((lat0 * Math.PI) / 180);
   const xOf = (p) => p.longitude * k;
   const yOf = (p) => -p.latitude;
-  const xs = all.map(xOf);
-  const ys = all.map(yOf);
-  const minX = Math.min(...xs);
-  const maxX = Math.max(...xs);
-  const minY = Math.min(...ys);
-  const maxY = Math.max(...ys);
+  // A loop, not Math.min(...xs): a spread of 100,000+ points throws in V8.
+  let minX = Infinity; let maxX = -Infinity; let minY = Infinity; let maxY = -Infinity;
+  for (const p of all) {
+    const x = xOf(p);
+    const y = yOf(p);
+    minX = Math.min(minX, x); maxX = Math.max(maxX, x); minY = Math.min(minY, y); maxY = Math.max(maxY, y);
+  }
   const spanX = maxX - minX;
   const spanY = maxY - minY;
   const span = Math.max(spanX, spanY);
@@ -1243,10 +1244,10 @@ export const STRAIGHT_STRETCH_M = 500;
  * criterion 5): GPS on a wooded path wanders 5-20 m. The shorter line decides,
  * so a walker who did half of a path is grouped with one who did all of it;
  * the direction walked doesn't matter. Two paths 50 m apart, or two that
- * only cross, stay apart. Groups are joined through any shared member, so
- * three suggestions can be one group when the middle one overlaps both
- * (two long paths joined that way run within 30 m of each other along the
- * middle one: very likely one path).
+ * only cross, stay apart. A group is built round its longest line (its
+ * anchor), and each member must lie along the anchor itself, never only
+ * along another member: a short walk on a stretch two paths share joins one
+ * of them, never both into one.
  */
 export const OVERLAP_TOLERANCE_M = 30;
 export const OVERLAP_SHARE = 0.6;
@@ -1278,8 +1279,8 @@ export function textLength(text) {
 /**
  * The points of a Google encoded polyline (precision 5: 1e-5 degrees), or
  * null when the text isn't one: a character outside `?`..`~`, a value cut
- * off at the end, or a point off the globe (which is also where a value
- * too long to be a coordinate ends up). An empty text is no points.
+ * off at the end, a value of more than six chunks (too long to be a
+ * coordinate), or a point off the globe. An empty text is no points.
  * Suggestions are written by any signed-in iCloud user, so nothing about the
  * text is trusted. Arithmetic, not bit operators, so a long run can't wrap
  * round 32 bits into a plausible number.
@@ -1302,6 +1303,10 @@ export function decodePolyline(text, precision = 5) {
         chunk = text.charCodeAt(i) - 63;
         i += 1;
         if (chunk < 0 || chunk > 63) return null;
+        // Six 5-bit chunks hold any precision-5 coordinate (±360° is 3.6e7,
+        // 7.2e7 zig-zagged, under 2^30). A seventh is not a coordinate, and
+        // this also keeps every value finite: never NaN, never Infinity.
+        if (shift >= 30) return null;
         result += (chunk & 0x1f) * 2 ** shift;
         shift += 5;
       } while (chunk >= 0x20);
@@ -1375,10 +1380,54 @@ function distanceToSegment(p, a, b) {
   return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy));
 }
 
-function distanceToLine(p, xy) {
-  let best = Infinity;
-  for (let i = 1; i < xy.length; i += 1) best = Math.min(best, distanceToSegment(p, xy[i - 1], xy[i]));
-  return best;
+/**
+ * A line laid out for "is this point within `tolerance` of it?": projected
+ * around its own first point, its segments filed in a grid of cells as wide
+ * as the tolerance, each under every cell its box (grown by the tolerance)
+ * covers. A point then checks only the segments filed under its own cell, so
+ * a check costs a few segments, not all 2,000.
+ */
+function lineIndex(points, tolerance) {
+  const lat0 = points[0].latitude;
+  const lng0 = points[0].longitude;
+  const xy = project(points, lat0, lng0);
+  const cells = new Map();
+  const cell = (v) => Math.floor(v / tolerance);
+  for (let i = 1; i < xy.length; i += 1) {
+    const a = xy[i - 1];
+    const b = xy[i];
+    for (let cx = cell(Math.min(a.x, b.x) - tolerance); cx <= cell(Math.max(a.x, b.x) + tolerance); cx += 1) {
+      for (let cy = cell(Math.min(a.y, b.y) - tolerance); cy <= cell(Math.max(a.y, b.y) + tolerance); cy += 1) {
+        const key = `${cx},${cy}`;
+        if (!cells.has(key)) cells.set(key, []);
+        cells.get(key).push(i);
+      }
+    }
+  }
+  return {
+    lat0, lng0,
+    near(p) {
+      for (const i of cells.get(`${cell(p.x)},${cell(p.y)}`) ?? []) if (distanceToSegment(p, xy[i - 1], xy[i]) <= tolerance) return true;
+      return false;
+    },
+  };
+}
+
+/**
+ * Whether at least `share` of line `a`, sampled every `step` metres, lies
+ * within the tolerance of the indexed line. Stops as soon as the answer is
+ * known either way, so a pair that clearly differs costs little.
+ */
+function sharesAtLeast(a, index, share, step) {
+  const samples = resample(project(a, index.lat0, index.lng0), step);
+  const need = Math.ceil(share * samples.length - 1e-9);
+  let near = 0;
+  for (let i = 0; i < samples.length; i += 1) {
+    if (index.near(samples[i])) near += 1;
+    if (near >= need) return true;
+    if (near + (samples.length - i - 1) < need) return false;
+  }
+  return near >= need;
 }
 
 /**
@@ -1387,33 +1436,32 @@ function distanceToLine(p, xy) {
  */
 export function overlapShare(a, b, tolerance = OVERLAP_TOLERANCE_M, step = OVERLAP_STEP_M) {
   if (!Array.isArray(a) || !Array.isArray(b) || a.length < 2 || b.length < 2) return 0;
-  const lat0 = (a[0].latitude + b[0].latitude) / 2;
-  const lng0 = a[0].longitude;
-  const samples = resample(project(a, lat0, lng0), step);
-  const target = project(b, lat0, lng0);
-  let near = 0;
-  for (const s of samples) if (distanceToLine(s, target) <= tolerance) near += 1;
-  return near / samples.length;
+  const index = lineIndex(b, tolerance);
+  const samples = resample(project(a, index.lat0, index.lng0), step);
+  return samples.filter((p) => index.near(p)).length / samples.length;
 }
 
-/** Whether two lines' boxes, grown by `tolerance` metres, meet: a cheap test before sampling. */
-function boxesMeet(a, b, tolerance) {
-  const box = (pts) => pts.reduce((m, p) => ({
-    s: Math.min(m.s, p.latitude), n: Math.max(m.n, p.latitude), w: Math.min(m.w, p.longitude), e: Math.max(m.e, p.longitude),
-  }), { s: Infinity, n: -Infinity, w: Infinity, e: -Infinity });
-  const A = box(a);
-  const B = box(b);
+/** A line's box in degrees, for a cheap "can these be near at all?" test. */
+function boxOf(points) {
+  let s = Infinity; let n = -Infinity; let w = Infinity; let e = -Infinity;
+  for (const p of points) {
+    s = Math.min(s, p.latitude); n = Math.max(n, p.latitude); w = Math.min(w, p.longitude); e = Math.max(e, p.longitude);
+  }
+  return { s, n, w, e };
+}
+
+function boxesMeet(A, B, tolerance) {
   const dLat = tolerance / 111_000;
   const dLng = tolerance / (111_000 * Math.max(0.01, Math.cos(rad((A.s + A.n) / 2))));
   return A.s - dLat <= B.n && B.s - dLat <= A.n && A.w - dLng <= B.e && B.w - dLng <= A.e;
 }
 
-/** The overlap rule (OVERLAP_TOLERANCE_M): the same path, walked any way round, in part or whole. */
+/** The overlap rule (OVERLAP_TOLERANCE_M): the shorter line lies along the longer, walked any way round, in part or whole. */
 export function sameLine(a, b) {
   if (!Array.isArray(a) || !Array.isArray(b) || a.length < 2 || b.length < 2) return false;
-  if (!boxesMeet(a, b, OVERLAP_TOLERANCE_M)) return false;
+  if (!boxesMeet(boxOf(a), boxOf(b), OVERLAP_TOLERANCE_M)) return false;
   const [shorter, longer] = lineLength(a) <= lineLength(b) ? [a, b] : [b, a];
-  return overlapShare(shorter, longer) >= OVERLAP_SHARE;
+  return sharesAtLeast(shorter, lineIndex(longer, OVERLAP_TOLERANCE_M), OVERLAP_SHARE, OVERLAP_STEP_M);
 }
 
 /**
@@ -1514,11 +1562,11 @@ export function suggestionDecisions(actions) {
 }
 
 /**
- * Suggestions grouped by line overlap (`sameLine`), with each one's
- * decision. A suggestion is decided by an action newer than itself; a group
- * is `waiting` while any member isn't decided, else `accepted` if any member
- * was, else `declined`. Suggestions whose line can't be read are each their
- * own group. A group carries:
+ * Suggestions grouped by line overlap round an anchor (below), with each
+ * one's decision. A suggestion is decided by an action newer than itself; a
+ * group is `waiting` while any member isn't decided, else `accepted` if any
+ * member was, else `declined`. Suggestions whose line can't be read or is
+ * over the caps are each their own group. A group carries:
  * - `name`: the name most of its members gave (ties: the first given), and
  *   `names`, every name with how many gave it;
  * - `line`: the member whose line would be accepted: the longest within the
@@ -1541,20 +1589,24 @@ export function groupSuggestions(records, actions = []) {
       acceptedAs: current && d.action === 'accepted' ? d.name : '',
     };
   });
-  const parent = items.map((_, i) => i);
-  const find = (i) => (parent[i] === i ? i : (parent[i] = find(parent[i])));
-  for (let i = 0; i < items.length; i += 1) {
-    for (let j = i + 1; j < items.length; j += 1) {
-      if (find(i) !== find(j) && sameLine(items[i].line, items[j].line)) parent[find(j)] = find(i);
-    }
+  // Each group is built round one line, its anchor: the longest line within
+  // the caps that no earlier anchor took. Longest first, each suggestion
+  // joins the first anchor its line lies along (`sameLine`: the shorter, so
+  // it, decides), and only an anchor: never through another member, so a
+  // short line on a stretch two paths share can't join those two paths. A
+  // line that can't be read or is over the caps is a group of its own and is
+  // never compared, which also bounds the work one crafted record can cost.
+  const usable = items.filter((s) => s.line && !s.problems.length).sort((a, b) => b.lengthMeters - a.lengthMeters || a.created - b.created);
+  const anchors = [];
+  for (const s of usable) {
+    const box = boxOf(s.line);
+    const home = anchors.find((g) => boxesMeet(g.box, box, OVERLAP_TOLERANCE_M)
+      && sharesAtLeast(s.line, g.index, OVERLAP_SHARE, OVERLAP_STEP_M));
+    if (home) home.members.push(s);
+    else anchors.push({ box, index: lineIndex(s.line, OVERLAP_TOLERANCE_M), members: [s] });
   }
-  const byRoot = new Map();
-  items.forEach((s, i) => {
-    const root = find(i);
-    if (!byRoot.has(root)) byRoot.set(root, []);
-    byRoot.get(root).push(s);
-  });
-  const groups = [...byRoot.values()].map((members) => describeGroup(members.sort((a, b) => a.created - b.created)));
+  const loners = items.filter((s) => !s.line || s.problems.length).map((s) => ({ members: [s] }));
+  const groups = [...anchors, ...loners].map((g) => describeGroup(g.members.sort((a, b) => a.created - b.created)));
   return groups.sort((a, b) => Number(b.state === 'waiting') - Number(a.state === 'waiting')
     || (a.state === 'waiting' ? b.walkers - a.walkers : 0) || b.latestAt - a.latestAt);
 }
@@ -1609,7 +1661,8 @@ function describeGroup(members) {
 /**
  * The status names Accept writes for a group: one per distinct claim token
  * among ALL its members (pending or decided before: each is a device that
- * sent this path), newest first, at most TOKENS_PER_SUGGESTER per walker.
+ * sent this path), newest first, at most TOKENS_PER_SUGGESTER distinct
+ * tokens (devices) per walker.
  * `withoutToken`: members with none (nothing to write); `capped`: members
  * left out by the cap. Sorted, so the order never depends on the query's.
  */
@@ -1620,6 +1673,8 @@ export function suggestionStatusNames(members, limit = TOKENS_PER_SUGGESTER) {
   let capped = 0;
   for (const m of [...(members ?? [])].sort((a, b) => b.created - a.created)) {
     if (!isContributionStatusName(m?.statusName)) { withoutToken += 1; continue; }
+    // A token already counted is the same device again: it uses no more of the walker's allowance.
+    if (names.has(m.statusName)) continue;
     if (m.submitter) {
       const n = perWalker.get(m.submitter) ?? 0;
       if (n >= limit) { capped += 1; continue; }
@@ -1663,7 +1718,9 @@ export function acceptPlan(group, name) {
 export function declinePlan(group) {
   const recordNames = (group?.members ?? []).map((m) => m.recordName);
   if (!recordNames.length) throw new Error('Nothing to decline.');
-  return { recordName: group.line?.recordName ?? recordNames[0], recordNames, snapshot: { name: group.name ?? '', recordNames, count: recordNames.length } };
+  // The name shown, unless it is over the caps (only something other than the app writes one): History keeps no more.
+  const name = textLength(group.name ?? '') <= SUGGESTION_CAPS.name ? (group.name ?? '') : '';
+  return { recordName: group.line?.recordName ?? recordNames[0], recordNames, snapshot: { name, recordNames, count: recordNames.length } };
 }
 
 /** "1 suggestion" / "3 suggestions". */

@@ -18,7 +18,8 @@ import {
   MIN_AGREEING, AGREEMENT, RETENTION_MONTHS, WALKER_FACTS, CONTRIBUTION_KINDS, knownContribution,
   unfeatureLookup, errorClause, featureTellText, toldText, withdrawText, withdrawnText, partialWithdrawText, contributionCountText,
   groupSuggestions, routePaths, suggestionIssueText, suggestionStatusNames, acceptTellText, suggestionToldText, suggestionHistoryText,
-  osmEditLink, gpxDocument, gpxFileName, SUGGESTION_CAPS, SUGGESTION_FACTS, OVERLAP_TOLERANCE_M, OVERLAP_SHARE, suggestionCount,
+  osmEditLink, gpxDocument, gpxFileName, SUGGESTION_FACTS, OVERLAP_TOLERANCE_M, OVERLAP_SHARE, suggestionCount,
+  acceptPlan, isUnknownRecordType,
 } from './logic.js';
 import {
   removeItem, dismissItem, suspendAccount, liftSuspension, itemsOf, OWNED_TYPES, featureTrailAndTell, unfeatureTrailAndWithdraw, dismissNominations,
@@ -1078,15 +1079,34 @@ function suggestionCard(g) {
     el('div', { class: 'actions' },
       line ? el('button', { class: 'btn primary', onclick: () => confirmAcceptSuggestion(g) }, g.state === 'accepted' && !g.pending ? 'Accept again' : 'Accept') : null,
       g.pending ? el('button', { class: 'btn', onclick: () => confirmDeclineSuggestion(g) }, 'Decline') : null,
-      line ? el('button', { class: 'btn', onclick: () => saveFile(gpxFileName(g.name), gpxDocument(g.name, line.line), 'application/gpx+xml') }, 'Download GPX') : null));
+      line ? el('button', { class: 'btn', onclick: () => {
+        // Named as accepted, if it was: that is the name Joe chose (for OpenStreetMap, say).
+        const name = g.acceptedName || g.name;
+        saveFile(gpxFileName(name), gpxDocument(name, line.line), 'application/gpx+xml');
+      } }, 'Download GPX') : null));
 }
 
 async function renderSuggestions(seq) {
-  show(el('p', { class: 'muted' }, 'Loading trail suggestions…'));
-  const [suggestions, actions] = await Promise.all([
-    store.query('TrailSuggestion', { max: 2000 }),
-    store.query('ModerationAction', { max: 5000 }),
-  ]);
+  // The removal-request button comes first, before anything that could be slow or fail.
+  const deleteButton = el('button', { class: 'btn', onclick: () => askDeleteSuggestionsByIdentifier() }, 'Delete one walker\'s suggestions');
+  show(el('div', { class: 'toolbar' }, el('div', { class: 'grow muted' }, 'Loading trail suggestions…'), deleteButton));
+  let suggestions;
+  let actions;
+  try {
+    [suggestions, actions] = await Promise.all([
+      store.query('TrailSuggestion', { max: 2000 }),
+      store.query('ModerationAction', { max: 5000 }),
+    ]);
+  } catch (error) {
+    if (!current(seq) || !isUnknownRecordType(error)) throw error;
+    // Production until the release that ships the app's suggest flow deploys the type.
+    show(el('div', { class: 'title' }, 'No trail suggestions here yet'),
+      el('p', { class: 'muted' }, `TrailSuggestion isn't in ${environment}'s schema yet. It arrives with the schema import (Development) or the release that ships the app's Suggest it (Production).`));
+    return;
+  }
+  if (!current(seq)) return;
+  show(el('div', { class: 'toolbar' }, el('div', { class: 'grow muted' }, 'Grouping suggestions…'), deleteButton));
+  await new Promise((resolve) => { setTimeout(resolve, 0); });
   if (!current(seq)) return;
   const all = groupSuggestions(suggestions.records, [...actions.records, ...suggestionsDecided]);
   const groups = suggestionFilter === 'all' ? all : all.filter((g) => g.state === suggestionFilter);
@@ -1106,15 +1126,16 @@ async function renderSuggestions(seq) {
     el('div', { class: 'grow title' }, waiting ? `${waiting} path${waiting === 1 ? '' : 's'} waiting` : 'No suggestions waiting'),
     filter,
     el('button', { class: 'btn', onclick: render }, 'Refresh'),
-    el('button', { class: 'btn', onclick: () => askDeleteSuggestionsByIdentifier() }, 'Delete one walker\'s suggestions')),
+    deleteButton),
   el('p', { class: 'small muted' },
     'Paths walkers say the map lacks. Suggestions of the same path are grouped by their lines (at least '
     + `${Math.round(OVERLAP_SHARE * 100)}% of the shorter line within ${OVERLAP_TOLERANCE_M} m of the other), not by name. `
     + 'Collect-only for now: Accept tells the walkers it was added (Added in My contributions) and publishes nothing; '
     + 'Decline tells no one. The names and lines are never shown to other walkers yet.'),
   suggestions.hidden ? el('p', { class: 'small status error' },
-    `${suggestionCount(suggestions.hidden)} left out: the record's name holds its own claim token or account, which History must never hold. `
-    + 'Only something other than the app makes one; delete it in CloudKit Console or with Delete one walker\'s suggestions.') : null,
+    `${suggestionCount(suggestions.hidden)} left out: not named suggestion.<UUID> as the app names them, or named after its own claim token, `
+    + 'so deciding it could put a token or an account into History. Only something other than the app makes one: delete it in CloudKit Console '
+    + '(Records, type TrailSuggestion).') : null,
   ...cards,
   groups.length ? null : el('p', { class: 'muted' }, suggestionFilter === 'waiting'
     ? 'When a walker suggests a path from a walk summary in the app, it shows up here.'
@@ -1136,7 +1157,8 @@ function confirmAcceptSuggestion(group) {
       + `It is recorded as accepted (${suggestionCount(group.members.length)}, all leave the queue), with the longest line within the caps.`),
     el('p', {}, acceptTellText(tell), ' What everyone can read says only Added and when: not the name, the line or who suggested it.'),
     el('label', {}, 'Accept it as (edit if needed) ',
-      el('input', { name: 'name', required: true, maxlength: SUGGESTION_CAPS.name, value: group.name, autocomplete: 'off' })),
+      el('input', { name: 'name', required: true, value: group.name, autocomplete: 'off' })),
+    el('p', { class: 'small status error', hidden: true, 'data-role': 'problem' }),
     el('label', {}, 'Note (optional, History only)', el('textarea', { name: 'note', maxlength: 1000 })),
     el('div', { class: 'actions' },
       el('button', { class: 'btn', value: 'cancel', formnovalidate: true }, 'Cancel'),
@@ -1144,9 +1166,20 @@ function confirmAcceptSuggestion(group) {
   form.addEventListener('submit', async (event) => {
     if (event.submitter?.value !== 'accept') return;
     event.preventDefault();
+    // Checked here first (the caps count characters as a person does), so a name
+    // that's too long keeps the dialog and Joe's edits open.
+    const name = form.elements.namedItem('name').value;
+    const problem = form.querySelector('[data-role=problem]');
+    try {
+      acceptPlan(group, name);
+    } catch (error) {
+      problem.textContent = error.message;
+      problem.hidden = false;
+      return;
+    }
     for (const b of form.querySelectorAll('button')) b.disabled = true;
     try {
-      const { plan, told } = await acceptSuggestionsAndTell(store, { group, name: form.elements.namedItem('name').value, note: form.elements.note.value });
+      const { plan, told } = await acceptSuggestionsAndTell(store, { group, name, note: form.elements.note.value });
       rememberDecision('accepted', plan);
       dialog.close();
       const notice = Boolean(told.error || told.blocked);

@@ -158,9 +158,13 @@ rules need an ordinary account to be proved.
 - **Trail suggestions**: paths walkers say the map lacks, sent from a walk
   summary in the app (a later release). Only a Moderator can read a
   `TrailSuggestion`. Suggestions of the same path are grouped by their
-  LINES, not their names: two are the same path when at least 60% of the
-  shorter line, sampled every 25 m, lies within 30 m of the longer one
-  (`OVERLAP_*` in `logic.js`), whichever way round it was walked. Each card
+  LINES, not their names: each group is built round its longest line, and
+  a suggestion joins it when at least 60% of its line, sampled every 25 m,
+  lies within 30 m of that line (`OVERLAP_*` in `logic.js`), whichever way
+  round it was walked. Only the group's own line counts, never another
+  member's, so a short walk on a stretch two paths share can't merge them.
+  A line over the caps or unreadable is a group of its own and is never
+  compared (one crafted record can't make the tab slow). Each card
   draws the group's lines together (the one Accept uses on top, a dot at
   its start), links the start to Apple Maps and to the OpenStreetMap editor,
   shows the names, facts and notes given, and lists what to check: very
@@ -175,7 +179,7 @@ rules need an ordinary account to be proved.
   a `ContributionStatus` (`suggestion`, `added`, trail key `suggestion`
   and when; no name, since the status is world-readable and the name stays
   Moderator-only until accepted paths are public) per claim token, at most
-  5 per walker, like
+  5 devices per walker, like
   telling nominators (same schema check first, squatted names skipped,
   History corrected if some fail). For now that is all: nothing about a
   suggestion is shown to other walkers (collect-only, spec
@@ -188,8 +192,16 @@ rules need an ordinary account to be proved.
   never holds a claim token or an account: `ck.js` turns each token into
   its status name and each account into a token like `suggester-2` that
   means nothing outside this page load, and leaves out (and counts) any
-  suggestion whose record name holds its own token or account, because
-  Accept and Decline write record names into History.
+  suggestion not named `suggestion.<UUID>` (as the app names them) or
+  named after its own token, because Accept and Decline write record names
+  into History; delete those in CloudKit Console. Before the schema is
+  imported (Production until the release that ships the app's Suggest it),
+  the tab says there are none yet.
+
+  Deploy order: import `cloudkit/schema.ckdb` into Development BEFORE any
+  Debug build of the app saves a `TrailSuggestion`. A first save creates
+  the type with CloudKit's default grants, under which everyone can read
+  it. Deploy to Production with the release that ships the app's flow.
 - **Activity**: counts for the last 7 and 30 days.
 - **History**: every action, with what was removed.
 
