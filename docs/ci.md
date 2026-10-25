@@ -155,6 +155,17 @@ reason for leaving GitHub Actions (10x billing on a private repo) is gone.
 | `UI smoke tests (iOS)` | macOS. `WockettUITests` (`--ui-only`), one pre-booted simulator, no parallel clones. **Advisory**, see below. Same skip rule. |
 | `Trail pack builder tests` | Linux. `python3 -m unittest discover -s tools/tests`, only when `tools/` changed. |
 
+**When the macOS jobs run (policy since 2026-10-25).** The two macOS jobs run
+on a pull request only when it is **ready for review** and the change is not
+docs-only. A **draft** pull request skips them, and so does a docs-only one;
+mark the draft ready for review (the `ready_for_review` trigger) and they
+start. A **push to `main` always runs everything**, drafts and the classifier
+being irrelevant there. Both skips are job-level `if:` conditions, never
+trigger filters, so the required `Unit tests (iOS)` check still reports
+(skipped counts as passing). GitHub will not merge a draft anyway, so the
+merge always follows a ready-for-review run. Converting a PR back to draft does not
+cancel or restart anything.
+
 A newer push to the same PR cancels the run in progress. A failing run uploads
 the xcodebuild log, its stderr and the xcresult bundle as the `test-results`
 artifact (7 days).

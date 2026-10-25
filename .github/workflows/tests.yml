@@ -16,15 +16,20 @@
 # bundle. "Unit tests (iOS)" is the required check; "UI smoke tests (iOS)" is
 # advisory until the runner has proven it can run them (docs/ci.md).
 #
-# Docs-only changes skip the macOS job. A job skipped by `if:` reports
-# Success and still satisfies a required check; a path filter on the trigger
-# would leave the check "Expected" forever and block the merge.
+# Two things skip the macOS jobs on a pull request: a docs-only change (the
+# classifier below) and a draft. Mark the PR ready for review to run them;
+# a push to main always runs everything. A job skipped by `if:` reports
+# Success and still satisfies a required check; a path or branch filter on the
+# trigger would leave the check "Expected" forever and block the merge, so
+# the draft test lives in the jobs' `if:`, never in `on:`.
 
 name: Tests
 
 on:
   pull_request:
     branches: [main]
+    # ready_for_review is what starts the macOS jobs on a PR opened as a draft.
+    types: [opened, synchronize, reopened, ready_for_review]
   push:
     branches: [main]
 
@@ -70,7 +75,11 @@ jobs:
   unit:
     name: Unit tests (iOS)
     needs: changes
-    if: needs.changes.outputs.app == 'true'
+    # github.event.pull_request is empty on a push, so test the event first:
+    # `draft == false` alone would be false on main and skip the post-merge run.
+    if: >-
+      needs.changes.outputs.app == 'true' &&
+      (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
     runs-on: macos-26
     timeout-minutes: 45
     steps:
@@ -120,7 +129,11 @@ jobs:
     # the best chance; its result is on every PR either way.
     name: UI smoke tests (iOS)
     needs: changes
-    if: needs.changes.outputs.app == 'true'
+    # github.event.pull_request is empty on a push, so test the event first:
+    # `draft == false` alone would be false on main and skip the post-merge run.
+    if: >-
+      needs.changes.outputs.app == 'true' &&
+      (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
     runs-on: macos-26
     timeout-minutes: 75
     steps:
