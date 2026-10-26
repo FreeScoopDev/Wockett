@@ -100,6 +100,7 @@ final class ActiveWalkStore {
              presentSummary: Bool = false) -> WalkSession? {
         guard let session, let route = activeRoute, !sessionEnded else { return nil }
         sessionEnded = true
+        let endedAt  = Date()
         let distance = session.totalDistanceCovered
         let elapsed  = Int(session.elapsedTime)
         let paused   = session.totalPausedDuration
@@ -131,7 +132,7 @@ final class ActiveWalkStore {
         let liveActivity = self.liveActivity
         endTask = Task {
             await liveActivity.end(distanceCovered: distance, elapsedSeconds: elapsed, pausedDuration: paused)
-            if outcome == .save { await session.finishWorkoutSession() }
+            if outcome == .save { await session.finishWorkoutSession(endedAt: endedAt) }
         }
         if releaseSession { endSession() }
         return saved

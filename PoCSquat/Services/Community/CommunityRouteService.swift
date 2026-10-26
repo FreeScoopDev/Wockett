@@ -5,6 +5,12 @@ import MapKit
 // MARK: - Shared Route Model
 
 struct SharedRoute: Identifiable {
+    /// Longest route a record may carry: 2,000 km, past any walk, run or ride
+    /// the builder makes. `1e30` is finite and non-negative but traps the
+    /// `Int` conversions below, so the cap is part of reading a record
+    /// (2026-10-26 review, finding 3).
+    static let maxDistanceMeters = 2_000_000.0
+
     let id: CKRecord.ID
     let name: String
     let waypoints: [WaypointCoord]
@@ -24,11 +30,11 @@ struct SharedRoute: Identifiable {
     }
 
     var timeText: String {
-        let mins = Int(distanceMeters / 1.4 / 60)
+        let mins = saturatingInt(distanceMeters / 1.4 / 60)
         return mins < 60 ? "\(mins) min" : "\(mins / 60)h \(mins % 60)m"
     }
 
-    var estimatedSteps: Int { Int(distanceMeters / 0.762) }
+    var estimatedSteps: Int { saturatingInt(distanceMeters / 0.762) }
 
     func toNavigableRoute() -> NavigableRoute {
         NavigableRoute(
@@ -49,7 +55,7 @@ struct SharedRoute: Identifiable {
             let decoded       = try? JSONDecoder().decode([WaypointCoord].self, from: data),
             let waypoints     = Self.validWaypoints(decoded),
             let distance      = record["distanceMeters"] as? Double,
-            distance.isFinite, distance >= 0
+            distance.isFinite, (0...Self.maxDistanceMeters).contains(distance)
         else { return nil }
 
         self.id             = record.recordID

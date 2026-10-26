@@ -58,6 +58,46 @@ struct RemoteDataLimitsTests {
         #expect(SharedRoute(record: r) == nil)
     }
 
+    @Test("A distance past the cap is refused; the cap itself opens")
+    func distanceCap() {
+        func shared(_ distance: Double) -> SharedRoute? {
+            let r = CKRecord(recordType: "SharedRoute", recordID: CKRecord.ID(recordName: UUID().uuidString))
+            r["name"] = "Loop" as CKRecordValue
+            r["waypointsJSON"] = "[]" as CKRecordValue
+            r["distanceMeters"] = distance as CKRecordValue
+            return SharedRoute(record: r)
+        }
+        #expect(shared(SharedRoute.maxDistanceMeters) != nil)
+        #expect(shared(SharedRoute.maxDistanceMeters.nextUp) == nil)
+        #expect(shared(1e30) == nil)
+    }
+
+    @Test("Saturating conversion never traps", arguments: [1e30, -1e30, Double.nan, Double.infinity, -Double.infinity, 9.3e18])
+    func saturating(value: Double) {
+        _ = saturatingInt(value)
+        #expect(saturatingInt(.nan) == 0)
+        #expect(saturatingInt(1e30) == Int.max)
+        #expect(saturatingInt(-1e30) == Int.min)
+        #expect(saturatingInt(42.9) == 42)
+    }
+
+    @Test("A challenge goal past the caps is refused", arguments: [1e30, -1.0, Double.nan, Double.infinity])
+    func challengeGoalCaps(value: Double) {
+        func challenge(type: ChallengeGoalType, key: String, value: Double) -> WalkChallenge? {
+            let r = CKRecord(recordType: "Challenge")
+            r["title"] = "T" as CKRecordValue
+            r["startDate"] = Date().addingTimeInterval(-86_400) as CKRecordValue
+            r["endDate"] = Date().addingTimeInterval(86_400) as CKRecordValue
+            r["goalType"] = type.rawValue as CKRecordValue
+            r[key] = value as CKRecordValue
+            return WalkChallenge(record: r)
+        }
+        #expect(challenge(type: .distance, key: "goalDistanceMeters", value: value) == nil)
+        #expect(challenge(type: .pace, key: "goalPaceSecsPerKm", value: value) == nil)
+        #expect(challenge(type: .distance, key: "goalDistanceMeters", value: WalkChallenge.maxGoalDistanceMeters) != nil)
+        #expect(challenge(type: .pace, key: "goalPaceSecsPerKm", value: WalkChallenge.maxGoalPaceSecsPerKm) != nil)
+    }
+
     @Test("No link is no link")
     func noLink() {
         #expect(RemoteLink.web(nil as String?) == nil)

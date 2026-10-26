@@ -11,6 +11,18 @@ enum ChallengeGoalType: String, CaseIterable {
 
 // MARK: - Formatting helpers (shared between service and view)
 
+/// A `Double` as an `Int` without the trap: `Int(1e30)` and `Int(.nan)` are
+/// fatal errors, and the numbers these helpers format arrive in public
+/// records anyone with an iCloud account can write (2026-10-26 review,
+/// finding 3). Out of range saturates; NaN is 0.
+func saturatingInt(_ value: Double) -> Int {
+    guard !value.isNaN else { return 0 }
+    // `Double(Int.max)` rounds up to 2^63, which is itself out of range.
+    if value >= 9.2e18 { return Int.max }
+    if value <= -9.2e18 { return Int.min }
+    return Int(value)
+}
+
 /// Whole units from 10 up, one decimal below. A goal rounds to the nearest
 /// (the "13 mi" option is 20,921 m, 12.9997 mi, and truncating showed 12);
 /// progress passes `.down` so it never reads as the goal before it is.
@@ -25,7 +37,7 @@ func challengeFormattedDistance(
     // Decide the branch on the value as shown, so 9.96 reads "10 mi", not "10.0 mi".
     let tenths = (value * 10).rounded(rule) / 10
     return tenths >= 10
-        ? "\(Int(value.rounded(rule))) \(unit)"
+        ? "\(saturatingInt(value.rounded(rule))) \(unit)"
         : String(format: "%.1f %@", tenths, unit)
 }
 
@@ -33,8 +45,9 @@ func challengeFormattedPace(_ secsPerKm: Double, locale: Locale = .current) -> S
     let useMetric = locale.measurementSystem != .us
     let displaySecs = useMetric ? secsPerKm : secsPerKm * 1.60934
     let unit = useMetric ? "/km" : "/mi"
-    let mins = Int(displaySecs) / 60
-    let secs = Int(displaySecs) % 60
+    let whole = saturatingInt(displaySecs)
+    let mins = whole / 60
+    let secs = whole % 60
     return String(format: "%d:%02d%@", mins, secs, unit)
 }
 
@@ -59,6 +72,12 @@ enum ChallengeSyncCopy {
 // MARK: - Walk Challenge Model
 
 struct WalkChallenge: Identifiable {
+    /// Largest goal a record may carry: 10,000 km, far past any challenge the
+    /// app offers. Anything bigger is a tampered record and is not shown.
+    static let maxGoalDistanceMeters = 10_000_000.0
+    /// Slowest pace goal a record may carry: 24 hours a kilometre.
+    static let maxGoalPaceSecsPerKm = 86_400.0
+
     let id:           CKRecord.ID
     let title:        String
     let emoji:        String
@@ -211,8 +230,15 @@ struct WalkChallenge: Identifiable {
         guard self.goalType != .steps || gs > 0 else { return nil }
         self.goalSteps = gs
 
-        self.goalDistanceMeters = record["goalDistanceMeters"] as? Double ?? 0
-        self.goalPaceSecsPerKm  = record["goalPaceSecsPerKm"]  as? Double ?? 0
+        // Bounded like a shared route's distance: a goal no walker could set
+        // is a tampered record, and the card that shows it must not trap.
+        let goalDistance = record["goalDistanceMeters"] as? Double ?? 0
+        let goalPace     = record["goalPaceSecsPerKm"]  as? Double ?? 0
+        guard (0...Self.maxGoalDistanceMeters).contains(goalDistance),
+              (0...Self.maxGoalPaceSecsPerKm).contains(goalPace)
+        else { return nil }
+        self.goalDistanceMeters = goalDistance
+        self.goalPaceSecsPerKm  = goalPace
         self.goalSessionCount   = record["goalSessionCount"]   as? Int    ?? 1
     }
 }

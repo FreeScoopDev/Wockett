@@ -14,9 +14,16 @@ final class CustomRouteBuilder: ObservableObject {
     @Published var isLoopClosed  = false
     @Published var activityMode: ActivityMode = .walking
 
-    init(initialWaypoints: [CLLocationCoordinate2D] = [], initialActivityMode: ActivityMode = .walking) {
+    /// The directions behind one leg: a seam so a test can hold the answer
+    /// and change the route while the builder waits for it.
+    typealias LegLookup = (CLLocationCoordinate2D, CLLocationCoordinate2D, ActivityMode) async -> MKRoute?
+    private let legLookup: LegLookup
+
+    init(initialWaypoints: [CLLocationCoordinate2D] = [], initialActivityMode: ActivityMode = .walking,
+         legLookup: @escaping LegLookup = CustomRouteBuilder.directions) {
         self.waypoints    = initialWaypoints
         self.activityMode = initialActivityMode
+        self.legLookup    = legLookup
     }
 
     var totalDistance: Double {
@@ -30,12 +37,22 @@ final class CustomRouteBuilder: ObservableObject {
 
     var canSave: Bool { waypoints.count >= 2 && routeLegs.count == waypoints.count - 1 && !isComputing }
 
+    /// Edits wait while directions are being worked out. A calculation reads
+    /// `waypoints` again after every `await`, so a point added or undone in
+    /// the middle left it indexing a shorter list (a trap, 2026-10-26 review,
+    /// finding 5) or filing a leg under the wrong point. The spinner already
+    /// shows the builder is busy, and a calculation takes about a second.
     func addWaypoint(_ coord: CLLocationCoordinate2D) {
+        guard !isComputing else { return }
         waypoints.append(coord)
+        // Busy from this tap, not from when the task first runs, so the next
+        // tap cannot land in between.
+        if waypoints.count >= 2 { isComputing = true }
         Task { await computeLastLeg() }
     }
 
     func undoLast() {
+        guard !isComputing else { return }
         if isLoopClosed { isLoopClosed = false; loopLeg = nil; return }
         guard !waypoints.isEmpty else { return }
         waypoints.removeLast()
@@ -43,9 +60,11 @@ final class CustomRouteBuilder: ObservableObject {
     }
 
     func toggleLoop() {
+        guard !isComputing else { return }
         if isLoopClosed {
             isLoopClosed = false; loopLeg = nil
         } else {
+            if waypoints.count >= 2 { isComputing = true }
             Task { await computeLoopLeg() }
         }
     }
@@ -69,13 +88,16 @@ final class CustomRouteBuilder: ObservableObject {
         routeLegs = []
         loopLeg   = nil
         isLoopClosed = false
-        for i in 0..<(waypoints.count - 1) {
-            if let leg = await routeLeg(from: waypoints[i], to: waypoints[i + 1]) {
+        // Worked from a copy: nothing the builder does while it waits can
+        // change the points this pass is walking.
+        let points = waypoints
+        for i in 0..<(points.count - 1) {
+            if let leg = await routeLeg(from: points[i], to: points[i + 1]) {
                 routeLegs.append(leg)
             }
         }
-        if closedLoop, waypoints.count >= 2,
-           let leg = await routeLeg(from: waypoints[waypoints.count - 1], to: waypoints[0]) {
+        if closedLoop,
+           let leg = await routeLeg(from: points[points.count - 1], to: points[0]) {
             loopLeg      = leg
             isLoopClosed = true
         }
@@ -112,10 +134,15 @@ final class CustomRouteBuilder: ObservableObject {
     }
 
     private func routeLeg(from: CLLocationCoordinate2D, to: CLLocationCoordinate2D) async -> MKRoute? {
+        await legLookup(from, to, activityMode)
+    }
+
+    static func directions(from: CLLocationCoordinate2D, to: CLLocationCoordinate2D,
+                           mode: ActivityMode) async -> MKRoute? {
         let req           = MKDirections.Request()
         req.source        = MKMapItem(location: CLLocation(latitude: from.latitude, longitude: from.longitude), address: nil)
         req.destination   = MKMapItem(location: CLLocation(latitude: to.latitude, longitude: to.longitude), address: nil)
-        req.transportType = activityMode.transportType
+        req.transportType = mode.transportType
         return try? await MKDirections(request: req).calculate().routes.first
     }
 }
