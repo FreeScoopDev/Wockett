@@ -97,6 +97,9 @@ struct CustomRouteBuilderTests {
         b.toggleLoop()
         b.undoLast()
         #expect(b.waypoints.count == 3)
+        // The unguarded toggle starts its work in a Task, which has not run
+        // yet at this point; give it the turns it needs before counting.
+        for _ in 0..<5 { await Task.yield() }
         #expect(gate.asked == 1)
 
         gate.release()
@@ -127,5 +130,22 @@ struct CustomRouteBuilderTests {
 
         b.undoLast()
         #expect(b.waypoints.count == 2)
+    }
+
+    @Test("The calculation works from its own copy of the points", .timeLimit(.minutes(5)))
+    func copyOfWaypoints() async {
+        let gate = GatedDirections()
+        let b = builder(gate, points: 3)
+        let compute = Task { @MainActor in await b.computeAllLegs() }
+        await gate.held()
+
+        // `waypoints` is public, so something other than the guarded edits can
+        // still shorten it; the loop must not index the live array.
+        b.waypoints.removeLast()
+        b.waypoints.removeLast()
+        gate.release()
+        await gate.held()
+        gate.release()
+        await compute.value
     }
 }
