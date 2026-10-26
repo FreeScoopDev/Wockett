@@ -10,7 +10,7 @@
 - Tapping Undo, adding a point or closing the loop while the route builder is
   still working out directions could crash it ("Index out of range") or file a
   leg under the wrong point. The builder now finishes the calculation before
-  taking the next edit, and Undo is greyed out while it works.
+  taking the next edit, and Undo ignores taps while it works.
 - Ending a walk within the first moments of starting it no longer loses its
   Apple Health workout. The workout writer was only remembered once Health had
   answered, so a walk saved or discarded before then found nothing to finish,

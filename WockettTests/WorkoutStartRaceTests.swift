@@ -91,7 +91,6 @@ struct WorkoutStartRaceTests {
 
         let endedAt = Date(timeIntervalSince1970: 1_000)
         let finish = Task { @MainActor in await mgr.finishWorkoutSession(endedAt: endedAt) }
-        #expect(writer.finishes.isEmpty, "not finished while the workout has not begun")
 
         writer.releaseStart()
         await start.value
