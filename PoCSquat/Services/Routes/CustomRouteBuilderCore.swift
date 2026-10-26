@@ -137,7 +137,7 @@ final class CustomRouteBuilder: ObservableObject {
         await legLookup(from, to, activityMode)
     }
 
-    static func directions(from: CLLocationCoordinate2D, to: CLLocationCoordinate2D,
+    nonisolated static func directions(from: CLLocationCoordinate2D, to: CLLocationCoordinate2D,
                            mode: ActivityMode) async -> MKRoute? {
         let req           = MKDirections.Request()
         req.source        = MKMapItem(location: CLLocation(latitude: from.latitude, longitude: from.longitude), address: nil)
