@@ -19,6 +19,14 @@ import CloudKit
         return WalkChallenge(record: record)
     }
 
+    @Test("Formatters survive values no record should carry", arguments: [1e30, -1e30, Double.nan, Double.infinity])
+    func hostileValues(value: Double) {
+        _ = challengeFormattedDistance(value, locale: us)
+        _ = challengeFormattedDistance(value, locale: metric)
+        _ = challengeFormattedPace(value, locale: us)
+        _ = challengeFormattedPace(value, locale: metric)
+    }
+
     @Test func thirteenMileOptionReadsThirteen() {
         #expect(challengeFormattedDistance(20_921, locale: us) == "13 mi")
     }

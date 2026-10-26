@@ -634,8 +634,12 @@ struct SnapshotRestoreTests {
         writer.onFinish = { liveActivityEndsWhenFinished = live.ends.count }
         mgr.totalDistanceCovered = 820
         mgr.elapsedTime = 600
+        let t0 = Date()
         #expect(store.end(.save) != nil)
+        let t1 = Date()
         await store.endTask?.value
+        let endDate = try #require(writer.endDates.first)
+        #expect((t0...t1).contains(endDate), "the workout ends when the walk ended, not after the Live Activity's await")
         #expect(liveActivityEndsWhenFinished == 1, "the Live Activity ends before the workout is finished")
         #expect(writer.finishedDistances == [820], "a saved walk's workout is finished once, with its distance")
         #expect(writer.discards == 0, "a saved walk's workout is not thrown away")
@@ -746,6 +750,7 @@ struct SnapshotRestoreTests {
 private final class FakeLiveActivity: WalkLiveActivityEnding {
     private(set) var ends: [(distance: Double, elapsed: Int, paused: Double)] = []
     func end(distanceCovered: Double, elapsedSeconds: Int, pausedDuration: Double) async {
+        try? await Task.sleep(for: .milliseconds(20))   // cleanup that outlasts the walk's end
         ends.append((distanceCovered, elapsedSeconds, pausedDuration))
     }
 }
@@ -754,12 +759,14 @@ private final class FakeLiveActivity: WalkLiveActivityEnding {
 private final class FakeWorkoutWriter: WalkWorkoutRecording {
     private(set) var discards = 0
     private(set) var finishedDistances: [Double] = []
+    private(set) var endDates: [Date] = []
     var onFinish: (() -> Void)?
     func start(at date: Date) async {}
     func addLocations(_ locations: [CLLocation]) {}
     func discard() { discards += 1 }
     func finish(totalDistanceMeters: Double, endDate: Date) async -> HKWorkout? {
         finishedDistances.append(totalDistanceMeters)
+        endDates.append(endDate)
         onFinish?()
         return nil
     }

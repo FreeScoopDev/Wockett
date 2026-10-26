@@ -91,6 +91,7 @@ struct CustomRouteBuilderView: View {
                 HStack(spacing: 10) {
                     if !builder.waypoints.isEmpty {
                         WktSecondaryButton(title: "Undo", symbol: .undo) { builder.undoLast() }
+                            .disabled(builder.isComputing)
                     }
                     if builder.canSave {
                         WktPrimaryButton(title: "Save Route") { showSaveSheet = true }

@@ -200,10 +200,16 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
     private var arrivalRadius: Double { route.path == nil ? 30 : 60 }
     private(set) var triggeredCheckpoints: Set<Int> = []
     private let checkpointFractions = [0.2, 0.4, 0.6, 0.8]
-    /// The walk's Health workout writer, set once its `start` returns. It is
+    /// The walk's Health workout writer, set as soon as the session decides
+    /// to start one; `workoutStarting` is its `start`, still running. It is
     /// set whether or not Health access was granted; without access it does
     /// nothing. Internal, not private, so a test can give it a fake writer.
     var workoutWriter: (any WalkWorkoutRecording)?
+    /// The writer's `start`, until it returns. A walk ended before then must
+    /// still finish or discard the workout once the start has run: the writer
+    /// used to be set only after `start` returned, so an early end found none
+    /// and the late one was never finished (2026-10-26 review, finding 9).
+    private var workoutStarting: Task<Void, Never>?
     /// Makes the walk's Health workout writer for a workout type. The app
     /// always makes a `HealthWorkoutWriter`; a test swaps in a fake to see
     /// which type a session asks for (a hike is Hiking, feat/hike-wording).
@@ -387,8 +393,11 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
     /// other test does start a session, to prove `beginTracking` calls this.
     func startWorkout(at date: Date) async {
         let writer = makeWorkoutWriter(route.wording.hkActivityType)
-        await writer.start(at: date)
         workoutWriter = writer
+        let starting = Task { @MainActor in await writer.start(at: date) }
+        workoutStarting = starting
+        await starting.value
+        if workoutStarting == starting { workoutStarting = nil }
     }
 
     private func startTimer() {
@@ -702,17 +711,33 @@ final class NavigationSessionManager: NSObject, CLLocationManagerDelegate {
     }
 
     // Finalises the HealthKit workout after the session is saved to local history.
-    func finishWorkoutSession() async {
+    /// `endedAt` is when the walk ended, taken by the caller before the
+    /// awaits that come first (the Live Activity's end), so Health does not
+    /// record the time cleanup finished as the end of the walk.
+    func finishWorkoutSession(endedAt: Date = Date()) async {
         guard let writer = workoutWriter else { return }
         workoutWriter = nil
-        await writer.finish(totalDistanceMeters: totalDistanceCovered, endDate: Date())
+        let distance = totalDistanceCovered
+        await takeStartingWorkout()?.value
+        await writer.finish(totalDistanceMeters: distance, endDate: endedAt)
     }
 
     // Discards the in-progress HealthKit workout without writing anything to Health.
     func discardWorkoutSession() {
         guard let writer = workoutWriter else { return }
         workoutWriter = nil
-        writer.discard()
+        guard let starting = takeStartingWorkout() else { writer.discard(); return }
+        // Still starting: discard once the start has run, or the workout it
+        // then begins is never thrown away.
+        Task { @MainActor in
+            await starting.value
+            writer.discard()
+        }
+    }
+
+    private func takeStartingWorkout() -> Task<Void, Never>? {
+        defer { workoutStarting = nil }
+        return workoutStarting
     }
 
     var nextWaypoint: CLLocationCoordinate2D? {
