@@ -64,7 +64,7 @@ struct InsightsTests {
         #expect(InsightsText.change(current: 0, previous: 0, period: .week) == "Nothing yet this week")
     }
 
-    @Test("Totals count activities, time, steps (estimated before 1.7), active days and each activity")
+    @Test("Totals count activities, time, steps (estimated before 1.7, none for a ride), active days and each activity")
     func totals() {
         let sessions = [
             session(date(2026, 10, 12), meters: 1_524, steps: 0),                    // pre-1.7: 2,000 estimated
@@ -75,17 +75,52 @@ struct InsightsTests {
                                        calendar: calendar)
         #expect(t.sessions == 3)
         #expect(t.duration == 100 * 60)
-        #expect(t.steps == 2_000 + 3_500 + Int(10_000 / 0.762))
+        #expect(t.steps == 2_000 + 3_500, "the ride adds no steps")
         #expect(t.activeDays == 2)
         #expect(t.distanceByActivity == [.walking: 1_524, .running: 3_000, .cycling: 10_000])
     }
 
+    @Test("Steps are walks, runs and indoor walks only; a ride keeps its distance, time and day but adds no steps")
+    func ridesAddNoSteps() {
+        // Expected values worked out by hand from the fixture, not from the helper.
+        let sessions = [
+            session(date(2026, 10, 12, hour: 7), meters: 3_810, minutes: 40),                          // walk: 3,810 / 0.762 = 5,000
+            session(date(2026, 10, 12, hour: 18), meters: 5_000, minutes: 30, steps: 6_000, activity: "running"),
+            session(date(2026, 10, 13, hour: 9), meters: 762, minutes: 15, steps: 1_000, activity: "stationary"),
+            session(date(2026, 10, 14, hour: 8), meters: 20_000, minutes: 60, activity: "cycling"),     // ride, no saved steps
+            session(date(2026, 10, 14, hour: 17), meters: 10_000, minutes: 35, steps: 4_000, activity: "cycling") // legacy ride
+        ]
+        let week = InsightsSummary.interval(.week, containing: now, calendar: calendar)
+        let t = InsightsSummary.totals(sessions, in: week, calendar: calendar)
+        #expect(t.steps == 12_000)
+        #expect(t.distanceMeters == 39_572)
+        #expect(t.sessions == 5)
+        #expect(t.duration == 180 * 60)
+        #expect(t.activeDays == 3)
+        #expect(t.distanceByActivity[.cycling] == 30_000)
+    }
+
+    @Test("A ride alone adds its distance, time, count and day, and no steps, saved or not")
+    func rideAloneAddsNoSteps() {
+        let week = InsightsSummary.interval(.week, containing: now, calendar: calendar)
+        for saved in [0, 4_000] {
+            let ride = [session(date(2026, 10, 14), meters: 14_000, minutes: 45, steps: saved, activity: "cycling")]
+            let t = InsightsSummary.totals(ride, in: week, calendar: calendar)
+            #expect(t.steps == 0, "saved steps \(saved)")
+            #expect(t.distanceMeters == 14_000 && t.duration == 45 * 60 && t.sessions == 1 && t.activeDays == 1)
+        }
+    }
+
     @Test("A session flagged as possible driving is left out everywhere")
     func flaggedLeftOut() {
-        let sessions = [session(date(2026, 10, 13), meters: 1_000),
-                        session(date(2026, 10, 13, hour: 15), meters: 40_000, flagged: true)]
+        let sessions = [session(date(2026, 10, 13), meters: 1_000, steps: 1_300),
+                        session(date(2026, 10, 13, hour: 15), meters: 40_000, flagged: true),
+                        session(date(2026, 10, 13, hour: 16), meters: 30_000, steps: 2_000,
+                                activity: "cycling", flagged: true)]
         let week = InsightsSummary.interval(.week, containing: now, calendar: calendar)
         #expect(InsightsSummary.totals(sessions, in: week, calendar: calendar).distanceMeters == 1_000)
+        #expect(InsightsSummary.totals(sessions, in: week, calendar: calendar).steps == 1_300)
+        #expect(InsightsSummary.totals(sessions, in: week, calendar: calendar).sessions == 1)
         #expect(InsightsSummary.dailyBuckets(sessions, period: .week, now: now, calendar: calendar)
             .map(\.distanceMeters).reduce(0, +) == 1_000)
         #expect(InsightsSummary.counted([sessions[1]]).isEmpty)

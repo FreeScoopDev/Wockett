@@ -75,7 +75,7 @@ struct InsightsView: View {
             .init(label: "Activities", value: "\(c.current.sessions)", note: InsightsText.versus(c.previous.sessions, period)),
             .init(label: "Active time", value: InsightsText.duration(c.current.duration),
                   note: "this time last \(period.noun) " + InsightsText.duration(c.previous.duration)),
-            .init(label: "Steps", value: c.current.steps.formatted(), note: "estimated, from activities"),
+            .init(label: "Steps", value: c.current.steps.formatted(), note: "estimated · rides excluded"),
             .init(label: "Active days", value: "\(c.current.activeDays)", note: InsightsText.versus(c.previous.activeDays, period))
         ])
     }
