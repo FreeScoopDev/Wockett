@@ -65,11 +65,12 @@ struct WktStatGrid: View {
                         .foregroundColor(.earthCream)
                         .minimumScaleFactor(0.7)
                         .lineLimit(1)
+                    // Wraps rather than truncating at large text sizes:
+                    // a note like "of 18 recorded days" is the denominator.
                     Text(item.note)
                         .font(.wktLabel)
                         .foregroundColor(.earthMuted)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 .wktCard()
                 .accessibilityElement(children: .combine)
