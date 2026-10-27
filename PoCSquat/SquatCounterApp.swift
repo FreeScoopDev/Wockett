@@ -28,6 +28,8 @@ struct SquatCounterApp: App {
     @StateObject private var tabRouter:    TabRouter
     @State private var communityRoutesModel = CommunityRoutesModel()
     @State private var showSplash = !isWKTUITestMode
+    /// The "Save walk" nudge's walk did not save (`saveUntrackedWalk`).
+    @State private var untrackedSaveFailed = false
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
@@ -166,6 +168,12 @@ struct SquatCounterApp: App {
             }
             // The mini tile's End asks here, not in the tile (see the modifier).
             .modifier(MiniTileEndConfirmation())
+            // A walk whose save failed away from the walk screen.
+            .modifier(WalkSaveFailureAlert())
+            // The "Save walk" nudge's walk, when its save failed.
+            .saveFailureAlert(noun: untrackedSaveFailed ? ActivityMode.walking.noun : nil,
+                              onTryAgain: { untrackedSaveFailed = false; saveUntrackedWalk() },
+                              onKeepGoing: { untrackedSaveFailed = false })
             .environment(ActiveWalkStore.shared)
             .environment(communityRoutesModel)
             .environmentObject(petStore)
@@ -224,6 +232,10 @@ struct SquatCounterApp: App {
                 // running sets this from the delegate, which can happen before this
                 // view exists — `onChange` would never see it.
                 handleNotificationAction()
+                // A "Save walk" whose save failed last time is still pending.
+                if !untrackedSaveFailed, NotificationService.shared.pendingUntrackedWalk != nil {
+                    saveUntrackedWalk()
+                }
                 handleWalkIntent()
                 handleChallengeLink()
                 ActivityDetectionService.shared.startDetectionIfAuthorized()
@@ -262,11 +274,22 @@ struct SquatCounterApp: App {
         case NotificationAction.saveWalk:
             // Save the walk the nudge described and show it, so the user can see
             // it landed — and rename or retype it from history if they want.
-            guard let candidate = service.consumePendingUntrackedWalk() else { return }
-            historyStore.add(candidate.toWalkSession())
-            tabRouter.selected = .health
+            saveUntrackedWalk()
         default:
             break
+        }
+    }
+
+    /// Saves the walk the "Save walk" nudge described and shows it in Activity
+    /// History. Only a walk that is on disk is shown as landed: a failed save
+    /// keeps the walk pending and asks (`untrackedSaveFailed`); Keep going
+    /// leaves it for the next launch, which tries again.
+    @MainActor
+    private func saveUntrackedWalk() {
+        switch NotificationService.shared.savePendingUntrackedWalk({ historyStore.add($0.toWalkSession()) }) {
+        case true?:  tabRouter.selected = .health
+        case false?: untrackedSaveFailed = true
+        case nil:    break
         }
     }
 

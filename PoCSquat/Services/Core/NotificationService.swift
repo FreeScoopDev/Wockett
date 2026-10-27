@@ -364,12 +364,17 @@ final class NotificationService {
         return pendingAction
     }
 
-    func consumePendingUntrackedWalk() -> UntrackedWalkCandidate? {
-        defer {
-            pendingUntrackedWalk = nil
-            defaults.removeObject(forKey: Self.pendingUntrackedWalkKey)
-        }
-        return pendingUntrackedWalk
+    /// Saves the walk "Save walk" described, through `save`, and forgets it
+    /// only once `save` says it is on disk. Nil when there is none; false
+    /// when the save failed, and the walk is still pending (in memory and in
+    /// the defaults) for Try again or the next launch. Until 2026-10-27 it
+    /// was forgotten before the save, so a failed save lost it for good.
+    func savePendingUntrackedWalk(_ save: (UntrackedWalkCandidate) -> Bool) -> Bool? {
+        guard let candidate = pendingUntrackedWalk else { return nil }
+        guard save(candidate) else { return false }
+        pendingUntrackedWalk = nil
+        defaults.removeObject(forKey: Self.pendingUntrackedWalkKey)
+        return true
     }
 
     // MARK: Walk reminders

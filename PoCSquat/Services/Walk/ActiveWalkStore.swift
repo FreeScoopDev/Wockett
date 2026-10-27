@@ -49,6 +49,25 @@ final class ActiveWalkStore {
     /// screen's summary questions (memory only). Cleared with the session.
     @ObservationIgnored private(set) var endedTrail: TrailRef?
 
+    /// A save that did not reach the disk, and how to try it again. Set by
+    /// `end(.save)` when Walk History's write fails; the walk is then still
+    /// in progress, its checkpoint, Live Activity and Health workout intact.
+    /// The app root shows "Couldn't save your {noun}" (`SaveFailureAlert`),
+    /// or the walk screen does while it is up.
+    struct SaveFailure: Equatable {
+        /// "walk", "run", "ride", "hike": the alert's title.
+        let noun: String
+        let releaseSession: Bool
+        let presentSummary: Bool
+        /// When the walk was first ended: a retry finishes the Health
+        /// workout then, not after the time spent at the alert.
+        let endedAt: Date
+    }
+    private(set) var saveFailure: SaveFailure?
+    /// Set when a failed save paused the walk, so Keep going resumes it. A
+    /// walk the person had paused themselves stays paused.
+    @ObservationIgnored private var pausedForSaveFailure = false
+
     /// `shared` is the app's store; tests build their own with an in-memory
     /// history store. `.shared` defaults are resolved in the body, not as
     /// default arguments, which are evaluated off the main actor.
@@ -94,39 +113,55 @@ final class ActiveWalkStore {
     /// `presentSummary` asks the app root to show the saved walk's summary
     /// (`pendingSummary`), for a path with no walk screen to show it.
     ///
-    /// Returns the saved walk; nil for a discard or a walk already ended.
+    /// Returns the saved walk; nil for a discard, a walk already ended, or a
+    /// save that failed. A failed save ends nothing: the walk stays in
+    /// progress with its checkpoint, Live Activity and Health workout, is
+    /// paused while the person decides, and `saveFailure` is set for the
+    /// alert. With no Walk History to save to, it counts as failed: until
+    /// 2026-10-27 that saved nothing and still ended the walk.
     @discardableResult
     func end(_ outcome: EndOutcome, releaseSession: Bool = true,
              presentSummary: Bool = false) -> WalkSession? {
+        end(outcome, releaseSession: releaseSession, presentSummary: presentSummary, endedAt: Date())
+    }
+
+    private func end(_ outcome: EndOutcome, releaseSession: Bool, presentSummary: Bool,
+                     endedAt: Date) -> WalkSession? {
         guard let session, let route = activeRoute, !sessionEnded else { return nil }
+        // Set before the save, so nothing the save sets off can end the walk
+        // a second time; a failed save sets it back.
         sessionEnded = true
-        let endedAt  = Date()
         let distance = session.totalDistanceCovered
         let elapsed  = Int(session.elapsedTime)
         let paused   = session.totalPausedDuration
         var saved: WalkSession?
         switch outcome {
         case .save:
-            if let historyStore {
-                let previous = historyStore.sessions
-                var walk = session.completedSession
-                let pets = session.petDistances
-                walk.activePetIds = Array(pets.keys)
-                walk.petDistances = pets
-                walk.isCommunityRoute = route.isCommunityRoute
-                historyStore.add(walk)
-                endedTrail = route.trail
-                BackgroundTaskManager.shared.scheduleCloudKitSync()
-                saved = walk
-                if presentSummary {
-                    pendingSummary = ActivitySummaryRequest(
-                        session: walk, records: checkNewPRs(newSession: walk, against: previous),
-                        trail: route.trail, splits: session.splitTimes)
-                }
+            let previous = historyStore?.sessions ?? []
+            var walk = session.completedSession
+            let pets = session.petDistances
+            walk.activePetIds = Array(pets.keys)
+            walk.petDistances = pets
+            walk.isCommunityRoute = route.isCommunityRoute
+            guard let historyStore, historyStore.add(walk) else {
+                sessionEnded = false
+                saveFailed(session: session, noun: route.wording.noun, releaseSession: releaseSession,
+                           presentSummary: presentSummary, endedAt: endedAt)
+                return nil
+            }
+            endedTrail = route.trail
+            BackgroundTaskManager.shared.scheduleCloudKitSync()
+            saved = walk
+            if presentSummary {
+                pendingSummary = ActivitySummaryRequest(
+                    session: walk, records: checkNewPRs(newSession: walk, against: previous),
+                    trail: route.trail, splits: session.splitTimes)
             }
         case .discard:
             session.discardWorkoutSession()
         }
+        saveFailure = nil
+        pausedForSaveFailure = false
         session.stop()
         notifications.cancelWaterBreaks()
         let liveActivity = self.liveActivity
@@ -136,6 +171,40 @@ final class ActiveWalkStore {
         }
         if releaseSession { endSession() }
         return saved
+    }
+
+    /// The walk stays as it is, paused while the alert is up so the time
+    /// spent there is not added to it.
+    private func saveFailed(session: NavigationSessionManager, noun: String, releaseSession: Bool,
+                            presentSummary: Bool, endedAt: Date) {
+        if !session.isPaused, !session.isCompleted {
+            session.pause()
+            session.pushLiveActivityState()
+            pausedForSaveFailure = true
+        }
+        saveFailure = SaveFailure(noun: noun, releaseSession: releaseSession,
+                                  presentSummary: presentSummary, endedAt: endedAt)
+    }
+
+    /// Try again: the failed save once more, as it was first asked for.
+    /// Returns the saved walk, or nil with `saveFailure` set again.
+    @discardableResult
+    func retrySave() -> WalkSession? {
+        guard let failure = saveFailure else { return nil }
+        saveFailure = nil
+        return end(.save, releaseSession: failure.releaseSession,
+                   presentSummary: failure.presentSummary, endedAt: failure.endedAt)
+    }
+
+    /// Keep going: the walk carries on, unsaved, as if Finish had not been
+    /// pressed. Resumes it only if the failed save paused it.
+    func keepGoingAfterSaveFailure() {
+        saveFailure = nil
+        guard pausedForSaveFailure else { return }
+        pausedForSaveFailure = false
+        guard let session, session.isPaused else { return }
+        session.resume()
+        session.pushLiveActivityState()
     }
 
     /// Reconstructs the last checkpointed walk if one exists and nothing is
@@ -178,12 +247,19 @@ final class ActiveWalkStore {
         let completed = snapshot.isCompleted == true
         guard completed || Date().timeIntervalSince(snapshot.checkpointDate) > ActiveWalkSnapshotStore.maxSnapshotAge
         else { return }
-        defer { ActiveWalkSnapshotStore.clear() }
 
         // Ignore trivial walks — same 50m threshold used by the Free Walk summary auto-save.
-        guard completed || snapshot.totalDistanceCovered >= 50 else { return }
+        guard completed || snapshot.totalDistanceCovered >= 50 else {
+            ActiveWalkSnapshotStore.clear()
+            return
+        }
 
-        historyStore.add(Self.salvagedSession(from: snapshot))
+        // The checkpoint is the only copy: it goes only once the walk is on
+        // disk. A failed save leaves it for the next launch to try again
+        // (it is never offered for resume: too old, or completed).
+        if historyStore.add(Self.salvagedSession(from: snapshot)) {
+            ActiveWalkSnapshotStore.clear()
+        }
     }
 
     /// The history entry a stale or completed checkpoint becomes. Pure, so a
@@ -284,6 +360,8 @@ final class ActiveWalkStore {
         endedTrail = nil
         // A walk ended another way (Live Activity) takes its question with it.
         endConfirmationRequested = false
+        saveFailure = nil
+        pausedForSaveFailure = false
     }
 
     // MARK: - Reopen signal

@@ -263,7 +263,8 @@ struct StationaryWalkView: View {
                 session: walk.session,
                 records: walk.records,
                 petIds: walk.petIds,
-                onSave: walk.saved ? nil : { save(walk.session) }
+                onSave: walk.saved ? nil : { save(walk.session) },
+                saveFailed: walk.saveFailed
             )
         }
     }
@@ -279,25 +280,40 @@ struct StationaryWalkView: View {
         pendingPetCredit += petCreditEntries()
         manager.stop()
         let session = manager.completedSession()
-        if manager.steps > 100 {
-            let records = save(session)
+        if manager.steps > 100, let records = save(session) {
             finished = FinishedIndoorWalk(session: session, records: records, saved: true, petIds: crew)
         } else {
-            finished = FinishedIndoorWalk(session: session, records: [], saved: false, petIds: crew)
+            // 100 steps or fewer, or a save that failed: the summary offers
+            // its Save button, and after a failure says so first.
+            finished = FinishedIndoorWalk(session: session, records: [], saved: false, petIds: crew,
+                                          saveFailed: manager.steps > 100)
         }
     }
 
     /// Saves to Activity History, finishes the Health workout, and returns
-    /// the records the walk set against the history before it.
+    /// the records the walk set against the history before it. Nil when the
+    /// write failed: nothing is saved, the pets' credit waits for the next
+    /// try, and the workout stays open (closing the summary throws it away).
     @discardableResult
-    private func save(_ session: WalkSession) -> [PRType] {
+    private func save(_ session: WalkSession) -> [PRType]? {
         guard !finishedSaved else { return [] }
-        let previous = historyStore.sessions
-        pendingPetCredit.forEach(historyStore.add)
+        guard let records = Self.saveIndoorWalk(session, petCredit: pendingPetCredit, to: historyStore)
+        else { return nil }
         pendingPetCredit = []
-        historyStore.add(session)
         finishedSaved = true
         Task { await manager.finishWorkout() }
+        return records
+    }
+
+    /// The walk and its pets' credit, saved together: all or none. Returns
+    /// the records the walk set against the history before it, or nil when
+    /// the write failed. In the order one `add` each used to leave them in
+    /// `sessions`, the walk on top: they share its date, and the sort keeps
+    /// equal dates in order.
+    static func saveIndoorWalk(_ session: WalkSession, petCredit: [WalkSession],
+                               to history: WalkHistoryStore) -> [PRType]? {
+        let previous = history.sessions
+        guard history.addAll([session] + petCredit.reversed()) else { return nil }
         return checkNewPRs(newSession: session, against: previous)
     }
 
@@ -348,4 +364,6 @@ struct FinishedIndoorWalk: Identifiable {
     let saved: Bool
     /// The pets on the walk; their credit is saved as entries of their own.
     let petIds: [UUID]
+    /// Saving it on Finish failed: the summary says so and offers Save.
+    var saveFailed = false
 }

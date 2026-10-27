@@ -4,6 +4,7 @@ import MapKit
 import CoreLocation
 import HealthKit
 import SwiftData
+import OSLog
 
 // MARK: - Walk Intent
 
@@ -520,62 +521,73 @@ struct WalkSession: Identifiable, Codable {
 // remain unchanged. Records are fetched from SwiftData on init and kept in sync
 // via the published array — no JSON file or UserDefaults involved.
 
+//
+// A change counts only once it is on disk. Until 2026-10-27 every write was
+// `try? context.save()`: a write that threw left the walk in `sessions`, on
+// screen as saved, and `ActiveWalkStore.end` then deleted the checkpoint, the
+// only other copy. Now a failed write is undone in the context and in
+// `sessions`, so the screen never shows what the disk lacks, and `add` says
+// so to its caller. The undo is targeted at this call's own records, not
+// `context.rollback()`: the context is the app's main one, shared with the
+// route, bookmark and pet stores.
+
 @MainActor
 final class WalkHistoryStore: ObservableObject {
     @Published var sessions: [WalkSession] = []
 
     private let context: ModelContext
+    /// Writes the context's changes to disk. `context.save` in the app; a
+    /// test passes one that throws to see what a failed write leaves behind.
+    private let persist: () throws -> Void
+    private static let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "Wockett",
+                                    category: "WalkHistoryStore")
 
-    init(context: ModelContext? = nil) {
-        self.context = context ?? AppModelContainer.shared.mainContext
+    init(context: ModelContext? = nil, persist: (() throws -> Void)? = nil) {
+        let context = context ?? AppModelContainer.shared.mainContext
+        self.context = context
+        self.persist = persist ?? { try context.save() }
         load()
     }
 
-    func add(_ session: WalkSession) {
-        let record = WalkSessionRecord(from: session)
-        context.insert(record)
-        save()
-        sessions.insert(session, at: 0)
+    /// Saves the walk. True once it is on disk; false when the write failed,
+    /// and then nothing of it is left in the context or in `sessions`.
+    @discardableResult
+    func add(_ session: WalkSession) -> Bool {
+        insert([session])
     }
 
-    func addAll(_ newSessions: [WalkSession]) {
-        let sorted = newSessions.sorted { $0.date > $1.date }
-        sorted.forEach { context.insert(WalkSessionRecord(from: $0)) }
-        save()
-        sessions.insert(contentsOf: sorted, at: 0)
+    /// Saves the walks together: all of them, or none. Newest first in
+    /// `sessions`, as `add` would leave them one by one.
+    @discardableResult
+    func addAll(_ newSessions: [WalkSession]) -> Bool {
+        insert(newSessions.sorted { $0.date > $1.date })
     }
 
     func delete(at offsets: IndexSet) {
+        let before = sessions
         let toDelete = offsets.map { sessions[$0] }
         sessions.remove(atOffsets: offsets)
-        deleteRecords(ids: toDelete.map(\.id))
+        let records = toDelete.compactMap { fetchRecord(id: $0.id) }
+        records.forEach { context.delete($0) }
+        guard save("delete") else {
+            // Inserting a model deleted since the last save cancels the
+            // deletion, so a later save by anyone cannot carry it out.
+            records.forEach { context.insert($0) }
+            sessions = before
+            return
+        }
     }
 
     func updateNotes(id: UUID, notes: String) {
-        guard let idx = sessions.firstIndex(where: { $0.id == id }) else { return }
-        sessions[idx].notes = notes
-        if let record = fetchRecord(id: id) {
-            record.notes = notes
-            save()
-        }
+        update(id: id, \.notes, notes, record: \.notes, "notes")
     }
 
     func updateCountsTowardRouteStats(id: UUID, counts: Bool) {
-        guard let idx = sessions.firstIndex(where: { $0.id == id }) else { return }
-        sessions[idx].countsTowardRouteStats = counts
-        if let record = fetchRecord(id: id) {
-            record.countsTowardRouteStats = counts
-            save()
-        }
+        update(id: id, \.countsTowardRouteStats, counts, record: \.countsTowardRouteStats, "route stats")
     }
 
     func updateActivityType(id: UUID, activityType: String) {
-        guard let idx = sessions.firstIndex(where: { $0.id == id }) else { return }
-        sessions[idx].activityType = activityType
-        if let record = fetchRecord(id: id) {
-            record.activityType = activityType
-            save()
-        }
+        update(id: id, \.activityType, activityType, record: \.activityType, "activity type")
     }
 
     // MARK: - Private helpers
@@ -587,8 +599,46 @@ final class WalkHistoryStore: ObservableObject {
         sessions = (try? context.fetch(descriptor))?.map { $0.toWalkSession() } ?? []
     }
 
-    private func save() {
-        try? context.save()
+    /// Inserts `newestFirst` and writes it. On a failed write the records
+    /// leave the context again and `sessions` is untouched.
+    private func insert(_ newestFirst: [WalkSession]) -> Bool {
+        let records = newestFirst.map(WalkSessionRecord.init(from:))
+        records.forEach { context.insert($0) }
+        guard save("add") else {
+            records.forEach { context.delete($0) }
+            return false
+        }
+        sessions.insert(contentsOf: newestFirst, at: 0)
+        return true
+    }
+
+    /// One field of one walk, in `sessions` and on its record. A failed write
+    /// puts the old value back in both.
+    private func update<Value>(id: UUID, _ field: WritableKeyPath<WalkSession, Value>, _ value: Value,
+                               record recordField: ReferenceWritableKeyPath<WalkSessionRecord, Value>,
+                               _ what: String) {
+        guard let idx = sessions.firstIndex(where: { $0.id == id }) else { return }
+        let old = sessions[idx][keyPath: field]
+        sessions[idx][keyPath: field] = value
+        guard let record = fetchRecord(id: id) else { return }
+        let oldRecordValue = record[keyPath: recordField]
+        record[keyPath: recordField] = value
+        guard save("update \(what)") else {
+            record[keyPath: recordField] = oldRecordValue
+            if let idx = sessions.firstIndex(where: { $0.id == id }) { sessions[idx][keyPath: field] = old }
+            return
+        }
+    }
+
+    /// Writes the context; false, and logged, when the write throws.
+    private func save(_ what: String) -> Bool {
+        do {
+            try persist()
+            return true
+        } catch {
+            Self.log.error("Walk history \(what, privacy: .public) was not saved: \(String(describing: error), privacy: .public)")
+            return false
+        }
     }
 
     private func fetchRecord(id: UUID) -> WalkSessionRecord? {
@@ -597,15 +647,6 @@ final class WalkHistoryStore: ObservableObject {
         )
         descriptor.fetchLimit = 1
         return try? context.fetch(descriptor).first
-    }
-
-    private func deleteRecords(ids: [UUID]) {
-        ids.forEach { id in
-            if let record = fetchRecord(id: id) {
-                context.delete(record)
-            }
-        }
-        save()
     }
 }
 

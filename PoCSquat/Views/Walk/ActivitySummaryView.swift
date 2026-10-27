@@ -28,8 +28,12 @@ struct ActivitySummaryView: View {
     var petIds: [UUID]?
     var onExcludeFromRouteStats: (() -> Void)?
     /// An activity not saved yet (an indoor walk of 100 steps or fewer): the
-    /// summary offers to save it. Returns the records the save set.
-    var onSave: (() -> [PRType])?
+    /// summary offers to save it. Returns the records the save set, or nil
+    /// when the write failed: then the button stays and the summary says so.
+    var onSave: (() -> [PRType]?)?
+    /// Saving it on Finish already failed (an indoor walk over 100 steps):
+    /// the summary opens with "Couldn't save", and its Save button retries.
+    var saveFailed = false
     /// The named trail this walk was on, carried in memory from the session
     /// (`NavigableRoute.trail`), for the post-walk questions. Nil from
     /// history, for a walk restored after the app was killed, and off trails.
@@ -51,6 +55,7 @@ struct ActivitySummaryView: View {
     @State private var showScheduleSheet  = false
     @State private var ringProgress: [UUID: Double] = [:]
     @State private var savedLate          = false
+    @State private var showSaveFailure    = false
     @State private var lateRecords: [PRType] = []
     /// The trail questions, decided once when the summary first appears.
     @State private var trailReport: TrailReportCardModel?
@@ -151,7 +156,12 @@ struct ActivitySummaryView: View {
         .onAppear {
             animateRings()
             decideTrailReport()
+            if saveFailed, !savedLate { showSaveFailure = true }
         }
+        // The activity has already stopped here, so nothing "keeps going".
+        .saveFailureAlert(noun: showSaveFailure ? wording.noun : nil, cancelTitle: SaveFailureText.notNow,
+                          onTryAgain: { showSaveFailure = false; saveLate() },
+                          onKeepGoing: { showSaveFailure = false })
         .sheet(isPresented: $showActivityShare) {
             ActivitySummaryShareSheet(session: session, historyStore: historyStore)
         }
@@ -224,11 +234,22 @@ struct ActivitySummaryView: View {
     private var saveToHistoryButton: some View {
         WktSecondaryButton(title: savedLate ? "Saved to Activity History" : "Save to Activity History",
                            symbol: savedLate ? .success : .history) {
-            guard !savedLate, let onSave else { return }
-            savedLate = true
-            withAnimation { lateRecords = onSave() }
+            saveLate()
         }
         .disabled(savedLate)
+    }
+
+    /// The Save button, and Try again after a failed save: a write that
+    /// fails leaves the button as it was and says so.
+    private func saveLate() {
+        guard !savedLate, let onSave else { return }
+        savedLate = true
+        guard let records = onSave() else {
+            savedLate = false
+            showSaveFailure = true
+            return
+        }
+        withAnimation { lateRecords = records }
     }
 
     // MARK: - Subviews
