@@ -58,6 +58,65 @@ struct HumanStepTotalsTests {
         #expect(ActivitySummaryContent.humanSteps(on: wednesdayMidnight, in: sessions, calendar: Self.utc) == 3_000)
     }
 
+    // MARK: - bestStepDay(in:calendar:) (Community "Best day", A1c)
+
+    private let mondayNoon = Date(timeIntervalSince1970: 1_793_059_200 - 86_400 + 43_200)
+    private let wednesdayNoon = Date(timeIntervalSince1970: 1_793_059_200 + 86_400 + 43_200)
+
+    private func best(_ sessions: [WalkSession]) -> (day: Date, steps: Int)? {
+        ActivitySummaryContent.bestStepDay(in: sessions, calendar: Self.utc)
+    }
+
+    @Test("A walk day beats a bigger ride day: the ride adds no steps")
+    func bestDay_walkBeatsRide() throws {
+        let result = try #require(best([session("walking", at: mondayNoon, steps: 5_000),
+                                        session("cycling", at: tuesdayNoon, meters: 20_000)]))
+        #expect(result.day == Self.tuesday.addingTimeInterval(-86_400))
+        #expect(result.steps == 5_000)
+    }
+
+    @Test("A day with a walk and a ride counts only the walk")
+    func bestDay_rideAddsNothingToItsDay() throws {
+        let result = try #require(best([session("walking", at: mondayNoon, steps: 5_000),
+                                        session("cycling", at: mondayNoon, meters: 20_000),
+                                        session("walking", at: tuesdayNoon, steps: 6_000)]))
+        #expect(result.day == Self.tuesday)
+        #expect(result.steps == 6_000)
+    }
+
+    @Test("Rides only, saved count or not: no Best day")
+    func bestDay_rideOnly() {
+        #expect(best([session("cycling", at: mondayNoon, meters: 20_000),
+                      session("cycling", at: tuesdayNoon, meters: 10_000, steps: 4_000)]) == nil)
+    }
+
+    @Test("No history: no Best day")
+    func bestDay_empty() {
+        #expect(best([]) == nil)
+    }
+
+    @Test("A tie goes to the most recent day, whatever the order")
+    func bestDay_tieMostRecent() throws {
+        let wednesday = Self.tuesday.addingTimeInterval(86_400)
+        let forward = try #require(best([session("walking", at: mondayNoon, steps: 4_000),
+                                         session("walking", at: wednesdayNoon, steps: 4_000)]))
+        let backward = try #require(best([session("walking", at: wednesdayNoon, steps: 4_000),
+                                          session("walking", at: mondayNoon, steps: 4_000)]))
+        #expect(forward.day == wednesday)
+        #expect(backward.day == wednesday)
+        #expect(forward.steps == 4_000)
+    }
+
+    @Test("Walks at 23:59 and 00:01 count on separate days")
+    func bestDay_dayBoundary() throws {
+        let lateMonday = Self.tuesday.addingTimeInterval(-60)
+        let earlyTuesday = Self.tuesday.addingTimeInterval(60)
+        let result = try #require(best([session("walking", at: lateMonday, steps: 3_000),
+                                        session("walking", at: earlyTuesday, steps: 2_000)]))
+        #expect(result.day == Self.tuesday.addingTimeInterval(-86_400))
+        #expect(result.steps == 3_000)
+    }
+
     // MARK: - Weekly summary notification text
 
     @Test("The week's steps leave rides out; its distance keeps them")

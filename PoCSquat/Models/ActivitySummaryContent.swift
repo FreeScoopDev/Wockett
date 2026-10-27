@@ -132,6 +132,26 @@ enum ActivitySummaryContent {
             .reduce(0) { $0 + humanSteps($1) }
     }
 
+    /// The day with the most `humanSteps(on:in:calendar:)`, for the "Best
+    /// day" personal record, so it can never name a ride day or disagree with
+    /// the calendars. Nil when no day has more than 0 steps (no history, or
+    /// rides only): a personal record of 0 steps is not shown. Ties go to the
+    /// most recent day. The caller decides which sessions count (Community
+    /// passes only those not flagged as possibly driven).
+    nonisolated static func bestStepDay(in sessions: [WalkSession], calendar: Calendar) -> (day: Date, steps: Int)? {
+        let days = Set(sessions.map { calendar.startOfDay(for: $0.date) })
+        var best: (day: Date, steps: Int)?
+        for day in days {
+            let steps = humanSteps(on: day, in: sessions, calendar: calendar)
+            guard steps > 0 else { continue }
+            if let current = best, steps < current.steps || (steps == current.steps && day < current.day) {
+                continue
+            }
+            best = (day, steps)
+        }
+        return best
+    }
+
     /// The pace rule `WalkSession.paceOrSpeedText` already applies.
     private static func hasPace(_ session: WalkSession) -> Bool {
         session.totalDistance > 100 && session.elapsedTime > 0
