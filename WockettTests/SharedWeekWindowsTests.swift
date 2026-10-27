@@ -159,7 +159,9 @@ struct SharedWeekWindowsTests {
     @Test("The week strip is the calendar week, and moves by whole calendar weeks")
     func stripIsTheCalendarWeek() async throws {
         let cal = sundayFirst
-        let now = try at(2026, 10, 28, 12, in: cal)                 // Wednesday
+        // Thursday: on a Wednesday a Sunday-first week and "three days
+        // either side" are the same seven days, so the old strip would pass.
+        let now = try at(2026, 10, 29, 12, in: cal)
         let this = await strip(weekOffset: 0, now: now, calendar: cal)
         let last = await strip(weekOffset: -1, now: now, calendar: cal)
         let next = await strip(weekOffset: 1, now: now, calendar: cal)
@@ -168,8 +170,8 @@ struct SharedWeekWindowsTests {
         #expect(last.map(\.date) == (try days(from: 2026, 10, 18, in: cal)))   // Sun 18 … Sat 24
         #expect(next.map(\.date) == (try days(from: 2026, 11, 1, in: cal)))    // Sun 1 … Sat 7
 
-        // Sun–Tue past (App Only, no sessions: 0), Wed is today, Thu–Sat to come.
-        #expect(this.map(\.steps) == [0, 0, 0, 4_321, nil, nil, nil])
+        // Sun–Wed past (App Only, no sessions: 0), Thu is today, Fri–Sat to come.
+        #expect(this.map(\.steps) == [0, 0, 0, 0, 4_321, nil, nil])
         #expect(last.allSatisfy { $0.steps == 0 })
         #expect(next.allSatisfy { $0.steps == nil })
 
@@ -198,7 +200,7 @@ struct SharedWeekWindowsTests {
     @Test("Across spring-forward the strip is still seven local midnights")
     func stripAcrossDST() async throws {
         let cal = Self.calendar(firstWeekday: 1, zone: "America/New_York")
-        let now = try at(2026, 3, 11, 12, in: cal)
+        let now = try at(2026, 3, 12, 12, in: cal)                  // Thursday after the change
         let this = await strip(weekOffset: 0, now: now, calendar: cal)
         #expect(this.map(\.date) == (try days(from: 2026, 3, 8, in: cal)))      // Sun 8 … Sat 14
         #expect(this.allSatisfy { cal.component(.hour, from: $0.date) == 0 })
