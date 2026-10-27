@@ -355,7 +355,7 @@ struct ManualWalkEntrySheet: View {
                         }
 
                         if saveFailed {
-                            Text("Couldn't save your walk. Try again.")
+                            Text("\(SaveFailureText.title(noun: ActivityMode.walking.noun)). \(SaveFailureText.tryAgain).")
                                 .font(.wktLabel)
                                 .foregroundColor(.earthCream)
                         }

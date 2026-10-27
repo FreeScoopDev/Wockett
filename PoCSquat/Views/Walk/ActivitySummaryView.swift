@@ -158,7 +158,8 @@ struct ActivitySummaryView: View {
             decideTrailReport()
             if saveFailed, !savedLate { showSaveFailure = true }
         }
-        .saveFailureAlert(noun: showSaveFailure ? wording.noun : nil,
+        // The activity has already stopped here, so nothing "keeps going".
+        .saveFailureAlert(noun: showSaveFailure ? wording.noun : nil, cancelTitle: SaveFailureText.notNow,
                           onTryAgain: { showSaveFailure = false; saveLate() },
                           onKeepGoing: { showSaveFailure = false })
         .sheet(isPresented: $showActivityShare) {

@@ -229,8 +229,15 @@ struct NotificationServiceTests {
         // to keep must survive that.
         #expect(NotificationService(center: center, defaults: defaults).pendingUntrackedWalk == candidate)
 
-        #expect(svc.consumePendingUntrackedWalk() == candidate)
-        #expect(svc.consumePendingUntrackedWalk() == nil)
+        // A save that fails keeps it, through a relaunch too (fix/durable-save).
+        var offered: [UntrackedWalkCandidate] = []
+        #expect(svc.savePendingUntrackedWalk { offered.append($0); return false } == false)
+        #expect(svc.pendingUntrackedWalk == candidate)
+        #expect(NotificationService(center: center, defaults: defaults).pendingUntrackedWalk == candidate)
+
+        #expect(svc.savePendingUntrackedWalk { offered.append($0); return true } == true)
+        #expect(offered == [candidate, candidate])
+        #expect(svc.savePendingUntrackedWalk { _ in true } == nil, "saved once, then forgotten")
         #expect(NotificationService(center: center, defaults: defaults).pendingUntrackedWalk == nil)
     }
 

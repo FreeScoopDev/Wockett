@@ -12,8 +12,10 @@
   time Finish was pressed, once.
 - An indoor walk whose save fails is not marked saved: its summary says so and
   its Save button tries again, and its pets' credit is saved with it or not at
-  all. A logged past walk keeps its sheet open with a message, and the "Save
-  walk" notification only opens Activity History once the walk is saved. A
+  all. A logged past walk keeps its sheet open with a message. The "Save walk"
+  notification's walk is kept until it is saved: a failed save shows the same
+  alert, and the next launch tries again (it used to be forgotten before the
+  save was attempted). Activity History opens only once it is saved. A
   stale or finished walk recovered at launch keeps its checkpoint until it is
   saved, instead of deleting it first.
 - Editing a walk's notes, type or route-stats setting, or deleting it, puts the

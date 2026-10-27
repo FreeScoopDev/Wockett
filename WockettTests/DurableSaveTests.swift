@@ -162,8 +162,11 @@ struct DurableSaveTests {
         #expect(store.sessions.map(\.id) == [newer.id, older.id], "back where it was")
         // The deletion must not wait in the context for the next write.
         disk.failing = false
-        #expect(store.add(walk("Next", daysAgo: 3)))
-        #expect(try storedIds(context).isSuperset(of: [newer.id, older.id]))
+        let next = walk("Next", daysAgo: 3)
+        #expect(store.add(next))
+        let stored = try context.fetch(FetchDescriptor<WalkSessionRecord>()).map(\.id)
+        #expect(stored.count == 3, "kept once, not doubled")
+        #expect(Set(stored) == [newer.id, older.id, next.id])
     }
 
     @Test func delete_whenTheWriteWorks_removesIt() throws {
