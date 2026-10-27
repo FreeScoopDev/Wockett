@@ -566,7 +566,7 @@ struct GaitMetricDetailContentView: View {
             }
             if let t = trendPct {
                 let isGood = (config.higherIsBetter && t >= 0) || (!config.higherIsBetter && t <= 0)
-                WktStatusChip(text: String(format: "%+.1f%% vs prior week", t),
+                WktStatusChip(text: String(format: "%+.1f%% vs prior 7 days", t),
                               textColor: isGood ? .earthGreen : .earthOrange) {
                     Image(wkt: t >= 0 ? .arrowUp : .arrowDown)
                         .wktIcon(.inline, tint: isGood ? .earthGreen : .earthOrange)

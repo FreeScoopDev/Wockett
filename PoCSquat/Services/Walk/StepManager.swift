@@ -201,8 +201,7 @@ final class StepManager: ObservableObject {
     // MARK: - Weekly Calendar
 
     /// The calendar week `weekOffset` whole weeks from the one containing
-    /// `now`. The strip's days and the Health header's date range both come
-    /// from this, so they cannot name different weeks.
+    /// `now`: the strip's seven days.
     nonisolated static func stripWeek(weekOffset: Int, now: Date, calendar: Calendar) -> DateInterval {
         let thisWeek = InsightsSummary.calendarWeek(containing: now, calendar: calendar)
         guard weekOffset != 0,

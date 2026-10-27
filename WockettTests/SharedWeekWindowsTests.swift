@@ -100,16 +100,17 @@ struct SharedWeekWindowsTests {
         let now = try at(2026, 10, 30, 18, in: cal)
         let later = walk(at: try at(2026, 10, 30, 19, in: cal), pet: pet)
         let earlier = walk(at: try at(2026, 10, 30, 17, in: cal), pet: pet)
-        let week = InsightsSummary.calendarWeek(containing: now, calendar: cal)
-        #expect(PetStore.sessions(pet, in: [later, earlier], during: week, now: now).map(\.id) == [earlier.id])
-        let last7 = InsightsSummary.last7Days(now: now, calendar: cal)
-        #expect(PetStore.sessions(pet, in: [later, earlier], during: last7, now: now).map(\.id) == [earlier.id])
+        let both = [later, earlier]
+        #expect(PetStore.thisWeek(pet, in: both, now: now, calendar: cal).map(\.id) == [earlier.id])
+        #expect(PetStore.lastSevenDays(pet, in: both, now: now, calendar: cal).map(\.id) == [earlier.id])
+        #expect(UserStepDetailSheet.lastSevenDays(both, now: now, calendar: cal).map(\.id) == [earlier.id])
+        #expect(SquatCounterApp.weeklySummarySessions(both, now: now, calendar: cal).map(\.id) == [earlier.id])
     }
 
     // MARK: One fixture, every surface
 
     /// Walks on Saturday 24 Oct, Monday 26, Wednesday 28 and Friday 30, and
-    /// it is Friday evening. The week (Sunday 25 to Saturday 31) holds Mon,
+    /// it is Friday evening (one more on Friday 23 at 20:00 counts nowhere). The week (Sunday 25 to Saturday 31) holds Mon,
     /// Wed and Fri: 3. The last 7 days (Saturday 24 to Friday 30) hold all 4.
     @Test("Insights week, pet 'Walks this week' and pet 'Last 7 days': 3, 3 and 4")
     func surfacesAgree() throws {
@@ -117,20 +118,26 @@ struct SharedWeekWindowsTests {
         let pet = UUID()
         let now = try at(2026, 10, 30, 18, in: cal)
         let sessions = try [
+            // A week ago today, later in the day than now: inside "now minus
+            // 168 hours" but not in the last 7 calendar days.
+            walk(at: at(2026, 10, 23, 20, in: cal), pet: pet),
             walk(at: at(2026, 10, 24, 9, in: cal), pet: pet),   // prior Saturday
             walk(at: at(2026, 10, 26, 9, in: cal), pet: pet),   // Monday
             walk(at: at(2026, 10, 28, 9, in: cal), pet: pet),   // Wednesday
             walk(at: at(2026, 10, 30, 9, in: cal), pet: pet)    // Friday (today)
         ]
 
+        // The functions the screens call: Insights' card, the pet sheet's
+        // tile and list, the step detail sheet and the weekly summary.
         let insights = InsightsSummary.comparison(sessions, period: .week, now: now, calendar: cal).current
-        let week = InsightsSummary.calendarWeek(containing: now, calendar: cal)
-        let tile = PetStore.sessions(pet, in: sessions, during: week, now: now)
-        let last7 = PetStore.sessions(pet, in: sessions,
-                                      during: InsightsSummary.last7Days(now: now, calendar: cal), now: now)
+        let tile = PetStore.thisWeek(pet, in: sessions, now: now, calendar: cal)
+        let last7 = PetStore.lastSevenDays(pet, in: sessions, now: now, calendar: cal)
         #expect(insights.sessions == 3)
         #expect(tile.count == 3)
         #expect(last7.count == 4)
+        #expect(PetStore.lastSevenDaysMeters(pet, in: sessions, now: now, calendar: cal) == 8_000)
+        #expect(UserStepDetailSheet.lastSevenDays(sessions, now: now, calendar: cal).count == 4)
+        #expect(SquatCounterApp.weeklySummarySessions(sessions, now: now, calendar: cal).count == 3)
         #expect(insights.steps == 9_000, "3 walks of 3,000 steps")
     }
 
@@ -175,9 +182,6 @@ struct SharedWeekWindowsTests {
         #expect(last.allSatisfy { $0.steps == 0 })
         #expect(next.allSatisfy { $0.steps == nil })
 
-        // The Health header's range names the same week.
-        let header = StepManager.stripWeek(weekOffset: 0, now: now, calendar: cal)
-        #expect(header.start == this.first?.date)
     }
 
     @Test("A Monday-first calendar gives a Monday-to-Sunday strip")

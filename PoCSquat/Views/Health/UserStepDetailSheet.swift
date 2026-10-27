@@ -9,9 +9,12 @@ struct UserStepDetailSheet: View {
     /// The "Last 7 days" section: today plus the six calendar days before
     /// (`InsightsSummary.last7Days`), not `now` minus 168 hours.
     private var recentSessions: [WalkSession] {
-        let now = Date()
-        let window = InsightsSummary.last7Days(now: now, calendar: .current)
-        return historyStore.sessions.filter { InsightsSummary.counts($0.date, in: window, now: now) }
+        Self.lastSevenDays(historyStore.sessions, now: Date(), calendar: .current)
+    }
+
+    nonisolated static func lastSevenDays(_ sessions: [WalkSession], now: Date, calendar: Calendar) -> [WalkSession] {
+        let window = InsightsSummary.last7Days(now: now, calendar: calendar)
+        return sessions.filter { InsightsSummary.counts($0.date, in: window, now: now) }
     }
 
     /// A ride's steps are only its distance over a stride, so rides add none.

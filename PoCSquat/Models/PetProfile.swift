@@ -184,29 +184,46 @@ final class PetStore: ObservableObject {
             .sorted { $0.date > $1.date }
     }
 
+    /// The "Last 7 days" list's window: today plus the six calendar days before.
+    nonisolated static func lastSevenDays(_ petID: UUID, in sessions: [WalkSession],
+                                          now: Date, calendar: Calendar) -> [WalkSession] {
+        Self.sessions(petID, in: sessions, during: InsightsSummary.last7Days(now: now, calendar: calendar), now: now)
+    }
+
+    /// The "Walks this week" tile's window: the locale's calendar week so far.
+    nonisolated static func thisWeek(_ petID: UUID, in sessions: [WalkSession],
+                                     now: Date, calendar: Calendar) -> [WalkSession] {
+        Self.sessions(petID, in: sessions,
+                      during: InsightsSummary.calendarWeek(containing: now, calendar: calendar), now: now)
+    }
+
+    /// The "Last 7 days" section's distance for one pet.
+    nonisolated static func lastSevenDaysMeters(_ petID: UUID, in sessions: [WalkSession],
+                                                now: Date, calendar: Calendar) -> Double {
+        lastSevenDays(petID, in: sessions, now: now, calendar: calendar).reduce(0) { $0 + walkedMeters(petID, in: $1) }
+    }
+
     func weeklySteps(for pet: PetProfile, in sessions: [WalkSession],
                      now: Date = Date(), calendar: Calendar = .current) -> Int {
-        recentSessions(for: pet, in: sessions, now: now, calendar: calendar)
+        Self.lastSevenDays(pet.id, in: sessions, now: now, calendar: calendar)
             .reduce(0) { $0 + Int(petWalkedMeters(pet, in: $1) / 0.762) }
     }
 
     func weeklyDistance(for pet: PetProfile, in sessions: [WalkSession],
                         now: Date = Date(), calendar: Calendar = .current) -> Double {
-        recentSessions(for: pet, in: sessions, now: now, calendar: calendar)
-            .reduce(0) { $0 + petWalkedMeters(pet, in: $1) }
+        Self.lastSevenDaysMeters(pet.id, in: sessions, now: now, calendar: calendar)
     }
 
     /// The "Last 7 days" list: today plus the six calendar days before.
     func recentSessions(for pet: PetProfile, in sessions: [WalkSession],
                         now: Date = Date(), calendar: Calendar = .current) -> [WalkSession] {
-        Self.sessions(pet.id, in: sessions, during: InsightsSummary.last7Days(now: now, calendar: calendar), now: now)
+        Self.lastSevenDays(pet.id, in: sessions, now: now, calendar: calendar)
     }
 
     /// The "Walks this week" tile: the locale's calendar week so far.
     func sessionsThisWeek(for pet: PetProfile, in sessions: [WalkSession],
                           now: Date = Date(), calendar: Calendar = .current) -> [WalkSession] {
-        Self.sessions(pet.id, in: sessions,
-                      during: InsightsSummary.calendarWeek(containing: now, calendar: calendar), now: now)
+        Self.thisWeek(pet.id, in: sessions, now: now, calendar: calendar)
     }
 
     func walkStreak(for pet: PetProfile, in sessions: [WalkSession]) -> Int {

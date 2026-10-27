@@ -23,12 +23,13 @@ struct WeeklyCalendarView: View {
         }
     }
 
-    /// The week's dates, "Oct 25 – 31", from the same calendar week the
-    /// strip's days come from (`StepManager.stripWeek`).
+    /// The dates of the days shown, "Oct 25 – 31", taken from the days
+    /// themselves so the header never names a week the strip isn't showing.
     private var rangeLabel: String {
         let calendar = Calendar.current
-        let week = StepManager.stripWeek(weekOffset: weekOffset, now: Date(), calendar: calendar)
-        return InsightsSummary.rangeLabel(week, calendar: calendar)
+        guard let first = days.first?.date, let last = days.last?.date,
+              let end = calendar.date(byAdding: .day, value: 1, to: last), end > first else { return "" }
+        return InsightsSummary.rangeLabel(DateInterval(start: first, end: end), calendar: calendar)
     }
 
     // A `WktSection` in shape: the week's name as the heading, with the week
