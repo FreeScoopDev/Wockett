@@ -10,7 +10,9 @@
   says so in a sentence ("No step data for the last 30 days", with a pointer
   to Health access in Settings, or "No recorded activities" in App Only
   mode) instead of zeros, and a Health query that fails says "Step history
-  is unavailable right now" instead of looking like an empty month. In App
+  is unavailable right now" instead of looking like an empty month. The
+  30-day card's goals count now judges each day against that day's own goal,
+  as the week strip and month calendar already did, instead of today's. In App
   Only mode the 30-day card now reads your recorded activities, as the week
   strip and month calendar already did, instead of Apple Health. The day
   cells and the week strip are unchanged, and the charts look as before
