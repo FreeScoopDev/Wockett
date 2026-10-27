@@ -301,21 +301,35 @@ struct SquatCounterApp: App {
         let cal        = Calendar.current
         let weekStart  = cal.date(from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: Date())) ?? Date()
         let weekSessions = sessions.filter { $0.date >= weekStart }
-        let weekSteps  = weekSessions.reduce(0)   { $0 + $1.estimatedSteps }
-        let weekKm     = weekSessions.reduce(0.0) { $0 + $1.totalDistance } / 1000
-
-        let body: String
-        if weekSteps > 0 {
-            let streakSuffix = streak > 0 ? " · \(streak)-day streak 🔥" : ""
-            body = "This week: \(weekSteps.formatted()) steps · \(String(format: "%.1f", weekKm)) km\(streakSuffix). Keep it up!"
-        } else {
-            body = "A new week starts today — lace up and start strong! 💪"
-        }
+        let week       = Self.weeklySummaryTotals(weekSessions)
+        let body       = Self.weeklySummaryBody(steps: week.steps, km: week.km, streak: streak)
 
         var comps      = DateComponents()
         comps.weekday  = 1; comps.hour = 20; comps.minute = 0
         let trigger    = UNCalendarNotificationTrigger(dateMatching: comps, repeats: true)
         await NotificationService.shared.schedule(.weeklySummary, title: "Your week in review 📊", body: body, trigger: trigger)
+    }
+
+    /// The weekly summary's figures for the sessions already in the week.
+    /// Steps leave rides out (`humanSteps`); distance keeps every activity.
+    nonisolated static func weeklySummaryTotals(_ weekSessions: [WalkSession]) -> (steps: Int, km: Double) {
+        (weekSessions.reduce(0) { $0 + ActivitySummaryContent.humanSteps($1) },
+         weekSessions.reduce(0.0) { $0 + $1.totalDistance } / 1000)
+    }
+
+    /// The weekly summary's text. A week of rides only has no steps (rides
+    /// add none) but did happen, so it gets its distance rather than "a new
+    /// week starts today"; that line is only for a week with nothing in it.
+    nonisolated static func weeklySummaryBody(steps: Int, km: Double, streak: Int) -> String {
+        let streakSuffix = streak > 0 ? " · \(streak)-day streak 🔥" : ""
+        let kmText = String(format: "%.1f", km)
+        if steps > 0 {
+            return "This week: \(steps.formatted()) steps · \(kmText) km\(streakSuffix). Keep it up!"
+        } else if km > 0 {
+            return "This week: \(kmText) km\(streakSuffix). Keep it up!"
+        } else {
+            return "A new week starts today — lace up and start strong! 💪"
+        }
     }
 }
 

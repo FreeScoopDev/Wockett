@@ -40,7 +40,8 @@ struct MonthCalendarView: View {
         if stepManager.trackingMode == .healthKit {
             return hkMonthSteps[cal.startOfDay(for: date)]
         }
-        return sessions.filter { cal.isDate($0.date, inSameDayAs: date) }.reduce(0) { $0 + $1.estimatedSteps }
+        // App Only: recorded sessions' steps, rides excluded.
+        return ActivitySummaryContent.humanSteps(on: date, in: sessions, calendar: cal)
     }
 
     private func fetchHKSteps() async {

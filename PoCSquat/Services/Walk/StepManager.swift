@@ -248,9 +248,8 @@ final class StepManager: ObservableObject {
             } else if trackingMode == .healthKit {
                 steps = hkCounts[date]
             } else {
-                steps = sessions
-                    .filter { cal.isDate($0.date, inSameDayAs: date) }
-                    .reduce(0) { $0 + $1.estimatedSteps }
+                // App Only: recorded sessions' steps, rides excluded.
+                steps = ActivitySummaryContent.humanSteps(on: date, in: sessions, calendar: cal)
             }
 
             let tag       = weekdayTags[wd]

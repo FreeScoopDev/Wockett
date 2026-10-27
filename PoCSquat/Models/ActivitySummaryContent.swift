@@ -116,10 +116,20 @@ enum ActivitySummaryContent {
     /// `estimatedSteps`. A ride gives 0 even when its saved `steps` is
     /// positive (a legacy or hand-entered value): the pedometer never runs on
     /// a ride, and `showsSteps` is the app's rule for whether a ride has
-    /// steps at all. Insights and the fun-stat card both total with this, so
-    /// a 14 km ride no longer adds 18,000 steps to either.
+    /// steps at all. Insights, the fun-stat card, the streak, the calendars
+    /// and the weekly summary all total with this, so a 14 km ride no longer
+    /// adds 18,000 steps to any of them.
     nonisolated static func humanSteps(_ session: WalkSession) -> Int {
         showsSteps(session) ? session.estimatedSteps : 0
+    }
+
+    /// `humanSteps` summed over the sessions that start on `day`'s calendar
+    /// day. The month calendar and the Home week strip both show this in
+    /// App Only mode, so a ride day shows 0 steps, not its distance / 0.762 m.
+    nonisolated static func humanSteps(on day: Date, in sessions: [WalkSession], calendar: Calendar) -> Int {
+        sessions
+            .filter { calendar.isDate($0.date, inSameDayAs: day) }
+            .reduce(0) { $0 + humanSteps($1) }
     }
 
     /// The pace rule `WalkSession.paceOrSpeedText` already applies.
