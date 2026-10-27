@@ -528,14 +528,14 @@ struct PetEditorSheet: View {
                             }
                         }
 
-                        field(label: "Daily step goal") {
+                        field(label: "Daily goal (est. steps)") {
                             TextField("10000", text: $goalText).keyboardType(.numberPad).foregroundColor(.earthCream)
                         }
 
                         if let suggested = suggestedGoal, Int(goalText) != suggested {
                             Button { goalText = "\(suggested)" } label: {
                                 Label {
-                                    Text("A starting point for this breed: \(suggested.formatted()) steps. Change it to suit your pet; it isn't a health target.")
+                                    Text("Use \(suggested.formatted()) est. steps, a starting point for this breed (not a health target)")
                                 } icon: {
                                     Image(wkt: .tip).wktIcon(.inline, tint: .earthOrange, filled: true)
                                 }

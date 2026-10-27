@@ -77,7 +77,7 @@ struct PetCreditLabelsTests {
     /// she did all of (Wed 28), Beef's walk without her (Thu 29), and her 5,000 m
     /// of a ride (Fri 30). Outside: a walk on Thu 22. Credit: 800 + 1,500 +
     /// 1,200 + 5,000 = 8,500 m. Estimates: 1,049 + 1,968 + 1,574 + 6,561 = 11,152.
-    @Test("The rows' credit adds up to the Distance tile, and their estimates to the Est. steps tile")
+    @Test("The rows' credit adds up to the Distance tile; the Est. steps tile totals every row, rides included")
     func rowsAddUpToTheTiles() throws {
         let now = try at(30, 18)
         let sessions = try [

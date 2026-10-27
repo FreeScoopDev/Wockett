@@ -67,6 +67,9 @@ enum PetCreditText {
     /// `StationaryWalkView.onAppear`). During an outing, credit starts and
     /// stops only from the outing screen's pet buttons (`togglePet`): turning
     /// a pet off here does not end its stretch, so the hint sends people there.
+    /// Checked by reading the code on 2026-10-27; no test pins that behaviour,
+    /// so if the My Pets switch ever starts or ends credit mid-outing, reword
+    /// this hint.
     static let switchHint =
         "Pets switched on join an outing when it starts. During an outing, add or remove a pet on the outing screen."
 
@@ -86,7 +89,8 @@ enum PetCreditText {
 
     /// Under the pet page's stat tiles.
     static func estimateCaption(name: String) -> String {
-        "Pets don't carry a step counter. Step estimates are distance credited to \(name) divided by 0.762 m."
+        let stride = PetOutingRow.strideMeters.formatted(.number.precision(.fractionLength(3)).locale(Locale(identifier: "en_US_POSIX")))
+        return "Pets don't carry a step counter. Step estimates are distance credited to \(name) divided by \(stride) m."
     }
 
     /// A row's step line: "about 1,049 steps".

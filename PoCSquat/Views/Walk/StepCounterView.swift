@@ -345,9 +345,18 @@ struct StepCounterView: View {
             Text("·")
                 .foregroundColor(.earthMuted)
                 .accessibilityHidden(true)
-            Button("Change") { showPetManagement = true }
-                .foregroundColor(.earthGreen)
-                .buttonStyle(.plain)
+            Button { showPetManagement = true } label: {
+                // A 44 pt target without making the line taller, as
+                // WktSectionHeader's action does.
+                Text("Change")
+                    .foregroundColor(.earthGreen)
+                    .padding(.vertical, 12)
+                    .padding(.horizontal, 8)
+                    .contentShape(Rectangle())
+                    .padding(.vertical, -12)
+                    .padding(.horizontal, -8)
+            }
+            .buttonStyle(.plain)
                 .accessibilityHint("Opens My Pets")
                 .accessibilityIdentifier("home.changeCompanions")
         }
