@@ -641,7 +641,7 @@ struct GaitMetricDetailContentView: View {
 
     private var statsGrid: some View {
         WktStatGrid(items: [
-            .init(label: "7-day avg", value: sevenDayAvg.map { config.format($0) } ?? "–", note: "this week"),
+            .init(label: "7-day avg", value: sevenDayAvg.map { config.format($0) } ?? "–", note: "last 7 days"),
             .init(label: "30-day avg", value: thirtyDayAvg.map { config.format($0) } ?? "–", note: "last 30 days"),
             .init(label: "Personal best", value: bestValue.map { config.format($0) } ?? "–",
                   note: config.higherIsBetter ? "highest recorded" : "lowest recorded"),

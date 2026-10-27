@@ -93,8 +93,14 @@ struct StepManagerTests {
             else { UserDefaults.standard.removeObject(forKey: goalsKey) }
         }
 
-        let cal = Calendar.current
-        let today = cal.startOfDay(for: Date())
+        // A fixed Saturday in a fixed zone: the strip is the calendar week
+        // (since 2026-10-27), so with the real date the days 1-3 ago fell in
+        // last week whenever the test ran early in the week.
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = try #require(TimeZone(identifier: "UTC"))
+        cal.firstWeekday = 1
+        let now = try #require(cal.date(from: DateComponents(year: 2026, month: 10, day: 31, hour: 18)))
+        let today = cal.startOfDay(for: now)
         func noon(daysAgo: Int) -> Date {
             cal.date(byAdding: .hour, value: 12, to: cal.date(byAdding: .day, value: -daysAgo, to: today)!)!
         }
@@ -112,7 +118,7 @@ struct StepManagerTests {
 
         let manager = StepManager()
         manager.trackingMode = .appOnly
-        await manager.refreshWeeklyCalendar(sessions: sessions)
+        await manager.refreshWeeklyCalendar(sessions: sessions, now: now, calendar: cal)
 
         func steps(daysAgo: Int) -> Int? {
             let date = cal.date(byAdding: .day, value: -daysAgo, to: today)!

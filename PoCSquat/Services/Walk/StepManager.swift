@@ -200,36 +200,48 @@ final class StepManager: ObservableObject {
 
     // MARK: - Weekly Calendar
 
-    func refreshWeeklyCalendar(sessions: [WalkSession], weekOffset: Int = 0) async {
-        let cal   = Calendar.current
-        let today = cal.startOfDay(for: Date())
+    /// The calendar week `weekOffset` whole weeks from the one containing
+    /// `now`. The strip's days and the Health header's date range both come
+    /// from this, so they cannot name different weeks.
+    nonisolated static func stripWeek(weekOffset: Int, now: Date, calendar: Calendar) -> DateInterval {
+        let thisWeek = InsightsSummary.calendarWeek(containing: now, calendar: calendar)
+        guard weekOffset != 0,
+              let start = calendar.date(byAdding: .weekOfYear, value: weekOffset, to: thisWeek.start) else {
+            return thisWeek
+        }
+        return InsightsSummary.calendarWeek(containing: start, calendar: calendar)
+    }
 
-        // The 7-day window: weekOffset=0 → -3…+3, weekOffset=-1 → -10…-4, etc.
-        let base  = weekOffset * 7
-        let range = (base - 3)...(base + 3)
+    /// The week strip Home and Health share: the locale's calendar week
+    /// containing `now` (`InsightsSummary.calendarWeek`), moved by
+    /// `weekOffset` whole calendar weeks. Until 2026-10-27 it was three days
+    /// either side of today, which Home and Health called "This week" while
+    /// Insights' "This week" meant the calendar week.
+    func refreshWeeklyCalendar(sessions: [WalkSession], weekOffset: Int = 0,
+                               now: Date = Date(), calendar cal: Calendar = .current) async {
+        let today = cal.startOfDay(for: now)
+        let weekStart = Self.stripWeek(weekOffset: weekOffset, now: now, calendar: cal).start
+        let dates = (0..<7).compactMap { cal.date(byAdding: .day, value: $0, to: weekStart) }
 
-        // Fetch HealthKit counts for any past portion of the window
+        // HealthKit counts for the window's past days only: from its first day
+        // to the start of the day after its last, or to the start of today
+        // when the window reaches today (today is `todaySteps`).
         let hkCounts: [Date: Int]
-        if trackingMode == .healthKit, range.lowerBound < 0 {
-            let qStart = cal.date(byAdding: .day, value: range.lowerBound, to: today) ?? today
-            // +1 so qEnd is the start of the day AFTER the last wanted day,
-            // ensuring enumerateStatistics includes yesterday's bucket (weekOffset=0).
-            let qEnd   = cal.date(byAdding: .day, value: min(range.upperBound + 1, 0), to: today)
-                         ?? today
-            hkCounts = await fetchWeeklyStepCounts(from: qStart, to: qEnd)
+        if trackingMode == .healthKit, let first = dates.first, let last = dates.last, first < today {
+            let afterLast = cal.date(byAdding: .day, value: 1, to: last) ?? last
+            hkCounts = await fetchWeeklyStepCounts(from: first, to: min(afterLast, today))
         } else {
             hkCounts = [:]
         }
 
         var days: [CalendarDay] = []
-        for offset in range {
-            guard let date = cal.date(byAdding: .day, value: offset, to: today) else { continue }
+        for date in dates {
             let wd = cal.component(.weekday, from: date)
 
             // Past days use frozen historical goal; today/future always track current settings
             let computed = (useCustomSchedule ? weekdayGoals[wd] : nil) ?? dailyGoal
             let goal: Int
-            if offset < 0 {
+            if date < today {
                 let key = dayKey(date)
                 if let stored = historicalDayGoals[key] {
                     goal = stored
@@ -242,10 +254,10 @@ final class StepManager: ObservableObject {
             }
 
             let steps: Int?
-            if offset > 0 {
+            if date > today {
                 steps = nil
-            } else if offset == 0 {
-                steps = weekOffset == 0 ? todaySteps : nil
+            } else if date == today {
+                steps = todaySteps
             } else if trackingMode == .healthKit {
                 steps = hkCounts[date]
             } else {

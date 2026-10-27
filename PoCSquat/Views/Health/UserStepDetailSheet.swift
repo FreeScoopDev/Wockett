@@ -6,10 +6,12 @@ struct UserStepDetailSheet: View {
     @ObservedObject var historyStore: WalkHistoryStore
     @Environment(\.dismiss) private var dismiss
 
+    /// The "Last 7 days" section: today plus the six calendar days before
+    /// (`InsightsSummary.last7Days`), not `now` minus 168 hours.
     private var recentSessions: [WalkSession] {
-        let cal = Calendar.current
-        let cutoff = cal.date(byAdding: .day, value: -7, to: Date()) ?? Date()
-        return historyStore.sessions.filter { $0.date >= cutoff }
+        let now = Date()
+        let window = InsightsSummary.last7Days(now: now, calendar: .current)
+        return historyStore.sessions.filter { InsightsSummary.counts($0.date, in: window, now: now) }
     }
 
     /// A ride's steps are only its distance over a stride, so rides add none.

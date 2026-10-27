@@ -298,9 +298,10 @@ struct SquatCounterApp: App {
         let sessions = historyStore.sessions
         let streak   = StreakStore.shared.currentStreak
 
-        let cal        = Calendar.current
-        let weekStart  = cal.date(from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: Date())) ?? Date()
-        let weekSessions = sessions.filter { $0.date >= weekStart }
+        // The calendar week so far, the same week Insights calls "This week".
+        let now        = Date()
+        let window     = InsightsSummary.calendarWeek(containing: now, calendar: .current)
+        let weekSessions = sessions.filter { InsightsSummary.counts($0.date, in: window, now: now) }
         let week       = Self.weeklySummaryTotals(weekSessions)
         let body       = Self.weeklySummaryBody(steps: week.steps, km: week.km, streak: streak)
 

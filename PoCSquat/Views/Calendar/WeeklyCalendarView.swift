@@ -23,18 +23,34 @@ struct WeeklyCalendarView: View {
         }
     }
 
+    /// The week's dates, "Oct 25 – 31", from the same calendar week the
+    /// strip's days come from (`StepManager.stripWeek`).
+    private var rangeLabel: String {
+        let calendar = Calendar.current
+        let week = StepManager.stripWeek(weekOffset: weekOffset, now: Date(), calendar: calendar)
+        return InsightsSummary.rangeLabel(week, calendar: calendar)
+    }
+
     // A `WktSection` in shape: the week's name as the heading, with the week
     // controls where its link would be, and one card under it holding the
-    // seven days and the 30-day trend, like Home's "This week" card.
+    // seven days (the locale's calendar week) and the 30-day trend, like
+    // Home's "This week" card.
     var body: some View {
         VStack(alignment: .leading, spacing: WktSpacing.betweenCards) {
             HStack(spacing: 4) {
                 ZStack(alignment: .leading) {
-                    Text(weekLabel)
-                        .font(.wktSection)
-                        .foregroundColor(.earthCream)
-                        .accessibilityAddTraits(.isHeader)
-                        .id(weekOffset)
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text(weekLabel)
+                            .font(.wktSection)
+                            .foregroundColor(.earthCream)
+                            .accessibilityAddTraits(.isHeader)
+                        Text(rangeLabel)
+                            .font(.wktLabel)
+                            .foregroundColor(.earthMuted)
+                            .lineLimit(1)
+                    }
+                    .accessibilityElement(children: .combine)
+                    .id(weekOffset)
                         .transition(.asymmetric(
                             insertion: .move(edge: slideFromLeading ? .leading : .trailing).combined(with: .opacity),
                             removal:   .move(edge: slideFromLeading ? .trailing : .leading).combined(with: .opacity)

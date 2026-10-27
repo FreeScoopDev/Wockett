@@ -3,9 +3,11 @@ import SwiftUI
 // MARK: - This week
 //
 // Seven day bars from `StepManager.weeklyCalendar`, the same window the
-// Health tab charts (three days either side of today), so Home and Health
-// never disagree about a day. Today is the green bar; days still to come are
-// an empty track.
+// Health tab charts: the locale's calendar week (Sunday to Saturday in the
+// US), as Insights' "This week" means, so Home and Health never disagree
+// about a day. Today is the green bar; days still to come are an empty
+// track, so early in the week most of the card is empty (accepted,
+// 2026-10-27).
 
 struct HomeWeekCard: View {
     let days: [CalendarDay]

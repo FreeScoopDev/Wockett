@@ -105,13 +105,14 @@ enum CommunityHubSummary {
         let daily: [Double]
     }
 
-    /// Each pet's last 7 days (today and the 6 before it), in `pets` order.
+    /// Each pet's last 7 days (today and the 6 before it,
+    /// `InsightsSummary.last7Days`), in `pets` order. A rolling window, so
+    /// the card says "last 7 days", never "this week" (the calendar week).
     static func crewWeek(pets: [(id: UUID, name: String)], sessions: [WalkSession],
                          now: Date = Date(), calendar: Calendar = .current) -> [CrewWeek] {
-        let today = calendar.startOfDay(for: now)
-        let days = (0..<7).compactMap { calendar.date(byAdding: .day, value: $0 - 6, to: today) }
-        guard let first = days.first else { return [] }
-        let week = sessions.filter { $0.date >= first && $0.date <= now }
+        let window = InsightsSummary.last7Days(now: now, calendar: calendar)
+        let days = (0..<7).compactMap { calendar.date(byAdding: .day, value: $0, to: window.start) }
+        let week = sessions.filter { InsightsSummary.counts($0.date, in: window, now: now) }
         return pets.map { pet in
             let theirs = week.filter { PetStore.participated(pet.id, in: $0) }
             let daily = days.map { day in
@@ -126,10 +127,10 @@ enum CommunityHubSummary {
     /// Walks in the last 7 days that two or more of your pets were on.
     static func walksTogether(petIDs: [UUID], sessions: [WalkSession], now: Date = Date(),
                               calendar: Calendar = .current) -> Int {
-        guard petIDs.count >= 2,
-              let first = calendar.date(byAdding: .day, value: -6, to: calendar.startOfDay(for: now)) else { return 0 }
+        guard petIDs.count >= 2 else { return 0 }
+        let window = InsightsSummary.last7Days(now: now, calendar: calendar)
         return sessions.filter { session in
-            session.date >= first && session.date <= now
+            InsightsSummary.counts(session.date, in: window, now: now)
                 && petIDs.filter { PetStore.participated($0, in: session) }.count >= 2
         }.count
     }
