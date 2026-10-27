@@ -168,21 +168,23 @@ struct HoldToFinishButton: View {
     @State private var showHint = false
 
     var body: some View {
-        // The primary button's size and shape, in red outline: finishing is
-        // the destructive end of the row, so it never looks like Pause.
+        // The primary button's size and shape in the secondary look (raised
+        // fill, cream text), with a thin outline so it reads as a hold
+        // target: finishing saves the outing, so it is not red, and it never
+        // looks like Pause. Red is kept for Discard (2026-10-27).
         let shape = RoundedRectangle(cornerRadius: 18, style: .continuous)
         return ZStack {
             shape.fill(Color.earthRaised)
             GeometryReader { geo in
                 shape
-                    .fill(Color.red.opacity(0.18))
+                    .fill(Color.earthGreen.opacity(0.16))
                     .frame(width: geo.size.width * progress)
             }
-            shape.strokeBorder(Color.red.opacity(0.85), lineWidth: 1.5)
+            shape.strokeBorder(Color.earthMuted.opacity(0.5), lineWidth: 1.5)
             VStack(spacing: 1) {
                 Text(isPressing ? "Keep holding" : "Hold to finish")
                     .font(.wktRowTitle)
-                    .foregroundColor(.red)
+                    .foregroundColor(.earthCream)
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
                 Text(showHint ? "Press and hold for 1 second" : "1 second")
@@ -320,8 +322,9 @@ struct SessionToggleRow: View {
 
 // MARK: - Finish confirmation
 
-/// The second step after the hold: keep going is the default action, so the
-/// least destructive choice is the easiest to hit.
+/// The second step after the hold. Finish and save is the main action, since
+/// the hold already asked for it; keep going is one tap below it, and only
+/// Discard, the one choice that loses the outing, is red (2026-10-27).
 struct FinishConfirmationView: View {
     let wording: SessionWording
     let summary: String
@@ -331,12 +334,15 @@ struct FinishConfirmationView: View {
     let onFinishAndSaveRoute: (() -> Void)?
     let onDiscard: () -> Void
 
+    @Environment(\.dynamicTypeSize) private var typeSize
+
     var body: some View {
         VStack(spacing: 12) {
             VStack(spacing: 4) {
                 Text("Finish your \(wording.noun)?")
                     .font(.wktCardTitle)
                     .foregroundColor(.earthCream)
+                    .multilineTextAlignment(.center)
                 Text(summary)
                     .font(.wktBodyText)
                     .foregroundColor(.earthMuted)
@@ -344,20 +350,11 @@ struct FinishConfirmationView: View {
             }
             .padding(.bottom, 6)
 
-            WktPrimaryButton(title: "Keep \(wording.gerund)", action: onKeepGoing)
-                .accessibilityIdentifier("session.keepGoing")
+            WktPrimaryButton(title: "Finish and save", action: onFinish)
+                .accessibilityIdentifier("session.confirmFinish")
 
-            Button(action: onFinish) {
-                Text("Finish and save")
-                    .font(.wktHeading(17))
-                    .foregroundColor(.red)
-                    .frame(maxWidth: .infinity, minHeight: 56)
-                    .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .strokeBorder(Color.red.opacity(0.85), lineWidth: 1.5))
-                    .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-            }
-            .buttonStyle(BounceButtonStyle(scale: 0.98))
-            .accessibilityIdentifier("session.confirmFinish")
+            WktSecondaryButton(title: "Keep \(wording.gerund)", action: onKeepGoing)
+                .accessibilityIdentifier("session.keepGoing")
 
             if let onFinishAndSaveRoute {
                 Button(action: onFinishAndSaveRoute) {
@@ -378,7 +375,11 @@ struct FinishConfirmationView: View {
         .padding(.horizontal, WktSpacing.screen)
         .padding(.top, 26)
         .padding(.bottom, 12)
-        .presentationDetents([.height(onFinishAndSaveRoute == nil ? 360 : 410)])
+        // The fixed height fits every standard text size; at the
+        // accessibility sizes it cut the title short, so those get .large.
+        .presentationDetents(typeSize.isAccessibilitySize
+            ? [.large]
+            : [.height(onFinishAndSaveRoute == nil ? 360 : 410)])
         .presentationDragIndicator(.visible)
     }
 }
