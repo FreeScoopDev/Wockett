@@ -41,7 +41,7 @@ struct HealthHubView: View {
                         onCalendarTap: { showMonthCalendar = true }
                     )
                     if healthExtras.state == .ready { GaitHealthSection() }
-                    HealthFunStatsCard(sessions: historyStore.sessions, todaySteps: stepManager.todaySteps)
+                    HealthFunStatsCard(sessions: historyStore.sessions)
                     insightsCard
                     activityHistoryCard
                     HealthDisclaimer()
@@ -138,52 +138,72 @@ struct HealthHubView: View {
 
 // MARK: - Fun Stats Card
 
-struct HealthFunStatsCard: View {
-    let sessions:   [WalkSession]
-    let todaySteps: Int
-
-    private var totalKm:    Double { sessions.reduce(0.0) { $0 + $1.totalDistance } / 1000 }
-    private var totalSteps: Int    { sessions.reduce(0)   { $0 + $1.estimatedSteps } + todaySteps }
-
-    private struct Fact: Identifiable {
-        let id = UUID()
+/// The fun-stat facts, from recorded sessions only. Until 2026-10-27 the card
+/// added today's Health steps (which already hold a walk recorded today, so
+/// that walk counted twice), gave rides distance / 0.762 m steps, and kept
+/// sessions flagged as possible driving. Now: the same sessions Insights
+/// counts; distance spans every activity, rides included; steps are
+/// `ActivitySummaryContent.humanSteps`, so rides add none.
+nonisolated enum FunStats {
+    nonisolated struct Fact: Equatable {
         let emoji: String; let headline: String; let detail: String
     }
 
-    private var facts: [Fact] {
+    /// Total distance in km and human steps of the sessions that count.
+    nonisolated static func totals(_ sessions: [WalkSession]) -> (km: Double, steps: Int) {
+        let counted = InsightsSummary.counted(sessions)
+        let km = counted.reduce(0.0) { $0 + $1.totalDistance } / 1000
+        let steps = counted.reduce(0) { $0 + ActivitySummaryContent.humanSteps($1) }
+        return (km, steps)
+    }
+
+    /// Every fact the totals earn, in the card's order.
+    nonisolated static func allFacts(from sessions: [WalkSession]) -> [Fact] {
+        let (totalKm, totalSteps) = totals(sessions)
         var result: [Fact] = []
         let bridges = Int(totalKm / 2.73)
         if bridges >= 1 {
             result.append(Fact(emoji: "🌉",
                 headline: "\(bridges) Golden Gate crossing\(bridges == 1 ? "" : "s")",
-                detail: "Total distance covered"))
+                detail: "Recorded distance, all activities"))
         }
         let marathons = Int(totalKm / 42.195)
         if marathons >= 1 {
             result.append(Fact(emoji: "🏅",
-                headline: "\(marathons) marathon\(marathons == 1 ? "" : "s") completed",
-                detail: "Based on total distance"))
+                headline: "Distance equal to \(marathons) marathon\(marathons == 1 ? "" : "s")",
+                detail: "Recorded distance, all activities"))
         }
         let esbClimbs = totalSteps / 1_576
         if esbClimbs >= 1 {
             result.append(Fact(emoji: "🏙️",
-                headline: "\(esbClimbs)× up the Empire State Building",
-                detail: "1,576 steps per climb"))
+                headline: "Step count equal to \(esbClimbs) Empire State climb\(esbClimbs == 1 ? "" : "s")",
+                detail: "Estimated steps from walks and runs · 1,576 stairs per climb"))
         }
         let earthPct = (totalKm / 40_075) * 100
         if earthPct >= 0.01 {
             result.append(Fact(emoji: "🌍",
                 headline: String(format: "%.2f%% around Earth", earthPct),
-                detail: "40,075 km circumference"))
+                detail: "Recorded distance, all activities · 40,075 km circumference"))
         }
-        return Array(result.prefix(2))
+        return result
     }
+
+    /// What the card shows: the first two facts.
+    nonisolated static func facts(from sessions: [WalkSession]) -> [Fact] {
+        Array(allFacts(from: sessions).prefix(2))
+    }
+}
+
+struct HealthFunStatsCard: View {
+    let sessions: [WalkSession]
+
+    private var facts: [FunStats.Fact] { FunStats.facts(from: sessions) }
 
     var body: some View {
         if facts.isEmpty { EmptyView() } else {
             WktSection(title: "Your journey in perspective") {
                 HStack(alignment: .top, spacing: WktSpacing.betweenCards) {
-                    ForEach(facts) { fact in
+                    ForEach(facts, id: \.headline) { fact in
                         VStack(alignment: .leading, spacing: 6) {
                             Text(fact.emoji)
                                 .font(.title2) // the fact's own emoji (data)

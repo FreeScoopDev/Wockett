@@ -91,7 +91,7 @@ enum SummaryStat: Equatable {
 
 enum ActivitySummaryContent {
 
-    static func mode(of session: WalkSession) -> ActivityMode {
+    nonisolated static func mode(of session: WalkSession) -> ActivityMode {
         ActivityMode(rawValue: session.activityType) ?? .walking
     }
 
@@ -104,12 +104,22 @@ enum ActivitySummaryContent {
     /// Whether an activity's steps are worth showing anywhere. A ride's are
     /// only distance / 0.762 m (the pedometer never runs on a ride), so a
     /// 14 km ride would "take" 18,000 steps.
-    static func showsSteps(for mode: ActivityMode) -> Bool {
+    nonisolated static func showsSteps(for mode: ActivityMode) -> Bool {
         mode != .cycling
     }
 
-    static func showsSteps(_ session: WalkSession) -> Bool {
+    nonisolated static func showsSteps(_ session: WalkSession) -> Bool {
         showsSteps(for: mode(of: session))
+    }
+
+    /// Steps that belong in a total of a person's steps: 0 for a ride, else
+    /// `estimatedSteps`. A ride gives 0 even when its saved `steps` is
+    /// positive (a legacy or hand-entered value): the pedometer never runs on
+    /// a ride, and `showsSteps` is the app's rule for whether a ride has
+    /// steps at all. Insights and the fun-stat card both total with this, so
+    /// a 14 km ride no longer adds 18,000 steps to either.
+    nonisolated static func humanSteps(_ session: WalkSession) -> Int {
+        showsSteps(session) ? session.estimatedSteps : 0
     }
 
     /// The pace rule `WalkSession.paceOrSpeedText` already applies.

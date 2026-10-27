@@ -15,8 +15,11 @@ import Foundation
 // The source is the session history only, never HealthKit's all-day steps:
 // Insights is about the activities the person recorded, it works in app-only
 // tracking mode and on the simulator, and its numbers match Activity History.
-// Steps are `estimatedSteps` (the pedometer count, or distance / 0.762 m for
-// sessions from before 1.7), so the screen calls them estimated.
+// Steps are walks, runs and indoor walks only (`ActivitySummaryContent
+// .humanSteps`): each one's `estimatedSteps`, the saved count or distance /
+// 0.762 m when none was saved, so the screen calls them estimated. A ride
+// adds 0 steps (the pedometer never runs on one) but still counts in the
+// activities, distance, time and active days.
 //
 // Every function takes `now` and a `Calendar`, so weeks follow the person's
 // locale (Sunday in the US, Monday elsewhere) and tests fix both: CI runs in
@@ -95,7 +98,7 @@ enum InsightsSummary {
             t.sessions += 1
             t.distanceMeters += s.totalDistance
             t.duration += s.elapsedTime
-            t.steps += s.estimatedSteps
+            t.steps += ActivitySummaryContent.humanSteps(s)
             days.insert(calendar.startOfDay(for: s.date))
             let mode = ActivityMode(rawValue: s.activityType) ?? .walking
             t.distanceByActivity[mode, default: 0] += s.totalDistance
