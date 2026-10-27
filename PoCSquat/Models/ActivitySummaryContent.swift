@@ -138,15 +138,20 @@ enum ActivitySummaryContent {
     /// rides only): a personal record of 0 steps is not shown. Ties go to the
     /// most recent day. The caller decides which sessions count (Community
     /// passes only those not flagged as possibly driven).
+    ///
+    /// Same rule as `humanSteps(on:in:calendar:)` (each session's
+    /// `humanSteps`, bucketed by start of day), but grouped in one pass:
+    /// calling that per day re-scans every session for every day, which
+    /// froze the Badges screen for long histories (it runs in `body`).
     nonisolated static func bestStepDay(in sessions: [WalkSession], calendar: Calendar) -> (day: Date, steps: Int)? {
-        let days = Set(sessions.map { calendar.startOfDay(for: $0.date) })
+        var stepsByDay: [Date: Int] = [:]
+        for session in sessions {
+            stepsByDay[calendar.startOfDay(for: session.date), default: 0] += humanSteps(session)
+        }
+        // Newest first, replacing only on a strictly larger total, so a tie
+        // keeps the most recent day whatever order the sessions came in.
         var best: (day: Date, steps: Int)?
-        for day in days {
-            let steps = humanSteps(on: day, in: sessions, calendar: calendar)
-            guard steps > 0 else { continue }
-            if let current = best, steps < current.steps || (steps == current.steps && day < current.day) {
-                continue
-            }
+        for (day, steps) in stepsByDay.sorted(by: { $0.key > $1.key }) where steps > (best?.steps ?? 0) {
             best = (day, steps)
         }
         return best

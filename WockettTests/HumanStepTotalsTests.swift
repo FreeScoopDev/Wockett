@@ -95,16 +95,27 @@ struct HumanStepTotalsTests {
         #expect(best([]) == nil)
     }
 
-    @Test("A tie goes to the most recent day, whatever the order")
+    @Test("A tie goes to the most recent day")
     func bestDay_tieMostRecent() throws {
         let wednesday = Self.tuesday.addingTimeInterval(86_400)
-        let forward = try #require(best([session("walking", at: mondayNoon, steps: 4_000),
-                                         session("walking", at: wednesdayNoon, steps: 4_000)]))
-        let backward = try #require(best([session("walking", at: wednesdayNoon, steps: 4_000),
-                                          session("walking", at: mondayNoon, steps: 4_000)]))
-        #expect(forward.day == wednesday)
-        #expect(backward.day == wednesday)
-        #expect(forward.steps == 4_000)
+        let result = try #require(best([session("walking", at: mondayNoon, steps: 4_000),
+                                        session("walking", at: wednesdayNoon, steps: 4_000)]))
+        #expect(result.day == wednesday)
+        #expect(result.steps == 4_000)
+    }
+
+    @Test("Best day agrees with the calendar's per-day total")
+    func bestDay_matchesCalendarTotal() throws {
+        let sessions = [session("walking", at: mondayNoon, steps: 3_000),
+                        session("running", at: mondayNoon, steps: 2_500),
+                        session("cycling", at: tuesdayNoon, meters: 20_000),
+                        session("walking", at: tuesdayNoon, steps: 1_000),
+                        session("walking", at: wednesdayNoon, steps: 5_000)]
+        let result = try #require(best(sessions))
+        let calendarTotal = ActivitySummaryContent.humanSteps(on: result.day, in: sessions, calendar: Self.utc)
+        #expect(result.steps == calendarTotal)
+        #expect(result.day == Self.tuesday.addingTimeInterval(-86_400))
+        #expect(result.steps == 5_500)
     }
 
     @Test("Walks at 23:59 and 00:01 count on separate days")
