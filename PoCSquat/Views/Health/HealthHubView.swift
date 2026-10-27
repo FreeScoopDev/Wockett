@@ -28,6 +28,7 @@ struct HealthHubView: View {
                         days: stepManager.weeklyCalendar,
                         weekOffset: calendarWeekOffset,
                         stepManager: stepManager,
+                        sessions: historyStore.sessions,
                         onDayTap: { selectedCalendarDay = $0 },
                         onWeekChange: { delta in
                             let newOffset = (calendarWeekOffset + delta).clamped(to: -52...52)

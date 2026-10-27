@@ -51,7 +51,8 @@ struct MonthCalendarView: View {
         guard let start = cal.date(from: cal.dateComponents([.year, .month], from: monthStart)),
               start < today else { return }
         let end = min(today, cal.date(byAdding: .month, value: 1, to: start) ?? today)
-        hkMonthSteps = await stepManager.fetchStepCounts(from: start, to: end)
+        // nil (query failed) shows as no data here, as it always has.
+        hkMonthSteps = await stepManager.fetchStepCounts(from: start, to: end) ?? [:]
     }
 
     private static let goalDateFormatter: DateFormatter = {
@@ -94,24 +95,12 @@ struct MonthCalendarView: View {
 
     // MARK: - Monthly Stats
 
-    private struct MonthStats {
-        let total: Int; let avg: Int; let goalsMet: Int; let daysWithData: Int; let best: Int
-        var isEmpty: Bool { daysWithData == 0 }
-    }
-
-    private var monthlyStats: MonthStats {
-        let cal   = Calendar.current
-        let today = cal.startOfDay(for: Date())
-        var total = 0, goalsMet = 0, best = 0, days = 0
-        for date in daysInGrid.compactMap({ $0 }) {
-            guard cal.startOfDay(for: date) <= today else { continue }
-            guard let steps = stepsFor(date), steps > 0 else { continue }
-            total += steps; days += 1
-            if steps >= goalFor(date) { goalsMet += 1 }
-            if steps > best { best = steps }
-        }
-        return MonthStats(total: total, avg: days > 0 ? total / days : 0,
-                          goalsMet: goalsMet, daysWithData: days, best: best)
+    /// The month's days up to today, over recorded days only
+    /// (`RecordedDaysSummary`), the rule the 30-day trend uses.
+    private var monthlyStats: RecordedDaysSummary {
+        RecordedDaysSummary.make(days: RecordedDaysSummary
+            .pastDates(daysInGrid.compactMap { $0 }, today: Date(), calendar: .current)
+            .map { RecordedDaysSummary.Day(steps: stepsFor($0), goal: goalFor($0)) })
     }
 
     // MARK: - Trend Chart Data
@@ -197,11 +186,16 @@ struct MonthCalendarView: View {
                         if !stats.isEmpty {
                             WktSection(title: "This month") {
                                 WktStatGrid(items: [
-                                    .init(label: "Total steps", value: formatK(stats.total), note: "this month"),
-                                    .init(label: "Daily avg", value: formatK(stats.avg), note: "active days"),
-                                    .init(label: "Goals met", value: "\(stats.goalsMet)", note: "of \(stats.daysWithData) days"),
-                                    .init(label: "Best day", value: formatK(stats.best), note: "single day")
+                                    .init(label: "Total steps", value: formatK(stats.totalSteps), note: "this month"),
+                                    .init(label: "Daily avg", value: formatK(stats.average ?? 0), note: "recorded days"),
+                                    .init(label: "Goals met", value: "\(stats.goalsMet)",
+                                          note: "of \(stats.recordedDays) recorded \(stats.recordedDays == 1 ? "day" : "days")"),
+                                    .init(label: "Best day", value: formatK(stats.best ?? 0), note: "single day")
                                 ])
+                                Text(stats.coverageText)
+                                    .font(.wktLabel)
+                                    .foregroundColor(.earthMuted)
+                                    .fixedSize(horizontal: false, vertical: true)
                             }
                             monthTrendChart
                         }

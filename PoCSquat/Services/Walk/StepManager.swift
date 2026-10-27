@@ -228,7 +228,8 @@ final class StepManager: ObservableObject {
         let hkCounts: [Date: Int]
         if trackingMode == .healthKit, let first = dates.first, let last = dates.last, first < today {
             let afterLast = cal.date(byAdding: .day, value: 1, to: last) ?? last
-            hkCounts = await fetchWeeklyStepCounts(from: first, to: min(afterLast, today))
+            // nil (query failed) looks like no data here, as it always has.
+            hkCounts = await fetchWeeklyStepCounts(from: first, to: min(afterLast, today)) ?? [:]
         } else {
             hkCounts = [:]
         }
@@ -285,12 +286,17 @@ final class StepManager: ObservableObject {
         Self.dayFormatter.string(from: date)
     }
 
-    func fetchStepCounts(from startDate: Date, to endDate: Date) async -> [Date: Int] {
+    /// Health's step count for each day from `startDate` to `endDate`. Nil
+    /// when Health is not available on this device or the query failed; an
+    /// empty dictionary (or zeros) when it ran and found no samples. HealthKit
+    /// never says whether read access was turned off: a denied read is an
+    /// empty result, not nil.
+    func fetchStepCounts(from startDate: Date, to endDate: Date) async -> [Date: Int]? {
         return await fetchWeeklyStepCounts(from: startDate, to: endDate)
     }
 
-    private func fetchWeeklyStepCounts(from startDate: Date, to endDate: Date) async -> [Date: Int] {
-        guard HKHealthStore.isHealthDataAvailable() else { return [:] }
+    private func fetchWeeklyStepCounts(from startDate: Date, to endDate: Date) async -> [Date: Int]? {
+        guard HKHealthStore.isHealthDataAvailable() else { return nil }
         let cal       = Calendar.current
         let stepType  = HKQuantityType(.stepCount)
         let predicate = HKQuery.predicateForSamples(withStart: startDate, end: endDate)
@@ -303,9 +309,19 @@ final class StepManager: ObservableObject {
                 anchorDate: startDate,
                 intervalComponents: DateComponents(day: 1)
             )
-            q.initialResultsHandler = { _, results, _ in
+            q.initialResultsHandler = { _, results, error in
+                guard let results else {
+                    // Read access that was never asked for is not a failure:
+                    // there is simply nothing Wockett may read yet.
+                    if let hkError = error as? HKError, hkError.code == .errorAuthorizationNotDetermined {
+                        cont.resume(returning: [:])
+                    } else {
+                        cont.resume(returning: nil)
+                    }
+                    return
+                }
                 var counts: [Date: Int] = [:]
-                results?.enumerateStatistics(from: startDate, to: endDate) { stats, _ in
+                results.enumerateStatistics(from: startDate, to: endDate) { stats, _ in
                     let steps = stats.sumQuantity()?.doubleValue(for: .count()) ?? 0
                     counts[cal.startOfDay(for: stats.startDate)] = Int(steps)
                 }

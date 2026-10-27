@@ -7,6 +7,8 @@ struct WeeklyCalendarView: View {
     let days: [CalendarDay]
     let weekOffset: Int
     let stepManager: StepManager
+    /// The history App Only mode reads steps from, as the strip does.
+    let sessions: [WalkSession]
     let onDayTap: (CalendarDay) -> Void
     let onWeekChange: (Int) -> Void
     let onCalendarTap: () -> Void
@@ -79,7 +81,7 @@ struct WeeklyCalendarView: View {
                     }
                 }
                 WktDivider()
-                TrendChartSection(stepManager: stepManager)
+                TrendChartSection(stepManager: stepManager, sessions: sessions)
             }
             .wktCard(padding: 12)
         }
@@ -101,46 +103,31 @@ struct WeeklyCalendarView: View {
 
 private struct TrendChartSection: View {
     let stepManager: StepManager
+    let sessions: [WalkSession]
 
     private struct DayPt: Identifiable {
         let id: Date; let date: Date; let steps: Int; let isGoalMet: Bool
     }
 
     @State private var points: [DayPt] = []
+    /// Nil until the first load finishes.
+    @State private var state: StepHistoryState?
 
-    private var nonZero: [DayPt] { points.filter { $0.steps > 0 } }
-    private var avg: Int? {
-        nonZero.isEmpty ? nil : nonZero.map(\.steps).reduce(0,+) / nonZero.count
-    }
-    private var metCount: Int { nonZero.filter(\.isGoalMet).count }
-    private var bestDay: Int? { nonZero.map(\.steps).max() }
-
+    // The stats are over recorded days only (`RecordedDaysSummary`): Health
+    // cannot tell a day without steps from a day without data, so the header
+    // says which days the numbers are based on, and an empty or failed load
+    // is a sentence, never "0/0".
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            // Header row
-            HStack(alignment: .firstTextBaseline) {
-                Text("Last 30 days")
-                    .font(.wktDense(13, weight: .bold))
-                    .foregroundColor(.earthMuted)
-                Spacer()
-                HStack(spacing: 12) {
-                    if let a = avg {
-                        miniStat(label: "Avg", value: formatK(a))
-                    }
-                    miniStat(label: "Goals", value: "\(metCount)/\(nonZero.count)")
-                    if let b = bestDay {
-                        miniStat(label: "Best", value: formatK(b))
-                    }
-                }
-            }
-            .padding(.horizontal, 4)
+            header
+                .padding(.horizontal, 4)
 
             // Chart
-            if points.isEmpty {
+            if state == nil {
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .fill(Color.earthTrack.opacity(0.5))
                     .frame(height: 72)
-            } else {
+            } else if case .recorded = state, !points.isEmpty {
                 Chart {
                     ForEach(points) { pt in
                         AreaMark(
@@ -209,21 +196,80 @@ private struct TrendChartSection: View {
         }
     }
 
+    @ViewBuilder
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Last 30 days")
+                .font(.wktDense(13, weight: .bold))
+                .foregroundColor(.earthMuted)
+                .accessibilityAddTraits(.isHeader)
+            switch state {
+            case .recorded(let summary):
+                WktFlowRow(spacing: 12) {
+                    if let average = summary.average {
+                        miniStat(label: "avg on recorded days", value: formatK(average))
+                    }
+                    miniStat(label: "goals met", value: "\(summary.goalsMet) of \(summary.recordedDays)")
+                    if let best = summary.best {
+                        miniStat(label: "best", value: formatK(best))
+                    }
+                }
+                .accessibilityElement(children: .combine)
+                note(summary.coverageText)
+            case .empty:
+                if stepManager.trackingMode == .healthKit {
+                    note(RecordedDaysSummary.noHealthData)
+                    note(RecordedDaysSummary.noHealthDataHint)
+                } else {
+                    note(RecordedDaysSummary.noAppOnlyData)
+                }
+            case .unavailable:
+                note(RecordedDaysSummary.unavailable)
+            case nil:
+                EmptyView()
+            }
+        }
+    }
+
+    private func note(_ text: String) -> some View {
+        Text(text)
+            .font(.wktLabel)
+            .foregroundColor(.earthMuted)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
     private func load() async {
         let cal   = Calendar.current
         let today = cal.startOfDay(for: Date())
         let start = cal.date(byAdding: .day, value: -29, to: today) ?? today
-        let counts = await stepManager.fetchStepCounts(from: start, to: Date())
-        let goal   = stepManager.currentGoal
+        let goal  = stepManager.currentGoal
 
-        points = (0..<30).compactMap { i in
-            guard let date = cal.date(byAdding: .day, value: i, to: start) else { return nil }
-            let day   = cal.startOfDay(for: date)
-            let steps = cal.isDateInToday(day)
-                ? stepManager.todaySteps
-                : (counts[day] ?? 0)
+        // App Only mode reads its days from the recorded activities, as the
+        // week strip and month calendar do; it has no Health query to fail.
+        let fetched: [Date: Int]?
+        if stepManager.trackingMode == .healthKit {
+            fetched = await stepManager.fetchStepCounts(from: start, to: Date())
+        } else {
+            fetched = [:]
+        }
+        let counts = fetched ?? [:]
+
+        let dates = (0..<30).compactMap { cal.date(byAdding: .day, value: $0, to: start) }
+            .map { cal.startOfDay(for: $0) }
+        let pastSteps: (Date) -> Int = { day in
+            if cal.isDateInToday(day) { return stepManager.todaySteps }
+            if stepManager.trackingMode == .healthKit { return counts[day] ?? 0 }
+            return ActivitySummaryContent.humanSteps(on: day, in: sessions, calendar: cal)
+        }
+
+        points = dates.map { day in
+            let steps = pastSteps(day)
             return DayPt(id: day, date: day, steps: steps, isGoalMet: steps >= goal)
         }
+        let summary = RecordedDaysSummary.make(days: RecordedDaysSummary
+            .pastDates(dates, today: Date(), calendar: cal)
+            .map { RecordedDaysSummary.Day(steps: pastSteps($0), goal: goal) })
+        state = StepHistoryState.make(fetched: fetched, summary: summary)
     }
 
     private func miniStat(label: String, value: String) -> some View {
