@@ -142,6 +142,23 @@ final class StepManager: ObservableObject {
         return dailyGoal
     }
 
+    /// A day's goal as the calendars judge it: a past day's frozen goal when
+    /// one was stored, otherwise the schedule's goal for its weekday. Reads
+    /// only: unlike `refreshWeeklyCalendar` it never stores a goal. The month
+    /// calendar and the 30-day trend both count "goals met" with this, so
+    /// they agree with the week strip's day cells.
+    func goal(for date: Date, now: Date = Date(), calendar: Calendar = .current) -> Int {
+        Self.goal(on: date, today: now, calendar: calendar, stored: historicalDayGoals[dayKey(date)],
+                  useCustomSchedule: useCustomSchedule, weekdayGoals: weekdayGoals, dailyGoal: dailyGoal)
+    }
+
+    nonisolated static func goal(on date: Date, today: Date, calendar: Calendar, stored: Int?,
+                                 useCustomSchedule: Bool, weekdayGoals: [Int: Int], dailyGoal: Int) -> Int {
+        if calendar.startOfDay(for: date) < calendar.startOfDay(for: today), let stored { return stored }
+        let weekday = calendar.component(.weekday, from: date)
+        return (useCustomSchedule ? weekdayGoals[weekday] : nil) ?? dailyGoal
+    }
+
     var remainingSteps:  Int    { max(0, currentGoal - todaySteps) }
     var remainingMeters: Double {
         let goalMeters = Double(currentGoal) * 0.762

@@ -149,8 +149,8 @@ struct RecordedDaysSummaryTests {
         #expect(past.last == today)
     }
 
-    @Test("For the same days, the month's stats and the trend's agree")
-    func monthTrendParity() {
+    @Test("Month and trend pick their days the same way: up to today, future values ignored")
+    func monthTrendWindowing() {
         let cal = Self.utc
         let today = cal.startOfDay(for: Self.now)
         // October 2026 as the month grid has it (1st to 31st, future days
@@ -188,5 +188,61 @@ struct RecordedDaysSummaryTests {
         #expect(thirty.recordedDays == 6)
         #expect(thirty.totalDays == 30)
         #expect(thirty.average == 5_833)      // 35,000 / 6
+    }
+
+    // MARK: - Each day's own goal
+
+    private func goal(_ day: Int, stored: Int?, custom: Bool = false, weekdayGoals: [Int: Int] = [:]) -> Int {
+        let cal = Self.utc
+        let date = cal.date(from: DateComponents(year: 2026, month: 10, day: day))!
+        return StepManager.goal(on: date, today: Self.now, calendar: cal, stored: stored,
+                                useCustomSchedule: custom, weekdayGoals: weekdayGoals, dailyGoal: 10_000)
+    }
+
+    @Test("A past day keeps its stored goal; today and later use the schedule")
+    func storedGoalForPastDaysOnly() {
+        #expect(goal(20, stored: 6_000) == 6_000)          // Tue Oct 20, past
+        #expect(goal(27, stored: 6_000) == 10_000)         // today
+        #expect(goal(28, stored: 6_000) == 10_000)         // tomorrow
+        #expect(goal(20, stored: nil) == 10_000)
+    }
+
+    @Test("Without a stored goal, a custom schedule gives the day's weekday goal")
+    func customScheduleGoal() {
+        // Sat Oct 24 is weekday 7; Mon Oct 26 is weekday 2 with no override.
+        #expect(goal(24, stored: nil, custom: true, weekdayGoals: [7: 5_000]) == 5_000)
+        #expect(goal(26, stored: nil, custom: true, weekdayGoals: [7: 5_000]) == 10_000)
+        #expect(goal(24, stored: nil, custom: false, weekdayGoals: [7: 5_000]) == 10_000)
+    }
+
+    @Test("Goals met follows each day's stored goal, not today's")
+    func goalsMetUsesStoredGoals() {
+        // Today's goal is 10,000; Oct 20 and 21 were 6,000 days when walked.
+        let days = [RecordedDaysSummary.Day(steps: 7_000, goal: goal(20, stored: 6_000)),
+                    RecordedDaysSummary.Day(steps: 7_000, goal: goal(21, stored: 6_000)),
+                    RecordedDaysSummary.Day(steps: 7_000, goal: goal(22, stored: nil))]
+        #expect(RecordedDaysSummary.make(days: days).goalsMet == 2)
+    }
+
+    // MARK: - App Only steps by day
+
+    @Test("Steps by day leaves rides out and adds a day's walks together")
+    func humanStepsByDay() {
+        let cal = Self.utc
+        func session(_ activity: String, hoursAfterMidnight h: Double, steps: Int, meters: Double = 2_000) -> WalkSession {
+            WalkSession(id: UUID(), routeName: "Test", date: Date(timeIntervalSince1970: 1_793_059_200 + h * 3_600),
+                        elapsedTime: 1_800, totalDistance: meters, waypoints: [], lapCount: 1, isLoop: false,
+                        activityType: activity, steps: steps)
+        }
+        let byDay = RecordedDaysSummary.humanStepsByDay([
+            session("walking", hoursAfterMidnight: 8, steps: 3_000),
+            session("running", hoursAfterMidnight: 18, steps: 4_000),
+            session("cycling", hoursAfterMidnight: 12, steps: 0, meters: 20_000),
+            session("walking", hoursAfterMidnight: -2, steps: 1_500)       // Mon Oct 26, 22:00
+        ], calendar: cal)
+        let tuesday = Date(timeIntervalSince1970: 1_793_059_200)
+        #expect(byDay[tuesday] == 7_000)
+        #expect(byDay[tuesday.addingTimeInterval(-86_400)] == 1_500)
+        #expect(byDay.count == 2)
     }
 }

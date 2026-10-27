@@ -55,20 +55,8 @@ struct MonthCalendarView: View {
         hkMonthSteps = await stepManager.fetchStepCounts(from: start, to: end) ?? [:]
     }
 
-    private static let goalDateFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.dateFormat = "yyyy-MM-dd"
-        f.locale     = Locale(identifier: "en_US_POSIX")
-        return f
-    }()
-
     private func goalFor(_ date: Date) -> Int {
-        let cal = Calendar.current
-        let wd  = cal.component(.weekday, from: date)
-        if date < cal.startOfDay(for: Date()) {
-            if let stored = stepManager.historicalDayGoals[Self.goalDateFormatter.string(from: date)] { return stored }
-        }
-        return (stepManager.useCustomSchedule ? stepManager.weekdayGoals[wd] : nil) ?? stepManager.dailyGoal
+        stepManager.goal(for: date)
     }
 
     private func calendarDay(for date: Date) -> CalendarDay {

@@ -190,10 +190,9 @@ private struct TrendChartSection: View {
                 .padding(.horizontal, 4)
             }
         }
-        .task { await load() }
-        .onChange(of: stepManager.todaySteps) { _, _ in
-            Task { await load() }
-        }
+        // Reloads when today's steps or the history change; a newer load
+        // cancels the one in flight, so an older result never lands last.
+        .task(id: "\(stepManager.todaySteps)-\(sessions.count)") { await load() }
     }
 
     @ViewBuilder
@@ -240,35 +239,34 @@ private struct TrendChartSection: View {
 
     private func load() async {
         let cal   = Calendar.current
-        let today = cal.startOfDay(for: Date())
+        let now   = Date()
+        let today = cal.startOfDay(for: now)
         let start = cal.date(byAdding: .day, value: -29, to: today) ?? today
-        let goal  = stepManager.currentGoal
 
         // App Only mode reads its days from the recorded activities, as the
         // week strip and month calendar do; it has no Health query to fail.
         let fetched: [Date: Int]?
+        let stepsByDay: [Date: Int]
         if stepManager.trackingMode == .healthKit {
-            fetched = await stepManager.fetchStepCounts(from: start, to: Date())
+            fetched = await stepManager.fetchStepCounts(from: start, to: now)
+            stepsByDay = fetched ?? [:]
         } else {
             fetched = [:]
+            stepsByDay = RecordedDaysSummary.humanStepsByDay(sessions, calendar: cal)
         }
-        let counts = fetched ?? [:]
+        guard !Task.isCancelled else { return }
 
         let dates = (0..<30).compactMap { cal.date(byAdding: .day, value: $0, to: start) }
             .map { cal.startOfDay(for: $0) }
-        let pastSteps: (Date) -> Int = { day in
-            if cal.isDateInToday(day) { return stepManager.todaySteps }
-            if stepManager.trackingMode == .healthKit { return counts[day] ?? 0 }
-            return ActivitySummaryContent.humanSteps(on: day, in: sessions, calendar: cal)
-        }
+        let steps = dates.map { cal.isDate($0, inSameDayAs: now) ? stepManager.todaySteps : (stepsByDay[$0] ?? 0) }
 
-        points = dates.map { day in
-            let steps = pastSteps(day)
-            return DayPt(id: day, date: day, steps: steps, isGoalMet: steps >= goal)
-        }
-        let summary = RecordedDaysSummary.make(days: RecordedDaysSummary
-            .pastDates(dates, today: Date(), calendar: cal)
-            .map { RecordedDaysSummary.Day(steps: pastSteps($0), goal: goal) })
+        // The chart's goal line and today's dot keep today's goal; "goals
+        // met" judges each day against its own (`StepManager.goal(for:)`).
+        let goal = stepManager.currentGoal
+        points = zip(dates, steps).map { day, s in DayPt(id: day, date: day, steps: s, isGoalMet: s >= goal) }
+        let summary = RecordedDaysSummary.make(days: zip(dates, steps)
+            .filter { day, _ in day <= today }
+            .map { day, s in RecordedDaysSummary.Day(steps: s, goal: stepManager.goal(for: day, now: now, calendar: cal)) })
         state = StepHistoryState.make(fetched: fetched, summary: summary)
     }
 

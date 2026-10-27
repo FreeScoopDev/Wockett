@@ -60,6 +60,17 @@ struct RecordedDaysSummary: Equatable {
         return dates.filter { calendar.startOfDay(for: $0) <= startOfToday }
     }
 
+    /// Each calendar day's `ActivitySummaryContent.humanSteps`, in one pass
+    /// over `sessions`: the App Only source, the same rule as
+    /// `humanSteps(on:in:calendar:)` without re-scanning the history per day.
+    nonisolated static func humanStepsByDay(_ sessions: [WalkSession], calendar: Calendar) -> [Date: Int] {
+        var byDay: [Date: Int] = [:]
+        for session in sessions {
+            byDay[calendar.startOfDay(for: session.date), default: 0] += ActivitySummaryContent.humanSteps(session)
+        }
+        return byDay
+    }
+
     /// "18 of 30 days have steps".
     nonisolated static func coverageText(recorded: Int, total: Int) -> String {
         "\(recorded) of \(total) \(total == 1 ? "day" : "days") \(recorded == 1 ? "has" : "have") steps"
