@@ -201,4 +201,77 @@ struct StreakStoreTests {
         let sessions = [session(distance: 5_000), session(distance: 5_000)]
         #expect(b.progress(sessions: sessions, currentStreak: 0) == 1.0)
     }
+
+    // MARK: - Current streak from history (rides add no steps)
+
+    /// Fixed UTC calendar; "now" is Wednesday 2026-10-28 12:00 UTC. With
+    /// `todaySteps` 0 the streak starts from Tuesday. Expectations are by hand:
+    /// a ride's 20,000 m would be 26,246 "steps" if it counted.
+    private static let utc: Calendar = {
+        var c = Calendar(identifier: .gregorian)
+        c.timeZone = TimeZone(identifier: "UTC")!
+        return c
+    }()
+    private static let wednesdayNoon = Date(timeIntervalSince1970: 1_793_188_800)
+
+    private func past(_ activity: String, daysBefore: Int, meters: Double = 2_000, steps: Int = 0) -> WalkSession {
+        WalkSession(
+            id: UUID(), routeName: "Test",
+            date: Self.wednesdayNoon.addingTimeInterval(TimeInterval(-86_400 * daysBefore)),
+            elapsedTime: 1_800, totalDistance: meters, waypoints: [], lapCount: 1, isLoop: false,
+            activityType: activity, steps: steps
+        )
+    }
+
+    private func streak(_ sessions: [WalkSession], todaySteps: Int = 0) -> Int {
+        StreakStore.compute(sessions: sessions, todaySteps: todaySteps, threshold: 10_000,
+                            now: Self.wednesdayNoon, calendar: Self.utc)
+    }
+
+    @Test("A walk of 11,000 steps yesterday is a 1-day streak")
+    func streak_walkYesterday() {
+        #expect(streak([past("walking", daysBefore: 1, steps: 11_000)]) == 1)
+    }
+
+    @Test("A 20 km ride yesterday with no saved steps keeps no streak")
+    func streak_rideOnlyDayDoesNotCount() {
+        #expect(streak([past("cycling", daysBefore: 1, meters: 20_000)]) == 0)
+    }
+
+    @Test("A ride the day before a walk adds no day to the streak")
+    func streak_rideDayBreaksIt() {
+        let sessions = [past("walking", daysBefore: 1, steps: 11_000),
+                        past("cycling", daysBefore: 2, meters: 20_000)]
+        #expect(streak(sessions) == 1)
+    }
+
+    @Test("Two walk days in a row are a 2-day streak")
+    func streak_twoWalkDays() {
+        let sessions = [past("walking", daysBefore: 1, steps: 11_000),
+                        past("walking", daysBefore: 2, steps: 11_000)]
+        #expect(streak(sessions) == 2)
+    }
+
+    @Test("A day with a walk and a ride counts only the walk's steps")
+    func streak_walkPlusRideCountsTheWalkOnly() {
+        let sessions = [past("walking", daysBefore: 1, steps: 6_000),
+                        past("cycling", daysBefore: 1, meters: 20_000)]
+        #expect(streak(sessions) == 0)
+    }
+
+    @Test("Runs and indoor walks still count")
+    func streak_runAndIndoorCount() {
+        let sessions = [past("running", daysBefore: 1, steps: 11_000),
+                        past("stationary", daysBefore: 2, steps: 11_000)]
+        #expect(streak(sessions) == 2)
+    }
+
+    @Test("Today's value is todaySteps, whatever today's sessions hold")
+    func streak_todayComesFromTodaySteps() {
+        let walkYesterday = past("walking", daysBefore: 1, steps: 11_000)
+        // A ride today adds nothing either way; a walk of 20,000 today is
+        // replaced by todaySteps, as before this change.
+        #expect(streak([walkYesterday, past("walking", daysBefore: 0, steps: 20_000)], todaySteps: 3_000) == 1)
+        #expect(streak([walkYesterday], todaySteps: 12_000) == 2)
+    }
 }

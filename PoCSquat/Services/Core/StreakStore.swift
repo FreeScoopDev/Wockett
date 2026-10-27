@@ -276,12 +276,23 @@ final class StreakStore {
     }
 
     private func compute(sessions: [WalkSession], todaySteps: Int, threshold: Int) -> Int {
-        let cal = Calendar.current
-        let today = cal.startOfDay(for: Date())
+        Self.compute(sessions: sessions, todaySteps: todaySteps, threshold: threshold,
+                     now: Date(), calendar: .current)
+    }
+
+    /// Consecutive days, ending today or yesterday, whose steps reach
+    /// `threshold`. Today's steps are `todaySteps` (Health or the pedometer);
+    /// a past day's are its recorded sessions' `humanSteps`, so a ride adds
+    /// none: its "steps" are only distance / 0.762 m, and a 14 km ride used to
+    /// keep a 10,000-step streak alive by itself. Today below the threshold
+    /// does not break the streak; it starts from yesterday instead.
+    nonisolated static func compute(sessions: [WalkSession], todaySteps: Int, threshold: Int,
+                                    now: Date, calendar cal: Calendar) -> Int {
+        let today = cal.startOfDay(for: now)
         var stepsByDay: [Date: Int] = [:]
         for s in sessions {
             let day = cal.startOfDay(for: s.date)
-            stepsByDay[day, default: 0] += s.estimatedSteps
+            stepsByDay[day, default: 0] += ActivitySummaryContent.humanSteps(s)
         }
         stepsByDay[today] = todaySteps
         var startDay = today
