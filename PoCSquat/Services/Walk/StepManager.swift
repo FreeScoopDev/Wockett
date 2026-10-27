@@ -119,7 +119,8 @@ final class StepManager: ObservableObject {
         var id: String { rawValue }
     }
 
-    private enum UDKey {
+    /// Internal so tests can save and restore what they touch.
+    enum UDKey {
         static let dailyGoal          = "stepDailyGoal"
         static let useCustomSchedule  = "stepUseCustomSchedule"
         static let weekdayGoals       = "stepWeekdayGoals"

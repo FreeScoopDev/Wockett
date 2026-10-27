@@ -86,7 +86,7 @@ struct StepManagerTests {
     @MainActor
     @Test("Week strip: a ride-only day shows 0 steps, a walk-plus-ride day the walk's")
     func weekStrip_appOnly_ridesAddNoSteps() async throws {
-        let goalsKey = "stepHistoricalDayGoals"
+        let goalsKey = StepManager.UDKey.historicalDayGoals
         let savedGoals = UserDefaults.standard.object(forKey: goalsKey)
         defer {
             if let savedGoals { UserDefaults.standard.set(savedGoals, forKey: goalsKey) }
