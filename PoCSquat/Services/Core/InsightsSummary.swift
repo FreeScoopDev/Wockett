@@ -88,6 +88,53 @@ enum InsightsSummary {
         calendar.dateInterval(of: period.component, for: now) ?? DateInterval(start: now, duration: 0)
     }
 
+    // MARK: Shared week windows
+    //
+    // The app has two week-long periods, and each label names one of them
+    // (2026-10-27, after one pet showed 3, 9 and 10 walks "this week" on
+    // three screens):
+    // - "This week" is the locale's calendar week (Sunday to Saturday in the
+    //   US, Monday to Sunday elsewhere): Insights, the Home and Health week
+    //   strips, the pet "Walks this week" tile, the weekly summary.
+    // - "Last 7 days" is today plus the six calendar days before it: the pet
+    //   and step detail lists and the Community crew card.
+    // Both are start-inclusive, end-exclusive, and built with calendar
+    // arithmetic, so a week with a daylight-saving change is still 7 days.
+
+    /// The calendar week containing `now`, by `calendar`'s first weekday.
+    nonisolated static func calendarWeek(containing now: Date, calendar: Calendar) -> DateInterval {
+        interval(.week, containing: now, calendar: calendar)
+    }
+
+    /// Today plus the six calendar days before it: from the start of the day
+    /// six days ago to the start of tomorrow. Never `now` minus 168 hours.
+    nonisolated static func last7Days(now: Date, calendar: Calendar) -> DateInterval {
+        let today = calendar.startOfDay(for: now)
+        guard let start = calendar.date(byAdding: .day, value: -6, to: today),
+              let end = calendar.date(byAdding: .day, value: 1, to: today) else {
+            return DateInterval(start: today, duration: 0)
+        }
+        return DateInterval(start: start, end: end)
+    }
+
+    /// Whether a session at `date` counts in `window`: inside it (start in,
+    /// end out) and not after `now`, so a total never includes the future.
+    nonisolated static func counts(_ date: Date, in window: DateInterval, now: Date) -> Bool {
+        date >= window.start && date < window.end && date <= now
+    }
+
+    /// A short range for a window, "Oct 25 – 31" in the US. The end shown is
+    /// the last day inside the window, not its exclusive end.
+    nonisolated static func rangeLabel(_ window: DateInterval, calendar: Calendar) -> String {
+        let lastDay = calendar.date(byAdding: .day, value: -1, to: window.end) ?? window.start
+        let formatter = DateIntervalFormatter()
+        formatter.calendar = calendar
+        formatter.timeZone = calendar.timeZone
+        formatter.locale = calendar.locale ?? .current
+        formatter.dateTemplate = "MMMd"
+        return formatter.string(from: window.start, to: max(lastDay, window.start))
+    }
+
     /// Totals for sessions that started inside `interval`. A session is
     /// counted on the day it started, as in Activity History.
     nonisolated static func totals(_ sessions: [WalkSession], in interval: DateInterval,

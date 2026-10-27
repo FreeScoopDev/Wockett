@@ -340,7 +340,7 @@ struct CommunityHubView: View {
 
     private var crewCard: some View {
         let pets = petStore.pets
-        return WktSection(title: "Walks with the crew", actionTitle: "Manage", action: { pushPets = true }, content: {
+        return WktSection(title: "Crew walks, last 7 days", actionTitle: "Manage", action: { pushPets = true }, content: {
           VStack(alignment: .leading, spacing: 14) {
             if pets.isEmpty {
                 HStack(spacing: 12) {
@@ -357,7 +357,8 @@ struct CommunityHubView: View {
                 if pets.count >= 2 {
                     let together = CommunityHubSummary.walksTogether(petIDs: pets.map(\.id), sessions: sessions)
                     WktDivider()
-                    Text(together == 1 ? "1 walk together this week" : "\(together) walks together this week")
+                    Text(together == 1 ? "1 walk together in the last 7 days"
+                                       : "\(together) walks together in the last 7 days")
                         .font(.wktBodyText)
                         .foregroundColor(.earthCream)
                 }

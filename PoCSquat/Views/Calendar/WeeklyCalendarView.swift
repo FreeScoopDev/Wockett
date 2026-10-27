@@ -23,18 +23,35 @@ struct WeeklyCalendarView: View {
         }
     }
 
+    /// The dates of the days shown, "Oct 25 – 31", taken from the days
+    /// themselves so the header never names a week the strip isn't showing.
+    private var rangeLabel: String {
+        let calendar = Calendar.current
+        guard let first = days.first?.date, let last = days.last?.date,
+              let end = calendar.date(byAdding: .day, value: 1, to: last), end > first else { return "" }
+        return InsightsSummary.rangeLabel(DateInterval(start: first, end: end), calendar: calendar)
+    }
+
     // A `WktSection` in shape: the week's name as the heading, with the week
     // controls where its link would be, and one card under it holding the
-    // seven days and the 30-day trend, like Home's "This week" card.
+    // seven days (the locale's calendar week) and the 30-day trend, like
+    // Home's "This week" card.
     var body: some View {
         VStack(alignment: .leading, spacing: WktSpacing.betweenCards) {
             HStack(spacing: 4) {
                 ZStack(alignment: .leading) {
-                    Text(weekLabel)
-                        .font(.wktSection)
-                        .foregroundColor(.earthCream)
-                        .accessibilityAddTraits(.isHeader)
-                        .id(weekOffset)
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text(weekLabel)
+                            .font(.wktSection)
+                            .foregroundColor(.earthCream)
+                            .accessibilityAddTraits(.isHeader)
+                        Text(rangeLabel)
+                            .font(.wktLabel)
+                            .foregroundColor(.earthMuted)
+                            .lineLimit(1)
+                    }
+                    .accessibilityElement(children: .combine)
+                    .id(weekOffset)
                         .transition(.asymmetric(
                             insertion: .move(edge: slideFromLeading ? .leading : .trailing).combined(with: .opacity),
                             removal:   .move(edge: slideFromLeading ? .trailing : .leading).combined(with: .opacity)

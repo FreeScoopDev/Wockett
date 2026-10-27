@@ -17,7 +17,10 @@ struct PetDetailSheet: View {
     private var streak: Int { petStore.walkStreak(for: pet, in: historyStore.sessions) }
     private var weeklySteps: Int { petStore.weeklySteps(for: pet, in: historyStore.sessions) }
     private var weeklyDist: Double { petStore.weeklyDistance(for: pet, in: historyStore.sessions) }
+    /// Today plus the six calendar days before: the "Last 7 days" section.
     private var recentSessions: [WalkSession] { petStore.recentSessions(for: pet, in: historyStore.sessions) }
+    /// The locale's calendar week, as Insights counts it: the "Walks this week" tile.
+    private var walksThisWeek: Int { petStore.sessionsThisWeek(for: pet, in: historyStore.sessions).count }
 
     var body: some View {
         NavigationStack {
@@ -62,7 +65,7 @@ struct PetDetailSheet: View {
                             HStack(spacing: WktSpacing.betweenCards) {
                                 WktIconStatTile(value: streak > 0 ? "\(streak)d" : "—", label: "Walk streak",
                                                 symbol: .calories, tint: streak > 0 ? .earthOrange : .earthMuted)
-                                WktIconStatTile(value: "\(recentSessions.count)", label: "Walks this week",
+                                WktIconStatTile(value: "\(walksThisWeek)", label: "Walks this week",
                                                 symbol: .calendar, tint: .earthMuted)
                             }
                         }

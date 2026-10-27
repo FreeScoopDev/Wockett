@@ -29,9 +29,10 @@ struct WalkHistoryView: View {
     }
 
     private var walksThisWeek: Int {
-        let cal = Calendar.current
-        guard let weekStart = cal.date(from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: Date())) else { return 0 }
-        return store.sessions.filter { $0.date >= weekStart }.count
+        // The calendar week so far, as Insights counts "This week".
+        let now = Date()
+        let week = InsightsSummary.calendarWeek(containing: now, calendar: .current)
+        return store.sessions.filter { InsightsSummary.counts($0.date, in: week, now: now) }.count
     }
 
     var body: some View {

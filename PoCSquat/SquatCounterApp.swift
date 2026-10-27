@@ -298,9 +298,7 @@ struct SquatCounterApp: App {
         let sessions = historyStore.sessions
         let streak   = StreakStore.shared.currentStreak
 
-        let cal        = Calendar.current
-        let weekStart  = cal.date(from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: Date())) ?? Date()
-        let weekSessions = sessions.filter { $0.date >= weekStart }
+        let weekSessions = Self.weeklySummarySessions(sessions, now: Date(), calendar: .current)
         let week       = Self.weeklySummaryTotals(weekSessions)
         let body       = Self.weeklySummaryBody(steps: week.steps, km: week.km, streak: streak)
 
@@ -308,6 +306,13 @@ struct SquatCounterApp: App {
         comps.weekday  = 1; comps.hour = 20; comps.minute = 0
         let trigger    = UNCalendarNotificationTrigger(dateMatching: comps, repeats: true)
         await NotificationService.shared.schedule(.weeklySummary, title: "Your week in review 📊", body: body, trigger: trigger)
+    }
+
+    /// The calendar week so far, the same week Insights calls "This week".
+    nonisolated static func weeklySummarySessions(_ sessions: [WalkSession], now: Date,
+                                                  calendar: Calendar) -> [WalkSession] {
+        let window = InsightsSummary.calendarWeek(containing: now, calendar: calendar)
+        return sessions.filter { InsightsSummary.counts($0.date, in: window, now: now) }
     }
 
     /// The weekly summary's figures for the sessions already in the week.
