@@ -202,7 +202,7 @@ struct BadgesContentView: View {
 
         if let longest = cleanSessions.max(by: { $0.totalDistance < $1.totalDistance }) {
             records.append(PersonalRecord(
-                symbol: .distance, label: "Longest walk",
+                symbol: .distance, label: "Longest outing",
                 value: longest.distanceText, detail: shortDate(longest.date)
             ))
         }
