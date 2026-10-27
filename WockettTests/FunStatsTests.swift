@@ -82,9 +82,12 @@ struct FunStatsTests {
         #expect(abs(t.km - 0.1) < 1e-9)
     }
 
-    @Test("The same sessions always give the same facts: nothing else is an input")
-    func deterministic() {
-        #expect(FunStats.allFacts(from: fixture) == FunStats.allFacts(from: fixture))
+    // "Today's Health steps cannot change the card" is guarded by the
+    // compiler, not a test: `HealthFunStatsCard` and `FunStats` take sessions
+    // and nothing else. A same-input-twice test of a pure function could not
+    // fail, so there is none.
+    @Test("No sessions, no facts")
+    func emptyHistory() {
         #expect(FunStats.facts(from: []).isEmpty)
     }
 }
