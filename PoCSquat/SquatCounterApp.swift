@@ -166,6 +166,8 @@ struct SquatCounterApp: App {
             }
             // The mini tile's End asks here, not in the tile (see the modifier).
             .modifier(MiniTileEndConfirmation())
+            // A walk whose save failed away from the walk screen.
+            .modifier(WalkSaveFailureAlert())
             .environment(ActiveWalkStore.shared)
             .environment(communityRoutesModel)
             .environmentObject(petStore)
@@ -263,7 +265,8 @@ struct SquatCounterApp: App {
             // Save the walk the nudge described and show it, so the user can see
             // it landed — and rename or retype it from history if they want.
             guard let candidate = service.consumePendingUntrackedWalk() else { return }
-            historyStore.add(candidate.toWalkSession())
+            // Only a walk that is on disk is shown as landed.
+            guard historyStore.add(candidate.toWalkSession()) else { return }
             tabRouter.selected = .health
         default:
             break

@@ -145,6 +145,10 @@ private struct ActiveSessionScreen: View {
 
     private enum FinishChoice { case save, saveWithRoute, discard }
 
+    /// A finish from this screen whose save failed: what Try again repeats.
+    private struct FailedFinish { let saveRoute: Bool; let routeCompleted: Bool }
+    @State private var failedFinish: FailedFinish?
+
     // MARK: - Body
 
     var body: some View {
@@ -197,6 +201,22 @@ private struct ActiveSessionScreen: View {
                     if session.autoPausedForInactivity { session.resume() }
                 }
             ))
+            // A save that failed, from this screen or from elsewhere while it
+            // is up (the app root's copy cannot show over this cover).
+            .saveFailureAlert(
+                noun: walkStore.saveFailure?.noun,
+                onTryAgain: {
+                    if let failed = failedFinish {
+                        failedFinish = nil
+                        finishWalk(saveRoute: failed.saveRoute, routeCompleted: failed.routeCompleted, retry: true)
+                    } else {
+                        walkStore.retrySave()
+                    }
+                },
+                onKeepGoing: {
+                    failedFinish = nil
+                    walkStore.keepGoingAfterSaveFailure()
+                })
     }
 
     // MARK: - Active Content
@@ -885,11 +905,20 @@ private struct ActiveSessionScreen: View {
     /// credit, Health workout, Live Activity, water breaks, checkpoint) and
     /// keeps the stopped session until the summary goes away. Only a route
     /// completed on foot announces a record and schedules the hydration nudge.
-    private func finishWalk(saveRoute: Bool = false, routeCompleted: Bool = false) {
-        if saveRoute { saveCurrentRoute() }
+    ///
+    /// A save that fails leaves the walk going and this screen up, with
+    /// "Couldn't save" (`failedFinish`); Try again runs this again through
+    /// the store's `retrySave`. The route is saved to My Routes only once the
+    /// walk is, so a retry cannot save it twice.
+    private func finishWalk(saveRoute: Bool = false, routeCompleted: Bool = false, retry: Bool = false) {
         let previous = historyStore.sessions
         summarySplits = session.splitTimes
-        let saved = walkStore.end(.save, releaseSession: false)
+        let saved = retry ? walkStore.retrySave() : walkStore.end(.save, releaseSession: false)
+        if saved == nil, walkStore.saveFailure != nil {
+            failedFinish = FailedFinish(saveRoute: saveRoute, routeCompleted: routeCompleted)
+            return
+        }
+        if saveRoute { saveCurrentRoute() }
         summaryTrail = walkStore.endedTrail
         let prs = saved.map { checkNewPRs(newSession: $0, against: previous) } ?? []
         if routeCompleted, let saved {

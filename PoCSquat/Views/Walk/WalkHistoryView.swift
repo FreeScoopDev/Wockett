@@ -244,7 +244,8 @@ struct WalkSessionDetailSheet: View {
 // MARK: - Manual Walk Entry Sheet
 
 struct ManualWalkEntrySheet: View {
-    let onSave: (WalkSession) -> Void
+    /// Saves the walk; false when the write failed, and the sheet stays open.
+    let onSave: (WalkSession) -> Bool
 
     @Environment(\.dismiss) private var dismiss
     @State private var walkDate = Date()
@@ -254,6 +255,7 @@ struct ManualWalkEntrySheet: View {
     @State private var stepCount = ""
     @State private var routeName = ""
     @State private var useSteps = false
+    @State private var saveFailed = false
 
     // Kilometres on a metric phone, miles otherwise: the rule the goal editor
     // and every distance label use. Until 1.14 this form asked everyone for
@@ -352,6 +354,12 @@ struct ManualWalkEntrySheet: View {
                                 .background(Color.earthRaised, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                         }
 
+                        if saveFailed {
+                            Text("Couldn't save your walk. Try again.")
+                                .font(.wktLabel)
+                                .foregroundColor(.earthCream)
+                        }
+
                         Button(action: save) {
                             WktPrimaryLabel(title: "Save Walk")
                                 .opacity(isValid ? 1 : 0.45)
@@ -405,9 +413,12 @@ struct ManualWalkEntrySheet: View {
             lapCount: 1,
             isLoop: false
         )
+        guard onSave(session) else {
+            saveFailed = true
+            return
+        }
         let count = UserDefaults.standard.integer(forKey: "wkt_manualEntries_count")
         UserDefaults.standard.set(count + 1, forKey: "wkt_manualEntries_count")
-        onSave(session)
         dismiss()
     }
 }

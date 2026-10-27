@@ -43,12 +43,13 @@ struct SnapshotRestoreTests {
         pauseStartDate: Date? = nil,
         pausedDuration: TimeInterval = 90,
         checkpointDate: Date = Date(),
-        isCompleted: Bool? = nil
+        isCompleted: Bool? = nil,
+        distance: Double = 1234.5
     ) -> ActiveWalkSnapshot {
         ActiveWalkSnapshot(
             route: .init(makeRoute()),
             startTime: Date().addingTimeInterval(-1000),
-            totalDistanceCovered: 1234.5,
+            totalDistanceCovered: distance,
             pausedDuration: pausedDuration,
             isPaused: isPaused,
             pauseStartDate: pauseStartDate,
@@ -742,6 +743,200 @@ struct SnapshotRestoreTests {
             #expect(mgr.isCompleted)
             #expect((store.pendingSummary != nil) == active)
         }
+    }
+
+    // MARK: - A save that fails keeps the walk (fix/durable-save, 2026-10-27)
+    //
+    // Until then a failed write still ended the walk: it was marked ended,
+    // stopped, its checkpoint (the only other copy) deleted, its Live
+    // Activity ended and its Health workout finished. Here, because the
+    // checkpoint file is shared: this suite is serialized and clears it in
+    // `init`. Other suites' `end` calls can still delete it in parallel, which
+    // could only turn a "checkpoint kept" check red, never green.
+
+    private struct DiskFull: Error {}
+
+    /// A write that fails while `failing` is on, then writes for real.
+    private final class Disk {
+        var failing = true
+        var writes = 0
+    }
+
+    private func failingHistory() throws -> (WalkHistoryStore, Disk) {
+        let config = ModelConfiguration(schema: AppModelContainer.schema, isStoredInMemoryOnly: true,
+                                        cloudKitDatabase: .none)
+        let container = try ModelContainer(for: AppModelContainer.schema, configurations: config)
+        let context = ModelContext(container)
+        let disk = Disk()
+        let history = WalkHistoryStore(context: context, persist: {
+            disk.writes += 1
+            if disk.failing { throw DiskFull() }
+            try context.save()
+        })
+        return (history, disk)
+    }
+
+    @Test @MainActor func end_save_whenTheWriteFails_keepsTheWalkGoing_andTryAgainSavesItOnce() async throws {
+        let (history, disk) = try failingHistory()
+        let (notifications, center) = try quietNotifications()
+        let live = FakeLiveActivity()
+        let store = ActiveWalkStore(historyStore: history, notifications: notifications, liveActivity: live)
+        let mgr = try #require(store.beginSession(route: outAndBack()))
+        mgr.writesSnapshots = false
+        let writer = FakeWorkoutWriter()
+        mgr.workoutWriter = writer
+        mgr.totalDistanceCovered = 820
+        ActiveWalkSnapshotStore.save(mgr.snapshot)
+
+        let t0 = Date()
+        #expect(store.end(.save, presentSummary: true) == nil)
+        let t1 = Date()
+        await store.endTask?.value
+
+        #expect(store.isWalkInProgress, "the walk is not ended")
+        #expect(store.session === mgr)
+        #expect(ActiveWalkSnapshotStore.loadAnyAge() != nil, "the checkpoint is kept")
+        #expect(live.ends.isEmpty, "the Live Activity is not ended")
+        #expect(writer.finishedDistances.isEmpty, "no workout is finished for a walk that is not saved")
+        #expect(writer.discards == 0)
+        #expect(!center.removedPending.flatMap { $0 }.contains(NotificationKind.waterBreak(1).identifier),
+                "water breaks carry on with the walk")
+        #expect(store.saveFailure?.noun == "walk")
+        #expect(store.pendingSummary == nil, "no summary for a walk that is not saved")
+        #expect(history.sessions.isEmpty)
+        #expect(mgr.isPaused, "paused while the alert is up")
+
+        disk.failing = false
+        let saved = try #require(store.retrySave())
+        await store.endTask?.value
+        #expect(history.sessions.map(\.id) == [saved.id])
+        #expect(store.saveFailure == nil)
+        #expect(store.session == nil, "released, as the first call asked")
+        #expect(store.pendingSummary?.session.id == saved.id, "and its summary, as the first call asked")
+        #expect(ActiveWalkSnapshotStore.loadAnyAge() == nil)
+        #expect(writer.finishedDistances == [820], "the workout is finished once, after the save")
+        let endDate = try #require(writer.endDates.first)
+        #expect((t0...t1).contains(endDate), "the workout ends when Finish was pressed, not at Try again")
+        #expect(live.ends.count == 1)
+
+        // Never twice.
+        #expect(store.retrySave() == nil)
+        #expect(store.end(.save) == nil)
+        await store.endTask?.value
+        #expect(history.sessions.count == 1)
+        #expect(writer.finishedDistances.count == 1)
+        #expect(live.ends.count == 1)
+        #expect(disk.writes == 2)
+    }
+
+    @Test @MainActor func end_save_whenTryAgainFailsToo_staysFailed() async throws {
+        let (history, disk) = try failingHistory()
+        let live = FakeLiveActivity()
+        let store = ActiveWalkStore(historyStore: history, liveActivity: live)
+        let mgr = try #require(store.beginSession(route: outAndBack()))
+        mgr.writesSnapshots = false
+        #expect(store.end(.save, releaseSession: false) == nil)
+        #expect(store.retrySave() == nil)
+        await store.endTask?.value
+        #expect(store.saveFailure != nil, "the alert comes back")
+        #expect(store.isWalkInProgress)
+        #expect(live.ends.isEmpty)
+        #expect(disk.writes == 2)
+        disk.failing = false
+        #expect(store.retrySave() != nil)
+        #expect(store.session != nil, "kept for the walk screen's summary, as the first call asked")
+        #expect(!store.isWalkInProgress)
+    }
+
+    @Test @MainActor func keepGoing_afterAFailedSave_resumesTheWalk_unsaved() throws {
+        let (history, _) = try failingHistory()
+        let store = ActiveWalkStore(historyStore: history)
+        let mgr = try #require(store.beginSession(route: outAndBack()))
+        mgr.writesSnapshots = false
+        store.end(.save)
+        #expect(mgr.isPaused)
+        store.keepGoingAfterSaveFailure()
+        #expect(store.saveFailure == nil)
+        #expect(!mgr.isPaused, "the walk carries on")
+        #expect(store.isWalkInProgress)
+        #expect(history.sessions.isEmpty)
+        #expect(store.retrySave() == nil, "nothing left to try again")
+        mgr.stopTracking()   // resume() started its timer and location; stop them, keep the file
+    }
+
+    @Test @MainActor func keepGoing_leavesAWalkThePersonHadPaused_paused() throws {
+        let (history, _) = try failingHistory()
+        let store = ActiveWalkStore(historyStore: history)
+        let mgr = try #require(store.beginSession(route: outAndBack()))
+        mgr.writesSnapshots = false
+        mgr.pause()
+        store.end(.save)
+        store.keepGoingAfterSaveFailure()
+        #expect(mgr.isPaused)
+    }
+
+    @Test @MainActor func discard_afterAFailedSave_endsTheWalk_andClearsTheFailure() async throws {
+        let (history, _) = try failingHistory()
+        let live = FakeLiveActivity()
+        let store = ActiveWalkStore(historyStore: history, liveActivity: live)
+        let mgr = try #require(store.beginSession(route: outAndBack()))
+        mgr.writesSnapshots = false
+        let writer = FakeWorkoutWriter()
+        mgr.workoutWriter = writer
+        store.end(.save)
+        store.keepGoingAfterSaveFailure()
+        #expect(store.end(.discard) == nil)
+        await store.endTask?.value
+        #expect(store.session == nil)
+        #expect(store.saveFailure == nil)
+        #expect(writer.discards == 1)
+        #expect(live.ends.count == 1)
+    }
+
+    @Test @MainActor func end_save_withNoWalkHistory_isAFailedSave() throws {
+        let store = ActiveWalkStore(liveActivity: FakeLiveActivity())
+        let mgr = try #require(store.beginSession(route: outAndBack()))
+        mgr.writesSnapshots = false
+        ActiveWalkSnapshotStore.save(mgr.snapshot)
+        #expect(store.end(.save) == nil)
+        #expect(store.isWalkInProgress, "until 2026-10-27 this saved nothing and ended the walk")
+        #expect(store.saveFailure != nil)
+        #expect(ActiveWalkSnapshotStore.loadAnyAge() != nil)
+    }
+
+    @Test @MainActor func end_save_whenTheWriteWorks_raisesNoAlert_andDoesNotPause() throws {
+        let history = try inMemoryHistory()
+        let store = ActiveWalkStore(historyStore: history)
+        let mgr = try #require(store.beginSession(route: outAndBack()))
+        mgr.writesSnapshots = false
+        #expect(store.end(.save, releaseSession: false) != nil)
+        #expect(store.saveFailure == nil)
+        #expect(!mgr.isPaused)
+    }
+
+    @Test @MainActor func salvage_whenTheWriteFails_keepsTheCheckpoint_forTheNextLaunch() throws {
+        ActiveWalkSnapshotStore.save(makeSnapshot(isCompleted: true))
+        let (history, disk) = try failingHistory()
+        let store = ActiveWalkStore(historyStore: history)
+        store.salvageStaleWalkIfNeeded()
+        #expect(history.sessions.isEmpty)
+        #expect(ActiveWalkSnapshotStore.loadAnyAge() != nil, "the only copy is kept")
+        #expect(store.hasRestorableWalk == false, "and still not offered for resume")
+
+        disk.failing = false
+        store.salvageStaleWalkIfNeeded()
+        #expect(history.sessions.count == 1)
+        #expect(ActiveWalkSnapshotStore.loadAnyAge() == nil)
+    }
+
+    @Test @MainActor func salvage_ofATrivialStaleWalk_clearsTheCheckpoint_withoutSaving() throws {
+        ActiveWalkSnapshotStore.save(makeSnapshot(
+            checkpointDate: Date().addingTimeInterval(-ActiveWalkSnapshotStore.maxSnapshotAge - 60), distance: 10))
+        let (history, disk) = try failingHistory()
+        let store = ActiveWalkStore(historyStore: history)
+        store.salvageStaleWalkIfNeeded()
+        #expect(ActiveWalkSnapshotStore.loadAnyAge() == nil, "deliberately ignored, as before")
+        #expect(disk.writes == 0)
     }
 }
 
