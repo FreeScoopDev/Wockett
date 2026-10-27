@@ -192,15 +192,11 @@ struct BadgesContentView: View {
             return df.string(from: $0)
         }
 
-        var stepsByDay: [Date: Int] = [:]
-        for s in cleanSessions {
-            let day = cal.startOfDay(for: s.date)
-            stepsByDay[day, default: 0] += s.estimatedSteps
-        }
-        if let best = stepsByDay.max(by: { $0.value < $1.value }) {
+        // Rides add no steps, and a ride-only history has no Best day row.
+        if let best = ActivitySummaryContent.bestStepDay(in: cleanSessions, calendar: cal) {
             records.append(PersonalRecord(
                 symbol: .records, label: "Best day",
-                value: best.value.formatted() + " steps", detail: shortDate(best.key)
+                value: best.steps.formatted() + " steps", detail: shortDate(best.day)
             ))
         }
 
