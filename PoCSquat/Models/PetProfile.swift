@@ -158,7 +158,7 @@ final class PetStore: ObservableObject {
         let cal = Calendar.current
         return sessions
             .filter { cal.isDateInToday($0.date) }
-            .reduce(0) { $0 + Int(petWalkedMeters(pet, in: $1) / 0.762) }
+            .reduce(0) { $0 + PetOutingRow.estimatedSteps(meters: petWalkedMeters(pet, in: $1)) }
     }
 
     func totalWalks(for pet: PetProfile, in sessions: [WalkSession]) -> Int {
@@ -205,19 +205,13 @@ final class PetStore: ObservableObject {
 
     func weeklySteps(for pet: PetProfile, in sessions: [WalkSession],
                      now: Date = Date(), calendar: Calendar = .current) -> Int {
-        Self.lastSevenDays(pet.id, in: sessions, now: now, calendar: calendar)
-            .reduce(0) { $0 + Int(petWalkedMeters(pet, in: $1) / 0.762) }
+        PetOutingRow.lastSevenDays(pet.id, in: sessions, now: now, calendar: calendar)
+            .reduce(0) { $0 + $1.estimatedSteps }
     }
 
     func weeklyDistance(for pet: PetProfile, in sessions: [WalkSession],
                         now: Date = Date(), calendar: Calendar = .current) -> Double {
         Self.lastSevenDaysMeters(pet.id, in: sessions, now: now, calendar: calendar)
-    }
-
-    /// The "Last 7 days" list: today plus the six calendar days before.
-    func recentSessions(for pet: PetProfile, in sessions: [WalkSession],
-                        now: Date = Date(), calendar: Calendar = .current) -> [WalkSession] {
-        Self.lastSevenDays(pet.id, in: sessions, now: now, calendar: calendar)
     }
 
     /// The "Walks this week" tile: the locale's calendar week so far.
@@ -402,18 +396,27 @@ private struct PetManagementRow: View {
                     Label { Text(totalDistText) } icon: { Image(wkt: .distance).wktIcon(.inline, tint: .earthMuted) }
                 }
                 .font(.wktLabel).foregroundColor(.earthMuted)
-                Text("Goal: \(pet.goalSteps.formatted()) steps")
+                Text(PetCreditText.goal(pet.goalSteps))
                     .font(.wktLabel).foregroundColor(pet.accentColor)
+                // The switch's state in words, not only its colour.
+                Text(PetCreditText.status(isActive: pet.isActiveOnWalk))
+                    .font(.wktLabel)
+                    .foregroundColor(pet.isActiveOnWalk ? .earthGreen : .earthMuted)
             }
 
             Spacer()
 
-            Toggle("", isOn: Binding(
+            // A real label, hidden on screen: VoiceOver found a switch with no
+            // name when this was Toggle("", …) (2026-10-27).
+            Toggle(isOn: Binding(
                 get: { pet.isActiveOnWalk },
                 set: { petStore.setActive(pet.id, active: $0) }
-            ))
+            )) {
+                Text(PetCreditText.switchLabel(name: pet.name))
+            }
             .labelsHidden()
             .tint(pet.accentColor)
+            .accessibilityHint(PetCreditText.switchHint)
         }
         .padding(.vertical, 8)
         .contentShape(Rectangle())
@@ -532,7 +535,7 @@ struct PetEditorSheet: View {
                         if let suggested = suggestedGoal, Int(goalText) != suggested {
                             Button { goalText = "\(suggested)" } label: {
                                 Label {
-                                    Text("Suggested for this breed: \(suggested.formatted()) steps")
+                                    Text("A starting point for this breed: \(suggested.formatted()) steps. Change it to suit your pet; it isn't a health target.")
                                 } icon: {
                                     Image(wkt: .tip).wktIcon(.inline, tint: .earthOrange, filled: true)
                                 }

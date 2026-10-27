@@ -328,7 +328,31 @@ struct StepCounterView: View {
                 }
             }
             .accessibilityIdentifier("home.start")
+            if let companions = PetCreditText.companions(petStore.activePets.map(\.name)) {
+                companionsLine(companions)
+            }
         }
+    }
+
+    /// Who will get credit for the outing Start begins (2026-10-27): the
+    /// active pets, by name. None active, no line. "Change" opens My Pets,
+    /// as the crew's Manage does.
+    private func companionsLine(_ text: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Text(text)
+                .foregroundColor(.earthMuted)
+                .fixedSize(horizontal: false, vertical: true)
+            Text("·")
+                .foregroundColor(.earthMuted)
+                .accessibilityHidden(true)
+            Button("Change") { showPetManagement = true }
+                .foregroundColor(.earthGreen)
+                .buttonStyle(.plain)
+                .accessibilityHint("Opens My Pets")
+                .accessibilityIdentifier("home.changeCompanions")
+        }
+        .font(.wktLabel)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: Routes
