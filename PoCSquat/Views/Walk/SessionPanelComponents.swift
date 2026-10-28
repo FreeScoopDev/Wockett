@@ -150,6 +150,37 @@ struct MapOrientationControls: View {
     }
 }
 
+// MARK: - Layout at large text sizes
+
+/// How the walk panel arranges itself at a text size. At the accessibility
+/// sizes three tiles or a 140 pt Finish beside Pause cut their words off
+/// ("Hold to fi…", "Current pa…", F5 audit, re-measured at Accessibility 2
+/// on 2026-10-28), so the panel uses two columns and stacks its buttons.
+/// The normal sizes keep the layout they had. Pure, so a test can pin both.
+enum SessionPanelLayout {
+    /// Columns in the pulled-up stats grid. Below three, the glance row's
+    /// three numbers also split into two rows.
+    static func statColumns(_ size: DynamicTypeSize) -> Int {
+        size.isAccessibilitySize ? 2 : 3
+    }
+
+    /// Pause above Finish, each the full width, instead of side by side.
+    static func stacksActions(_ size: DynamicTypeSize) -> Bool {
+        size.isAccessibilitySize
+    }
+
+    /// The tallest the pulled-up panel's scrolling part grows. The stacked
+    /// buttons and a two-line route name take about 140 pt more at the
+    /// accessibility sizes, so with 430 the panel would reach over the map's
+    /// North up control. Measured on an iPhone 17 with a guided walk: 290
+    /// still touched it at Accessibility 2, and 250 at Accessibility 5,
+    /// where the map's icons keep growing past the type scale's cap. What
+    /// does not fit scrolls.
+    static func expandedMaxHeight(_ size: DynamicTypeSize) -> CGFloat {
+        size.isAccessibilitySize ? 220 : 430
+    }
+}
+
 // MARK: - Hold to finish
 
 /// Finish needs a one-second press, with a fill that tracks the hold and a
@@ -166,6 +197,7 @@ struct HoldToFinishButton: View {
     @State private var isPressing = false
     @State private var completed = false
     @State private var showHint = false
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
         // The primary button's size and shape in the secondary look (raised
@@ -173,30 +205,41 @@ struct HoldToFinishButton: View {
         // target: finishing saves the outing, so it is not red, and it never
         // looks like Pause. Red is kept for Discard (2026-10-27).
         let shape = RoundedRectangle(cornerRadius: 18, style: .continuous)
-        return ZStack {
-            shape.fill(Color.earthRaised)
-            GeometryReader { geo in
-                shape
-                    .fill(Color.earthGreen.opacity(0.16))
-                    .frame(width: geo.size.width * progress)
-            }
-            shape.strokeBorder(Color.earthMuted.opacity(0.5), lineWidth: 1.5)
-            VStack(spacing: 1) {
-                Text(isPressing ? "Keep holding" : "Hold to finish")
-                    .font(.wktRowTitle)
-                    .foregroundColor(.earthCream)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-                Text(showHint ? "Press and hold for 1 second" : "1 second")
-                    .font(.wktLabel)
-                    .foregroundColor(.earthMuted)
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.8)
-                    .multilineTextAlignment(.center)
-            }
-            .padding(.horizontal, 6)
+        // 56 pt tall at the normal sizes; at the accessibility sizes it grows
+        // with its text, which may wrap, instead of cutting it off. The fills
+        // sit behind the text so the hold fill's GeometryReader takes the
+        // button's size rather than all the height it is offered.
+        let large = typeSize.isAccessibilitySize
+        return VStack(spacing: 1) {
+            Text(isPressing ? "Keep holding" : "Hold to finish")
+                .font(.wktRowTitle)
+                .foregroundColor(.earthCream)
+                .lineLimit(large ? 2 : 1)
+                .minimumScaleFactor(0.8)
+                // Only when it may wrap: the default size stays as it was, to the pixel.
+                .multilineTextAlignment(large ? .center : .leading)
+            Text(showHint ? "Press and hold for 1 second" : "1 second")
+                .font(.wktLabel)
+                .foregroundColor(.earthMuted)
+                .lineLimit(2)
+                .minimumScaleFactor(0.8)
+                .multilineTextAlignment(.center)
         }
-        .frame(height: 56)
+        .padding(.horizontal, 6)
+        .padding(.vertical, large ? 8 : 0)
+        .frame(maxWidth: .infinity, minHeight: 56)
+        .frame(height: large ? nil : 56)
+        .background {
+            ZStack {
+                shape.fill(Color.earthRaised)
+                GeometryReader { geo in
+                    shape
+                        .fill(Color.earthGreen.opacity(0.16))
+                        .frame(width: geo.size.width * progress)
+                }
+                shape.strokeBorder(Color.earthMuted.opacity(0.5), lineWidth: 1.5)
+            }
+        }
         .contentShape(shape)
         .onLongPressGesture(minimumDuration: Self.holdSeconds, maximumDistance: 40) {
             completed = true
@@ -240,19 +283,29 @@ struct SessionStatTile: View {
     let label: String
     var prominent = false
 
+    @Environment(\.dynamicTypeSize) private var typeSize
+
     var body: some View {
         VStack(spacing: 2) {
+            // The glance numbers drop from the metric size (62 pt at
+            // Accessibility 2) to the card-title size (40 pt) at the
+            // accessibility sizes: in two rows, at 62 pt, a guided walk's
+            // panel reached over the map's North up control.
             Text(value)
-                .font(prominent ? .wktMetric : .wktSection)
+                .font(prominent ? (typeSize.isAccessibilitySize ? .wktCardTitle : .wktMetric) : .wktSection)
                 .monospacedDigit()
                 .foregroundColor(.earthCream)
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
+            // Two lines rather than "Current pa…" when the text is large;
+            // the value keeps one line.
             Text(sentenceCase(label))
                 .font(.wktLabel)
                 .foregroundColor(.earthMuted)
-                .lineLimit(1)
+                .lineLimit(2)
                 .minimumScaleFactor(0.8)
+                // Centred only where it wraps, so the normal sizes keep their pixels.
+                .multilineTextAlignment(typeSize.isAccessibilitySize ? .center : .leading)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, prominent ? 2 : 10)

@@ -183,6 +183,75 @@ final class SmokeTests: XCTestCase {
         app.buttons["summary.done"].tap()
     }
 
+    // MARK: - 3b. Walk screen at the largest text size
+
+    /// At Accessibility 2 (the type scale's ceiling, `wktTextSizeCap`) the
+    /// walk screen stacks Pause above a full-width Finish, and the pulled-up
+    /// panel stays below the map controls with its last stat reachable (spec
+    /// fix/large-text-walk-screen). Until then Finish was 140 pt beside Pause
+    /// and read "Hold to fi…". Frames only: the accessibility tree reports
+    /// full labels, so a cut-off word can't be seen here; Finish's width is
+    /// the stand-in for room to read "Hold to finish".
+    func testWalkScreenFitsAtAccessibility2() {
+        app.terminate()
+        app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityL"]
+        app.launch()
+        XCTAssertTrue(el("home.statCard").waitForExistence(timeout: 30))
+        startWalkFromHome()
+        XCTAssertTrue(el("session.root").waitForExistence(timeout: 30), "Start Walk must open the walk screen")
+
+        let window = app.windows.firstMatch.frame
+        let pause = app.buttons["session.pause"]
+        let finish = el("session.finish")
+        let panel = el("session.panel")
+        let orientation = app.buttons["session.orientation"]
+        XCTAssertTrue(pause.waitForExistence(timeout: 10))
+        XCTAssertTrue(finish.waitForExistence(timeout: 5))
+        XCTAssertTrue(panel.exists && orientation.exists, "The panel and the map controls must be there")
+
+        func checkActions(_ state: String) {
+            XCTAssertLessThanOrEqual(pause.frame.maxX, window.maxX, "Pause off the right edge (\(state))")
+            XCTAssertLessThanOrEqual(finish.frame.maxX, window.maxX, "Finish off the right edge (\(state))")
+            XCTAssertGreaterThanOrEqual(finish.frame.minY, pause.frame.maxY,
+                                        "Finish must sit below Pause (\(state)): \(finish.frame) vs \(pause.frame)")
+            XCTAssertGreaterThanOrEqual(finish.frame.width, pause.frame.width - 1,
+                                        "Finish must have Pause's full width (\(state)): \(finish.frame.width)")
+            XCTAssertLessThanOrEqual(finish.frame.maxY, window.maxY, "Finish below the screen (\(state))")
+            XCTAssertLessThanOrEqual(orientation.frame.maxY, panel.frame.minY,
+                                     "The panel must stay below North up (\(state)): \(panel.frame) vs \(orientation.frame)")
+        }
+        checkActions("collapsed")
+
+        // Pulled up: the last stat must be reachable, inside the screen and
+        // above the buttons, by scrolling the panel.
+        app.buttons["session.more"].tap()
+        let stops = el("session.stops")
+        XCTAssertTrue(stops.waitForExistence(timeout: 10), "The pulled-up panel must list stops")
+        // Animation wait: the panel's spring (0.35 s) must settle before frames are read.
+        sleep(1)
+        checkActions("expanded")
+        var swipes = 0
+        while stops.frame.maxY > pause.frame.minY && swipes < 4 {
+            // Inside the scrolling part, just above the buttons: the header
+            // has its own drag, which would collapse the panel.
+            let start = app.coordinate(withNormalizedOffset: .zero)
+                .withOffset(CGVector(dx: window.midX, dy: pause.frame.minY - 30))
+            start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: 0, dy: -150)))
+            swipes += 1
+        }
+        let last = stops.frame
+        XCTAssertTrue(window.contains(last), "The last stat must be inside the window: \(last) in \(window)")
+        XCTAssertLessThanOrEqual(last.maxY, pause.frame.minY, "The last stat must clear the buttons: \(last)")
+
+        // The hold still finishes it.
+        finish.press(forDuration: 1.4)
+        let confirm = app.buttons["session.confirmFinish"]
+        XCTAssertTrue(confirm.waitForExistence(timeout: 5), "Holding Finish must open the confirmation")
+        confirm.tap()
+        XCTAssertTrue(el("summary.root").waitForExistence(timeout: 10), "Summary must appear after finishing")
+        app.buttons["summary.done"].tap()
+    }
+
     // MARK: - 4. Active-walk accessory bar
 
     func testAccessoryBar() {
