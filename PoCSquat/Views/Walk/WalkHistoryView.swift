@@ -7,14 +7,15 @@ import UIKit
 struct WalkHistoryView: View {
     @ObservedObject var store: WalkHistoryStore
     @EnvironmentObject var petStore: PetStore
+    @EnvironmentObject private var tabRouter: TabRouter
     @Environment(\.dismiss) private var dismiss
     @State private var showManualEntry = false
     @State private var selectedSession: WalkSession?
     @State private var summarySession: WalkSession?
     @State private var repeatSession: WalkSession?
     @State private var shareSession: WalkSession?
-    /// Set by the review sheet's Start; History closes once the sheet has gone,
-    /// as it did when the row's arrow began the walk.
+    /// Set by the review sheet's Start; once the sheet has gone, the walk
+    /// screen opens (`closeIfRepeatStarted`).
     @State private var repeatStarted = false
 
     /// The header's numbers come from the list the rows show, all of it.
@@ -66,10 +67,18 @@ struct WalkHistoryView: View {
         .historySummaryCover(item: $summarySession, history: store.sessions)
     }
 
-    /// History closes after Repeat's Start, as it did when the row's arrow
-    /// began the walk; after Cancel it stays.
+    /// After Repeat's Start, the walk screen opens, the way a route started
+    /// from Routes opens it (`requestReopen`, then Home). `beginSession` only
+    /// creates the session: recording, the Health workout and the pets' credit
+    /// begin when the walk screen appears. Until 2026-10-27 History only
+    /// closed, leaving a mini tile at 0:00 that recorded nothing until it was
+    /// tapped. After Cancel, History stays.
     private func closeIfRepeatStarted() {
-        if repeatStarted { dismiss() }
+        guard repeatStarted else { return }
+        repeatStarted = false
+        dismiss()
+        ActiveWalkStore.shared.requestReopen()
+        tabRouter.selected = .home
     }
 
     private var emptyState: some View {
@@ -93,6 +102,8 @@ struct WalkHistoryView: View {
                 statCell("\(walksThisWeek)", "This week")
             }
             .wktCard(padding: 14)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("\(totals.summary()). \(walksThisWeek) this week")
         }
         .padding(.horizontal, WktSpacing.screen)
         .padding(.vertical, 8)

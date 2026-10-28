@@ -492,9 +492,8 @@ final class SmokeTests: XCTestCase {
     /// Health → Activity History. A row's More menu reaches Edit details,
     /// and Repeat opens a review that begins nothing until Start (spec
     /// fix/history-actions, 2026-10-27; the row's arrow used to begin a walk
-    /// on the tap). Repeat's walk opens no walk screen: History closes and
-    /// the mini tile appears, as it always has, so the tile is the check
-    /// that a session exists, with `session.root` beside it. A second Start
+    /// on the tap). Start opens the walk screen and its timer runs: a session
+    /// that only exists (a mini tile at 0:00) records nothing. A second Start
     /// while that walk is active shows the existing alert and leaves the
     /// review up. -WKTDemo seeds the one finished walk (DemoMode).
     func testHistoryRepeatReviewsBeforeStarting() {
@@ -552,11 +551,20 @@ final class SmokeTests: XCTestCase {
         XCTAssertTrue(more.waitForExistence(timeout: 10), "Cancel must return to the list")
         XCTAssertFalse(miniTile.waitForExistence(timeout: 2), "Cancel must leave no walk in progress")
 
-        // Start begins one.
+        // Start begins one, and it records.
         openRepeat()
         start.tap()
-        XCTAssertTrue(miniTile.waitForExistence(timeout: 20),
-                      "Start must begin the walk. \(screenState())")
+        XCTAssertTrue(el("session.root").waitForExistence(timeout: 30),
+                      "Start must open the walk screen. \(screenState())")
+        let elapsed = el("session.elapsed")
+        XCTAssertTrue(elapsed.waitForExistence(timeout: 10))
+        let first = elapsed.label
+        let ticked = XCTNSPredicateExpectation(
+            predicate: NSPredicate { [elapsed] _, _ in elapsed.label != first }, object: nil)
+        XCTAssertEqual(XCTWaiter().wait(for: [ticked], timeout: 10), .completed,
+                       "The repeated walk must be recording")
+        app.buttons["session.minimize"].tap()
+        XCTAssertTrue(miniTile.waitForExistence(timeout: 30), "The walk must still be in progress")
 
         // Again while it is active: the existing alert, and the review stays.
         openHistory()

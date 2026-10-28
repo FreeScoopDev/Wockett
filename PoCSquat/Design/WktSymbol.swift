@@ -152,8 +152,6 @@ enum WktSymbol {
     case lock               // lock (use filled: true for lock.fill)
     case terms              // doc.text (Terms of Service)
     case lockOpen           // lock.open
-    case noteText           // note.text
-    case notePlus           // note.text.badge.plus
     case timer              // timer
     case target             // target (goal)
     case percent            // percent (progress)
@@ -287,8 +285,6 @@ enum WktSymbol {
         case .lock:           return "lock"
         case .terms:          return "doc.text"
         case .lockOpen:       return "lock.open"
-        case .noteText:       return "note.text"
-        case .notePlus:       return "note.text.badge.plus"
         case .timer:          return "timer"
         case .target:         return "target"
         case .percent:        return "percent"

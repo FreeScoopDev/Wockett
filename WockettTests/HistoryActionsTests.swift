@@ -82,7 +82,7 @@ struct HistoryActionsTests {
         #expect(review.distance == "0.5 mi")
         #expect(!review.canStart)
         #expect(review.unavailableReason
-                == "Indoor walks have no route to follow. Start one from Home: choose Indoor, then Start.")
+                == "Indoor walks have no route to follow. Start one from Home: choose Indoor, then Start Indoor.")
     }
 
     @Test("Three or more pets: commas, then and")
@@ -106,10 +106,11 @@ struct HistoryActionsTests {
         #expect(!controller.showAlreadyActive)
     }
 
-    /// Cancel and a swipe down only dismiss the sheet, which releases its
-    /// controller; neither has a path to `begin`. This fails if making or
-    /// releasing the review starts anything. Cancel on screen is the UI test's.
-    @Test("Making and releasing a review, as Cancel and swipe-down do, begins nothing")
+    /// Only that: it fails if making or releasing the review calls `begin`.
+    /// Cancel, swipe-down and the sheet appearing live in the view, not the
+    /// controller; `testHistoryRepeatReviewsBeforeStarting` (UI) covers them,
+    /// and went red when Start was made to fire on appear (2026-10-27).
+    @Test("Making and releasing a review begins nothing")
     func cancelBeginsNothing() {
         var calls = 0
         var controller: RepeatReviewController? = RepeatReviewController(

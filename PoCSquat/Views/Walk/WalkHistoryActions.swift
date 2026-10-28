@@ -85,7 +85,7 @@ struct RepeatReview: Equatable {
         // An indoor walk has no route to follow, and History's Repeat starts a
         // route walk. Indoor starts from Home (Indoor, then Start).
         unavailableReason = mode == .stationary
-            ? "Indoor walks have no route to follow. Start one from Home: choose Indoor, then Start."
+            ? "Indoor walks have no route to follow. Start one from Home: choose Indoor, then Start Indoor."
             : nil
     }
 
@@ -157,8 +157,10 @@ struct RepeatReviewSheet: View {
                             detailRow("Distance", review.distance)
                             WktDivider()
                             detailRow("Time", review.duration)
-                            WktDivider()
-                            detailRow("Pets getting credit", review.companions)
+                            if review.canStart {
+                                WktDivider()
+                                detailRow("Pets getting credit", review.companions)
+                            }
                         }
                         .wktCard(padding: 14)
 
