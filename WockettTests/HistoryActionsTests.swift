@@ -21,11 +21,18 @@ struct HistoryActionsTests {
         return f
     }()
 
+    /// Two points: a route Repeat can follow. Pass `waypoints: []` for a
+    /// session saved with none (manual, untracked, no GPS, pet entry, indoor).
+    private static let path = [WaypointCoord(CLLocationCoordinate2D(latitude: 35.7779, longitude: -78.6387)),
+                               WaypointCoord(CLLocationCoordinate2D(latitude: 35.7752, longitude: -78.6362))]
+
     private func session(_ name: String, mode: ActivityMode = .walking, meters: Double = 3_218.688,
-                         seconds: TimeInterval = 2_730, isHike: Bool = false) -> WalkSession {
+                         seconds: TimeInterval = 2_730, isHike: Bool = false,
+                         waypoints: [WaypointCoord] = HistoryActionsTests.path,
+                         activePetIds: [UUID] = []) -> WalkSession {
         WalkSession(id: UUID(), routeName: name, date: Date(timeIntervalSince1970: 1_800_000_000),
-                    elapsedTime: seconds, totalDistance: meters, waypoints: [], lapCount: 1,
-                    isLoop: false, activityType: mode.rawValue, isHike: isHike)
+                    elapsedTime: seconds, totalDistance: meters, waypoints: waypoints, lapCount: 1,
+                    isLoop: false, activePetIds: activePetIds, activityType: mode.rawValue, isHike: isHike)
     }
 
     private func pet(_ name: String) -> PetProfile {
@@ -75,7 +82,7 @@ struct HistoryActionsTests {
 
     @Test("An indoor walk cannot be repeated from History, and the sheet says why")
     func indoorReview() {
-        let indoor = session("Indoor Walk", mode: .stationary, meters: 804.672, seconds: 1_200)
+        let indoor = session("Indoor Walk", mode: .stationary, meters: 804.672, seconds: 1_200, waypoints: [])
         let review = RepeatReview(session: indoor, activePets: [], distanceFormatter: Self.miles)
         #expect(review.title == "Repeat this walk")
         #expect(review.activity == "Indoor walk")
@@ -83,6 +90,61 @@ struct HistoryActionsTests {
         #expect(!review.canStart)
         #expect(review.unavailableReason
                 == "Indoor walks have no route to follow. Start one from Home: choose Indoor, then Start Indoor.")
+    }
+
+    // MARK: Which sessions can be repeated (fix/history-repeat-no-route)
+
+    private static let indoorReason =
+        "Indoor walks have no route to follow. Start one from Home: choose Indoor, then Start Indoor."
+
+    @Test("Routed walks, runs, rides and hikes can be repeated")
+    func routedCanRepeat() {
+        for routed in [session("Loop"), session("Track", mode: .running),
+                       session("Greenway", mode: .cycling), session("Umstead", isHike: true)] {
+            #expect(RepeatReview.unavailableReason(for: routed) == nil, "\(routed.activityType)")
+            #expect(RepeatReview(session: routed, activePets: []).canStart)
+        }
+    }
+
+    @Test("A session with no waypoints cannot be repeated, in its own words")
+    func noRouteCannotRepeat() {
+        let pet = UUID()
+        let cases: [(WalkSession, String)] = [
+            // Log a Past Walk (`ManualWalkEntrySheet`): no route, any activity.
+            (session("Riverside Path", waypoints: []),
+             "This walk has no route to follow, so it can't be repeated. Start a new one from Home."),
+            (session("Morning run", mode: .running, waypoints: []),
+             "This run has no route to follow, so it can't be repeated. Start a new one from Home."),
+            (session("Commute", mode: .cycling, waypoints: []),
+             "This ride has no route to follow, so it can't be repeated. Start a new one from Home."),
+            // `UntrackedWalkDetector` saves "Untracked Walk" with no points.
+            (session("Untracked Walk", waypoints: []),
+             "This walk has no route to follow, so it can't be repeated. Start a new one from Home."),
+            // A free walk that never got a GPS fix keeps no breadcrumbs.
+            (session("Free Walk", meters: 0, waypoints: []),
+             "This walk has no route to follow, so it can't be repeated. Start a new one from Home."),
+            // A 1.6 pet-credit entry: one pet, no time, no points.
+            (session("Nala's Walk", meters: 1_609.344, seconds: 0, waypoints: [], activePetIds: [pet]),
+             "This walk has no route to follow, so it can't be repeated. Start a new one from Home.")
+        ]
+        for (noRoute, reason) in cases {
+            #expect(RepeatReview.unavailableReason(for: noRoute) == reason, "\(noRoute.routeName)")
+            let review = RepeatReview(session: noRoute, activePets: [])
+            #expect(!review.canStart, "\(noRoute.routeName)")
+            #expect(review.unavailableReason == reason)
+        }
+        #expect(session("Nala's Walk", seconds: 0, waypoints: [], activePetIds: [pet]).isPetCreditEntry,
+                "The legacy fixture must be what the app calls a pet-credit entry")
+    }
+
+    @Test("Indoor keeps its own reason, with or without waypoints")
+    func indoorKeepsItsReason() {
+        // An indoor pet-credit entry ("Nala's Indoor Walk") is indoor first.
+        let entry = session("Nala's Indoor Walk", mode: .stationary, seconds: 0, waypoints: [],
+                            activePetIds: [UUID()])
+        #expect(RepeatReview.unavailableReason(for: entry) == Self.indoorReason)
+        // No indoor session has points, but if one did it still starts from Home.
+        #expect(RepeatReview.unavailableReason(for: session("Indoor Walk", mode: .stationary)) == Self.indoorReason)
     }
 
     @Test("Three or more pets: commas, then and")
@@ -137,11 +199,22 @@ struct HistoryActionsTests {
     func indoorNeverBegins() {
         var calls = 0
         let controller = RepeatReviewController(
-            review: RepeatReview(session: session("Indoor Walk", mode: .stationary), activePets: []),
+            review: RepeatReview(session: session("Indoor Walk", mode: .stationary, waypoints: []), activePets: []),
             begin: { calls += 1; return true })
         #expect(controller.start() == .unavailable)
         #expect(calls == 0)
         #expect(!controller.showAlreadyActive)
+    }
+
+    @Test("A review with no route never calls begin")
+    func noRouteNeverBegins() {
+        var calls = 0
+        let controller = RepeatReviewController(
+            review: RepeatReview(session: session("Untracked Walk", waypoints: []), activePets: []),
+            begin: { calls += 1; return true })
+        #expect(controller.start() == .unavailable)
+        #expect(calls == 0)
+        #expect(!controller.started)
     }
 
     // MARK: Header totals
