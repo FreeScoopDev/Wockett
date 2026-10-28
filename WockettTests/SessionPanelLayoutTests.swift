@@ -1,5 +1,6 @@
 import Testing
 import SwiftUI
+import UIKit
 @testable import PoCSquat
 
 /// The walk panel keeps its normal layout at every non-accessibility size
@@ -16,6 +17,7 @@ struct SessionPanelLayoutTests {
 
     @Test func normalSizesKeepTheLayout() {
         for size in Self.normal {
+            #expect(SessionPanelLayout.isLarge(size) == false, "\(size)")
             #expect(SessionPanelLayout.statColumns(size) == 3, "\(size)")
             #expect(SessionPanelLayout.stacksActions(size) == false, "\(size)")
             #expect(SessionPanelLayout.expandedMaxHeight(size) == 430, "\(size)")
@@ -24,6 +26,7 @@ struct SessionPanelLayoutTests {
 
     @Test func accessibilitySizesSwitch() {
         for size in Self.accessibility {
+            #expect(SessionPanelLayout.isLarge(size), "\(size)")
             #expect(SessionPanelLayout.statColumns(size) == 2, "\(size)")
             #expect(SessionPanelLayout.stacksActions(size), "\(size)")
             #expect(SessionPanelLayout.expandedMaxHeight(size) == 220, "\(size)")
@@ -33,5 +36,29 @@ struct SessionPanelLayoutTests {
     /// Every size is in one list or the other, so a new case can't slip by.
     @Test func everySizeIsCovered() {
         #expect(Set(Self.normal + Self.accessibility) == Set(DynamicTypeSize.allCases))
+    }
+
+    /// The glance numbers are `wktMetric` (34 pt, scaled) at the normal sizes
+    /// and `wktDense(34)` at the accessibility sizes. Turning the text up must
+    /// never make them smaller: the first try used the card-title size there,
+    /// which put AX1 below xxxLarge (critic, 2026-10-28). Sizes in the order
+    /// Settings offers them, xSmall to AX5.
+    @Test func glanceNumbersNeverShrinkAsTextGrows() {
+        let categories: [(UIContentSizeCategory, Bool)] = [
+            (.extraSmall, false), (.small, false), (.medium, false), (.large, false),
+            (.extraLarge, false), (.extraExtraLarge, false), (.extraExtraExtraLarge, false),
+            (.accessibilityMedium, true), (.accessibilityLarge, true), (.accessibilityExtraLarge, true),
+            (.accessibilityExtraExtraLarge, true), (.accessibilityExtraExtraExtraLarge, true)
+        ]
+        var previous: CGFloat = 0
+        for (category, large) in categories {
+            let scaled = UIFontMetrics(forTextStyle: .body).scaledValue(
+                for: 34, compatibleWith: UITraitCollection(preferredContentSizeCategory: category))
+            let size = large ? Font.wktDenseSize(34, scaled: scaled) : Font.wktScaledSize(34, scaled: scaled)
+            #expect(size >= previous - 0.01, "\(category.rawValue): \(size) after \(previous)")
+            previous = size
+        }
+        // xxxLarge, written out (TypeScaleCapTests): the accessibility sizes hold it.
+        #expect(abs(previous - 44.667) < 0.01)
     }
 }

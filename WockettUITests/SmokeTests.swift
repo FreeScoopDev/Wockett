@@ -185,29 +185,43 @@ final class SmokeTests: XCTestCase {
 
     // MARK: - 3b. Walk screen at the largest text size
 
-    /// At Accessibility 2 (the type scale's ceiling, `wktTextSizeCap`) the
+    /// At Accessibility 2 (the walk screen's ceiling, `wktTextSizeCap`) the
     /// walk screen stacks Pause above a full-width Finish, and the pulled-up
     /// panel stays below the map controls with its last stat reachable (spec
     /// fix/large-text-walk-screen). Until then Finish was 140 pt beside Pause
-    /// and read "Hold to fi…". Frames only: the accessibility tree reports
-    /// full labels, so a cut-off word can't be seen here; Finish's width is
-    /// the stand-in for room to read "Hold to finish".
+    /// and read "Hold to fi…". A guided walk (the -WKTDemo walk, repeated
+    /// from History), because it has the tallest panel: a two-line route
+    /// name, the progress bar and the most stats. Frames only: the
+    /// accessibility tree reports full labels, so a cut-off word can't be
+    /// seen here; Finish's width is the stand-in for room to read
+    /// "Hold to finish".
     func testWalkScreenFitsAtAccessibility2() {
         app.terminate()
-        app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityL"]
+        app.launchArguments += ["-WKTDemo", "-UIPreferredContentSizeCategoryName",
+                                "UICTContentSizeCategoryAccessibilityL"]
         app.launch()
         XCTAssertTrue(el("home.statCard").waitForExistence(timeout: 30))
-        startWalkFromHome()
-        XCTAssertTrue(el("session.root").waitForExistence(timeout: 30), "Start Walk must open the walk screen")
+        openHistoryFromHealth()
+        app.buttons["history.more"].firstMatch.tap()
+        let repeatItem = app.buttons["Repeat"].firstMatch
+        XCTAssertTrue(repeatItem.waitForExistence(timeout: 5), "More must offer Repeat")
+        repeatItem.tap()
+        let start = app.buttons["history.repeat.start"]
+        XCTAssertTrue(start.waitForExistence(timeout: 10), "Repeat must open the review sheet")
+        start.tap()
+        XCTAssertTrue(el("session.root").waitForExistence(timeout: 30),
+                      "Start must open the walk screen. \(screenState())")
 
         let window = app.windows.firstMatch.frame
         let pause = app.buttons["session.pause"]
         let finish = el("session.finish")
+        let more = app.buttons["session.more"]
         let panel = el("session.panel")
         let orientation = app.buttons["session.orientation"]
         XCTAssertTrue(pause.waitForExistence(timeout: 10))
         XCTAssertTrue(finish.waitForExistence(timeout: 5))
-        XCTAssertTrue(panel.exists && orientation.exists, "The panel and the map controls must be there")
+        XCTAssertTrue(more.exists && panel.exists && orientation.exists,
+                      "The panel, its More button and the map controls must be there")
 
         func checkActions(_ state: String) {
             XCTAssertLessThanOrEqual(pause.frame.maxX, window.maxX, "Pause off the right edge (\(state))")
@@ -222,9 +236,9 @@ final class SmokeTests: XCTestCase {
         }
         checkActions("collapsed")
 
-        // Pulled up: the last stat must be reachable, inside the screen and
-        // above the buttons, by scrolling the panel.
-        app.buttons["session.more"].tap()
+        // Pulled up: the last stat must be reachable by scrolling the panel,
+        // and then sit between the header and the buttons, inside the screen.
+        more.tap()
         let stops = el("session.stops")
         XCTAssertTrue(stops.waitForExistence(timeout: 10), "The pulled-up panel must list stops")
         // Animation wait: the panel's spring (0.35 s) must settle before frames are read.
@@ -232,16 +246,18 @@ final class SmokeTests: XCTestCase {
         checkActions("expanded")
         var swipes = 0
         while stops.frame.maxY > pause.frame.minY && swipes < 4 {
-            // Inside the scrolling part, just above the buttons: the header
-            // has its own drag, which would collapse the panel.
+            // A short drag inside the scrolling part, just above the buttons:
+            // the header has its own drag, which would collapse the panel.
             let start = app.coordinate(withNormalizedOffset: .zero)
                 .withOffset(CGVector(dx: window.midX, dy: pause.frame.minY - 30))
-            start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: 0, dy: -150)))
+            start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: 0, dy: -80)))
             swipes += 1
         }
         let last = stops.frame
         XCTAssertTrue(window.contains(last), "The last stat must be inside the window: \(last) in \(window)")
         XCTAssertLessThanOrEqual(last.maxY, pause.frame.minY, "The last stat must clear the buttons: \(last)")
+        XCTAssertGreaterThanOrEqual(last.minY, more.frame.maxY,
+                                    "The last stat must not be scrolled under the header: \(last) vs \(more.frame)")
 
         // The hold still finishes it.
         finish.press(forDuration: 1.4)

@@ -158,26 +158,32 @@ struct MapOrientationControls: View {
 /// on 2026-10-28), so the panel uses two columns and stacks its buttons.
 /// The normal sizes keep the layout they had. Pure, so a test can pin both.
 enum SessionPanelLayout {
+    /// The one switch every large-text choice on the walk panel follows:
+    /// stacked buttons, a Finish that grows with its text, two columns,
+    /// labels and route names on two lines, the capped glance numbers.
+    static func isLarge(_ size: DynamicTypeSize) -> Bool {
+        size.isAccessibilitySize
+    }
+
     /// Columns in the pulled-up stats grid. Below three, the glance row's
     /// three numbers also split into two rows.
     static func statColumns(_ size: DynamicTypeSize) -> Int {
-        size.isAccessibilitySize ? 2 : 3
+        isLarge(size) ? 2 : 3
     }
 
     /// Pause above Finish, each the full width, instead of side by side.
     static func stacksActions(_ size: DynamicTypeSize) -> Bool {
-        size.isAccessibilitySize
+        isLarge(size)
     }
 
     /// The tallest the pulled-up panel's scrolling part grows. The stacked
     /// buttons and a two-line route name take about 140 pt more at the
     /// accessibility sizes, so with 430 the panel would reach over the map's
-    /// North up control. Measured on an iPhone 17 with a guided walk: 290
-    /// still touched it at Accessibility 2, and 250 at Accessibility 5,
-    /// where the map's icons keep growing past the type scale's cap. What
-    /// does not fit scrolls.
+    /// North up control. Measured on an iPhone 17 with a guided walk at
+    /// Accessibility 2 (the walk screen's ceiling): 290 still touched it,
+    /// 220 leaves about 40 pt. What does not fit scrolls.
     static func expandedMaxHeight(_ size: DynamicTypeSize) -> CGFloat {
-        size.isAccessibilitySize ? 220 : 430
+        isLarge(size) ? 220 : 430
     }
 }
 
@@ -209,14 +215,16 @@ struct HoldToFinishButton: View {
         // with its text, which may wrap, instead of cutting it off. The fills
         // sit behind the text so the hold fill's GeometryReader takes the
         // button's size rather than all the height it is offered.
-        let large = typeSize.isAccessibilitySize
+        let large = SessionPanelLayout.isLarge(typeSize)
         return VStack(spacing: 1) {
             Text(isPressing ? "Keep holding" : "Hold to finish")
                 .font(.wktRowTitle)
                 .foregroundColor(.earthCream)
                 .lineLimit(large ? 2 : 1)
                 .minimumScaleFactor(0.8)
-                // Only when it may wrap: the default size stays as it was, to the pixel.
+                // Centred only when it may wrap: unconditional centring moved
+                // the one-line title by a fraction of a pixel at the default
+                // size (measured 2026-10-28), and that size must not change.
                 .multilineTextAlignment(large ? .center : .leading)
             Text(showHint ? "Press and hold for 1 second" : "1 second")
                 .font(.wktLabel)
@@ -286,26 +294,28 @@ struct SessionStatTile: View {
     @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
-        VStack(spacing: 2) {
-            // The glance numbers drop from the metric size (62 pt at
-            // Accessibility 2) to the card-title size (40 pt) at the
-            // accessibility sizes: in two rows, at 62 pt, a guided walk's
-            // panel reached over the map's North up control.
+        let large = SessionPanelLayout.isLarge(typeSize)
+        return VStack(spacing: 2) {
+            // At the accessibility sizes the glance numbers stop at their
+            // xxxLarge size (45 pt) instead of reaching 62: in two rows, at
+            // 62 pt, a guided walk's panel reached over the map's North up
+            // control. Capped, never shrunk: turning text up must not make
+            // these smaller (critic, 2026-10-28).
             Text(value)
-                .font(prominent ? (typeSize.isAccessibilitySize ? .wktCardTitle : .wktMetric) : .wktSection)
+                .font(prominent ? (large ? .wktDense(34, weight: .heavy) : .wktMetric) : .wktSection)
                 .monospacedDigit()
                 .foregroundColor(.earthCream)
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
             // Two lines rather than "Current pa…" when the text is large;
-            // the value keeps one line.
+            // the value keeps one line. The normal sizes keep one line,
+            // shrinking to fit, exactly as before.
             Text(sentenceCase(label))
                 .font(.wktLabel)
                 .foregroundColor(.earthMuted)
-                .lineLimit(2)
+                .lineLimit(large ? 2 : 1)
                 .minimumScaleFactor(0.8)
-                // Centred only where it wraps, so the normal sizes keep their pixels.
-                .multilineTextAlignment(typeSize.isAccessibilitySize ? .center : .leading)
+                .multilineTextAlignment(large ? .center : .leading)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, prominent ? 2 : 10)

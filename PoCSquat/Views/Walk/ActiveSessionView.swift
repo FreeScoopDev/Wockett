@@ -156,6 +156,11 @@ private struct ActiveSessionScreen: View {
         activeContent
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("session.root")
+            // This full-screen cover does not inherit the tab view's limit
+            // (SquatCounterApp): at Accessibility 5 the map's buttons and
+            // icons kept growing (measured 2026-10-28), so the walk screen
+            // sets the same limit itself.
+            .dynamicTypeSize(...DynamicTypeSize.accessibility2)
             .toolbar(.hidden, for: .navigationBar)
             .presentationDetents([.large])
             .presentationDragIndicator(.visible)
@@ -585,7 +590,7 @@ private struct ActiveSessionScreen: View {
                 VStack(alignment: .leading, spacing: 1) {
                     Text(isGuided ? route.name : route.wording.sessionLabel)
                         .font(.wktRowTitle).foregroundColor(.earthCream)
-                        .lineLimit(typeSize.isAccessibilitySize ? 2 : 1)
+                        .lineLimit(SessionPanelLayout.isLarge(typeSize) ? 2 : 1)
                     if isGuided {
                         // The activity's word first ("Hike · On the trail"):
                         // a guided title is the route's name, so this is
