@@ -187,20 +187,37 @@ extension Color {
 extension Font {
     /// UI tier, heading weight — SF Pro Rounded Heavy. Section titles, card headers.
     static func wktHeading(_ size: CGFloat) -> Font {
-        let s = UIFontMetrics(forTextStyle: .body).scaledValue(for: size)
+        let s = wktScaledSize(size, scaled: UIFontMetrics(forTextStyle: .body).scaledValue(for: size))
         return .system(size: s, weight: .heavy, design: .rounded)
     }
 
     /// UI tier, body weight — SF Pro Rounded Semibold. Buttons, list labels, body text.
     static func wktBody(_ size: CGFloat) -> Font {
-        let s = UIFontMetrics(forTextStyle: .body).scaledValue(for: size)
+        let s = wktScaledSize(size, scaled: UIFontMetrics(forTextStyle: .body).scaledValue(for: size))
         return .system(size: s, weight: .semibold, design: .rounded)
+    }
+
+    /// The largest text size the type scale grows to: Accessibility 2, the
+    /// same limit `SquatCounterApp` puts on system-styled text with
+    /// `.dynamicTypeSize(...DynamicTypeSize.accessibility2)`. SwiftUI's
+    /// `.accessibility2` is UIKit's `.accessibilityLarge` (AX1 is
+    /// `.accessibilityMedium`); `TypeScaleCapTests` checks that mapping.
+    static let wktTextSizeCap: UIContentSizeCategory = .accessibilityLarge
+
+    /// `scaled` (the size at the current text size), held to the size the same
+    /// text has at `wktTextSizeCap`. `wktHeading`, `wktBody` and `wktLabel`
+    /// resolve a fixed point size here, so `.dynamicTypeSize(...)` cannot cap
+    /// them; this does. A no-op at and below the cap. Until 2026-10-28 they
+    /// grew to Accessibility 5 and cut off buttons and values (F5 audit).
+    static func wktScaledSize(_ size: CGFloat, scaled: CGFloat) -> CGFloat {
+        let cap = UITraitCollection(preferredContentSizeCategory: wktTextSizeCap)
+        return min(scaled, UIFontMetrics(forTextStyle: .body).scaledValue(for: size, compatibleWith: cap))
     }
 
     /// For a dense, fixed-geometry layout (a seven-column calendar, a ring's
     /// centre, a three-column metric row): scales with the text size like
     /// `wktBody`, but stops at the largest non-accessibility size. `wktBody`
-    /// and `wktLabel` scale without limit, and a 64 pt calendar cell or a 92 pt
+    /// and `wktLabel` grow to Accessibility 2, and a 64 pt calendar cell or a 92 pt
     /// ring cannot grow with them (2026-10-13 screenshots: overlapping day
     /// cells, "0..." in the ring). SwiftUI's `.dynamicTypeSize(...)` does not
     /// cap these fonts, because their size is already resolved here.
@@ -233,7 +250,7 @@ extension Font {
     static var wktBodyText: Font { wktBody(15) }
     /// 13 bold — a small label, sentence case.
     static var wktLabel: Font {
-        let s = UIFontMetrics(forTextStyle: .body).scaledValue(for: 13)
+        let s = wktScaledSize(13, scaled: UIFontMetrics(forTextStyle: .body).scaledValue(for: 13))
         return .system(size: s, weight: .bold, design: .rounded)
     }
 }
