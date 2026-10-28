@@ -237,4 +237,6 @@ struct HealthFunStatsCard: View {
     .environmentObject(StepManager())
     .environmentObject(WalkHistoryStore())
     .environmentObject(PetStore(context: AppModelContainer.shared.mainContext))
+    // Activity History's Repeat switches tabs to open the walk screen.
+    .environmentObject(TabRouter())
 }

@@ -563,10 +563,18 @@ final class SmokeTests: XCTestCase {
             predicate: NSPredicate { [elapsed] _, _ in elapsed.label != first }, object: nil)
         XCTAssertEqual(XCTWaiter().wait(for: [ticked], timeout: 10), .completed,
                        "The repeated walk must be recording")
+        // A full-screen cover leaves the views beneath it in the tree, so wait
+        // for the walk screen to go before using the tab bar (testAccessoryBar).
         app.buttons["session.minimize"].tap()
+        let sessionGone = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "exists == NO"), object: el("session.root"))
+        wait(for: [sessionGone], timeout: 25)
         XCTAssertTrue(miniTile.waitForExistence(timeout: 30), "The walk must still be in progress")
 
         // Again while it is active: the existing alert, and the review stays.
+        // After the walk screen minimizes here the tab bar can be collapsed
+        // to the Home button (iOS 26.5, seen 2026-10-27); tapping it expands it.
+        if !tab("Health").waitForExistence(timeout: 3) { tab("Home").tap() }
         openHistory()
         openRepeat()
         start.tap()
