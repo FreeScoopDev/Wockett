@@ -196,8 +196,9 @@ enum BadgeRemaining {
         switch badge.type {
         case .distance, .rideKm:
             // Whole metres first: 1 - 0.7 km is 0.30000000000000004 in a
-            // Double, and rounding that up read "0.4 km" (critic, F3).
-            return "\(challengeFormattedDistance((left * 1000).rounded(), locale: locale, rule: .up)) to go"
+            // Double, and rounding that up read "0.4 km" (critic, F3). At
+            // least 1 m, so an open badge never reads "0.0 km to go".
+            return "\(challengeFormattedDistance(max(1, (left * 1000).rounded()), locale: locale, rule: .up)) to go"
         case .streak, .rideStreak: return toGo(count, "day", "days")
         case .badgeCount: return toGo(count, "badge", "badges")
         case .petWalks: return toGo(count, "walk with a pet", "walks with a pet")
