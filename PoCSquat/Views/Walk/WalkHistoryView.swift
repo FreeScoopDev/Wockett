@@ -78,6 +78,11 @@ struct WalkHistoryView: View {
             ActivitySummaryShareSheet(session: session, historyStore: store)
         }
         .historySummaryCover(item: $summarySession, history: store.sessions)
+        // With nothing stored, the filter menu is hidden; a filter left set
+        // would greet the next walk logged with "No activities match".
+        .onChange(of: store.sessions.isEmpty) { _, isEmpty in
+            if isEmpty { filter = HistoryFilter() }
+        }
     }
 
     /// After Repeat's Start, the walk screen opens, the way a route started
@@ -120,7 +125,8 @@ struct WalkHistoryView: View {
         Menu {
             Picker(selection: $filter.activity) {
                 Text("Any activity").tag(ActivityMode?.none)
-                ForEach(HistoryFilter.activities, id: \.self) { mode in
+                // The activities Home offers, in its order.
+                ForEach(HomeActivityPicker.modes, id: \.self) { mode in
                     Text(mode.displayName).tag(ActivityMode?.some(mode))
                 }
             } label: {

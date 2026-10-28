@@ -15,7 +15,8 @@ import Foundation
 // state only; nothing here writes to the store.
 
 /// What the person has asked History to show. The defaults show everything.
-struct HistoryFilter: Equatable {
+/// `nonisolated` so `HistoryScope.apply` can read it off the main actor.
+nonisolated struct HistoryFilter: Equatable {
     var query = ""
     /// nil = every activity.
     var activity: ActivityMode?
@@ -35,9 +36,6 @@ struct HistoryFilter: Equatable {
             }
         }
     }
-
-    /// The activities the filter offers, in the order the type picker uses.
-    static let activities: [ActivityMode] = [.walking, .running, .cycling, .stationary]
 
     /// The search text as it is matched: trimmed, empty meaning no search.
     var trimmedQuery: String { query.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -61,7 +59,8 @@ struct HistoryFilter: Equatable {
 
     /// The header's title: "All activities", or the scope in force,
     /// "This month · Run · Nala · “river”". `petName` names `petID`.
-    func scopeTitle(petName: String?) -> String {
+    /// Main actor: `ActivityMode.displayName` is.
+    @MainActor func scopeTitle(petName: String?) -> String {
         var parts: [String] = []
         if period != .allTime { parts.append(period.title) }
         if let activity { parts.append(activity.displayName) }

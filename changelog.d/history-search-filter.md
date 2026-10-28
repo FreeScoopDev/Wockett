@@ -14,10 +14,10 @@
   search and filters, and its title names the scope ("This month · Run"),
   so the figures are always the sums of the rows listed beneath them.
 
-### Fixed
+### Internal
 - Swipe-to-delete in History deletes by the activity's identity, not its
-  position. The list deleted by offset into the whole history, which was
-  only safe while the screen showed the whole history: in a filtered list
-  the same offset is a different activity, so filtering without this would
-  have deleted the wrong one. A delete whose write fails still puts the
-  activity back, as before.
+  position. It deleted by offset into the whole history, which was only
+  safe while the screen showed the whole history: in a filtered list the
+  same offset is a different activity, so filtering without this would have
+  deleted the wrong one. A delete whose write fails still puts the activity
+  back, as before.
