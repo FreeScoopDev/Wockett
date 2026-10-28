@@ -229,7 +229,9 @@ way unless there's a strong reason; adding the first one is a real decision.
   `history.repeat.start` (the Repeat review's Start; absent when the
   activity can't be repeated), `history.repeat.reason` (why it can't),
   `history.filter` (the Filters menu), `history.header` (the totals; its
-  label reads them), `history.noMatch` (a search or filter matching nothing).
+  label reads them), `history.noMatch` (a search or filter matching nothing),
+  `settings.notifications.status` (the line under Settings' notification
+  status saying what will arrive; absent when fully enabled).
 - **Tab bar buttons are addressed by visible title**, not identifier — iOS 26
   discards `.accessibilityIdentifier` on `Tab`.
 - **Notifications go through `NotificationService`.** It owns permission,

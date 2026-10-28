@@ -9,6 +9,7 @@ struct SettingsView: View {
     var bannerStore: BannerStore = .shared
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
+    @Environment(\.scenePhase) private var scenePhase
     @State private var isAddingAffirmation = false
     @State private var newAffirmation = ""
 
@@ -21,6 +22,9 @@ struct SettingsView: View {
     @State private var notifAuthorized = false
     @State private var notifQuiet = false
     @State private var notifDenied = false
+    // False until the first status read, so the line under the chip never
+    // shows the "not asked yet" text to someone who has notifications on.
+    @State private var notifStatusKnown = false
     @State private var showScheduleSheet = false
     @State private var showGoalSheet = false
     // Set when a legacy calendar-reminder delete could not do what the user asked.
@@ -112,10 +116,21 @@ struct SettingsView: View {
                         Label { Text("Status") } icon: { Image(wkt: .notifications).wktIcon(.row, tint: .earthCream) }
                             .foregroundColor(.earthCream)
                         Spacer()
-                        WktStatusChip(text: notifAuthorized ? "Enabled" : notifQuiet ? "Quiet — no alerts" : "Disabled",
+                        WktStatusChip(text: NotificationStatusText.chip(authorized: notifAuthorized, quiet: notifQuiet),
                                       dot: notifAuthorized ? .earthGreen : notifQuiet ? .earthMuted : .earthOrange)
                     }
                     .listRowBackground(Color.earthCard)
+
+                    // The switches below keep their position whatever iOS allows,
+                    // so this says what will actually arrive.
+                    if notifStatusKnown, let explanation = NotificationStatusText.explanation(authorized: notifAuthorized,
+                                                                            quiet: notifQuiet,
+                                                                            denied: notifDenied) {
+                        Text(explanation)
+                            .font(.wktLabel).foregroundColor(.earthMuted)
+                            .accessibilityIdentifier("settings.notifications.status")
+                            .listRowBackground(Color.earthCard)
+                    }
 
                     if !notifAuthorized {
                         if notifDenied {
@@ -193,14 +208,20 @@ struct SettingsView: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Untracked walk nudge")
                                 .foregroundColor(.earthCream)
-                            Text("When you've walked without tracking it. Wockett checks a few times a day, so this arrives after the walk, not during it.")
+                            Text("When you've walked without tracking it.")
                                 .font(.wktLabel).foregroundColor(.earthMuted)
                         }
                     }
                     .tint(.earthGreenFill)
                     .disabled(!(notifAuthorized || notifQuiet))
                     .listRowBackground(Color.earthCard)
-                } header: { WktListHeader(title: "Notifications") }
+                } header: {
+                    WktListHeader(title: "Notifications")
+                } footer: {
+                    // Was the untracked-walk switch's own caption, three lines long.
+                    Text("Wockett checks for untracked activity a few times a day, so that nudge arrives afterwards, not during it.")
+                        .font(.wktLabel).foregroundColor(.earthMuted)
+                }
 
                 // ── Walk Reminders ────────────────────────────────
                 Section {
@@ -520,6 +541,11 @@ struct SettingsView: View {
             NotificationService.shared.pruneExpiredWalkReminders()
             await refreshNotificationStatus()
         }
+        .onChange(of: scenePhase) { _, phase in
+            // The denied line sends people to iOS Settings; read the status
+            // again when they come back, or the line contradicts what they did.
+            if phase == .active { Task { await refreshNotificationStatus() } }
+        }
         .onChange(of: [weeklySummaryEnabled, hydrationEnabled, streakProtectionEnabled, petNudgeEnabled]) { old, new in
             // A toggle switched on while delivery is only quiet is the user asking
             // for alerts — the moment for the real prompt.
@@ -544,6 +570,7 @@ struct SettingsView: View {
         notifAuthorized = svc.isFullyAuthorized
         notifQuiet      = svc.authorizationStatus == .provisional
         notifDenied     = svc.authorizationStatus == .denied
+        notifStatusKnown = true
     }
 
     private func promptForAlerts() async {
