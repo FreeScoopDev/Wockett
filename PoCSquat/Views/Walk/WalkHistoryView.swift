@@ -17,28 +17,41 @@ struct WalkHistoryView: View {
     /// Set by the review sheet's Start; once the sheet has gone, the walk
     /// screen opens (`closeIfRepeatStarted`).
     @State private var repeatStarted = false
+    /// Search and filters. View state only: never stored, gone when History
+    /// closes (fix/history-search-filter).
+    @State private var filter = HistoryFilter()
+    /// Whether the search field is active. While it is, iOS hides the
+    /// toolbar, filter menu included; Clear filters ends it.
+    @State private var searchActive = false
 
-    /// The header's numbers come from the list the rows show, all of it.
-    private var totals: HistoryTotals { HistoryTotals(sessions: store.sessions) }
-
-    private var walksThisWeek: Int {
-        // The calendar week so far, as Insights counts "This week".
-        let now = Date()
-        let week = InsightsSummary.calendarWeek(containing: now, calendar: .current)
-        return store.sessions.filter { InsightsSummary.counts($0.date, in: week, now: now) }.count
+    /// The rows on screen and the header computed from them, built once per
+    /// render so the list, its header and its deletes all use the same rows.
+    private var page: HistoryPage {
+        HistoryPage(filter: filter, sessions: store.sessions,
+                    petName: filter.petID.flatMap { id in petStore.pets.first { $0.id == id }?.name },
+                    now: Date(), calendar: .current)
     }
 
     var body: some View {
+        let page = page
         ZStack {
             Color.earthBg.ignoresSafeArea()
             Group {
-                if store.sessions.isEmpty { emptyState } else { historyList }
+                switch page.state {
+                case .noHistory: emptyState
+                case .noMatch:   noMatchState
+                case .rows:      historyList(page)
+                }
             }
         }
         .navigationTitle("Activity History")
         .navigationBarTitleDisplayMode(.inline)
+        .searchable(text: $filter.query, isPresented: $searchActive,
+                    placement: .navigationBarDrawer(displayMode: .always),
+                    prompt: "Search names and notes")
         .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
+            ToolbarItemGroup(placement: .navigationBarTrailing) {
+                if page.state != .noHistory { filterMenu }
                 Button {
                     showManualEntry = true
                 } label: {
@@ -88,10 +101,83 @@ struct WalkHistoryView: View {
                       actionTitle: "Log a Past Walk") { showManualEntry = true }
     }
 
-    private var statsHeader: some View {
-        // "All activities": every stored session, rides and zero-distance
-        // records included, so it says so rather than averaging them.
-        WktSection(title: "All activities") {
+    /// Something is stored, but the search or filters match none of it. Not
+    /// the empty state: that one says there is no history at all.
+    private var noMatchState: some View {
+        WktEmptyState(symbol: .find, title: "No activities match",
+                      message: "Try other words, or clear the filters to see everything",
+                      actionTitle: "Clear filters") {
+            filter = HistoryFilter()
+            searchActive = false
+        }
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("history.noMatch")
+    }
+
+    // MARK: Filter menu
+
+    private var filterMenu: some View {
+        Menu {
+            Picker(selection: $filter.activity) {
+                Text("Any activity").tag(ActivityMode?.none)
+                ForEach(HistoryFilter.activities, id: \.self) { mode in
+                    Text(mode.displayName).tag(ActivityMode?.some(mode))
+                }
+            } label: {
+                Text("Activity")
+            }
+            .pickerStyle(.menu)
+            Picker(selection: $filter.period) {
+                ForEach(HistoryFilter.Period.allCases, id: \.self) { period in
+                    Text(period.title).tag(period)
+                }
+            } label: {
+                Text("Period")
+            }
+            .pickerStyle(.menu)
+            if !petStore.pets.isEmpty {
+                Picker(selection: $filter.petID) {
+                    Text("Any pet").tag(UUID?.none)
+                    ForEach(petStore.pets) { pet in
+                        Text(pet.name).tag(UUID?.some(pet.id))
+                    }
+                } label: {
+                    Text("Pet")
+                }
+                .pickerStyle(.menu)
+            }
+            if filter.menuCount > 0 {
+                Divider()
+                Button { filter.resetMenu() } label: {
+                    Label { Text("Reset") } icon: { Image(wkt: .undo) }
+                }
+            }
+        } label: {
+            HStack(spacing: 2) {
+                Image(wkt: .filter)
+                    .wktIcon(.inline, tint: .earthGreen, filled: filter.menuCount > 0)
+                if filter.menuCount > 0 {
+                    Text("\(filter.menuCount)")
+                        .font(.wktLabel.monospacedDigit())
+                        .foregroundColor(.earthGreen)
+                }
+            }
+            .frame(minWidth: 44, minHeight: 44)
+            .contentShape(Rectangle())
+        }
+        .accessibilityLabel("Filters")
+        .accessibilityValue(filter.accessibilityValue)
+        .accessibilityIdentifier("history.filter")
+    }
+
+    // MARK: Header
+
+    private func statsHeader(_ page: HistoryPage) -> some View {
+        // The scope is named, and the figures are the sums over exactly the
+        // rows listed below: every one, rides and zero-distance records
+        // included, so it says so rather than averaging them.
+        let totals = page.totals
+        return WktSection(title: page.title) {
             HStack(spacing: 0) {
                 statCell("\(totals.count)", totals.count == 1 ? "Activity" : "Activities")
                 columnDivider
@@ -99,11 +185,12 @@ struct WalkHistoryView: View {
                 columnDivider
                 statCell(totals.timeText, "Time")
                 columnDivider
-                statCell("\(walksThisWeek)", "This week")
+                statCell("\(page.thisWeek)", "This week")
             }
             .wktCard(padding: 14)
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel("\(totals.summary()). \(walksThisWeek) this week")
+            .accessibilityLabel("\(totals.summary()). \(page.thisWeek) this week")
+            .accessibilityIdentifier("history.header")
         }
         .padding(.horizontal, WktSpacing.screen)
         .padding(.vertical, 8)
@@ -124,15 +211,16 @@ struct WalkHistoryView: View {
         .accessibilityElement(children: .combine)
     }
 
-    private var historyList: some View {
-        List {
+    private func historyList(_ page: HistoryPage) -> some View {
+        let rows = page.rows
+        return List {
             Section {
-                statsHeader
+                statsHeader(page)
                     .listRowInsets(EdgeInsets())
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
             }
-            ForEach(store.sessions) { session in
+            ForEach(rows) { session in
                 WalkHistoryRow(session: session,
                                onOpen: { summarySession = session },
                                onEdit: { selectedSession = session },
@@ -144,7 +232,11 @@ struct WalkHistoryView: View {
                 .listRowBackground(Color.earthCard)
                 .listRowSeparatorTint(Color.earthTrack)
             }
-            .onDelete { store.delete(at: $0) }
+            // The offsets are into `rows`, the list on screen, which a search
+            // or filter makes a subset of the store's. The page converts them
+            // to ids: passed to the store as offsets, they would delete other
+            // walks.
+            .onDelete { page.delete($0, from: store) }
         }
         .listStyle(.plain).scrollContentBackground(.hidden)
     }

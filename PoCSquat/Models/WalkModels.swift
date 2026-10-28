@@ -563,10 +563,21 @@ final class WalkHistoryStore: ObservableObject {
         insert(newSessions.sorted { $0.date > $1.date })
     }
 
+    /// Offsets into `sessions`, the whole list. A filtered History list must
+    /// not use this: its offsets name other activities here. It converts its
+    /// own offsets to ids and calls `delete(ids:)`.
     func delete(at offsets: IndexSet) {
+        delete(ids: HistoryScope.ids(at: offsets, in: sessions))
+    }
+
+    /// Deletes exactly the walks with these ids, wherever they sit in
+    /// `sessions`. Ids not stored change nothing and write nothing. A failed
+    /// write puts every one of them back, on screen and in the context.
+    func delete(ids: Set<UUID>) {
+        let toDelete = sessions.filter { ids.contains($0.id) }
+        guard !toDelete.isEmpty else { return }
         let before = sessions
-        let toDelete = offsets.map { sessions[$0] }
-        sessions.remove(atOffsets: offsets)
+        sessions.removeAll { ids.contains($0.id) }
         let records = toDelete.compactMap { fetchRecord(id: $0.id) }
         records.forEach { context.delete($0) }
         guard save("delete") else {
