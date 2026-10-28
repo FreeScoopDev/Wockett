@@ -224,6 +224,7 @@ way unless there's a strong reason; adding the first one is a real decision.
   saved activity), `home.recent.row` (opens that activity's summary, newest
   first), `home.recent.all` (opens Activity History),
   `history.row` (opens the activity's summary),
+  `community.wockettsHelp` (the You card's line saying what Wocketts count),
   `history.more` (a row's More menu: Edit details, Repeat, Share),
   `history.repeat.start` (the Repeat review's Start; absent when the
   activity can't be repeated), `history.repeat.reason` (why it can't),

@@ -3,7 +3,7 @@ import MapKit
 
 // MARK: - Community Hub View
 //
-// A dashboard since 2026-09-26 (the "A+" mockup): your week, your challenge,
+// A dashboard since 2026-09-26 (the "A+" mockup): your progress, your challenge,
 // the next badge, your crew's week, the latest posts, top community routes
 // and official trails nearby. Every section is Home's card with Home's
 // section heading above it (`wktCard`, `WktSection`), so the tab reads as
@@ -147,7 +147,9 @@ struct CommunityHubView: View {
                     Text(name)
                         .font(.wktCardTitle)
                         .foregroundColor(.earthCream)
-                    Text("Your week in Wockett")
+                    // Not "your week": the streak and badges are all-time,
+                    // the rank is the current challenge, Wocketts a total.
+                    Text("Your progress")
                         .font(.wktBodyText)
                         .foregroundColor(.earthMuted)
                 }
@@ -158,6 +160,14 @@ struct CommunityHubView: View {
                 youStat(value: model.visibleStanding.map { "#\($0.rank)" } ?? "–", label: "Challenge") { pushChallenges = true }
                 youStat(value: model.receivedWocketts.map { "\($0)" } ?? "–", label: "Wocketts") { pushRoutes = true }
             }
+            // What `CommunityRouteService.fetchReceivedWocketts` counts: votes
+            // on the routes in this phone's published list, one per voter,
+            // the author's own included.
+            Text("Wocketts are votes on the routes you've shared from this phone, one per walker.")
+                .font(.wktLabel.weight(.regular))
+                .foregroundColor(.earthMuted)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("community.wockettsHelp")
             HStack(spacing: 8) {
                 WktPrimaryButton(title: "Start a challenge") { pushNewChallenge = true }
                 WktSecondaryButton(title: "Share a route") { pushMyRoutes = true }
@@ -294,6 +304,9 @@ struct CommunityHubView: View {
 
     private var badgeCard: some View {
         let next = CommunityHubSummary.nextBadges(walkBadges, sessions: sessions, currentStreak: currentStreak)
+        let remaining = next.first.flatMap {
+            BadgeRemaining.text(for: $0.badge, sessions: sessions, currentStreak: currentStreak)
+        }
         return WktSection(title: "Next badge", actionTitle: "All badges", action: { pushBadges = true }, content: {
           VStack(alignment: .leading, spacing: 12) {
             if let first = next.first {
@@ -315,6 +328,12 @@ struct CommunityHubView: View {
                                 .foregroundColor(.earthOrange)
                         }
                         WktProgressBar(value: first.progress, tint: .earthOrange)
+                        if let remaining {
+                            Text(remaining)
+                                .font(.wktLabel)
+                                .foregroundColor(.earthMuted)
+                                .frame(maxWidth: .infinity, alignment: .trailing)
+                        }
                     }
                 }
                 .buttonStyle(.plain)

@@ -91,39 +91,51 @@ struct WalkBadge: Identifiable {
     }
 
     func progress(sessions: [WalkSession], currentStreak: Int, defaults: UserDefaults = .standard) -> Double {
+        if let amount = amount(sessions: sessions, currentStreak: currentStreak, defaults: defaults) {
+            return min(1.0, amount.done / max(1, amount.target))
+        }
+        return isEarned(sessions: sessions, currentStreak: currentStreak, defaults: defaults) ? 1.0 : 0.0
+    }
+
+    /// How far a countable badge has got, in its own unit: km for distance
+    /// badges, days for streaks, a count for the rest. Nil for a badge that is
+    /// simply done or not (Early Bird, Cartographer, …). `progress` is built
+    /// from this, so the Community hub's "to go" (`BadgeRemaining`) and its
+    /// percentage cannot disagree.
+    func amount(sessions: [WalkSession], currentStreak: Int,
+                defaults: UserDefaults = .standard) -> (done: Double, target: Double)? {
         switch type {
         case .distance(let km):
-            return min(1.0, totalWalkKm(from: sessions) / max(1, km))
+            return (totalWalkKm(from: sessions), km)
         case .streak(let days):
-            return min(1.0, Double(currentStreak) / Double(max(1, days)))
+            return (Double(currentStreak), Double(days))
         case .earlyBird, .nightOwl, .crossTrainDay, .multiPetWalk,
              .customRouteCreated, .customRouteShared, .challengeShared:
-            return isEarned(sessions: sessions, currentStreak: currentStreak, defaults: defaults) ? 1.0 : 0.0
+            return nil
         case .badgeCount(let n):
             let others = walkBadges.filter { $0.id != id }
             let count = others.filter { $0.isEarned(sessions: sessions, currentStreak: currentStreak, defaults: defaults) }.count
-            return min(1.0, Double(count) / Double(max(1, n)))
+            return (Double(count), Double(n))
         case .rideKm(let km):
-            return min(1.0, totalRideKm(from: sessions) / max(1, km))
+            return (totalRideKm(from: sessions), km)
         case .rideStreak(let days):
-            return min(1.0, Double(rideStreak(from: sessions)) / Double(max(1, days)))
+            return (Double(rideStreak(from: sessions)), Double(days))
         case .petWalks(let n):
-            return min(1.0, Double(sessions.filter { !$0.activePetIds.isEmpty }.count) / Double(max(1, n)))
+            return (Double(sessions.filter { !$0.activePetIds.isEmpty }.count), Double(n))
         case .communityRoutesCompleted(let n):
-            return min(1.0, Double(sessions.filter { $0.isCommunityRoute }.count) / Double(max(1, n)))
+            return (Double(sessions.filter { $0.isCommunityRoute }.count), Double(n))
         case .routesBookmarked(let n):
-            return min(1.0, Double(defaults.integer(forKey: "wkt_routesBookmarked_count")) / Double(max(1, n)))
+            return (Double(defaults.integer(forKey: "wkt_routesBookmarked_count")), Double(n))
         case .indoorWalks(let n):
-            return min(1.0, Double(sessions.filter { $0.activityType == ActivityMode.stationary.rawValue }.count) / Double(max(1, n)))
+            return (Double(sessions.filter { $0.activityType == ActivityMode.stationary.rawValue }.count), Double(n))
         case .walkNotesAdded(let n):
-            return min(1.0, Double(sessions.filter { !$0.notes.isEmpty }.count) / Double(max(1, n)))
+            return (Double(sessions.filter { !$0.notes.isEmpty }.count), Double(n))
         case .manualEntries(let n):
-            return min(1.0, Double(defaults.integer(forKey: "wkt_manualEntries_count")) / Double(max(1, n)))
+            return (Double(defaults.integer(forKey: "wkt_manualEntries_count")), Double(n))
         case .wockettsGiven(let n):
-            let count = StreakStore.wockettsGiven(defaults: defaults)
-            return min(1.0, Double(count) / Double(max(1, n)))
+            return (Double(StreakStore.wockettsGiven(defaults: defaults)), Double(n))
         case .wockettsReceived(let n):
-            return min(1.0, Double(defaults.integer(forKey: "wkt_wocketts_received")) / Double(max(1, n)))
+            return (Double(defaults.integer(forKey: "wkt_wocketts_received")), Double(n))
         }
     }
 

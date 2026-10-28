@@ -171,3 +171,50 @@ enum CommunityHubSummary {
         return String(name.prefix(2)).uppercased()
     }
 }
+
+// MARK: - What is left on a badge
+
+/// The concrete next step under the hub's Next badge percentage: "0.7 mi to
+/// go", "2 days to go", "3 indoor walks to go". Read from
+/// `WalkBadge.amount`, the same totals `progress` divides, on the same
+/// sessions the hub judges badges on, so the two cannot disagree.
+enum BadgeRemaining {
+
+    /// Nil for an earned badge and for one that is simply done or not.
+    /// Distance follows `locale`'s measurement system, through the app's
+    /// `challengeFormattedDistance`, rounded up: a remainder never reads
+    /// shorter than it is, and never "0.0 mi" while the badge is still open.
+    static func text(for badge: WalkBadge, sessions: [WalkSession], currentStreak: Int,
+                     defaults: UserDefaults = .standard, locale: Locale = .current) -> String? {
+        let clean = CommunityHubSummary.badgeSessions(sessions)
+        guard !badge.isEarned(sessions: clean, currentStreak: currentStreak, defaults: defaults),
+              let amount = badge.amount(sessions: clean, currentStreak: currentStreak, defaults: defaults)
+        else { return nil }
+        let left = amount.target - amount.done
+        guard left > 0 else { return nil }
+        let count = Int(left.rounded(.up))
+        switch badge.type {
+        case .distance, .rideKm:
+            // Whole metres first: 1 - 0.7 km is 0.30000000000000004 in a
+            // Double, and rounding that up read "0.4 km" (critic, F3). At
+            // least 1 m, so an open badge never reads "0.0 km to go".
+            return "\(challengeFormattedDistance(max(1, (left * 1000).rounded()), locale: locale, rule: .up)) to go"
+        case .streak, .rideStreak: return toGo(count, "day", "days")
+        case .badgeCount: return toGo(count, "badge", "badges")
+        case .petWalks: return toGo(count, "walk with a pet", "walks with a pet")
+        case .communityRoutesCompleted: return toGo(count, "community route", "community routes")
+        case .routesBookmarked: return toGo(count, "bookmark", "bookmarks")
+        case .indoorWalks: return toGo(count, "indoor walk", "indoor walks")
+        case .walkNotesAdded: return toGo(count, "walk with notes", "walks with notes")
+        case .manualEntries: return toGo(count, "past walk", "past walks")
+        case .wockettsGiven, .wockettsReceived: return toGo(count, "Wockett", "Wocketts")
+        case .earlyBird, .nightOwl, .crossTrainDay, .multiPetWalk,
+             .customRouteCreated, .customRouteShared, .challengeShared:
+            return nil
+        }
+    }
+
+    private static func toGo(_ count: Int, _ one: String, _ many: String) -> String {
+        "\(count) \(count == 1 ? one : many) to go"
+    }
+}
