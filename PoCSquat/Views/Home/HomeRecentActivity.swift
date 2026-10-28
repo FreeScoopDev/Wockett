@@ -6,12 +6,15 @@ import SwiftUI
 // Home now lists the newest few, worded exactly as History words them
 // (`ActivityRowText`), and each opens the summary History opens.
 //
-// Everything History lists is a candidate, as History shows it: indoor walks,
-// zero-distance records, possibly-driven walks, and a pet's own credit entry
-// ("Nala's Indoor Walk", `WalkSession.isPetCreditEntry`), which History lists
-// as a row like any other.
+// History's rows are candidates, as History shows them (indoor walks,
+// zero-distance records, possibly-driven walks), except a pet's own credit
+// entry ("Nala's Indoor Walk", `WalkSession.isPetCreditEntry`). An indoor walk
+// with two pets saves three records at one date, which filled all three rows
+// and pushed an earlier run off Home (fix/home-recent-hide-pet-credit,
+// 2026-10-28). History still lists the credit entries as rows.
 
-/// The rows Home's Recent activity shows: the newest `limit` sessions by date.
+/// The rows Home's Recent activity shows: the newest `limit` sessions by date,
+/// pet-credit entries left out.
 struct HomeRecentActivity {
     static let limit = 3
 
@@ -26,10 +29,11 @@ struct HomeRecentActivity {
     /// Newest first by date. The store keeps sessions newest first by date
     /// when it loads, but `add` puts a new one on top whatever its date (a
     /// past walk logged today for last week), so the order is not trusted.
-    /// Ties keep the store's order.
+    /// Ties keep the store's order. Pet-credit entries are dropped first, so
+    /// they never take a row from a real activity.
     init(sessions: [WalkSession], limit: Int = Self.limit,
          locale: Locale = .current, timeZone: TimeZone = .current) {
-        let newest = sessions.enumerated()
+        let newest = sessions.filter { !$0.isPetCreditEntry }.enumerated()
             .sorted { lhs, rhs in
                 lhs.element.date != rhs.element.date
                     ? lhs.element.date > rhs.element.date
@@ -39,7 +43,7 @@ struct HomeRecentActivity {
         rows = newest.map { Row(session: $0.element, text: ActivityRowText($0.element, locale: locale, timeZone: timeZone)) }
     }
 
-    /// Nothing saved: Home shows no section at all.
+    /// Nothing saved, or only pet-credit entries: Home shows no section at all.
     var isEmpty: Bool { rows.isEmpty }
 }
 

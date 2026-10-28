@@ -4,7 +4,8 @@ import MapKit
 @testable import PoCSquat
 
 /// Home's Recent activity (spec fix/home-start-first, 2026-10-28): the newest
-/// three sessions by date, worded as Activity History words them. Expected
+/// three sessions by date, pet-credit entries left out
+/// (fix/home-recent-hide-pet-credit), worded as Activity History words them. Expected
 /// orders and text are written by hand from the fixture. Dates are pinned to
 /// en_US_POSIX in UTC, since CI runs in UTC and the simulator in the Mac's
 /// zone; the time's space before AM/PM is ICU's narrow no-break space
@@ -119,17 +120,57 @@ struct HomeRecentActivityTests {
         #expect(rows[2].text.subtitle.hasPrefix("Hike · "))
     }
 
-    /// A pet's own credit entry (one pet, no time) is a row in History, so it
-    /// is one here too, newest by date like the rest.
-    @Test func petCreditEntryIsListedAsHistoryListsIt() {
+    // MARK: Pet-credit entries (fix/home-recent-hide-pet-credit, 2026-10-28)
+
+    private let rex = UUID()
+
+    /// An indoor walk with Rex and Nala, as `StationaryWalkView` saves it: the
+    /// walk, then one credit entry per pet (one pet, no time) at the same date,
+    /// plus a run the evening before.
+    private func indoorWalkWithTwoPetsAndAnEarlierRun() -> [WalkSession] {
+        let walkTime = at(28, 18, 30)
+        return [
+            session("Indoor Walk", walkTime, type: "stationary", meters: 1_200, seconds: 1_200, pets: [rex, nala]),
+            session("Rex's Indoor Walk", walkTime, type: "stationary", meters: 1_200, seconds: 0, pets: [rex]),
+            session("Nala's Indoor Walk", walkTime, type: "stationary", meters: 1_200, seconds: 0, pets: [nala]),
+            session("Evening Run", at(27, 19), type: "running", meters: 5_000, seconds: 1_800)
+        ]
+    }
+
+    /// Acceptance 1: the credit entries take no row, so the run stays on Home.
+    @Test func petCreditEntriesAreLeftOffHome() {
+        let stored = indoorWalkWithTwoPetsAndAnEarlierRun()
+        #expect(stored[1].isPetCreditEntry && stored[2].isPetCreditEntry, "fixture: two credit entries")
+        #expect(!stored[0].isPetCreditEntry && !stored[3].isPetCreditEntry, "fixture: two real activities")
+        #expect(names(recent(stored)) == ["Indoor Walk", "Evening Run"])
+    }
+
+    /// Acceptance 2: History, with its default (show everything) filter,
+    /// still lists every one of them, credit entries included.
+    @Test func historyStillListsPetCreditEntries() {
+        let stored = indoorWalkWithTwoPetsAndAnEarlierRun()
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = utc
+        let listed = HistoryScope.apply(HistoryFilter(), to: stored, now: at(28, 20), calendar: cal)
+        #expect(listed.map(\.routeName) == ["Indoor Walk", "Rex's Indoor Walk", "Nala's Indoor Walk", "Evening Run"])
+    }
+
+    /// Acceptance 3: only credit entries stored means no section, as with no
+    /// history at all.
+    @Test func onlyPetCreditEntriesMeansNoSection() {
         let credit = session("Nala's Indoor Walk", at(28, 19), type: "stationary", meters: 800,
                              seconds: 0, pets: [nala])
-        let walk = session("Evening Walk", at(28, 18))
         #expect(credit.isPetCreditEntry)
-        let rows = recent([walk, credit]).rows
-        #expect(rows.map(\.text.title) == ["Nala's Indoor Walk", "Evening Walk"])
-        #expect(rows[0].text.time == "0m 0s")
-        #expect(rows[0].text.notes == nil)
+        let none = recent([credit])
+        #expect(none.isEmpty)
+        #expect(none.rows.isEmpty)
+    }
+
+    /// A walk with one pet and real time is not a credit entry and stays.
+    @Test func aRealWalkWithOnePetIsListed() {
+        let walk = session("Walk with Nala", at(28, 9), seconds: 1_200, pets: [nala])
+        #expect(!walk.isPetCreditEntry)
+        #expect(names(recent([walk])) == ["Walk with Nala"])
     }
 
     @Test func zeroDistanceRecordIsListed() {
