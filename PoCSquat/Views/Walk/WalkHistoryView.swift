@@ -11,22 +11,14 @@ struct WalkHistoryView: View {
     @State private var showManualEntry = false
     @State private var selectedSession: WalkSession?
     @State private var summarySession: WalkSession?
-    @State private var showActiveSessionAlert = false
+    @State private var repeatSession: WalkSession?
+    @State private var shareSession: WalkSession?
+    /// Set by the review sheet's Start; History closes once the sheet has gone,
+    /// as it did when the row's arrow began the walk.
+    @State private var repeatStarted = false
 
-    private var totalWalks: Int { store.sessions.count }
-
-    private var avgDistanceText: String {
-        guard !store.sessions.isEmpty else { return "—" }
-        let avg = store.sessions.reduce(0.0) { $0 + $1.totalDistance } / Double(store.sessions.count)
-        return MKDistanceFormatter.abbreviated.string(fromDistance: avg)
-    }
-
-    private var avgDurationText: String {
-        guard !store.sessions.isEmpty else { return "—" }
-        let avg = store.sessions.reduce(0.0) { $0 + $1.elapsedTime } / Double(store.sessions.count)
-        let mins = Int(avg) / 60
-        return mins < 60 ? "\(mins)m" : "\(mins / 60)h \(mins % 60)m"
-    }
+    /// The header's numbers come from the list the rows show, all of it.
+    private var totals: HistoryTotals { HistoryTotals(sessions: store.sessions) }
 
     private var walksThisWeek: Int {
         // The calendar week so far, as Insights counts "This week".
@@ -54,18 +46,30 @@ struct WalkHistoryView: View {
                 .accessibilityLabel("Add activity")
             }
         }
-        .alert("Walk Already Active", isPresented: $showActiveSessionAlert) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text("You have a walk in progress. Return to the home screen to resume or end it first.")
-        }
         .sheet(isPresented: $showManualEntry) {
             ManualWalkEntrySheet { session in store.add(session) }
         }
         .sheet(item: $selectedSession) { session in
             WalkSessionDetailSheet(session: session, store: store)
         }
+        .sheet(item: $repeatSession, onDismiss: closeIfRepeatStarted) { session in
+            RepeatReviewSheet(
+                review: RepeatReview(session: session, activePets: petStore.activePets),
+                // The same route the row's arrow started before the review.
+                begin: { ActiveWalkStore.shared.beginSession(route: session.toNavigableRoute()) != nil },
+                onStarted: { repeatStarted = true }
+            )
+        }
+        .sheet(item: $shareSession) { session in
+            ActivitySummaryShareSheet(session: session, historyStore: store)
+        }
         .historySummaryCover(item: $summarySession, history: store.sessions)
+    }
+
+    /// History closes after Repeat's Start, as it did when the row's arrow
+    /// began the walk; after Cancel it stays.
+    private func closeIfRepeatStarted() {
+        if repeatStarted { dismiss() }
     }
 
     private var emptyState: some View {
@@ -76,16 +80,20 @@ struct WalkHistoryView: View {
     }
 
     private var statsHeader: some View {
-        HStack(spacing: 0) {
-            statCell("\(totalWalks)", "Total")
-            columnDivider
-            statCell(avgDistanceText, "Avg dist")
-            columnDivider
-            statCell(avgDurationText, "Avg time")
-            columnDivider
-            statCell("\(walksThisWeek)", "This week")
+        // "All activities": every stored session, rides and zero-distance
+        // records included, so it says so rather than averaging them.
+        WktSection(title: "All activities") {
+            HStack(spacing: 0) {
+                statCell("\(totals.count)", totals.count == 1 ? "Activity" : "Activities")
+                columnDivider
+                statCell(totals.distanceText(), "Distance")
+                columnDivider
+                statCell(totals.timeText, "Time")
+                columnDivider
+                statCell("\(walksThisWeek)", "This week")
+            }
+            .wktCard(padding: 14)
         }
-        .wktCard(padding: 14)
         .padding(.horizontal, WktSpacing.screen)
         .padding(.vertical, 8)
     }
@@ -114,18 +122,14 @@ struct WalkHistoryView: View {
                     .listRowSeparator(.hidden)
             }
             ForEach(store.sessions) { session in
-                WalkHistoryRow(session: session, onOpen: {
-                    summarySession = session
-                }, onWalkAgain: {
-                    let nav = session.toNavigableRoute()
-                    guard ActiveWalkStore.shared.beginSession(route: nav) != nil else {
-                        showActiveSessionAlert = true
-                        return
-                    }
-                    dismiss()
-                }, onInfo: {
-                    selectedSession = session
-                })
+                WalkHistoryRow(session: session,
+                               onOpen: { summarySession = session },
+                               onEdit: { selectedSession = session },
+                               onRepeat: {
+                                   repeatStarted = false
+                                   repeatSession = session
+                               },
+                               onShare: { shareSession = session })
                 .listRowBackground(Color.earthCard)
                 .listRowSeparatorTint(Color.earthTrack)
             }
@@ -156,10 +160,17 @@ struct WalkSessionDetailSheet: View {
                 Color.earthBg.ignoresSafeArea()
                 ScrollView {
                     VStack(alignment: .leading, spacing: WktSpacing.betweenSections) {
-                        Text(Self.dateFmt.string(from: session.date))
-                            .font(.wktBodyText).foregroundColor(.earthMuted)
-                            .frame(maxWidth: .infinity)
-                            .padding(.top, 4)
+                        // Reached from a row's More menu as "Edit details": it
+                        // edits the type and the note, so it says so.
+                        VStack(spacing: 2) {
+                            Text("Edit details")
+                                .font(.wktRowTitle).foregroundColor(.earthCream)
+                                .accessibilityAddTraits(.isHeader)
+                            Text(Self.dateFmt.string(from: session.date))
+                                .font(.wktBodyText).foregroundColor(.earthMuted)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 4)
 
                         // The summary's own tiles, following the type chosen below.
                         ActivityStatTiles(session: sessionAsTyped)
@@ -429,8 +440,11 @@ struct WalkHistoryRow: View {
     let session: WalkSession
     /// Opens the activity's summary.
     let onOpen: () -> Void
-    let onWalkAgain: () -> Void
-    let onInfo: () -> Void
+    /// Opens `WalkSessionDetailSheet`: the activity type and the note.
+    let onEdit: () -> Void
+    /// Opens the review sheet; only its Start begins anything.
+    let onRepeat: () -> Void
+    let onShare: () -> Void
 
     private var rowIcon: WktSymbol {
         switch session.activityType {
@@ -457,7 +471,7 @@ struct WalkHistoryRow: View {
                 .accessibilityElement(children: .combine)
                 .accessibilityHint("Opens the summary")
                 .accessibilityIdentifier("history.row")
-            actionButtons
+            moreMenu
         }
         .padding(.vertical, 8)
     }
@@ -487,26 +501,29 @@ struct WalkHistoryRow: View {
         .contentShape(Rectangle())
     }
 
-    private var actionButtons: some View {
-        VStack(spacing: 8) {
-            Button { onWalkAgain() } label: {
-                Image(wkt: .refresh)
-                    .wktIcon(.inline, tint: rowColor)
-                    .frame(width: 36, height: 36)
-                    .background(Color.earthRaised, in: Circle())
+    /// One labelled menu instead of two icon-only circles, one of which began
+    /// a walk on the tap. Every action has a visible title in the menu.
+    private var moreMenu: some View {
+        Menu {
+            Button(action: onEdit) {
+                Label { Text("Edit details") } icon: { Image(wkt: .edit) }
             }
-            .buttonStyle(BounceButtonStyle(scale: 0.92))
-            // Replaying starts a route walk, never a hike (only a trail's own
-            // Start makes one), so this names the activity, not "hike".
-            .accessibilityLabel("Do this \(session.wording.activityMode.noun) again")
-            Button { onInfo() } label: {
-                Image(wkt: session.notes.isEmpty ? .notePlus : .noteText)
-                    .wktIcon(.inline, tint: .earthCream)
-                    .frame(width: 36, height: 36)
-                    .background(Color.earthRaised, in: Circle())
+            Button(action: onRepeat) {
+                Label { Text("Repeat") } icon: { Image(wkt: .refresh) }
             }
-            .buttonStyle(BounceButtonStyle(scale: 0.92))
-            .accessibilityLabel(session.notes.isEmpty ? "Add note" : "View note")
+            Button(action: onShare) {
+                Label { Text("Share") } icon: { Image(wkt: .share) }
+            }
+        } label: {
+            Image(wkt: .more)
+                .wktIcon(.inline, tint: .earthCream)
+                .frame(width: 44, height: 44)
+                .background(Color.earthRaised, in: Circle())
+                .contentShape(Circle())
         }
+        .buttonStyle(.plain)
+        .accessibilityLabel("More")
+        .accessibilityHint("Edit details, repeat or share this \(session.wording.noun)")
+        .accessibilityIdentifier("history.more")
     }
 }

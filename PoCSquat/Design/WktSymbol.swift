@@ -169,6 +169,8 @@ enum WktSymbol {
     case joinPerson         // person.badge.plus (join a challenge)
     case anyActivity        // sparkles (challenge open to any activity)
     case copy               // doc.on.doc (copy a value)
+    case more               // ellipsis (a row's More menu)
+    case edit               // pencil (edit an item's details)
 
     var name: String {
         switch self {
@@ -303,6 +305,8 @@ enum WktSymbol {
         case .anyActivity:    return "sparkles"
         case .stroller:       return "stroller"
         case .copy:           return "doc.on.doc"
+        case .more:           return "ellipsis"
+        case .edit:           return "pencil"
         }
     }
 

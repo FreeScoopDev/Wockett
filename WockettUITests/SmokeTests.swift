@@ -487,6 +487,87 @@ final class SmokeTests: XCTestCase {
         XCTAssertEqual(note.label, "For general information, not medical advice. Wockett isn't a medical device.")
     }
 
+    // MARK: - 6c. History: Repeat reviews before it starts
+
+    /// Health → Activity History. A row's More menu reaches Edit details,
+    /// and Repeat opens a review that begins nothing until Start (spec
+    /// fix/history-actions, 2026-10-27; the row's arrow used to begin a walk
+    /// on the tap). Repeat's walk opens no walk screen: History closes and
+    /// the mini tile appears, as it always has, so the tile is the check
+    /// that a session exists, with `session.root` beside it. A second Start
+    /// while that walk is active shows the existing alert and leaves the
+    /// review up. -WKTDemo seeds the one finished walk (DemoMode).
+    func testHistoryRepeatReviewsBeforeStarting() {
+        app.terminate()
+        app.launchArguments += ["-WKTDemo"]
+        app.launch()
+        XCTAssertTrue(el("home.statCard").waitForExistence(timeout: 30))
+
+        let more = app.buttons["history.more"].firstMatch
+        let repeatItem = app.buttons["Repeat"].firstMatch
+        let start = app.buttons["history.repeat.start"]
+        let miniTile = app.buttons["accessory.miniTile"]
+
+        func openHistory() {
+            selectTab("Health")
+            XCTAssertTrue(el("health.root").waitForExistence(timeout: 30))
+            let card = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Activity History'")).firstMatch
+            XCTAssertTrue(card.waitForExistence(timeout: 10), "Activity History missing from Health")
+            var swipes = 0
+            while !card.isHittable && swipes < 8 {
+                app.swipeUp()
+                swipes += 1
+            }
+            card.tap()
+            XCTAssertTrue(more.waitForExistence(timeout: 15), "A history row must have its More menu")
+        }
+
+        func openRepeat() {
+            more.tap()
+            XCTAssertTrue(repeatItem.waitForExistence(timeout: 5), "More must offer Repeat")
+            repeatItem.tap()
+            XCTAssertTrue(start.waitForExistence(timeout: 10), "Repeat must open the review sheet")
+        }
+
+        openHistory()
+
+        // Edit details is one tap from the menu and says what it is.
+        more.tap()
+        let edit = app.buttons["Edit details"].firstMatch
+        XCTAssertTrue(edit.waitForExistence(timeout: 5), "More must offer Edit details")
+        edit.tap()
+        XCTAssertTrue(app.staticTexts["Edit details"].waitForExistence(timeout: 10),
+                      "The details sheet must say Edit details")
+        XCTAssertTrue(app.staticTexts["Activity type"].exists, "Edit details must reach the type picker")
+        app.buttons["Done"].firstMatch.tap()
+        XCTAssertTrue(more.waitForExistence(timeout: 10))
+
+        // Repeat: the review is up and nothing has begun.
+        openRepeat()
+        XCTAssertFalse(miniTile.waitForExistence(timeout: 2), "Repeat must not begin a walk before Start")
+        XCTAssertFalse(el("session.root").exists, "Repeat must not open a walk before Start")
+
+        // Cancel: still nothing.
+        app.buttons["Cancel"].firstMatch.tap()
+        XCTAssertTrue(more.waitForExistence(timeout: 10), "Cancel must return to the list")
+        XCTAssertFalse(miniTile.waitForExistence(timeout: 2), "Cancel must leave no walk in progress")
+
+        // Start begins one.
+        openRepeat()
+        start.tap()
+        XCTAssertTrue(miniTile.waitForExistence(timeout: 20),
+                      "Start must begin the walk. \(screenState())")
+
+        // Again while it is active: the existing alert, and the review stays.
+        openHistory()
+        openRepeat()
+        start.tap()
+        let alert = app.alerts["Walk Already Active"]
+        XCTAssertTrue(alert.waitForExistence(timeout: 10), "A second walk must be refused with the alert")
+        alert.buttons["OK"].tap()
+        XCTAssertTrue(start.waitForExistence(timeout: 5), "The review must stay up when nothing started")
+    }
+
     // MARK: - 7. Trails list
 
     /// Routes → Trails lists real trails from the bundled pack, a card opens
