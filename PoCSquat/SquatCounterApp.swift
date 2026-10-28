@@ -131,7 +131,10 @@ struct SquatCounterApp: App {
                 .tabViewStyle(.sidebarAdaptable)
                 // Tab bar collapses on downward scroll (iPhone only; ignored on iPad).
                 .tabBarMinimizeBehavior(.onScrollDown)
-                // Cap Dynamic Type at Accessibility 2 so tiles and tab bar remain usable.
+                // Caps system-styled text (`.font(.body)`, system controls) at
+                // Accessibility 2. It cannot cap Wockett's own type scale, whose
+                // point size is resolved before SwiftUI reads this; that clamps
+                // itself to the same size in `Font.wktScaledSize` (DesignSystem.swift).
                 .dynamicTypeSize(...DynamicTypeSize.accessibility2)
                 // Active walk tile; isEnabled:false completely hides the capsule when idle.
                 .tabViewBottomAccessory(isEnabled: ActiveWalkStore.shared.isActive) {
