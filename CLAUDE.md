@@ -220,7 +220,10 @@ way unless there's a strong reason; adding the first one is a real decision.
   `routes.routeCard`, `routes.startWalk`, `routes.weatherTile`,
   `terms.sheet`, `terms.agree`, `terms.cancel`, `challenge.create.name`,
   `challenge.create.submit`, `challenge.create.error`, `home.tile.indoor`,
-  `indoor.finish`, `history.row` (opens the activity's summary),
+  `indoor.finish`, `home.recent` (Home's Recent activity; absent with no
+  saved activity), `home.recent.row` (opens that activity's summary, newest
+  first), `home.recent.all` (opens Activity History),
+  `history.row` (opens the activity's summary),
   `history.more` (a row's More menu: Edit details, Repeat, Share),
   `history.repeat.start` (the Repeat review's Start; absent when the
   activity can't be repeated), `history.repeat.reason` (why it can't),

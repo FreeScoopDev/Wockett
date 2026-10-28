@@ -50,6 +50,8 @@ struct WktSectionHeader: View {
     let title: String
     var actionTitle: String?
     var action: (() -> Void)?
+    /// The link's accessibility identifier, for a UI test to find it by.
+    var actionIdentifier: String?
 
     var body: some View {
         HStack(alignment: .firstTextBaseline) {
@@ -59,22 +61,30 @@ struct WktSectionHeader: View {
                 .accessibilityAddTraits(.isHeader)
             Spacer()
             if let actionTitle, let action {
-                Button(action: action) {
-                    Text(actionTitle)
-                        .font(.wktBodyText)
-                        .foregroundColor(.earthGreen)
-                        // A 44 pt target without a 44 pt row: the tap area
-                        // reaches past the label, the layout does not.
-                        .padding(.vertical, 12)
-                        .padding(.leading, 12)
-                        .contentShape(Rectangle())
-                        .padding(.vertical, -12)
-                        .padding(.leading, -12)
+                if let actionIdentifier {
+                    link(actionTitle, action).accessibilityIdentifier(actionIdentifier)
+                } else {
+                    link(actionTitle, action)
                 }
-                .buttonStyle(.plain)
             }
         }
         .frame(minHeight: 24)
+    }
+
+    private func link(_ actionTitle: String, _ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(actionTitle)
+                .font(.wktBodyText)
+                .foregroundColor(.earthGreen)
+                // A 44 pt target without a 44 pt row: the tap area
+                // reaches past the label, the layout does not.
+                .padding(.vertical, 12)
+                .padding(.leading, 12)
+                .contentShape(Rectangle())
+                .padding(.vertical, -12)
+                .padding(.leading, -12)
+        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -106,11 +116,13 @@ struct WktSection<Content: View>: View {
     let title: String
     var actionTitle: String?
     var action: (() -> Void)?
+    var actionIdentifier: String?
     @ViewBuilder let content: () -> Content
 
     var body: some View {
         VStack(alignment: .leading, spacing: WktSpacing.betweenCards) {
-            WktSectionHeader(title: title, actionTitle: actionTitle, action: action)
+            WktSectionHeader(title: title, actionTitle: actionTitle, action: action,
+                             actionIdentifier: actionIdentifier)
             content()
         }
     }

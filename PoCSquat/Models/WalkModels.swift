@@ -498,8 +498,12 @@ struct WalkSession: Identifiable, Codable {
 
     var paceOrSpeedLabel: String { activityType == "cycling" ? "Speed" : "Pace" }
 
-    var formattedDate: String {
+    var formattedDate: String { formattedDate(locale: .current, timeZone: .current) }
+
+    /// `formattedDate` in a given locale and zone, so a test can pin both.
+    func formattedDate(locale: Locale, timeZone: TimeZone) -> String {
         let f = DateFormatter(); f.dateStyle = .medium; f.timeStyle = .short
+        f.locale = locale; f.timeZone = timeZone
         return f.string(from: date)
     }
 

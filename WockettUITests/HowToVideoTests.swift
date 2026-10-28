@@ -193,6 +193,16 @@ final class HowToVideoTests: XCTestCase {
         waitForHome()
         let myRoutes = el("home.myRoutes")
         XCTAssertTrue(myRoutes.waitForExistence(timeout: 15), "Home's My Routes card is missing")
+        // Below Start, Recent activity and the step hero since
+        // fix/home-start-first, so off the first screen: scroll until it
+        // clears the tab bar. By frame, since this card can report not
+        // hittable while being tappable (forceTap).
+        let visibleBottom = app.windows.firstMatch.frame.maxY - 120
+        var swipes = 0
+        while myRoutes.frame.maxY > visibleBottom && swipes < 4 {
+            app.swipeUp()
+            swipes += 1
+        }
         forceTap(myRoutes)
 
         // The list has no identifier of its own; its title is "Saved Items".

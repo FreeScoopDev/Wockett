@@ -555,27 +555,9 @@ struct WalkHistoryRow: View {
     let onRepeat: () -> Void
     let onShare: () -> Void
 
-    private var rowIcon: WktSymbol {
-        switch session.activityType {
-        case "running":    return .run
-        case "cycling":    return .ride
-        case "stationary": return .indoor
-        default:           return .walk
-        }
-    }
-
-    private var rowColor: Color {
-        switch session.activityType {
-        case "running":    return Color.accentRun
-        case "cycling":    return Color.accentRide
-        case "stationary": return Color.accentIndoor
-        default:           return .earthGreen
-        }
-    }
-
     var body: some View {
         HStack(spacing: 14) {
-            Button(action: onOpen) { rowContent }
+            Button(action: onOpen) { ActivityRowContent(text: ActivityRowText(session)) }
                 .buttonStyle(.plain)
                 .accessibilityElement(children: .combine)
                 .accessibilityHint("Opens the summary")
@@ -583,31 +565,6 @@ struct WalkHistoryRow: View {
             moreMenu
         }
         .padding(.vertical, 8)
-    }
-
-    private var rowContent: some View {
-        HStack(spacing: 14) {
-            WktIconBadge(symbol: rowIcon, tint: rowColor)
-            VStack(alignment: .leading, spacing: 4) {
-                Text(session.routeName).font(.wktRowTitle).foregroundColor(.earthCream).lineLimit(1)
-                // "Hike · 15 Oct 2026 at 09:12", "Indoor walk · …": the row's title is the
-                // route's name, so this says which activity it was.
-                Text("\(session.wording.displayName) · \(session.formattedDate)")
-                    .font(.wktLabel).foregroundColor(.earthMuted)
-                HStack(spacing: 10) {
-                    Label { Text(session.distanceText) } icon: { Image(wkt: .distance).wktIcon(.inline, tint: .earthMuted) }
-                    Label { Text(session.timeText) } icon: { Image(wkt: .time).wktIcon(.inline, tint: .earthMuted) }
-                }
-                .font(.wktLabel).foregroundColor(.earthMuted)
-                if !session.notes.isEmpty {
-                    Text(session.notes)
-                        .font(.wktLabel).foregroundColor(.earthMuted)
-                        .lineLimit(1)
-                }
-            }
-            Spacer(minLength: 0)
-        }
-        .contentShape(Rectangle())
     }
 
     /// One labelled menu instead of two icon-only circles, one of which began
@@ -634,5 +591,75 @@ struct WalkHistoryRow: View {
         .accessibilityLabel("More")
         .accessibilityHint("Edit details, repeat or share this \(session.wording.noun)")
         .accessibilityIdentifier("history.more")
+    }
+}
+
+// MARK: - Activity row (History and Home)
+
+/// What one saved activity's row says. Activity History's rows and Home's
+/// Recent activity both read it, so the two cannot word the same walk
+/// differently (fix/home-start-first, 2026-10-28).
+struct ActivityRowText: Equatable {
+    /// The route's name: "Downtown Loop", "Past Walk", "Nala's Indoor Walk".
+    let title: String
+    /// "Hike · Oct 15, 2026 at 9:12 AM", "Indoor walk · …": the title is the
+    /// route's name, so this says which activity it was.
+    let subtitle: String
+    let distance: String
+    let time: String
+    /// The note, or nil when there is none.
+    let notes: String?
+    let symbol: WktSymbol
+
+    init(_ session: WalkSession, locale: Locale = .current, timeZone: TimeZone = .current) {
+        title = session.routeName
+        subtitle = "\(session.wording.displayName) · \(session.formattedDate(locale: locale, timeZone: timeZone))"
+        distance = session.distanceText
+        time = session.timeText
+        notes = session.notes.isEmpty ? nil : session.notes
+        switch session.activityType {
+        case "running":    symbol = .run
+        case "cycling":    symbol = .ride
+        case "stationary": symbol = .indoor
+        default:           symbol = .walk
+        }
+    }
+}
+
+/// The row's icon and text, without the row's actions: History adds its More
+/// menu beside it, Home shows it alone.
+struct ActivityRowContent: View {
+    let text: ActivityRowText
+
+    private var tint: Color {
+        switch text.symbol {
+        case .run:    return Color.accentRun
+        case .ride:   return Color.accentRide
+        case .indoor: return Color.accentIndoor
+        default:      return .earthGreen
+        }
+    }
+
+    var body: some View {
+        HStack(spacing: 14) {
+            WktIconBadge(symbol: text.symbol, tint: tint)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(text.title).font(.wktRowTitle).foregroundColor(.earthCream).lineLimit(1)
+                Text(text.subtitle)
+                    .font(.wktLabel).foregroundColor(.earthMuted)
+                HStack(spacing: 10) {
+                    Label { Text(text.distance) } icon: { Image(wkt: .distance).wktIcon(.inline, tint: .earthMuted) }
+                    Label { Text(text.time) } icon: { Image(wkt: .time).wktIcon(.inline, tint: .earthMuted) }
+                }
+                .font(.wktLabel).foregroundColor(.earthMuted)
+                if let notes = text.notes {
+                    Text(notes)
+                        .font(.wktLabel).foregroundColor(.earthMuted)
+                        .lineLimit(1)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .contentShape(Rectangle())
     }
 }
