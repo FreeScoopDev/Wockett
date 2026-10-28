@@ -584,6 +584,47 @@ final class SmokeTests: XCTestCase {
         XCTAssertTrue(start.waitForExistence(timeout: 5), "The review must stay up when nothing started")
     }
 
+    /// A walk logged through Log a Past Walk has no route, so its Repeat
+    /// review says why and has no Start (spec fix/history-repeat-no-route,
+    /// 2026-10-28: Start used to open a walk screen whose timer never moved).
+    /// The menu still offers Repeat, so the reason can be found.
+    func testHistoryRepeatWithNoRouteExplainsAndHasNoStart() {
+        app.terminate()
+        app.launchArguments += ["-WKTDemo"]
+        app.launch()
+        XCTAssertTrue(el("home.statCard").waitForExistence(timeout: 30))
+        openHistoryFromHealth()
+
+        // A past walk, newer than the demo one, so its row is first.
+        app.buttons["Add activity"].tap()
+        let distance = app.textFields.matching(NSPredicate(format: "placeholderValue BEGINSWITH 'Distance in'")).firstMatch
+        XCTAssertTrue(distance.waitForExistence(timeout: 10), "Log a Past Walk must open")
+        distance.tap()
+        distance.typeText("2")
+        let name = app.textFields.matching(NSPredicate(format: "placeholderValue == 'Route name or notes…'")).firstMatch
+        name.tap()
+        name.typeText("Riverside Path")
+        app.buttons["Done"].firstMatch.tap()
+        app.buttons["Save Walk"].tap()
+        expectHistoryRows(2, "Both walks must be listed")
+        XCTAssertTrue(historyRows.firstMatch.label.contains("Riverside Path"), historyRows.firstMatch.label)
+
+        app.buttons["history.more"].firstMatch.tap()
+        let repeatItem = app.buttons["Repeat"].firstMatch
+        XCTAssertTrue(repeatItem.waitForExistence(timeout: 5), "More must still offer Repeat")
+        repeatItem.tap()
+        let reason = el("history.repeat.reason")
+        XCTAssertTrue(reason.waitForExistence(timeout: 10), "The review must say why it can't repeat")
+        XCTAssertEqual(reason.label,
+                       "This walk has no route to follow, so it can't be repeated. Start a new one from Home.")
+        XCTAssertFalse(app.buttons["history.repeat.start"].exists, "A walk with no route must have no Start")
+
+        app.buttons["Cancel"].firstMatch.tap()
+        XCTAssertTrue(historyRows.firstMatch.waitForExistence(timeout: 10), "Cancel must return to the list")
+        XCTAssertFalse(app.buttons["accessory.miniTile"].waitForExistence(timeout: 2),
+                       "Nothing may begin from a review with no Start")
+    }
+
     // MARK: - 6d. History: search, filters, and deleting from a filtered list
 
     /// Health → Activity History with the -WKTDemo walk on screen.

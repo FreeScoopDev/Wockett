@@ -222,7 +222,10 @@ way unless there's a strong reason; adding the first one is a real decision.
   `challenge.create.submit`, `challenge.create.error`, `home.tile.indoor`,
   `indoor.finish`, `history.row` (opens the activity's summary),
   `history.more` (a row's More menu: Edit details, Repeat, Share),
-  `history.repeat.start` (the Repeat review's Start).
+  `history.repeat.start` (the Repeat review's Start; absent when the
+  activity can't be repeated), `history.repeat.reason` (why it can't),
+  `history.filter` (the Filters menu), `history.header` (the totals; its
+  label reads them), `history.noMatch` (a search or filter matching nothing).
 - **Tab bar buttons are addressed by visible title**, not identifier — iOS 26
   discards `.accessibilityIdentifier` on `Tab`.
 - **Notifications go through `NotificationService`.** It owns permission,

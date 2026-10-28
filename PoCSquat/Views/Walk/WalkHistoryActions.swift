@@ -81,11 +81,29 @@ struct RepeatReview: Equatable {
         duration = session.timeText
         companions = Self.names(activePets.map(\.name))
         note = wording.isHike ? "Starts as a walk on the same route. A hike starts from its trail." : nil
-        // An indoor walk has no route to follow, and History's Repeat starts a
-        // route walk. Indoor starts from Home (Indoor, then Start).
-        unavailableReason = mode == .stationary
-            ? "Indoor walks have no route to follow. Start one from Home: choose Indoor, then Start Indoor."
-            : nil
+        unavailableReason = Self.unavailableReason(for: session)
+    }
+
+    /// Why `session` cannot be repeated from History; nil when it can.
+    ///
+    /// Repeat starts `session.toNavigableRoute()`, which carries the saved
+    /// waypoints as the route. With none, the walk screen treats it as a free
+    /// walk that already exists (`ActiveSessionView.startSession` starts only
+    /// guided sessions), so nothing ever records: a timer stuck at 0:00. So a
+    /// session needs at least one waypoint, which is exactly the walk
+    /// screen's `isGuided`. That leaves out manually logged Past Walks,
+    /// Untracked Walks, free walks that got no GPS fix and pet-credit
+    /// entries, all saved with `waypoints: []`. Indoor is checked first: it
+    /// has no waypoints either, but it starts from Home (Indoor, then Start).
+    static func unavailableReason(for session: WalkSession) -> String? {
+        if session.wording.activityMode == .stationary {
+            return "Indoor walks have no route to follow. Start one from Home: choose Indoor, then Start Indoor."
+        }
+        if session.waypoints.isEmpty {
+            return "This \(session.wording.noun) has no route to follow, so it can't be repeated. "
+                + "Start a new one from Home."
+        }
+        return nil
     }
 
     static func names(_ names: [String]) -> String {
@@ -170,6 +188,7 @@ struct RepeatReviewSheet: View {
                         if let reason = review.unavailableReason {
                             Text(reason).font(.wktBodyText).foregroundColor(.earthCream)
                                 .fixedSize(horizontal: false, vertical: true)
+                                .accessibilityIdentifier("history.repeat.reason")
                         }
 
                         VStack(spacing: WktSpacing.betweenCards) {
