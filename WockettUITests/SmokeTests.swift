@@ -584,6 +584,147 @@ final class SmokeTests: XCTestCase {
         XCTAssertTrue(start.waitForExistence(timeout: 5), "The review must stay up when nothing started")
     }
 
+    // MARK: - 6d. History: search, filters, and deleting from a filtered list
+
+    /// Health → Activity History with the -WKTDemo walk on screen.
+    private func openHistoryFromHealth() {
+        selectTab("Health")
+        XCTAssertTrue(el("health.root").waitForExistence(timeout: 30))
+        let card = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Activity History'")).firstMatch
+        XCTAssertTrue(card.waitForExistence(timeout: 10), "Activity History missing from Health")
+        var swipes = 0
+        while !card.isHittable && swipes < 8 {
+            app.swipeUp()
+            swipes += 1
+        }
+        card.tap()
+        XCTAssertTrue(app.buttons["history.row"].firstMatch.waitForExistence(timeout: 15),
+                      "History must list the demo walk")
+    }
+
+    private var historyRows: XCUIElementQuery { app.buttons.matching(identifier: "history.row") }
+
+    /// Waits until the list shows `count` rows.
+    private func expectHistoryRows(_ count: Int, _ message: String) {
+        let shown = XCTNSPredicateExpectation(predicate: NSPredicate(format: "count == \(count)"),
+                                              object: historyRows)
+        XCTAssertEqual(XCTWaiter().wait(for: [shown], timeout: 10), .completed,
+                       "\(message): expected \(count) rows, saw \(historyRows.count)")
+    }
+
+    /// The header's figures, read from its accessibility label
+    /// ("2 activities · 3.1 mi · 1h 5m. 2 this week").
+    private func expectHistoryHeader(startsWith prefix: String) {
+        let header = el("history.header")
+        XCTAssertTrue(header.waitForExistence(timeout: 10), "History must show its header")
+        XCTAssertTrue(header.label.hasPrefix(prefix), "Header said “\(header.label)”, expected “\(prefix)…”")
+    }
+
+    /// Search narrows the list and the header to the matching row, clearing
+    /// it brings both back, and a swipe-delete in a searched list deletes the
+    /// row that was swiped (spec fix/history-search-filter). The second walk
+    /// is logged through Log a Past Walk, so the list has two to tell apart.
+    func testHistorySearchNarrowsAndDeletesTheSwipedRow() {
+        app.terminate()
+        app.launchArguments += ["-WKTDemo"]
+        app.launch()
+        XCTAssertTrue(el("home.statCard").waitForExistence(timeout: 30))
+        openHistoryFromHealth()
+
+        // A second walk, newer than the demo one, so it is the first row.
+        app.buttons["Add activity"].tap()
+        let distance = app.textFields.matching(NSPredicate(format: "placeholderValue BEGINSWITH 'Distance in'")).firstMatch
+        XCTAssertTrue(distance.waitForExistence(timeout: 10), "Log a Past Walk must open")
+        distance.tap()
+        distance.typeText("2")
+        let name = app.textFields.matching(NSPredicate(format: "placeholderValue == 'Route name or notes…'")).firstMatch
+        name.tap()
+        name.typeText("Riverside Path")
+        app.buttons["Done"].firstMatch.tap()
+        app.buttons["Save Walk"].tap()
+        expectHistoryRows(2, "Both walks must be listed")
+        XCTAssertTrue(app.staticTexts["All activities"].exists, "Unfiltered, the header covers all activities")
+        expectHistoryHeader(startsWith: "2 activities")
+
+        // Search by name: only the match is left, and the header follows it.
+        let search = app.searchFields.firstMatch
+        XCTAssertTrue(search.waitForExistence(timeout: 10), "History must have a search field")
+        search.tap()
+        search.typeText("river")
+        expectHistoryRows(1, "Searching “river” must leave one row")
+        XCTAssertTrue(historyRows.firstMatch.label.contains("Riverside Path"), historyRows.firstMatch.label)
+        expectHistoryHeader(startsWith: "1 activity ·")
+
+        // Clearing the text restores both.
+        search.buttons["Clear text"].tap()
+        expectHistoryRows(2, "Clearing the search must restore every row")
+        expectHistoryHeader(startsWith: "2 activities")
+
+        // Delete from a searched list: the visible row is the demo walk, the
+        // second in the whole list. Offset 0 in the whole list is Riverside.
+        search.typeText("downtown")
+        expectHistoryRows(1, "Searching “downtown” must leave one row")
+        XCTAssertTrue(historyRows.firstMatch.label.contains("Downtown Loop"), historyRows.firstMatch.label)
+        historyRows.firstMatch.swipeLeft()
+        let delete = app.buttons["Delete"].firstMatch
+        XCTAssertTrue(delete.waitForExistence(timeout: 5), "A row must offer Delete on a swipe")
+        delete.tap()
+        XCTAssertTrue(el("history.noMatch").waitForExistence(timeout: 10),
+                      "With the only match deleted, the search matches nothing")
+
+        search.buttons["Clear text"].tap()
+        expectHistoryRows(1, "One walk must be left")
+        XCTAssertTrue(historyRows.firstMatch.label.contains("Riverside Path"),
+                      "The swiped walk must be the one deleted, not the first in the list: \(historyRows.firstMatch.label)")
+        expectHistoryHeader(startsWith: "1 activity ·")
+    }
+
+    /// A search or filter that matches nothing says so, which is not the
+    /// empty-history state, and Clear filters brings everything back.
+    func testHistoryNoResultsAndClearFilters() {
+        app.terminate()
+        app.launchArguments += ["-WKTDemo"]
+        app.launch()
+        XCTAssertTrue(el("home.statCard").waitForExistence(timeout: 30))
+        openHistoryFromHealth()
+
+        let search = app.searchFields.firstMatch
+        XCTAssertTrue(search.waitForExistence(timeout: 10), "History must have a search field")
+        search.tap()
+        search.typeText("zzzz")
+        XCTAssertTrue(el("history.noMatch").waitForExistence(timeout: 10), "No match must say so")
+        XCTAssertTrue(app.staticTexts["No activities match"].exists)
+        XCTAssertFalse(app.staticTexts["No activities yet"].exists, "No match is not an empty history")
+
+        app.buttons["Clear filters"].tap()
+        expectHistoryRows(1, "Clear filters must restore the list")
+        XCTAssertTrue(app.staticTexts["All activities"].waitForExistence(timeout: 5),
+                      "Clear filters must restore the All activities header")
+        XCTAssertNotEqual(search.value as? String, "zzzz", "Clear filters must clear the search text too")
+
+        // The filter menu: Run matches nothing here (the demo walk is a walk).
+        // iOS 26 can drop an identifier on a toolbar item (as it does on a
+        // Tab), so the menu is found by its identifier or its label.
+        let filter = app.buttons.matching(
+            NSPredicate(format: "identifier == 'history.filter' OR label == 'Filters'")).firstMatch
+        XCTAssertTrue(filter.waitForExistence(timeout: 5),
+                      "History must have a filter menu. Bar: \(app.navigationBars.firstMatch.debugDescription)")
+        XCTAssertEqual(filter.value as? String, "No filters active")
+        filter.tap()
+        let activity = app.buttons["Activity"].firstMatch
+        XCTAssertTrue(activity.waitForExistence(timeout: 5), "The filter menu must offer Activity")
+        activity.tap()
+        let run = app.buttons["Run"].firstMatch
+        XCTAssertTrue(run.waitForExistence(timeout: 5), "Activity must offer Run")
+        run.tap()
+        XCTAssertTrue(el("history.noMatch").waitForExistence(timeout: 10), "Run must match nothing here")
+        XCTAssertEqual(filter.value as? String, "1 filter active")
+
+        app.buttons["Clear filters"].tap()
+        expectHistoryRows(1, "Clear filters must undo the menu's filter too")
+        XCTAssertEqual(filter.value as? String, "No filters active")
+    }
+
     // MARK: - 7. Trails list
 
     /// Routes → Trails lists real trails from the bundled pack, a card opens

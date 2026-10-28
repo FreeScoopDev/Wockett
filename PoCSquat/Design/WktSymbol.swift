@@ -169,6 +169,7 @@ enum WktSymbol {
     case copy               // doc.on.doc (copy a value)
     case more               // ellipsis (a row's More menu)
     case edit               // pencil (edit an item's details)
+    case filter             // line.3.horizontal.decrease.circle (History's filter menu)
 
     var name: String {
         switch self {
@@ -303,6 +304,7 @@ enum WktSymbol {
         case .copy:           return "doc.on.doc"
         case .more:           return "ellipsis"
         case .edit:           return "pencil"
+        case .filter:         return "line.3.horizontal.decrease.circle"
         }
     }
 

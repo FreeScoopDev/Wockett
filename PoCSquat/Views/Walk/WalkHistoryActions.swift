@@ -21,10 +21,9 @@ struct HistoryTotals: Equatable {
     let meters: Double
     let seconds: TimeInterval
 
+    /// `sessions` is the visible rows (`HistoryPage`), filtered or not.
     init(sessions: [WalkSession]) {
-        count = sessions.count
-        meters = sessions.reduce(0) { $0 + $1.totalDistance }
-        seconds = sessions.reduce(0) { $0 + $1.elapsedTime }
+        (count, meters, seconds) = HistoryScope.totals(sessions)
     }
 
     /// "1 activity", "12 activities".
