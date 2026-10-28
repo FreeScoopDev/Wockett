@@ -9,4 +9,6 @@
   no alerts", which was not true: quiet notifications are delivered, just
   silently. No switch, reminder or permission request changed.
 - The untracked-walk switch's three-line caption is now one line, and the
-  rest (why the nudge arrives after the walk) sits under the section.
+  rest (why the nudge arrives afterwards) sits under the section. The status
+  is read again when you come back from iOS Settings, so the line follows
+  what you changed there.
