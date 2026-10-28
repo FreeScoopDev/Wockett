@@ -194,7 +194,10 @@ enum BadgeRemaining {
         guard left > 0 else { return nil }
         let count = Int(left.rounded(.up))
         switch badge.type {
-        case .distance, .rideKm: return "\(challengeFormattedDistance(left * 1000, locale: locale, rule: .up)) to go"
+        case .distance, .rideKm:
+            // Whole metres first: 1 - 0.7 km is 0.30000000000000004 in a
+            // Double, and rounding that up read "0.4 km" (critic, F3).
+            return "\(challengeFormattedDistance((left * 1000).rounded(), locale: locale, rule: .up)) to go"
         case .streak, .rideStreak: return toGo(count, "day", "days")
         case .badgeCount: return toGo(count, "badge", "badges")
         case .petWalks: return toGo(count, "walk with a pet", "walks with a pet")

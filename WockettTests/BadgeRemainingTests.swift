@@ -53,6 +53,14 @@ struct BadgeRemainingTests {
         #expect(try remaining("warming", walked, locale: imperial) == "6.0 mi to go")
     }
 
+    @Test("An exact tenth left is not rounded up a further tenth")
+    func exactTenths() throws {
+        // A manual Past Walk of "0.7" km is exactly 700 m, but 1 - 0.7 in km
+        // is 0.30000000000000004, which rounded up read "0.4 km" (critic, F3).
+        #expect(try remaining("first", [session(km: 0.7)]) == "0.3 km to go")
+        #expect(try remaining("warming", [session(km: 8.2)]) == "1.8 km to go")
+    }
+
     @Test("A walk badge's remainder counts walks only, on the sessions the percentage uses")
     func distanceUsesProgressTotal() throws {
         // A 5 km ride and a 50 km walk flagged as driven count for neither
