@@ -487,6 +487,103 @@ final class SmokeTests: XCTestCase {
         XCTAssertEqual(note.label, "For general information, not medical advice. Wockett isn't a medical device.")
     }
 
+    // MARK: - 6c. History: Repeat reviews before it starts
+
+    /// Health → Activity History. A row's More menu reaches Edit details,
+    /// and Repeat opens a review that begins nothing until Start (spec
+    /// fix/history-actions, 2026-10-27; the row's arrow used to begin a walk
+    /// on the tap). Start opens the walk screen and its timer runs: a session
+    /// that only exists (a mini tile at 0:00) records nothing. A second Start
+    /// while that walk is active shows the existing alert and leaves the
+    /// review up. -WKTDemo seeds the one finished walk (DemoMode).
+    func testHistoryRepeatReviewsBeforeStarting() {
+        app.terminate()
+        app.launchArguments += ["-WKTDemo"]
+        app.launch()
+        XCTAssertTrue(el("home.statCard").waitForExistence(timeout: 30))
+
+        let more = app.buttons["history.more"].firstMatch
+        let repeatItem = app.buttons["Repeat"].firstMatch
+        let start = app.buttons["history.repeat.start"]
+        let miniTile = app.buttons["accessory.miniTile"]
+
+        func openHistory() {
+            selectTab("Health")
+            XCTAssertTrue(el("health.root").waitForExistence(timeout: 30))
+            let card = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Activity History'")).firstMatch
+            XCTAssertTrue(card.waitForExistence(timeout: 10), "Activity History missing from Health")
+            var swipes = 0
+            while !card.isHittable && swipes < 8 {
+                app.swipeUp()
+                swipes += 1
+            }
+            card.tap()
+            XCTAssertTrue(more.waitForExistence(timeout: 15), "A history row must have its More menu")
+        }
+
+        func openRepeat() {
+            more.tap()
+            XCTAssertTrue(repeatItem.waitForExistence(timeout: 5), "More must offer Repeat")
+            repeatItem.tap()
+            XCTAssertTrue(start.waitForExistence(timeout: 10), "Repeat must open the review sheet")
+        }
+
+        openHistory()
+
+        // Edit details is one tap from the menu and says what it is.
+        more.tap()
+        let edit = app.buttons["Edit details"].firstMatch
+        XCTAssertTrue(edit.waitForExistence(timeout: 5), "More must offer Edit details")
+        edit.tap()
+        XCTAssertTrue(app.staticTexts["Edit details"].waitForExistence(timeout: 10),
+                      "The details sheet must say Edit details")
+        XCTAssertTrue(app.staticTexts["Activity type"].exists, "Edit details must reach the type picker")
+        app.buttons["Done"].firstMatch.tap()
+        XCTAssertTrue(more.waitForExistence(timeout: 10))
+
+        // Repeat: the review is up and nothing has begun.
+        openRepeat()
+        XCTAssertFalse(miniTile.waitForExistence(timeout: 2), "Repeat must not begin a walk before Start")
+        XCTAssertFalse(el("session.root").exists, "Repeat must not open a walk before Start")
+
+        // Cancel: still nothing.
+        app.buttons["Cancel"].firstMatch.tap()
+        XCTAssertTrue(more.waitForExistence(timeout: 10), "Cancel must return to the list")
+        XCTAssertFalse(miniTile.waitForExistence(timeout: 2), "Cancel must leave no walk in progress")
+
+        // Start begins one, and it records.
+        openRepeat()
+        start.tap()
+        XCTAssertTrue(el("session.root").waitForExistence(timeout: 30),
+                      "Start must open the walk screen. \(screenState())")
+        let elapsed = el("session.elapsed")
+        XCTAssertTrue(elapsed.waitForExistence(timeout: 10))
+        let first = elapsed.label
+        let ticked = XCTNSPredicateExpectation(
+            predicate: NSPredicate { [elapsed] _, _ in elapsed.label != first }, object: nil)
+        XCTAssertEqual(XCTWaiter().wait(for: [ticked], timeout: 10), .completed,
+                       "The repeated walk must be recording")
+        // A full-screen cover leaves the views beneath it in the tree, so wait
+        // for the walk screen to go before using the tab bar (testAccessoryBar).
+        app.buttons["session.minimize"].tap()
+        let sessionGone = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "exists == NO"), object: el("session.root"))
+        wait(for: [sessionGone], timeout: 25)
+        XCTAssertTrue(miniTile.waitForExistence(timeout: 30), "The walk must still be in progress")
+
+        // Again while it is active: the existing alert, and the review stays.
+        // After the walk screen minimizes here the tab bar can be collapsed
+        // to the Home button (iOS 26.5, seen 2026-10-27); tapping it expands it.
+        if !tab("Health").waitForExistence(timeout: 3) { tab("Home").tap() }
+        openHistory()
+        openRepeat()
+        start.tap()
+        let alert = app.alerts["Walk Already Active"]
+        XCTAssertTrue(alert.waitForExistence(timeout: 10), "A second walk must be refused with the alert")
+        alert.buttons["OK"].tap()
+        XCTAssertTrue(start.waitForExistence(timeout: 5), "The review must stay up when nothing started")
+    }
+
     // MARK: - 7. Trails list
 
     /// Routes → Trails lists real trails from the bundled pack, a card opens

@@ -152,8 +152,6 @@ enum WktSymbol {
     case lock               // lock (use filled: true for lock.fill)
     case terms              // doc.text (Terms of Service)
     case lockOpen           // lock.open
-    case noteText           // note.text
-    case notePlus           // note.text.badge.plus
     case timer              // timer
     case target             // target (goal)
     case percent            // percent (progress)
@@ -169,6 +167,8 @@ enum WktSymbol {
     case joinPerson         // person.badge.plus (join a challenge)
     case anyActivity        // sparkles (challenge open to any activity)
     case copy               // doc.on.doc (copy a value)
+    case more               // ellipsis (a row's More menu)
+    case edit               // pencil (edit an item's details)
 
     var name: String {
         switch self {
@@ -285,8 +285,6 @@ enum WktSymbol {
         case .lock:           return "lock"
         case .terms:          return "doc.text"
         case .lockOpen:       return "lock.open"
-        case .noteText:       return "note.text"
-        case .notePlus:       return "note.text.badge.plus"
         case .timer:          return "timer"
         case .target:         return "target"
         case .percent:        return "percent"
@@ -303,6 +301,8 @@ enum WktSymbol {
         case .anyActivity:    return "sparkles"
         case .stroller:       return "stroller"
         case .copy:           return "doc.on.doc"
+        case .more:           return "ellipsis"
+        case .edit:           return "pencil"
         }
     }
 
