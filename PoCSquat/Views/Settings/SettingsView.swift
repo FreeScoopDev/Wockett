@@ -112,10 +112,21 @@ struct SettingsView: View {
                         Label { Text("Status") } icon: { Image(wkt: .notifications).wktIcon(.row, tint: .earthCream) }
                             .foregroundColor(.earthCream)
                         Spacer()
-                        WktStatusChip(text: notifAuthorized ? "Enabled" : notifQuiet ? "Quiet — no alerts" : "Disabled",
+                        WktStatusChip(text: NotificationStatusText.chip(authorized: notifAuthorized, quiet: notifQuiet),
                                       dot: notifAuthorized ? .earthGreen : notifQuiet ? .earthMuted : .earthOrange)
                     }
                     .listRowBackground(Color.earthCard)
+
+                    // The switches below keep their position whatever iOS allows,
+                    // so this says what will actually arrive.
+                    if let explanation = NotificationStatusText.explanation(authorized: notifAuthorized,
+                                                                            quiet: notifQuiet,
+                                                                            denied: notifDenied) {
+                        Text(explanation)
+                            .font(.wktLabel).foregroundColor(.earthMuted)
+                            .accessibilityIdentifier("settings.notifications.status")
+                            .listRowBackground(Color.earthCard)
+                    }
 
                     if !notifAuthorized {
                         if notifDenied {
@@ -193,14 +204,20 @@ struct SettingsView: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Untracked walk nudge")
                                 .foregroundColor(.earthCream)
-                            Text("When you've walked without tracking it. Wockett checks a few times a day, so this arrives after the walk, not during it.")
+                            Text("When you've walked without tracking it.")
                                 .font(.wktLabel).foregroundColor(.earthMuted)
                         }
                     }
                     .tint(.earthGreenFill)
                     .disabled(!(notifAuthorized || notifQuiet))
                     .listRowBackground(Color.earthCard)
-                } header: { WktListHeader(title: "Notifications") }
+                } header: {
+                    WktListHeader(title: "Notifications")
+                } footer: {
+                    // Was the untracked-walk switch's own caption, three lines long.
+                    Text("Wockett checks for untracked walks a few times a day, so that nudge arrives after the walk, not during it.")
+                        .font(.wktLabel).foregroundColor(.earthMuted)
+                }
 
                 // ── Walk Reminders ────────────────────────────────
                 Section {
