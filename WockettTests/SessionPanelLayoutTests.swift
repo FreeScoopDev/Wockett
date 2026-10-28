@@ -38,12 +38,14 @@ struct SessionPanelLayoutTests {
         #expect(Set(Self.normal + Self.accessibility) == Set(DynamicTypeSize.allCases))
     }
 
-    /// The glance numbers are `wktMetric` (34 pt, scaled) at the normal sizes
-    /// and `wktDense(34)` at the accessibility sizes. Turning the text up must
-    /// never make them smaller: the first try used the card-title size there,
-    /// which put AX1 below xxxLarge (critic, 2026-10-28). Sizes in the order
-    /// Settings offers them, xSmall to AX5.
-    @Test func glanceNumbersNeverShrinkAsTextGrows() {
+    /// The sizes behind the glance numbers' fonts: `wktMetric` (34 pt through
+    /// `wktScaledSize`) at the normal sizes and `wktDense(34)` at the
+    /// accessibility sizes never decrease as the text grows. This covers the
+    /// DesignSystem sizing functions only, not which font `SessionStatTile`
+    /// picks: putting another font in the view would not turn it red (critic,
+    /// 2026-10-28). The first try used the card-title size there, which put
+    /// AX1 below xxxLarge. Sizes in the order Settings offers them.
+    @Test func glanceSizingFunctionsNeverShrinkAsTextGrows() {
         let categories: [(UIContentSizeCategory, Bool)] = [
             (.extraSmall, false), (.small, false), (.medium, false), (.large, false),
             (.extraLarge, false), (.extraExtraLarge, false), (.extraExtraExtraLarge, false),

@@ -290,32 +290,21 @@ struct SessionStatTile: View {
     let value: String
     let label: String
     var prominent = false
+    /// The value with its label beside it, on one line: the collapsed
+    /// panel's second row at the accessibility sizes, where a third
+    /// stacked tile pushed a guided walk's panel over the map's North up
+    /// control on an iPhone 17e (844 pt tall).
+    var labelBeside = false
 
     @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
-        let large = SessionPanelLayout.isLarge(typeSize)
-        return VStack(spacing: 2) {
-            // At the accessibility sizes the glance numbers stop at their
-            // xxxLarge size (45 pt) instead of reaching 62: in two rows, at
-            // 62 pt, a guided walk's panel reached over the map's North up
-            // control. Capped, never shrunk: turning text up must not make
-            // these smaller (critic, 2026-10-28).
-            Text(value)
-                .font(prominent ? (large ? .wktDense(34, weight: .heavy) : .wktMetric) : .wktSection)
-                .monospacedDigit()
-                .foregroundColor(.earthCream)
-                .lineLimit(1)
-                .minimumScaleFactor(0.6)
-            // Two lines rather than "Current pa…" when the text is large;
-            // the value keeps one line. The normal sizes keep one line,
-            // shrinking to fit, exactly as before.
-            Text(sentenceCase(label))
-                .font(.wktLabel)
-                .foregroundColor(.earthMuted)
-                .lineLimit(large ? 2 : 1)
-                .minimumScaleFactor(0.8)
-                .multilineTextAlignment(large ? .center : .leading)
+        Group {
+            if labelBeside {
+                HStack(spacing: 12) { valueText; labelText }
+            } else {
+                VStack(spacing: 2) { valueText; labelText }
+            }
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, prominent ? 2 : 10)
@@ -323,6 +312,33 @@ struct SessionStatTile: View {
                     in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(label): \(value)")
+    }
+
+    private var large: Bool { SessionPanelLayout.isLarge(typeSize) }
+
+    // At the accessibility sizes the glance numbers stop at their xxxLarge
+    // size (45 pt) instead of reaching 62: in two rows, at 62 pt, a guided
+    // walk's panel reached over the map's North up control. Capped, never
+    // shrunk: turning text up must not make these smaller (critic, 2026-10-28).
+    private var valueText: some View {
+        Text(value)
+            .font(prominent ? (large ? .wktDense(34, weight: .heavy) : .wktMetric) : .wktSection)
+            .monospacedDigit()
+            .foregroundColor(.earthCream)
+            .lineLimit(1)
+            .minimumScaleFactor(0.6)
+    }
+
+    // Two lines rather than "Current pa…" when the text is large; the value
+    // keeps one line. The normal sizes keep one line, shrinking to fit,
+    // exactly as before.
+    private var labelText: some View {
+        Text(sentenceCase(label))
+            .font(.wktLabel)
+            .foregroundColor(.earthMuted)
+            .lineLimit(large ? 2 : 1)
+            .minimumScaleFactor(0.8)
+            .multilineTextAlignment(large ? .center : .leading)
     }
 
     /// Callers pass lowercase labels ("distance", "steps / min"); the

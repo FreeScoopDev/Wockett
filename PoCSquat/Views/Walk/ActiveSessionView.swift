@@ -631,12 +631,13 @@ private struct ActiveSessionScreen: View {
     private var glanceStats: some View {
         VStack(spacing: 10) {
             // Three across; at the accessibility sizes distance and time
-            // share a row and the pace takes the next, so no word is cut.
+            // share a row and the pace takes the next, its label beside it,
+            // so no word is cut and the panel stays short enough.
             if SessionPanelLayout.statColumns(typeSize) < 3 {
                 HStack(spacing: 8) { glanceDistance; glanceTime }
-                glancePace
+                glancePace(labelBeside: true)
             } else {
-                HStack(spacing: 8) { glanceDistance; glanceTime; glancePace }
+                HStack(spacing: 8) { glanceDistance; glanceTime; glancePace(labelBeside: false) }
             }
             if isGuided { routeProgress }
             if session.canHeadBack {
@@ -662,12 +663,14 @@ private struct ActiveSessionScreen: View {
     }
 
     /// A walk or run glances at its current pace; a ride at its speed.
-    @ViewBuilder private var glancePace: some View {
+    @ViewBuilder private func glancePace(labelBeside: Bool) -> some View {
         if showsCurrentPace {
-            SessionStatTile(value: session.currentPaceText, label: "current pace", prominent: true)
+            SessionStatTile(value: session.currentPaceText, label: "current pace", prominent: true,
+                            labelBeside: labelBeside)
                 .accessibilityIdentifier("session.currentPace")
         } else {
-            SessionStatTile(value: session.paceText, label: session.paceLabel, prominent: true)
+            SessionStatTile(value: session.paceText, label: session.paceLabel, prominent: true,
+                            labelBeside: labelBeside)
         }
     }
 
