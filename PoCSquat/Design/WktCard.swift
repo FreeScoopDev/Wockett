@@ -50,6 +50,8 @@ struct WktSectionHeader: View {
     let title: String
     var actionTitle: String?
     var action: (() -> Void)?
+    /// The link's accessibility identifier, for a UI test to find it by.
+    var actionIdentifier: String?
 
     var body: some View {
         HStack(alignment: .firstTextBaseline) {
@@ -72,6 +74,7 @@ struct WktSectionHeader: View {
                         .padding(.leading, -12)
                 }
                 .buttonStyle(.plain)
+                .accessibilityIdentifier(actionIdentifier ?? "")
             }
         }
         .frame(minHeight: 24)
@@ -106,11 +109,13 @@ struct WktSection<Content: View>: View {
     let title: String
     var actionTitle: String?
     var action: (() -> Void)?
+    var actionIdentifier: String?
     @ViewBuilder let content: () -> Content
 
     var body: some View {
         VStack(alignment: .leading, spacing: WktSpacing.betweenCards) {
-            WktSectionHeader(title: title, actionTitle: actionTitle, action: action)
+            WktSectionHeader(title: title, actionTitle: actionTitle, action: action,
+                             actionIdentifier: actionIdentifier)
             content()
         }
     }

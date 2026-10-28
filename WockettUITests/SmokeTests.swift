@@ -625,6 +625,70 @@ final class SmokeTests: XCTestCase {
                        "Nothing may begin from a review with no Start")
     }
 
+    // MARK: - 6c. Home: Start first, then Recent activity
+
+    /// Home opens on Start, above the step hero, and lists the newest saved
+    /// activities under it (spec fix/home-start-first). A past walk logged
+    /// now is the first Recent row, which opens its summary, and All
+    /// activities opens History. -WKTDemo seeds the one finished walk.
+    func testHomeStartsFirstAndListsRecentActivity() {
+        app.terminate()
+        app.launchArguments += ["-WKTDemo"]
+        app.launch()
+        let hero = el("home.statCard")
+        let start = app.buttons["home.start"]
+        XCTAssertTrue(hero.waitForExistence(timeout: 30))
+        XCTAssertTrue(start.waitForExistence(timeout: 10))
+        XCTAssertLessThan(start.frame.minY, hero.frame.minY, "Start must sit above the step hero")
+        let recent = el("home.recent")
+        XCTAssertTrue(recent.waitForExistence(timeout: 10), "With a saved walk, Home must list Recent activity")
+        XCTAssertLessThan(recent.frame.minY, hero.frame.minY, "Recent activity must sit above the step hero")
+
+        // Log a past walk, newer than the demo one.
+        openHistoryFromHealth()
+        app.buttons["Add activity"].tap()
+        let distance = app.textFields.matching(NSPredicate(format: "placeholderValue BEGINSWITH 'Distance in'")).firstMatch
+        XCTAssertTrue(distance.waitForExistence(timeout: 10), "Log a Past Walk must open")
+        distance.tap()
+        distance.typeText("2")
+        let name = app.textFields.matching(NSPredicate(format: "placeholderValue == 'Route name or notes…'")).firstMatch
+        name.tap()
+        name.typeText("Riverside Path")
+        app.buttons["Done"].firstMatch.tap()
+        app.buttons["Save Walk"].tap()
+        expectHistoryRows(2, "Both walks must be listed")
+
+        // Scrolling Health to reach Activity History collapses the tab bar to
+        // the selected tab (iOS 26); tapping that expands it again.
+        if !tab("Home").waitForExistence(timeout: 3) { tab("Health").tap() }
+        selectTab("Home")
+        let rows = app.buttons.matching(identifier: "home.recent.row")
+        let two = XCTNSPredicateExpectation(predicate: NSPredicate(format: "count == 2"), object: rows)
+        XCTAssertEqual(XCTWaiter().wait(for: [two], timeout: 10), .completed,
+                       "Home must list both walks, saw \(rows.count)")
+        let first = rows.element(boundBy: 0)
+        let riversideFirst = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "label BEGINSWITH 'Riverside Path'"), object: first)
+        XCTAssertEqual(XCTWaiter().wait(for: [riversideFirst], timeout: 10), .completed,
+                       "The walk just logged must be first: \(rows.allElementsBoundByIndex.map { "\($0.label) @\($0.frame.minY)" })")
+        first.tap()
+        XCTAssertTrue(el("summary.root").waitForExistence(timeout: 10), "A Recent row must open its summary")
+        let done = app.buttons["summary.done"]
+        XCTAssertTrue(done.waitForExistence(timeout: 5))
+        done.tap()
+        let summaryGone = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == NO"),
+                                                    object: el("summary.root"))
+        wait(for: [summaryGone], timeout: 15)
+
+        let all = app.buttons["home.recent.all"]
+        XCTAssertTrue(all.waitForExistence(timeout: 10), "Recent activity must offer All activities")
+        all.tap()
+        XCTAssertTrue(app.navigationBars["Activity History"].waitForExistence(timeout: 15),
+                      "All activities must open History")
+        XCTAssertFalse(hero.exists, "History must be pushed over Home")
+        expectHistoryRows(2, "History must list both walks")
+    }
+
     // MARK: - 6d. History: search, filters, and deleting from a filtered list
 
     /// Health → Activity History with the -WKTDemo walk on screen.

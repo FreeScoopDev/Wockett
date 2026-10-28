@@ -34,6 +34,9 @@ struct StepCounterView: View {
     @State private var weatherLocator = HomeWeatherLocator()
     @State private var showWeatherDetail = false
     @State private var heroQuote = BannerStore.shared.randomQuote()
+    /// A Recent activity row's summary, open over Home.
+    @State private var summarySession: WalkSession?
+    @State private var showHistory = false
 
     var body: some View {
         stepCounterCore
@@ -122,6 +125,8 @@ struct StepCounterView: View {
                 UserDefaults.standard.set(true, forKey: "wkt_customRouteCreated")
             } }
             .navigationDestination(isPresented: $showPetManagement) { PetManagementView(historyStore: historyStore, defaultGoal: stepManager.currentGoal) }
+            .navigationDestination(isPresented: $showHistory) { WalkHistoryView(store: historyStore) }
+            .historySummaryCover(item: $summarySession, history: historyStore.sessions)
     }
 
     private var scrollWithLifecycle: some View {
@@ -168,13 +173,18 @@ struct StepCounterView: View {
     @ViewBuilder
     private func mainScrollView(proxy: ScrollViewProxy) -> some View {
         ScrollView {
+            // Start first (fix/home-start-first, 2026-10-28): a rider or a
+            // runner opened Home on a walking goal and scrolled past it to
+            // start. The hero keeps everything it had, below what people
+            // came to do.
             VStack(alignment: .leading, spacing: WktSpacing.betweenSections) {
-                heroCard
                 if ActivityDetectionService.shared.showWalkSuggestion {
                     activitySuggestion
                         .transition(.move(edge: .top).combined(with: .opacity))
                 }
                 activitySection
+                recentSection
+                heroCard
                 routesSection
                 weekSection
             }
@@ -362,6 +372,23 @@ struct StepCounterView: View {
         }
         .font(.wktLabel)
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    // MARK: Recent activity
+
+    /// The newest saved activities, as History lists them. Nothing saved, no
+    /// section: an empty card here would only push the hero down.
+    @ViewBuilder
+    private var recentSection: some View {
+        let recent = HomeRecentActivity(sessions: historyStore.sessions)
+        if !recent.isEmpty {
+            WktSection(title: "Recent activity", actionTitle: "All activities",
+                       action: { showHistory = true }, actionIdentifier: "home.recent.all", content: {
+                HomeRecentActivityCard(rows: recent.rows) { summarySession = $0 }
+            })
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("home.recent")
+        }
     }
 
     // MARK: Routes
