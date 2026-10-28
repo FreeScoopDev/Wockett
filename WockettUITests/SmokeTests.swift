@@ -687,6 +687,18 @@ final class SmokeTests: XCTestCase {
                       "All activities must open History")
         XCTAssertFalse(hero.exists, "History must be pushed over Home")
         expectHistoryRows(2, "History must list both walks")
+
+        // Delete both: back on Home, no Recent activity section at all.
+        for remaining in [1, 0] {
+            historyRows.firstMatch.swipeLeft()
+            let delete = app.buttons["Delete"].firstMatch
+            XCTAssertTrue(delete.waitForExistence(timeout: 5), "A row must offer Delete on a swipe")
+            delete.tap()
+            expectHistoryRows(remaining, "Delete must remove the row")
+        }
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(hero.waitForExistence(timeout: 10), "Back must return to Home")
+        XCTAssertFalse(recent.exists, "With nothing saved, Home must show no Recent activity")
     }
 
     // MARK: - 6d. History: search, filters, and deleting from a filtered list

@@ -61,23 +61,30 @@ struct WktSectionHeader: View {
                 .accessibilityAddTraits(.isHeader)
             Spacer()
             if let actionTitle, let action {
-                Button(action: action) {
-                    Text(actionTitle)
-                        .font(.wktBodyText)
-                        .foregroundColor(.earthGreen)
-                        // A 44 pt target without a 44 pt row: the tap area
-                        // reaches past the label, the layout does not.
-                        .padding(.vertical, 12)
-                        .padding(.leading, 12)
-                        .contentShape(Rectangle())
-                        .padding(.vertical, -12)
-                        .padding(.leading, -12)
+                if let actionIdentifier {
+                    link(actionTitle, action).accessibilityIdentifier(actionIdentifier)
+                } else {
+                    link(actionTitle, action)
                 }
-                .buttonStyle(.plain)
-                .accessibilityIdentifier(actionIdentifier ?? "")
             }
         }
         .frame(minHeight: 24)
+    }
+
+    private func link(_ actionTitle: String, _ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(actionTitle)
+                .font(.wktBodyText)
+                .foregroundColor(.earthGreen)
+                // A 44 pt target without a 44 pt row: the tap area
+                // reaches past the label, the layout does not.
+                .padding(.vertical, 12)
+                .padding(.leading, 12)
+                .contentShape(Rectangle())
+                .padding(.vertical, -12)
+                .padding(.leading, -12)
+        }
+        .buttonStyle(.plain)
     }
 }
 

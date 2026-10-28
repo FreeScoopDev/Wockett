@@ -131,8 +131,9 @@ struct StepCounterView: View {
 
     private var scrollWithLifecycle: some View {
         ScrollViewReader { proxy in mainScrollView(proxy: proxy) }
-            // The hero card's "Today" is the screen's title; an empty bar
-            // above it would only push the content down.
+            // No bar: Home opens on "Start an activity" (fix/home-start-first),
+            // and the hero card's "Today" heading names the day further down.
+            // An empty bar above would only push Start down.
             .toolbar(.hidden, for: .navigationBar)
             .task {
                 await stepManager.initialize()
