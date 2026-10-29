@@ -241,6 +241,7 @@ struct WeatherWidget: View {
     let weather: RouteWeather
 
     @State private var isExpanded: Bool
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     /// `initiallyExpanded` seeds @State once and is deliberately NOT stored: SwiftUI
     /// @State initialised from a parameter does not update when that parameter
@@ -266,12 +267,24 @@ struct WeatherWidget: View {
         Label(weather.statusText, systemImage: weather.statusSymbol)
             .font(.wktLabel)
             .foregroundColor(weather.statusColor)
-            .lineLimit(1)
+            // Wraps at the accessibility sizes: on one line "Good conditions"
+            // shrank to its check mark and a clipped glyph, and the longest
+            // status, "High chance of rain", may need three lines on a 17e.
+            .lineLimit(typeSize.isAccessibilitySize ? nil : 1)
     }
 
     var body: some View {
+        // At the accessibility sizes the attribution gets a line of its own.
+        // Beside the forecast toggle, the row's fixed-size pieces (temperature,
+        // status, attribution) added up to more than the screen, and that one
+        // row made the whole Routes results panel wider than the window: 401
+        // pt on a 390 pt iPhone 17e (measured; with the tile removed the panel
+        // was 390). On its own line it stays whole and tappable.
+        let row = typeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 4))
+            : AnyLayout(HStackLayout(spacing: 10))
         VStack(spacing: 0) {
-            HStack(spacing: 10) {
+            row {
                 Button {
                     withAnimation(.snappy(duration: 0.22)) { isExpanded.toggle() }
                 } label: {
