@@ -369,7 +369,9 @@ struct TrailDetailView: View {
                                            refreshLocation: refreshLocation)
                 }
 
-                HStack(spacing: 8) {
+                // Rows of two at the accessibility sizes: a third of the
+                // width cut the values to "About 29…" and "Steps ~3,…".
+                WktStatRow(spacing: 8) {
                     stat("Length", TrailText.distance(item.lengthMeters))
                     if activityMode == .walking {
                         stat("About", TrailText.walkingTime(item.lengthMeters))
