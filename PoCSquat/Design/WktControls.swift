@@ -98,12 +98,63 @@ struct WktSecondaryLabel: View {
     }
 }
 
+/// How the shared buttons change at the accessibility text sizes. At
+/// Accessibility 2 one line cut titles to "Connect Apple He…", "Schedule
+/// this walk a…" and, two to a row, "Start a c…" / "Share a r…" (F5 audit
+/// B4-B6, 2026-10-29). The normal sizes keep one line and the row. Pure, so
+/// a test can pin both.
+enum WktButtonLayout {
+    /// One line, shrinking to 80%, at the normal sizes. At the accessibility
+    /// sizes as many lines as the title needs: two are not enough for every
+    /// title ("Start the <trail name> hike" carries a trail's full name).
+    static func titleLineLimit(_ size: DynamicTypeSize) -> Int? {
+        size.isAccessibilitySize ? nil : 1
+    }
+
+    /// Two buttons that share a row stack, the first above, each the full width.
+    static func stacksRow(_ size: DynamicTypeSize) -> Bool {
+        size.isAccessibilitySize
+    }
+}
+
+/// A primary and a secondary button that share a row ("Start a challenge" /
+/// "Share a route"): side by side at the normal text sizes, stacked at the
+/// accessibility sizes, where half the width cut both titles. Stacked, the
+/// primary is always on top. Every row of two shared Wkt buttons uses this.
+struct WktButtonRow<Primary: View, Secondary: View>: View {
+    var spacing: CGFloat = 8
+    /// Side by side, the secondary on the left ("Undo" | "Save Route").
+    var secondaryLeads = false
+    @ViewBuilder let primary: () -> Primary
+    @ViewBuilder let secondary: () -> Secondary
+    @Environment(\.dynamicTypeSize) private var typeSize
+
+    var body: some View {
+        let stacked = WktButtonLayout.stacksRow(typeSize)
+        let layout = stacked
+            ? AnyLayout(VStackLayout(spacing: spacing))
+            : AnyLayout(HStackLayout(spacing: spacing))
+        layout {
+            if stacked || !secondaryLeads {
+                primary()
+                secondary()
+            } else {
+                secondary()
+                primary()
+            }
+        }
+    }
+}
+
 private struct WktButtonLabel: View {
     let title: String
     let symbol: WktSymbol?
     let fill: Color
     let text: Color
     let onFill: Bool
+    @Environment(\.dynamicTypeSize) private var typeSize
+
+    private var wraps: Bool { WktButtonLayout.titleLineLimit(typeSize) == nil }
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: 18, style: .continuous)
@@ -115,9 +166,13 @@ private struct WktButtonLabel: View {
             Text(title)
                 .font(.wktHeading(17))
                 .foregroundColor(text)
-                .lineLimit(1)
+                .lineLimit(WktButtonLayout.titleLineLimit(typeSize))
+                // Centred only where it can wrap: `.center` on the one-line
+                // title moved its glyphs by a pixel at the normal sizes.
+                .multilineTextAlignment(wraps ? .center : .leading)
                 .minimumScaleFactor(0.8)
         }
+        .padding(.vertical, wraps ? 8 : 0)
         .padding(.horizontal, 12)
         .frame(maxWidth: .infinity)
         .frame(minHeight: 56)

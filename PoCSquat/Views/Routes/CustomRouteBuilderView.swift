@@ -88,13 +88,14 @@ struct CustomRouteBuilderView: View {
                     .padding(.horizontal, WktSpacing.screen)
                 }
 
-                HStack(spacing: 10) {
+                WktButtonRow(spacing: 10, secondaryLeads: true) {
+                    if builder.canSave {
+                        WktPrimaryButton(title: "Save Route") { showSaveSheet = true }
+                    }
+                } secondary: {
                     if !builder.waypoints.isEmpty {
                         WktSecondaryButton(title: "Undo", symbol: .undo) { builder.undoLast() }
                             .disabled(builder.isComputing)
-                    }
-                    if builder.canSave {
-                        WktPrimaryButton(title: "Save Route") { showSaveSheet = true }
                     }
                 }
                 .padding(.horizontal, WktSpacing.screen)
