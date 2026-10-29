@@ -3,6 +3,8 @@ import SwiftUI
 
 // MARK: - Pause Resume Control
 
+/// The paused banner, at the normal text sizes. At the accessibility sizes
+/// the panel header says "Paused" instead (`ActiveSessionView.pausedLine`).
 struct PauseResumeControl: View {
     let sessionLabel: String
     let onResume: () -> Void
@@ -11,6 +13,8 @@ struct PauseResumeControl: View {
         WktBanner(symbol: .pauseCircle, tint: .earthOrange, title: "\(sessionLabel) paused") {
             WktPillButton(title: "Resume", action: onResume)
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("session.paused")
         .transition(.move(edge: .top).combined(with: .opacity))
     }
 }
