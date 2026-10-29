@@ -187,7 +187,7 @@ struct WalkHistoryView: View {
         return WktSection(title: page.title) {
             // Rows of two at the accessibility sizes, without the dividers:
             // a quarter of the width cut "This week" to "This w…".
-            WktStatRow(spacing: 0, rowSpacing: 12) {
+            WktStatRow(spacing: 0, rowSpacing: WktSpacing.betweenCards) {
                 statCell("\(totals.count)", totals.count == 1 ? "Activity" : "Activities")
                 columnDivider
                 statCell(totals.distanceText(), "Distance")

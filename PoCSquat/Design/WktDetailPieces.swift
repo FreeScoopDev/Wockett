@@ -130,50 +130,58 @@ struct WktStatRow<Content: View>: View {
 
 /// Equal-width columns, filled row by row. A row is as tall as its tallest
 /// stat, offered to each so a tile that fills its height stays even with its
-/// neighbour; a last stat on its own keeps one column's width.
+/// neighbour; a last stat on its own keeps one column's width. A row with
+/// fewer stats than columns (a ride's trail detail has only Length) uses
+/// just as many columns, so one stat keeps the full width.
 struct WktStatColumnsLayout: Layout {
     let columns: Int
     let spacing: CGFloat
     let rowSpacing: CGFloat
 
-    private func columnWidth(_ width: CGFloat) -> CGFloat {
-        max(0, (width - spacing * CGFloat(columns - 1)) / CGFloat(columns))
-    }
-
-    private func rowHeights(_ subviews: Subviews, columnWidth: CGFloat) -> [CGFloat] {
-        stride(from: 0, to: subviews.count, by: columns).map { start in
-            subviews[start..<min(start + columns, subviews.count)]
-                .map { $0.sizeThatFits(ProposedViewSize(width: columnWidth, height: nil)).height }
-                .max() ?? 0
+    /// Where each stat goes in a row `width` wide, given how tall each is at
+    /// one column's width. Pure, so the arithmetic is tested without a view.
+    static func frames(columns: Int, spacing: CGFloat, rowSpacing: CGFloat, width: CGFloat,
+                       heightAt: (_ index: Int, _ columnWidth: CGFloat) -> CGFloat, count: Int) -> [CGRect] {
+        guard count > 0 else { return [] }
+        let columns = max(1, min(columns, count))
+        let cellWidth = max(0, (width - spacing * CGFloat(columns - 1)) / CGFloat(columns))
+        var frames: [CGRect] = []
+        var y: CGFloat = 0
+        for start in stride(from: 0, to: count, by: columns) {
+            let row = start..<min(start + columns, count)
+            let height = row.map { heightAt($0, cellWidth) }.max() ?? 0
+            for index in row {
+                let x = CGFloat(index - start) * (cellWidth + spacing)
+                frames.append(CGRect(x: x, y: y, width: cellWidth, height: height))
+            }
+            y += height + rowSpacing
         }
+        return frames
     }
 
-    private func width(_ proposal: ProposedViewSize, _ subviews: Subviews) -> CGFloat {
-        if let width = proposal.width, width.isFinite { return width }
-        let widest = subviews.map { $0.sizeThatFits(.unspecified).width }.max() ?? 0
-        return widest * CGFloat(columns) + spacing * CGFloat(columns - 1)
+    private func frames(_ subviews: Subviews, width: CGFloat) -> [CGRect] {
+        Self.frames(columns: columns, spacing: spacing, rowSpacing: rowSpacing, width: width,
+                    heightAt: { subviews[$0].sizeThatFits(ProposedViewSize(width: $1, height: nil)).height },
+                    count: subviews.count)
     }
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let width = width(proposal, subviews)
-        let heights = rowHeights(subviews, columnWidth: columnWidth(width))
-        let height = heights.reduce(0, +) + rowSpacing * CGFloat(max(0, heights.count - 1))
-        return CGSize(width: width, height: height)
+        let width: CGFloat
+        if let proposed = proposal.width, proposed.isFinite {
+            width = proposed
+        } else {
+            let used = CGFloat(max(1, min(columns, subviews.count)))
+            let widest = subviews.map { $0.sizeThatFits(.unspecified).width }.max() ?? 0
+            width = widest * used + spacing * (used - 1)
+        }
+        return CGSize(width: width, height: frames(subviews, width: width).map(\.maxY).max() ?? 0)
     }
 
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        let cellWidth = columnWidth(bounds.width)
-        let heights = rowHeights(subviews, columnWidth: cellWidth)
-        var y = bounds.minY
-        for (row, height) in heights.enumerated() {
-            for column in 0..<columns {
-                let index = row * columns + column
-                guard index < subviews.count else { break }
-                subviews[index].place(at: CGPoint(x: bounds.minX + CGFloat(column) * (cellWidth + spacing), y: y),
-                                      anchor: .topLeading,
-                                      proposal: ProposedViewSize(width: cellWidth, height: height))
-            }
-            y += height + rowSpacing
+        for (index, frame) in frames(subviews, width: bounds.width).enumerated() {
+            subviews[index].place(at: CGPoint(x: bounds.minX + frame.minX, y: bounds.minY + frame.minY),
+                                  anchor: .topLeading,
+                                  proposal: ProposedViewSize(width: frame.width, height: frame.height))
         }
     }
 }
