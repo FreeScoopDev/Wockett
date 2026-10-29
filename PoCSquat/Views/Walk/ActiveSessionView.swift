@@ -97,6 +97,7 @@ private struct ActiveSessionScreen: View {
     @EnvironmentObject var petStore: PetStore
     @Environment(\.dismiss) private var dismiss
     @Environment(ActiveWalkStore.self) private var walkStore
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     private var isGuided: Bool { !route.waypoints.isEmpty }
 
@@ -155,6 +156,11 @@ private struct ActiveSessionScreen: View {
         activeContent
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("session.root")
+            // This full-screen cover does not inherit the tab view's limit
+            // (SquatCounterApp): at Accessibility 5 the map's buttons and
+            // icons kept growing (measured 2026-10-28), so the walk screen
+            // sets the same limit itself.
+            .dynamicTypeSize(...DynamicTypeSize.accessibility2)
             .toolbar(.hidden, for: .navigationBar)
             .presentationDetents([.large])
             .presentationDragIndicator(.visible)
@@ -504,7 +510,7 @@ private struct ActiveSessionScreen: View {
                 ScrollView(showsIndicators: false) {
                     expandedDetails
                 }
-                .frame(maxHeight: 430)
+                .frame(maxHeight: SessionPanelLayout.expandedMaxHeight(typeSize))
                 .transition(.opacity)
             } else {
                 glanceStats
@@ -566,6 +572,9 @@ private struct ActiveSessionScreen: View {
         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: session.trailProgress?.isOffTrail)
         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: session.arrivedAtTrail)
         .background(.ultraThinMaterial, ignoresSafeAreaEdges: .bottom)
+        // Its top edge is what the large-text UI test keeps below the map controls.
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("session.panel")
     }
 
     // MARK: - Panel parts
@@ -580,7 +589,8 @@ private struct ActiveSessionScreen: View {
                     .wktIcon(.inline, tint: .earthGreen)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(isGuided ? route.name : route.wording.sessionLabel)
-                        .font(.wktRowTitle).foregroundColor(.earthCream).lineLimit(1)
+                        .font(.wktRowTitle).foregroundColor(.earthCream)
+                        .lineLimit(SessionPanelLayout.isLarge(typeSize) ? 2 : 1)
                     if isGuided {
                         // The activity's word first ("Hike · On the trail"):
                         // a guided title is the route's name, so this is
@@ -620,18 +630,14 @@ private struct ActiveSessionScreen: View {
     /// The default view: three numbers that matter mid-walk, so the map keeps the screen.
     private var glanceStats: some View {
         VStack(spacing: 10) {
-            HStack(spacing: 8) {
-                SessionStatTile(value: session.distanceText(session.totalDistanceCovered),
-                                label: "distance", prominent: true)
-                SessionStatTile(value: session.elapsedText, label: "time", prominent: true)
-                    .accessibilityIdentifier("session.elapsed")
-                // A walk or run glances at its current pace; a ride at its speed.
-                if showsCurrentPace {
-                    SessionStatTile(value: session.currentPaceText, label: "current pace", prominent: true)
-                        .accessibilityIdentifier("session.currentPace")
-                } else {
-                    SessionStatTile(value: session.paceText, label: session.paceLabel, prominent: true)
-                }
+            // Three across; at the accessibility sizes distance and time
+            // share a row and the pace takes the next, its label beside it,
+            // so no word is cut and the panel stays short enough.
+            if SessionPanelLayout.statColumns(typeSize) < 3 {
+                HStack(spacing: 8) { glanceDistance; glanceTime }
+                glancePace(labelBeside: true)
+            } else {
+                HStack(spacing: 8) { glanceDistance; glanceTime; glancePace(labelBeside: false) }
             }
             if isGuided { routeProgress }
             if session.canHeadBack {
@@ -644,6 +650,28 @@ private struct ActiveSessionScreen: View {
         }
         .padding(.horizontal, 18)
         .padding(.top, 10)
+    }
+
+    private var glanceDistance: some View {
+        SessionStatTile(value: session.distanceText(session.totalDistanceCovered),
+                        label: "distance", prominent: true)
+    }
+
+    private var glanceTime: some View {
+        SessionStatTile(value: session.elapsedText, label: "time", prominent: true)
+            .accessibilityIdentifier("session.elapsed")
+    }
+
+    /// A walk or run glances at its current pace; a ride at its speed.
+    @ViewBuilder private func glancePace(labelBeside: Bool) -> some View {
+        if showsCurrentPace {
+            SessionStatTile(value: session.currentPaceText, label: "current pace", prominent: true,
+                            labelBeside: labelBeside)
+                .accessibilityIdentifier("session.currentPace")
+        } else {
+            SessionStatTile(value: session.paceText, label: session.paceLabel, prominent: true,
+                            labelBeside: labelBeside)
+        }
     }
 
     /// Pulled up: every stat the session tracks, and each control with what it does.
@@ -659,7 +687,8 @@ private struct ActiveSessionScreen: View {
                                  symbol: .routeTrail, action: startTrailFromApproach)
                     .accessibilityIdentifier("session.startTrail")
             }
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3), spacing: 8) {
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8),
+                                     count: SessionPanelLayout.statColumns(typeSize)), spacing: 8) {
                 SessionStatTile(value: session.distanceText(session.totalDistanceCovered), label: "distance")
                 if isGuided {
                     SessionStatTile(value: session.distanceText(session.remainingDistance), label: "remaining")
@@ -684,6 +713,7 @@ private struct ActiveSessionScreen: View {
                     SessionStatTile(value: durationText(eta), label: "est. left")
                 }
                 SessionStatTile(value: "\(session.stopCount)", label: "stops")
+                    .accessibilityIdentifier("session.stops")
             }
 
             VStack(spacing: 2) {
@@ -792,8 +822,12 @@ private struct ActiveSessionScreen: View {
     }
 
     /// Pause is the big, easy target; Finish needs a hold, then a confirmation.
+    /// At the accessibility sizes Pause sits above Finish, each the full
+    /// width: beside Pause, 140 pt cut "Hold to finish" to "Hold to fi…".
     private var actionRow: some View {
-        HStack(spacing: 10) {
+        let stacked = SessionPanelLayout.stacksActions(typeSize)
+        let layout = stacked ? AnyLayout(VStackLayout(spacing: 10)) : AnyLayout(HStackLayout(spacing: 10))
+        return layout {
             Button {
                 if session.isPaused { session.resume() } else { session.pause() }
             } label: {
@@ -807,7 +841,7 @@ private struct ActiveSessionScreen: View {
             .accessibilityIdentifier("session.pause")
 
             HoldToFinishButton(wording: route.wording) { showFinishConfirm = true }
-                .frame(width: 140)
+                .frame(width: stacked ? nil : 140)
                 .accessibilityIdentifier("session.finish")
         }
         .padding(.horizontal, 18)

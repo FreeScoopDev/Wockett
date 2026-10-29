@@ -150,6 +150,43 @@ struct MapOrientationControls: View {
     }
 }
 
+// MARK: - Layout at large text sizes
+
+/// How the walk panel arranges itself at a text size. At the accessibility
+/// sizes three tiles or a 140 pt Finish beside Pause cut their words off
+/// ("Hold to fi…", "Current pa…", F5 audit, re-measured at Accessibility 2
+/// on 2026-10-28), so the panel uses two columns and stacks its buttons.
+/// The normal sizes keep the layout they had. Pure, so a test can pin both.
+enum SessionPanelLayout {
+    /// The one switch every large-text choice on the walk panel follows:
+    /// stacked buttons, a Finish that grows with its text, two columns,
+    /// labels and route names on two lines, the capped glance numbers.
+    static func isLarge(_ size: DynamicTypeSize) -> Bool {
+        size.isAccessibilitySize
+    }
+
+    /// Columns in the pulled-up stats grid. Below three, the glance row's
+    /// three numbers also split into two rows.
+    static func statColumns(_ size: DynamicTypeSize) -> Int {
+        isLarge(size) ? 2 : 3
+    }
+
+    /// Pause above Finish, each the full width, instead of side by side.
+    static func stacksActions(_ size: DynamicTypeSize) -> Bool {
+        isLarge(size)
+    }
+
+    /// The tallest the pulled-up panel's scrolling part grows. The stacked
+    /// buttons and a two-line route name take about 140 pt more at the
+    /// accessibility sizes, so with 430 the panel would reach over the map's
+    /// North up control. Measured on an iPhone 17 with a guided walk at
+    /// Accessibility 2 (the walk screen's ceiling): 290 still touched it,
+    /// 220 leaves about 40 pt. What does not fit scrolls.
+    static func expandedMaxHeight(_ size: DynamicTypeSize) -> CGFloat {
+        isLarge(size) ? 220 : 430
+    }
+}
+
 // MARK: - Hold to finish
 
 /// Finish needs a one-second press, with a fill that tracks the hold and a
@@ -166,6 +203,7 @@ struct HoldToFinishButton: View {
     @State private var isPressing = false
     @State private var completed = false
     @State private var showHint = false
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
         // The primary button's size and shape in the secondary look (raised
@@ -173,30 +211,43 @@ struct HoldToFinishButton: View {
         // target: finishing saves the outing, so it is not red, and it never
         // looks like Pause. Red is kept for Discard (2026-10-27).
         let shape = RoundedRectangle(cornerRadius: 18, style: .continuous)
-        return ZStack {
-            shape.fill(Color.earthRaised)
-            GeometryReader { geo in
-                shape
-                    .fill(Color.earthGreen.opacity(0.16))
-                    .frame(width: geo.size.width * progress)
-            }
-            shape.strokeBorder(Color.earthMuted.opacity(0.5), lineWidth: 1.5)
-            VStack(spacing: 1) {
-                Text(isPressing ? "Keep holding" : "Hold to finish")
-                    .font(.wktRowTitle)
-                    .foregroundColor(.earthCream)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-                Text(showHint ? "Press and hold for 1 second" : "1 second")
-                    .font(.wktLabel)
-                    .foregroundColor(.earthMuted)
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.8)
-                    .multilineTextAlignment(.center)
-            }
-            .padding(.horizontal, 6)
+        // 56 pt tall at the normal sizes; at the accessibility sizes it grows
+        // with its text, which may wrap, instead of cutting it off. The fills
+        // sit behind the text so the hold fill's GeometryReader takes the
+        // button's size rather than all the height it is offered.
+        let large = SessionPanelLayout.isLarge(typeSize)
+        return VStack(spacing: 1) {
+            Text(isPressing ? "Keep holding" : "Hold to finish")
+                .font(.wktRowTitle)
+                .foregroundColor(.earthCream)
+                .lineLimit(large ? 2 : 1)
+                .minimumScaleFactor(0.8)
+                // Centred only when it may wrap: unconditional centring moved
+                // the one-line title by a fraction of a pixel at the default
+                // size (measured 2026-10-28), and that size must not change.
+                .multilineTextAlignment(large ? .center : .leading)
+            Text(showHint ? "Press and hold for 1 second" : "1 second")
+                .font(.wktLabel)
+                .foregroundColor(.earthMuted)
+                .lineLimit(2)
+                .minimumScaleFactor(0.8)
+                .multilineTextAlignment(.center)
         }
-        .frame(height: 56)
+        .padding(.horizontal, 6)
+        .padding(.vertical, large ? 8 : 0)
+        .frame(maxWidth: .infinity, minHeight: 56)
+        .frame(height: large ? nil : 56)
+        .background {
+            ZStack {
+                shape.fill(Color.earthRaised)
+                GeometryReader { geo in
+                    shape
+                        .fill(Color.earthGreen.opacity(0.16))
+                        .frame(width: geo.size.width * progress)
+                }
+                shape.strokeBorder(Color.earthMuted.opacity(0.5), lineWidth: 1.5)
+            }
+        }
         .contentShape(shape)
         .onLongPressGesture(minimumDuration: Self.holdSeconds, maximumDistance: 40) {
             completed = true
@@ -239,20 +290,21 @@ struct SessionStatTile: View {
     let value: String
     let label: String
     var prominent = false
+    /// The value with its label beside it, on one line: the collapsed
+    /// panel's second row at the accessibility sizes, where a third
+    /// stacked tile pushed a guided walk's panel over the map's North up
+    /// control on an iPhone 17e (844 pt tall).
+    var labelBeside = false
+
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
-        VStack(spacing: 2) {
-            Text(value)
-                .font(prominent ? .wktMetric : .wktSection)
-                .monospacedDigit()
-                .foregroundColor(.earthCream)
-                .lineLimit(1)
-                .minimumScaleFactor(0.6)
-            Text(sentenceCase(label))
-                .font(.wktLabel)
-                .foregroundColor(.earthMuted)
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
+        Group {
+            if labelBeside {
+                HStack(spacing: 12) { valueText; labelText }
+            } else {
+                VStack(spacing: 2) { valueText; labelText }
+            }
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, prominent ? 2 : 10)
@@ -260,6 +312,33 @@ struct SessionStatTile: View {
                     in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(label): \(value)")
+    }
+
+    private var large: Bool { SessionPanelLayout.isLarge(typeSize) }
+
+    // At the accessibility sizes the glance numbers stop at their xxxLarge
+    // size (45 pt) instead of reaching 62: in two rows, at 62 pt, a guided
+    // walk's panel reached over the map's North up control. Capped, never
+    // shrunk: turning text up must not make these smaller (critic, 2026-10-28).
+    private var valueText: some View {
+        Text(value)
+            .font(prominent ? (large ? .wktDense(34, weight: .heavy) : .wktMetric) : .wktSection)
+            .monospacedDigit()
+            .foregroundColor(.earthCream)
+            .lineLimit(1)
+            .minimumScaleFactor(0.6)
+    }
+
+    // Two lines rather than "Current pa…" when the text is large; the value
+    // keeps one line. The normal sizes keep one line, shrinking to fit,
+    // exactly as before.
+    private var labelText: some View {
+        Text(sentenceCase(label))
+            .font(.wktLabel)
+            .foregroundColor(.earthMuted)
+            .lineLimit(large ? 2 : 1)
+            .minimumScaleFactor(0.8)
+            .multilineTextAlignment(large ? .center : .leading)
     }
 
     /// Callers pass lowercase labels ("distance", "steps / min"); the
