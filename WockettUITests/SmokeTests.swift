@@ -519,6 +519,75 @@ final class SmokeTests: XCTestCase {
         // assertion that looks like protection and isn't.
     }
 
+    // MARK: - 5a. Routes results at the largest text size
+
+    /// At Accessibility 2 the results panel must fit the window. One child
+    /// wider than the screen widens the whole panel, which is how Save and
+    /// Share went off-screen at AX5 (F5 audit B1, N6); on `main` before
+    /// spec fix/large-text-routes-panel the panel was 399 pt on a 390 pt
+    /// iPhone 17e. The WeatherKit attribution is an Apple requirement, so it
+    /// must be there and wholly inside the window. Cut-off or one-character
+    /// lines are not in the accessibility tree (a label keeps its full
+    /// text): the screenshots are the evidence for those. Run it on an
+    /// iPhone 17e as well as an iPhone 17: the small phone is the tight one.
+    func testRoutesResultsFitAtAccessibility2() {
+        app.terminate()
+        app.launchArguments += ["-WKTDemo", "-UIPreferredContentSizeCategoryName",
+                                "UICTContentSizeCategoryAccessibilityL"]
+        app.launch()
+        XCTAssertTrue(el("home.statCard").waitForExistence(timeout: 30))
+        selectTab("Routes")
+        let findRoutes = app.buttons["routes.findRoutes"]
+        XCTAssertTrue(findRoutes.waitForExistence(timeout: 30))
+        findRoutes.tap()
+
+        let panel = el("routes.resultsPanel")
+        XCTAssertTrue(panel.waitForExistence(timeout: 60), "Find Routes must list routes from the demo location")
+        XCTAssertTrue(app.buttons["routes.routeCard"].firstMatch.waitForExistence(timeout: 10), "No route card listed")
+        // GitHub's runner may get no WeatherKit answer; then there is no tile and
+        // nothing to attribute. Everywhere else the tile is required.
+        let tile = el("routes.weatherTile")
+        let hasWeather = tile.waitForExistence(timeout: 30)
+        if ProcessInfo.processInfo.environment["WOCKETT_CI"] != "1" {
+            XCTAssertTrue(hasWeather, "The demo location must get a weather tile")
+        }
+        // Animation wait: the panel and the weather tile settle before frames are read.
+        sleep(1)
+
+        let window = app.windows.firstMatch.frame
+        func inside(_ frame: CGRect) -> Bool { frame.minX >= window.minX && frame.maxX <= window.maxX }
+        let panelFrame = panel.frame
+        XCTAssertTrue(inside(panelFrame),
+                      "The results panel is wider than the window: \(panelFrame) in \(window). "
+                      + "Too wide: \(widerThan(window, in: panel))")
+
+        let save = app.buttons["Save route"].firstMatch
+        let share = app.buttons["Share route"].firstMatch
+        XCTAssertTrue(save.exists && share.exists, "The first route card must offer Save and Share")
+        XCTAssertTrue(inside(save.frame), "Save is off-screen: \(save.frame) in \(window)")
+        XCTAssertTrue(inside(share.frame), "Share is off-screen: \(share.frame) in \(window)")
+
+        if hasWeather {
+            // SwiftUI's Link reaches the accessibility tree as a button.
+            let attribution = tile.buttons["Weather"].firstMatch
+            XCTAssertTrue(attribution.exists, "The weather tile must carry Apple's Weather attribution link")
+            XCTAssertTrue(inside(attribution.frame), "The attribution is off-screen: \(attribution.frame) in \(window)")
+            XCTAssertTrue(inside(tile.frame), "The weather tile is off-screen: \(tile.frame) in \(window)")
+        }
+    }
+
+    /// The elements under `root` that reach past the window's sides, widest
+    /// first, for a failure message that names the culprit.
+    private func widerThan(_ window: CGRect, in root: XCUIElement) -> String {
+        root.descendants(matching: .any).allElementsBoundByIndex
+            .map { ($0.identifier.isEmpty ? $0.label : $0.identifier, $0.elementType.rawValue, $0.frame) }
+            .filter { $0.2.maxX > window.maxX || $0.2.minX < window.minX }
+            .sorted { $0.2.width > $1.2.width }
+            .prefix(8)
+            .map { "\($0.0) [type \($0.1)] \($0.2)" }
+            .joined(separator: "; ")
+    }
+
     // MARK: - 5b. Guided walk ended from the Live Activity
 
     /// A guided walk's screen is a full-screen cover on Home. Ending the walk

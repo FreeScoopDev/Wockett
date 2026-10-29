@@ -11,6 +11,7 @@ struct RouteCard: View {
     let onSelect: () -> Void
     var onSave: (() -> Void)? = nil
     var onPost: (() -> Void)? = nil
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     private var routeColor: Color {
         SuggestedRoute.paletteColor(index: route.colorIndex, total: totalRoutes)
@@ -49,7 +50,13 @@ struct RouteCard: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(route.label ?? "\(route.directionName) \(route.isLoop ? "loop" : "route")")
                         .font(.wktRowTitle).foregroundColor(.earthCream)
-                    HStack(spacing: 14) {
+                    // Side by side at the accessibility sizes, the two squeezed
+                    // each other to one character a line ("6. / 3 / mi" on an
+                    // iPhone 17e). Stacked, each value keeps its unit.
+                    let valueRow = typeSize.isAccessibilitySize
+                        ? AnyLayout(VStackLayout(alignment: .leading, spacing: 6))
+                        : AnyLayout(HStackLayout(spacing: 14))
+                    valueRow {
                         Label { Text(route.distanceText) } icon: { Image(wkt: .distance).wktIcon(.inline, tint: .earthMuted) }
                         Label { Text(route.timeText) }     icon: { Image(wkt: .time).wktIcon(.inline, tint: .earthMuted) }
                     }

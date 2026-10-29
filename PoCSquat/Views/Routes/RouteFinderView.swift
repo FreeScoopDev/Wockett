@@ -34,6 +34,7 @@ struct RouteFinderContentView: View {
 
     // Community
     @Environment(CommunityRoutesModel.self) private var communityModel
+    @Environment(\.dynamicTypeSize) private var typeSize
     @State private var showCommunityRoutes = true
 
     // Navigation & sheets
@@ -453,26 +454,24 @@ struct RouteFinderContentView: View {
 
     private func resultsPanel(containerHeight: CGFloat) -> some View {
         VStack(spacing: 0) {
-            HStack(spacing: 0) {
-                Button { clearRoutes() } label: {
-                    Label {
-                        Text("New search")
-                    } icon: {
-                        Image(wkt: .refresh).wktIcon(.inline, tint: .earthGreen)
+            Group {
+                // At the accessibility sizes the fixed 110 pt slot broke the
+                // title as "New / searc / h", so the grabber goes above and
+                // the button takes the whole line. Its twin spacer only kept
+                // the grabber centred between two 110 pt slots.
+                if typeSize.isAccessibilitySize {
+                    VStack(alignment: .leading, spacing: 6) {
+                        panelGrabber
+                        newSearchButton
                     }
-                    .font(.wktLabel)
-                    .frame(minHeight: 44)
-                    .foregroundColor(.earthGreen)
+                } else {
+                    HStack(spacing: 0) {
+                        newSearchButton
+                            .frame(width: 110, alignment: .leading)
+                        panelGrabber
+                        Color.clear.frame(width: 110, height: 1)
+                    }
                 }
-                .accessibilityIdentifier("routes.newSearch")
-                .frame(width: 110, alignment: .leading)
-
-                Capsule()
-                    .fill(Color.earthMuted.opacity(0.3))
-                    .frame(width: 36, height: 4)
-                    .frame(maxWidth: .infinity)
-
-                Color.clear.frame(width: 110, height: 1)
             }
             .padding(.horizontal, 20)
             .padding(.top, 10)
@@ -548,6 +547,27 @@ struct RouteFinderContentView: View {
         .accessibilityIdentifier("routes.resultsPanel")
         .clipShape(UnevenRoundedRectangle(topLeadingRadius: 24, topTrailingRadius: 24))
         .background(.ultraThinMaterial, ignoresSafeAreaEdges: .bottom)
+    }
+
+    private var newSearchButton: some View {
+        Button { clearRoutes() } label: {
+            Label {
+                Text("New search")
+            } icon: {
+                Image(wkt: .refresh).wktIcon(.inline, tint: .earthGreen)
+            }
+            .font(.wktLabel)
+            .frame(minHeight: 44)
+            .foregroundColor(.earthGreen)
+        }
+        .accessibilityIdentifier("routes.newSearch")
+    }
+
+    private var panelGrabber: some View {
+        Capsule()
+            .fill(Color.earthMuted.opacity(0.3))
+            .frame(width: 36, height: 4)
+            .frame(maxWidth: .infinity)
     }
 
     @ViewBuilder
