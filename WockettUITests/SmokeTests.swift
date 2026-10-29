@@ -572,9 +572,16 @@ final class SmokeTests: XCTestCase {
         // Without a tile the checks above pass even with the overflow back,
         // so say so instead of reporting a pass that guarded nothing.
         try XCTSkipUnless(hasWeather, "No WeatherKit answer on this runner; the weather row's overflow was not exercised")
-        // SwiftUI's Link reaches the accessibility tree as a button.
-        let attribution = tile.buttons["Weather"].firstMatch
-        XCTAssertTrue(attribution.exists, "The weather tile must carry Apple's Weather attribution link")
+        // SwiftUI's Link reaches the accessibility tree as a button on iOS
+        // 26.5; either type is accepted. "°" rules out the forecast toggle,
+        // whose label starts with the temperature.
+        let linkOrButton = NSPredicate(format: "(elementType == %d OR elementType == %d) "
+                                       + "AND label CONTAINS 'Weather' AND NOT (label CONTAINS '°')",
+                                       XCUIElement.ElementType.link.rawValue,
+                                       XCUIElement.ElementType.button.rawValue)
+        let attribution = tile.descendants(matching: .any).matching(linkOrButton).firstMatch
+        XCTAssertTrue(attribution.exists,
+                      "The weather tile must carry Apple's Weather attribution link: \(tile.debugDescription)")
         XCTAssertTrue(inside(attribution.frame), "The attribution is off-screen: \(attribution.frame) in \(window)")
         XCTAssertTrue(inside(tile.frame), "The weather tile is off-screen: \(tile.frame) in \(window)")
     }
