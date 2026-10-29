@@ -492,7 +492,9 @@ struct CommunityHubView: View {
         if !top.isEmpty {
             WktSection(title: "Top community routes", actionTitle: "See all", action: { pushRoutes = true }, content: {
                 ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: WktSpacing.betweenCards) {
+                    // Top-aligned: at the accessibility sizes the cards can
+                    // differ in height.
+                    HStack(alignment: .top, spacing: WktSpacing.betweenCards) {
                         ForEach(Array(top.enumerated()), id: \.element.id) { rank, route in
                             routeTile(route, rank: rank + 1)
                         }
@@ -530,19 +532,21 @@ struct CommunityHubView: View {
                     .clipShape(Capsule())
                     .padding(10)
                 }
+                // The card grows taller at the accessibility sizes rather
+                // than cut the detail to "9.1 mi · Hard · 1…".
                 VStack(alignment: .leading, spacing: 3) {
                     Text(route.name)
                         .font(.wktRowTitle)
                         .foregroundColor(.earthCream)
-                        .lineLimit(1)
-                    Text(detail)
+                        .lineLimit(WktNameLayout.lineLimit(typeSize))
+                    Text(WktNameLayout.keepingUnits(detail))
                         .font(.wktLabel)
                         .foregroundColor(.earthMuted)
-                        .lineLimit(1)
+                        .lineLimit(WktNameLayout.lineLimit(typeSize))
                     Text("by \(route.authorName)")
                         .font(.wktLabel)
                         .foregroundColor(.earthMuted)
-                        .lineLimit(1)
+                        .lineLimit(WktNameLayout.lineLimit(typeSize))
                 }
                 .padding(WktSpacing.cardPadding)
             }
@@ -572,20 +576,29 @@ struct CommunityHubView: View {
                 ForEach(Array(nearby.enumerated()), id: \.element.id) { index, trail in
                     if index > 0 { WktDivider() }
                     Button { openTrails(trail.id) } label: {
+                        // At the accessibility sizes the chip goes under the
+                        // name: beside it, it cut the name to "Little R…".
+                        let stacked = WktNameLayout.stacks(typeSize)
                         HStack(spacing: 12) {
                             WktIconBadge(symbol: trail.isLoop ? .loop : .routeTrail)
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(trail.name)
                                     .font(.wktRowTitle)
                                     .foregroundColor(.earthCream)
-                                    .lineLimit(1)
-                                Text(trailDetail(trail))
+                                    .lineLimit(WktNameLayout.lineLimit(typeSize))
+                                Text(WktNameLayout.keepingUnits(trailDetail(trail)))
                                     .font(.wktLabel)
                                     .foregroundColor(.earthMuted)
-                                    .lineLimit(1)
+                                    .lineLimit(WktNameLayout.lineLimit(typeSize))
+                                if stacked {
+                                    chip("Official", tint: .earthGreen)
+                                        .padding(.top, 4)
+                                }
                             }
                             Spacer(minLength: 0)
-                            chip("Official", tint: .earthGreen)
+                            if !stacked {
+                                chip("Official", tint: .earthGreen)
+                            }
                         }
                         .padding(.vertical, 8)
                         .contentShape(Rectangle())
