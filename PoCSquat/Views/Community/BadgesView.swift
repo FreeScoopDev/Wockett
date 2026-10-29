@@ -6,6 +6,7 @@ import UIKit
 struct BadgesContentView: View {
     @EnvironmentObject private var stepManager:  StepManager
     @EnvironmentObject private var historyStore: WalkHistoryStore
+    @Environment(\.dynamicTypeSize) private var typeSize
     @AppStorage("pinnedBadgeIds_v1") private var pinnedBadgeIdsStr: String = ""
 
     var streakStore: StreakStore = .shared
@@ -108,7 +109,9 @@ struct BadgesContentView: View {
 
     private var streakSection: some View {
         VStack(spacing: WktSpacing.betweenCards) {
-            HStack(spacing: WktSpacing.betweenCards) {
+            // Rows of two at the accessibility sizes, where a third of the
+            // width cut every label ("Goal str…", "Apple a…", "Best str…").
+            WktStatRow {
                 streakTile(value: currentStreak,   label: "Goal streak",  symbol: .calories, tint: .earthOrange)
                 // Apple a Day is a 10,000-step streak, so it wears the steps glyph.
                 streakTile(value: appleADayStreak, label: "Apple a Day",  symbol: .steps,    tint: .earthGreen)
@@ -136,7 +139,7 @@ struct BadgesContentView: View {
                 .font(.wktLabel)
                 .foregroundColor(.earthMuted)
                 .multilineTextAlignment(.center)
-                .lineLimit(1)
+                .lineLimit(WktStatColumns.labelLineLimit(typeSize))
                 .minimumScaleFactor(0.8)
         }
         .frame(maxWidth: .infinity)

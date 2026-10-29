@@ -9,6 +9,7 @@ struct WalkHistoryView: View {
     @EnvironmentObject var petStore: PetStore
     @EnvironmentObject private var tabRouter: TabRouter
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.dynamicTypeSize) private var typeSize
     @State private var showManualEntry = false
     @State private var selectedSession: WalkSession?
     @State private var summarySession: WalkSession?
@@ -184,7 +185,9 @@ struct WalkHistoryView: View {
         // included, so it says so rather than averaging them.
         let totals = page.totals
         return WktSection(title: page.title) {
-            HStack(spacing: 0) {
+            // Rows of two at the accessibility sizes, without the dividers:
+            // a quarter of the width cut "This week" to "This w…".
+            WktStatRow(spacing: 0, rowSpacing: WktSpacing.betweenCards) {
                 statCell("\(totals.count)", totals.count == 1 ? "Activity" : "Activities")
                 columnDivider
                 statCell(totals.distanceText(), "Distance")
@@ -202,8 +205,10 @@ struct WalkHistoryView: View {
         .padding(.vertical, 8)
     }
 
-    private var columnDivider: some View {
-        Rectangle().fill(Color.earthTrack).frame(width: 1, height: 36)
+    @ViewBuilder private var columnDivider: some View {
+        if WktStatColumns.columns(typeSize) == nil {
+            Rectangle().fill(Color.earthTrack).frame(width: 1, height: 36)
+        }
     }
 
     private func statCell(_ value: String, _ label: String) -> some View {
@@ -211,7 +216,8 @@ struct WalkHistoryView: View {
             Text(value).font(.wktRowTitle.monospacedDigit()).foregroundColor(.earthCream)
                 .lineLimit(1).minimumScaleFactor(0.7)
             Text(label).font(.wktLabel).foregroundColor(.earthMuted)
-                .lineLimit(1).minimumScaleFactor(0.8)
+                .lineLimit(WktStatColumns.labelLineLimit(typeSize)).minimumScaleFactor(0.8)
+                .multilineTextAlignment(WktStatColumns.labelAlignment(typeSize))
         }
         .frame(maxWidth: .infinity)
         .accessibilityElement(children: .combine)

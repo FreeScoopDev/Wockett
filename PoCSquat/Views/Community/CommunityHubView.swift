@@ -19,6 +19,7 @@ struct CommunityHubView: View {
     @EnvironmentObject private var routeStore: CustomRouteStore
     @EnvironmentObject private var stepManager: StepManager
     @Environment(CommunityRoutesModel.self) private var communityRoutesModel
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var streakStore: StreakStore = .shared
 
@@ -154,7 +155,9 @@ struct CommunityHubView: View {
                         .foregroundColor(.earthMuted)
                 }
             }
-            HStack(spacing: 0) {
+            // Rows of two at the accessibility sizes: four to a row cut the
+            // labels to "Day str…", "Challe…", "Wocke…".
+            WktStatRow(spacing: 0, rowSpacing: 8) {
                 youStat(value: "\(currentStreak)", label: "Day streak") { pushBadges = true }
                 youStat(value: "\(earned)", label: "Badges") { pushBadges = true }
                 youStat(value: model.visibleStanding.map { "#\($0.rank)" } ?? "–", label: "Challenge") { pushChallenges = true }
@@ -188,7 +191,8 @@ struct CommunityHubView: View {
                 Text(label)
                     .font(.wktLabel)
                     .foregroundColor(.earthMuted)
-                    .lineLimit(1)
+                    .lineLimit(WktStatColumns.labelLineLimit(typeSize))
+                    .multilineTextAlignment(WktStatColumns.labelAlignment(typeSize))
                     .minimumScaleFactor(0.8)
             }
             .frame(maxWidth: .infinity, minHeight: 44)

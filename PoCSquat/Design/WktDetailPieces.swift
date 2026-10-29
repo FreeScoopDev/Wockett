@@ -79,6 +79,113 @@ struct WktStatGrid: View {
     }
 }
 
+/// How a row of three or four stats lays out. Side by side at the normal
+/// text sizes; in rows of two at the accessibility sizes, where a third or a
+/// quarter of the width cut the labels to "Distanc / e", "This w…",
+/// "Day str…", "Goal str…" and the values to "About 29…" (F5 audit H3-H5,
+/// N2, N3, 2026-10-29). Pet detail already used rows of two and read in
+/// full. Pure, so a test can pin both.
+enum WktStatColumns {
+    /// `nil` at the normal sizes: one row, as many stats as it has. Two
+    /// columns at the accessibility sizes.
+    static func columns(_ size: DynamicTypeSize) -> Int? {
+        size.isAccessibilitySize ? 2 : nil
+    }
+
+    /// A stat's label: one line at the normal sizes; at the accessibility
+    /// sizes as many as it needs, broken between words. Values stay on one.
+    static func labelLineLimit(_ size: DynamicTypeSize) -> Int? {
+        size.isAccessibilitySize ? nil : 1
+    }
+
+    /// A wrapped label's lines, centred under a centred value. The normal
+    /// sizes keep SwiftUI's default, `.leading`: a one-line label that
+    /// shrinks to fit is drawn differently once centred (measured: History's
+    /// and the You card's labels moved at the default size).
+    static func labelAlignment(_ size: DynamicTypeSize) -> TextAlignment {
+        size.isAccessibilitySize ? .center : .leading
+    }
+}
+
+/// A row of stats that follows `WktStatColumns`: an `HStack` at the normal
+/// sizes (exactly the row each screen had), rows of two at the
+/// accessibility sizes. Only the arrangement: each screen keeps its own tile.
+struct WktStatRow<Content: View>: View {
+    var spacing: CGFloat = WktSpacing.betweenCards
+    /// Between the rows of two; `spacing` when nil.
+    var rowSpacing: CGFloat?
+    @ViewBuilder let content: () -> Content
+    @Environment(\.dynamicTypeSize) private var typeSize
+
+    var body: some View {
+        if let columns = WktStatColumns.columns(typeSize) {
+            WktStatColumnsLayout(columns: columns, spacing: spacing, rowSpacing: rowSpacing ?? spacing) {
+                content()
+            }
+        } else {
+            HStack(spacing: spacing) { content() }
+        }
+    }
+}
+
+/// Equal-width columns, filled row by row. A row is as tall as its tallest
+/// stat, offered to each so a tile that fills its height stays even with its
+/// neighbour; a last stat on its own keeps one column's width. A row with
+/// fewer stats than columns (a ride's trail detail has only Length) uses
+/// just as many columns, so one stat keeps the full width.
+struct WktStatColumnsLayout: Layout {
+    let columns: Int
+    let spacing: CGFloat
+    let rowSpacing: CGFloat
+
+    /// Where each stat goes in a row `width` wide, given how tall each is at
+    /// one column's width. Pure, so the arithmetic is tested without a view.
+    static func frames(columns: Int, spacing: CGFloat, rowSpacing: CGFloat, width: CGFloat,
+                       heightAt: (_ index: Int, _ columnWidth: CGFloat) -> CGFloat, count: Int) -> [CGRect] {
+        guard count > 0 else { return [] }
+        let columns = max(1, min(columns, count))
+        let cellWidth = max(0, (width - spacing * CGFloat(columns - 1)) / CGFloat(columns))
+        var frames: [CGRect] = []
+        var y: CGFloat = 0
+        for start in stride(from: 0, to: count, by: columns) {
+            let row = start..<min(start + columns, count)
+            let height = row.map { heightAt($0, cellWidth) }.max() ?? 0
+            for index in row {
+                let x = CGFloat(index - start) * (cellWidth + spacing)
+                frames.append(CGRect(x: x, y: y, width: cellWidth, height: height))
+            }
+            y += height + rowSpacing
+        }
+        return frames
+    }
+
+    private func frames(_ subviews: Subviews, width: CGFloat) -> [CGRect] {
+        Self.frames(columns: columns, spacing: spacing, rowSpacing: rowSpacing, width: width,
+                    heightAt: { subviews[$0].sizeThatFits(ProposedViewSize(width: $1, height: nil)).height },
+                    count: subviews.count)
+    }
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width: CGFloat
+        if let proposed = proposal.width, proposed.isFinite {
+            width = proposed
+        } else {
+            let used = CGFloat(max(1, min(columns, subviews.count)))
+            let widest = subviews.map { $0.sizeThatFits(.unspecified).width }.max() ?? 0
+            width = widest * used + spacing * (used - 1)
+        }
+        return CGSize(width: width, height: frames(subviews, width: width).map(\.maxY).max() ?? 0)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        for (index, frame) in frames(subviews, width: bounds.width).enumerated() {
+            subviews[index].place(at: CGPoint(x: bounds.minX + frame.minX, y: bounds.minY + frame.minY),
+                                  anchor: .topLeading,
+                                  proposal: ProposedViewSize(width: frame.width, height: frame.height))
+        }
+    }
+}
+
 /// Orange-dotted lines of text: what affects a metric.
 struct WktBulletList: View {
     let items: [String]
@@ -139,7 +246,8 @@ struct WktInfoSection<Content: View>: View {
 }
 
 /// A third-width stat card with its icon on top: distance, time, steps on a
-/// summary. Three sit side by side. An optional `detail` line goes under the
+/// summary. Three sit side by side, two at the accessibility sizes
+/// (`WktStatRow`). An optional `detail` line goes under the
 /// label (a climb's descent). `fillsHeight` lets a tile stretch to its row's
 /// height, for a row sized to its tallest tile (`fixedSize` vertically), so a
 /// row with one detail line stays even; off, a tile is its natural height.

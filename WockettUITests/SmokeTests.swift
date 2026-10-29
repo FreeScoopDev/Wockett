@@ -1228,6 +1228,66 @@ final class SmokeTests: XCTestCase {
                                     "Share a route must sit below Start a challenge: \(first) and \(second)")
     }
 
+    // MARK: - 8b. Stat rows at Accessibility 2
+
+    /// At Accessibility 2 a row of three or four stats goes two to a row
+    /// (spec fix/large-text-stat-rows): a third of the width broke the
+    /// summary's "Distanc / e", a quarter cut History's "This w…" (F5 audit
+    /// H3, H4). Frames only, since a cut-off label keeps its full text in the
+    /// accessibility tree: the stats' centres take exactly two values, and
+    /// every stat is inside the window. Run on an iPhone 17e or 17.
+    func testStatRowsUseTwoColumnsAtAccessibility2() {
+        app.terminate()
+        app.launchArguments += ["-WKTDemo", "-UIPreferredContentSizeCategoryName",
+                                "UICTContentSizeCategoryAccessibilityL"]
+        app.launch()
+        XCTAssertTrue(el("home.statCard").waitForExistence(timeout: 30))
+
+        // History's header: four cells, each read as "value, label".
+        openHistoryFromHealth()
+        let header = el("history.header")
+        XCTAssertTrue(header.waitForExistence(timeout: 10), "History must show its header")
+        let cellLabels = NSPredicate(format: "label MATCHES %@", ".+, (Activity|Activities|Distance|Time|This week)")
+        let cells = app.staticTexts.matching(cellLabels).allElementsBoundByIndex
+            .filter { header.frame.intersects($0.frame) }
+        expectTwoColumns(cells, count: 4, name: "History's header cells")
+
+        // The just-finished summary: Distance, Time and Steps tiles.
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        if !tab("Home").waitForExistence(timeout: 3) { tab("Health").tap() }
+        selectTab("Home")
+        startWalkFromHome()
+        let finish = el("session.finish")
+        XCTAssertTrue(finish.waitForExistence(timeout: 30), "The walk screen must offer Finish")
+        finish.press(forDuration: 1.4)
+        let confirm = app.buttons["session.confirmFinish"]
+        XCTAssertTrue(confirm.waitForExistence(timeout: 5), "Holding Finish must open the confirmation")
+        confirm.tap()
+        let summary = el("summary.root")
+        XCTAssertTrue(summary.waitForExistence(timeout: 15), "Finishing must open the summary")
+        let tileLabels = NSPredicate(format: "label MATCHES %@", ".+ (Distance|Time|Steps)(, .*)?")
+        let tiles = summary.otherElements.matching(tileLabels)
+        let three = XCTNSPredicateExpectation(predicate: NSPredicate(format: "count == 3"), object: tiles)
+        XCTAssertEqual(XCTWaiter().wait(for: [three], timeout: 10), .completed,
+                       "The summary must show three tiles, saw \(tiles.allElementsBoundByIndex.map(\.label))")
+        expectTwoColumns(tiles.allElementsBoundByIndex, count: 3, name: "The summary's tiles")
+    }
+
+    /// `count` stats, in two columns, each inside the window. A column is
+    /// told by its centre, not its left edge: History's cells are centred
+    /// text, whose frames start wherever their own width puts them.
+    private func expectTwoColumns(_ stats: [XCUIElement], count: Int, name: String) {
+        let window = app.windows.firstMatch.frame
+        let frames = stats.map(\.frame)
+        XCTAssertEqual(frames.count, count, "\(name): expected \(count), saw \(stats.map(\.label))")
+        let centres = Set(frames.map { Int($0.midX.rounded()) })
+        XCTAssertEqual(centres.count, 2, "\(name) must sit in two columns: \(frames)")
+        for frame in frames {
+            XCTAssertGreaterThanOrEqual(frame.minX, window.minX, "\(name) past the left edge: \(frame)")
+            XCTAssertLessThanOrEqual(frame.maxX, window.maxX, "\(name) past the right edge: \(frame) in \(window)")
+        }
+    }
+
     // MARK: - 9. Terms before a first community action
 
     /// Community → Start a challenge → Create Challenge with the Terms not yet

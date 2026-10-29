@@ -450,15 +450,29 @@ struct ActivitySummaryView: View {
 // MARK: - Stat tiles
 
 /// The figures an activity shows (`ActivitySummaryContent.stats`) as icon
-/// tiles: three in a row, or two rows of two. The summary and the history
-/// notes sheet both use it, so a ride never shows steps on either.
+/// tiles: three in a row, or two rows of two, and rows of two at the
+/// accessibility sizes (`WktStatColumns`), where a third of the width broke
+/// "Distanc / e". The summary and the history notes sheet both use it, so a
+/// ride never shows steps on either.
 struct ActivityStatTiles: View {
     let session: WalkSession
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     private var stats: [SummaryStat] { ActivitySummaryContent.stats(for: session) }
     private var mode: ActivityMode { ActivitySummaryContent.mode(of: session) }
 
     var body: some View {
+        if let columns = WktStatColumns.columns(typeSize) {
+            WktStatColumnsLayout(columns: columns, spacing: WktSpacing.betweenCards,
+                                 rowSpacing: WktSpacing.betweenCards) {
+                ForEach(stats.indices, id: \.self) { tile(stats[$0]) }
+            }
+        } else {
+            normalRows
+        }
+    }
+
+    private var normalRows: some View {
         VStack(spacing: WktSpacing.betweenCards) {
             ForEach(Self.rows(count: stats.count), id: \.self) { row in
                 HStack(spacing: WktSpacing.betweenCards) {
