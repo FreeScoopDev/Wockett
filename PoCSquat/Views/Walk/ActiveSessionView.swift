@@ -499,7 +499,9 @@ private struct ActiveSessionScreen: View {
 
             panelHeader
 
-            if session.isPaused {
+            // At the accessibility sizes the header says "Paused" instead
+            // (`pausedLine`); the banner's own row is too tall there.
+            if session.isPaused && !SessionPanelLayout.isLarge(typeSize) {
                 PauseResumeControl(
                     sessionLabel: route.wording.sessionLabel,
                     onResume: { session.resume() }
@@ -591,7 +593,9 @@ private struct ActiveSessionScreen: View {
                     Text(isGuided ? route.name : route.wording.sessionLabel)
                         .font(.wktRowTitle).foregroundColor(.earthCream)
                         .lineLimit(SessionPanelLayout.isLarge(typeSize) ? 2 : 1)
-                    if isGuided {
+                    if session.isPaused && SessionPanelLayout.isLarge(typeSize) {
+                        pausedLine
+                    } else if isGuided {
                         // The activity's word first ("Hike · On the trail"):
                         // a guided title is the route's name, so this is
                         // where a walk, run, ride or hike says which it is.
@@ -625,6 +629,26 @@ private struct ActiveSessionScreen: View {
             guard expand != panelExpanded, expand || collapse else { return }
             withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { panelExpanded = expand }
         })
+    }
+
+    /// "Paused" in the header, at the accessibility sizes only, in place of
+    /// the banner's own row. That row (icon, "Walk paused", Resume pill)
+    /// wrapped and pushed the panel up to 84 pt over the map's North up
+    /// control on an iPhone 17e at Accessibility 2; a one-line banner without
+    /// the pill still reached 44 pt over (spec fix/large-text-paused-banner).
+    /// Its pill only repeated the main button, which says Resume while paused.
+    /// A guided walk's progress line gives way to it while paused, keeping
+    /// the activity's word. VoiceOver hears "Walk paused".
+    private var pausedLine: some View {
+        HStack(spacing: 6) {
+            Image(wkt: .pauseCircle)
+                .wktIcon(.inline, tint: .earthOrange)
+            Text(isGuided ? "\(route.wording.sessionLabel) · Paused" : "Paused")
+                .font(.wktLabel).foregroundColor(.earthOrange)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(route.wording.sessionLabel) paused")
+        .accessibilityIdentifier("session.paused")
     }
 
     /// The default view: three numbers that matter mid-walk, so the map keeps the screen.

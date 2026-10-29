@@ -196,21 +196,7 @@ final class SmokeTests: XCTestCase {
     /// seen here; Finish's width is the stand-in for room to read
     /// "Hold to finish".
     func testWalkScreenFitsAtAccessibility2() {
-        app.terminate()
-        app.launchArguments += ["-WKTDemo", "-UIPreferredContentSizeCategoryName",
-                                "UICTContentSizeCategoryAccessibilityL"]
-        app.launch()
-        XCTAssertTrue(el("home.statCard").waitForExistence(timeout: 30))
-        openHistoryFromHealth()
-        app.buttons["history.more"].firstMatch.tap()
-        let repeatItem = app.buttons["Repeat"].firstMatch
-        XCTAssertTrue(repeatItem.waitForExistence(timeout: 5), "More must offer Repeat")
-        repeatItem.tap()
-        let start = app.buttons["history.repeat.start"]
-        XCTAssertTrue(start.waitForExistence(timeout: 10), "Repeat must open the review sheet")
-        start.tap()
-        XCTAssertTrue(el("session.root").waitForExistence(timeout: 30),
-                      "Start must open the walk screen. \(screenState())")
+        startGuidedWalkAtAccessibility2()
 
         let window = app.windows.firstMatch.frame
         let pause = app.buttons["session.pause"]
@@ -266,6 +252,86 @@ final class SmokeTests: XCTestCase {
         confirm.tap()
         XCTAssertTrue(el("summary.root").waitForExistence(timeout: 10), "Summary must appear after finishing")
         app.buttons["summary.done"].tap()
+    }
+
+    /// Relaunches at Accessibility 2 with the -WKTDemo walk and repeats it
+    /// from History: a guided walk, the tallest panel.
+    private func startGuidedWalkAtAccessibility2() {
+        app.terminate()
+        app.launchArguments += ["-WKTDemo", "-UIPreferredContentSizeCategoryName",
+                                "UICTContentSizeCategoryAccessibilityL"]
+        app.launch()
+        XCTAssertTrue(el("home.statCard").waitForExistence(timeout: 30))
+        openHistoryFromHealth()
+        app.buttons["history.more"].firstMatch.tap()
+        let repeatItem = app.buttons["Repeat"].firstMatch
+        XCTAssertTrue(repeatItem.waitForExistence(timeout: 5), "More must offer Repeat")
+        repeatItem.tap()
+        let start = app.buttons["history.repeat.start"]
+        XCTAssertTrue(start.waitForExistence(timeout: 10), "Repeat must open the review sheet")
+        start.tap()
+        XCTAssertTrue(el("session.root").waitForExistence(timeout: 30),
+                      "Start must open the walk screen. \(screenState())")
+    }
+
+    // MARK: - 3c. Paused walk at the largest text size
+
+    /// Paused at Accessibility 2, the panel header says "Paused" and there is
+    /// no banner row or Resume pill: the wrapped banner and its pill pushed
+    /// the panel up to 84 pt over North up on an iPhone 17e, and a one-line
+    /// banner still 44 pt (spec fix/large-text-paused-banner). The main
+    /// button is the one Resume, and it resumes. Run it on an iPhone 17e as
+    /// well as an iPhone 17: the overlap was worst on the small phone.
+    func testPausedWalkFitsAtAccessibility2() {
+        startGuidedWalkAtAccessibility2()
+
+        let window = app.windows.firstMatch.frame
+        let pause = app.buttons["session.pause"]
+        let more = app.buttons["session.more"]
+        let panel = el("session.panel")
+        let controls = ["session.minimize", "session.recenter", "session.orientation"].map { app.buttons[$0] }
+        XCTAssertTrue(pause.waitForExistence(timeout: 10))
+        XCTAssertTrue(more.exists && panel.exists && controls.allSatisfy(\.exists),
+                      "The panel, its More button and the three map controls must be there")
+
+        pause.tap()
+        let pausedNote = el("session.paused")
+        XCTAssertTrue(pausedNote.waitForExistence(timeout: 5), "Pausing must show that the walk is paused")
+        XCTAssertEqual(pausedNote.label, "Walk paused", "VoiceOver must still hear the full words")
+        XCTAssertEqual(pause.label, "Resume walk", "The main button must offer Resume while paused")
+        // Every button that says Resume. A pill in the banner would make two.
+        let resumes = app.buttons.matching(NSPredicate(format: "label BEGINSWITH[c] 'Resume'"))
+
+        func checkPaused(_ state: String) {
+            // Animation wait: the panel's spring (0.35 s) must settle before frames are read.
+            sleep(1)
+            XCTAssertEqual(resumes.count, 1,
+                           "Exactly one Resume control (\(state)): \(resumes.allElementsBoundByIndex.map(\.label))")
+            for control in controls {
+                XCTAssertLessThanOrEqual(control.frame.maxY, panel.frame.minY,
+                                         "The paused panel must stay below \(control.identifier) (\(state)): "
+                                         + "\(panel.frame) vs \(control.frame)")
+            }
+            let name = panel.staticTexts["Downtown Loop"]
+            XCTAssertTrue(name.exists, "The route name must be in the panel (\(state))")
+            XCTAssertTrue(window.contains(name.frame), "The route name must be on screen (\(state)): \(name.frame)")
+            XCTAssertGreaterThanOrEqual(name.frame.minY, panel.frame.minY,
+                                        "The route name must be inside the panel (\(state)): \(name.frame)")
+            XCTAssertLessThanOrEqual(pause.frame.maxY, window.maxY, "Resume below the screen (\(state))")
+        }
+        checkPaused("collapsed")
+        more.tap()
+        XCTAssertTrue(el("session.stops").waitForExistence(timeout: 10), "The pulled-up panel must list stops")
+        checkPaused("expanded")
+
+        // The one Resume resumes.
+        pause.tap()
+        let resumed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == 'Pause walk'"),
+                                                object: pause)
+        XCTAssertEqual(XCTWaiter().wait(for: [resumed], timeout: 5), .completed,
+                       "Resume must resume the walk: the button says \(pause.label)")
+        let gone = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: pausedNote)
+        XCTAssertEqual(XCTWaiter().wait(for: [gone], timeout: 5), .completed, "The paused note must go on resume")
     }
 
     // MARK: - 4. Active-walk accessory bar
