@@ -1073,6 +1073,49 @@ final class SmokeTests: XCTestCase {
         XCTAssertTrue(editor.waitForNonExistence(timeout: 10), "Cancel must close the goal editor")
     }
 
+    // MARK: - 8b. Community You card at the largest text size
+
+    /// At Accessibility 2 the You card's two buttons stack, each the full
+    /// width: side by side they read "Start a c…" / "Share a r…" (F5 audit
+    /// B6, spec fix/large-text-buttons). Both must be inside the window and
+    /// not overlap. Those two alone passed against the side-by-side row,
+    /// which also fits and does not overlap; the cut-off titles are not in
+    /// the accessibility tree (a label keeps its full text), so the stacked
+    /// check is what fails when the row comes back. Screenshots are the
+    /// evidence for the titles themselves.
+    func testCommunityYouCardButtonsStackAtAccessibility2() {
+        app.terminate()
+        app.launchArguments += ["-WKTDemo", "-UIPreferredContentSizeCategoryName",
+                                "UICTContentSizeCategoryAccessibilityL"]
+        app.launch()
+        XCTAssertTrue(el("home.statCard").waitForExistence(timeout: 30))
+        selectTab("Community")
+        XCTAssertTrue(el("community.root").waitForExistence(timeout: 30))
+
+        let start = app.buttons["Start a challenge"].firstMatch
+        let share = app.buttons["Share a route"].firstMatch
+        XCTAssertTrue(start.waitForExistence(timeout: 15), "Start a challenge missing from the You card")
+        XCTAssertTrue(share.waitForExistence(timeout: 5), "Share a route missing from the You card")
+        var swipes = 0
+        while !(start.isHittable && share.isHittable) && swipes < 6 {
+            app.swipeUp()
+            swipes += 1
+        }
+        // Animation wait: the scroll must settle before frames are read.
+        sleep(1)
+
+        let window = app.windows.firstMatch.frame
+        let first = start.frame
+        let second = share.frame
+        for (name, frame) in [("Start a challenge", first), ("Share a route", second)] {
+            XCTAssertLessThanOrEqual(frame.maxX, window.maxX, "\(name) past the right edge: \(frame) in \(window)")
+            XCTAssertGreaterThanOrEqual(frame.minX, window.minX, "\(name) past the left edge: \(frame)")
+        }
+        XCTAssertFalse(first.intersects(second), "The buttons overlap: \(first) and \(second)")
+        XCTAssertGreaterThanOrEqual(second.minY, first.maxY,
+                                    "Share a route must sit below Start a challenge: \(first) and \(second)")
+    }
+
     // MARK: - 9. Terms before a first community action
 
     /// Community → Start a challenge → Create Challenge with the Terms not yet

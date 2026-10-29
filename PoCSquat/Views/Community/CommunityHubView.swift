@@ -168,7 +168,7 @@ struct CommunityHubView: View {
                 .foregroundColor(.earthMuted)
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityIdentifier("community.wockettsHelp")
-            HStack(spacing: 8) {
+            WktButtonRow {
                 WktPrimaryButton(title: "Start a challenge") { pushNewChallenge = true }
                 WktSecondaryButton(title: "Share a route") { pushMyRoutes = true }
             }
