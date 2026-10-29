@@ -14,6 +14,14 @@ struct WeeklyCalendarView: View {
     let onCalendarTap: () -> Void
 
     @State private var slideFromLeading = false
+    @Environment(\.dynamicTypeSize) private var typeSize
+
+    /// Title and dates side by side; stacked at the accessibility sizes.
+    private var titleLayout: AnyLayout {
+        typeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 2))
+            : AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: 8))
+    }
 
     private var weekLabel: String {
         switch weekOffset {
@@ -42,7 +50,9 @@ struct WeeklyCalendarView: View {
         VStack(alignment: .leading, spacing: WktSpacing.betweenCards) {
             HStack(spacing: 4) {
                 ZStack(alignment: .leading) {
-                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    // At the accessibility sizes the dates go under the title
+                    // and may wrap: beside it they read "Oct 2…" at AX2.
+                    titleLayout {
                         Text(weekLabel)
                             .font(.wktSection)
                             .foregroundColor(.earthCream)
@@ -50,7 +60,7 @@ struct WeeklyCalendarView: View {
                         Text(rangeLabel)
                             .font(.wktLabel)
                             .foregroundColor(.earthMuted)
-                            .lineLimit(1)
+                            .lineLimit(typeSize.isAccessibilitySize ? nil : 1)
                     }
                     .accessibilityElement(children: .combine)
                     .id(weekOffset)
