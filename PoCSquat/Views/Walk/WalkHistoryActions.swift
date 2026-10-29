@@ -152,6 +152,7 @@ struct RepeatReviewSheet: View {
     /// Called once the walk has begun; the sheet then closes itself.
     let onStarted: () -> Void
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     init(review: RepeatReview, begin: @escaping () -> Bool, onStarted: @escaping () -> Void) {
         _controller = StateObject(wrappedValue: RepeatReviewController(review: review, begin: begin))
@@ -212,7 +213,10 @@ struct RepeatReviewSheet: View {
             .navigationBarTitleDisplayMode(.inline)
         }
         .walkAlreadyActiveAlert(isPresented: $controller.showAlreadyActive)
-        .presentationDetents([.medium, .large])
+        // At the accessibility sizes the medium height left Start half below
+        // the screen on an iPhone 17e and Cancel off it, so those open at
+        // .large, as the finish sheet does. Default sizes are unchanged.
+        .presentationDetents(typeSize.isAccessibilitySize ? [.large] : [.medium, .large])
     }
 
     private func detailRow(_ label: String, _ value: String) -> some View {

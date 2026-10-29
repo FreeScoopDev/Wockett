@@ -855,6 +855,39 @@ final class SmokeTests: XCTestCase {
                        "Nothing may begin from a review with no Start")
     }
 
+    // MARK: - 6b. History: Repeat review at the largest text size
+
+    /// At Accessibility 2 the Repeat review must open with Start and Cancel
+    /// inside the window, without a drag. At its medium height Start sat
+    /// half below the screen on an iPhone 17e (maxY 858 on an 844 pt window)
+    /// and Cancel off it on both phones (F5 audit N4; spec
+    /// fix/large-text-repeat-sheet), so at accessibility sizes it opens at
+    /// .large. Run it on an iPhone 17e: the 17 already fit Start.
+    func testRepeatSheetFitsAtAccessibility2() {
+        app.terminate()
+        app.launchArguments += ["-WKTDemo", "-UIPreferredContentSizeCategoryName",
+                                "UICTContentSizeCategoryAccessibilityL"]
+        app.launch()
+        XCTAssertTrue(el("home.statCard").waitForExistence(timeout: 30))
+        openHistoryFromHealth()
+        app.buttons["history.more"].firstMatch.tap()
+        let repeatItem = app.buttons["Repeat"].firstMatch
+        XCTAssertTrue(repeatItem.waitForExistence(timeout: 5), "More must offer Repeat")
+        repeatItem.tap()
+        let start = app.buttons["history.repeat.start"]
+        XCTAssertTrue(start.waitForExistence(timeout: 10), "Repeat must open the review sheet")
+        let cancel = app.buttons["Cancel"].firstMatch
+        XCTAssertTrue(cancel.exists, "The review must offer Cancel")
+        // Animation wait: the sheet settles at its detent before frames are read.
+        sleep(1)
+
+        let window = app.windows.firstMatch.frame
+        XCTAssertLessThanOrEqual(start.frame.maxY, window.maxY,
+                                 "Start is below the screen: \(start.frame) in \(window)")
+        XCTAssertTrue(window.contains(start.frame), "Start is off-screen: \(start.frame) in \(window)")
+        XCTAssertTrue(window.contains(cancel.frame), "Cancel is off-screen: \(cancel.frame) in \(window)")
+    }
+
     // MARK: - 6c. Home: Start first, then Recent activity
 
     /// Home opens on Start, above the step hero, and lists the newest saved
