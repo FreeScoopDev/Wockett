@@ -117,19 +117,32 @@ enum WktButtonLayout {
     }
 }
 
-/// Two buttons that share a row ("Start a challenge" / "Share a route"):
-/// side by side at the normal text sizes, stacked at the accessibility sizes,
-/// where half the width cut both titles. Every two-button row uses this.
-struct WktButtonRow<Content: View>: View {
+/// A primary and a secondary button that share a row ("Start a challenge" /
+/// "Share a route"): side by side at the normal text sizes, stacked at the
+/// accessibility sizes, where half the width cut both titles. Stacked, the
+/// primary is always on top. Every row of two shared Wkt buttons uses this.
+struct WktButtonRow<Primary: View, Secondary: View>: View {
     var spacing: CGFloat = 8
-    @ViewBuilder let content: () -> Content
+    /// Side by side, the secondary on the left ("Undo" | "Save Route").
+    var secondaryLeads = false
+    @ViewBuilder let primary: () -> Primary
+    @ViewBuilder let secondary: () -> Secondary
     @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
-        let layout = WktButtonLayout.stacksRow(typeSize)
+        let stacked = WktButtonLayout.stacksRow(typeSize)
+        let layout = stacked
             ? AnyLayout(VStackLayout(spacing: spacing))
             : AnyLayout(HStackLayout(spacing: spacing))
-        layout { content() }
+        layout {
+            if stacked || !secondaryLeads {
+                primary()
+                secondary()
+            } else {
+                secondary()
+                primary()
+            }
+        }
     }
 }
 

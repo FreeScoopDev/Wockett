@@ -6,7 +6,7 @@
   "Share a r…". At the accessibility sizes a title now takes as many lines as
   it needs (a "Start the … hike" button carries a trail's full name, so two
   lines are not always enough), and two buttons that share a row stack, the
-  first above, each the full width: the You card's pair and the route
-  builder's Undo / Save Route. The normal text sizes look exactly as before.
+  main action on top, each the full width: the You card's pair and the route
+  builder's Save Route / Undo. The normal text sizes look exactly as before.
   Both rows use one shared `WktButtonRow`, so the rule cannot drift between
   screens.

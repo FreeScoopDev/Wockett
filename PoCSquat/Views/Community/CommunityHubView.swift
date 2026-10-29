@@ -170,6 +170,7 @@ struct CommunityHubView: View {
                 .accessibilityIdentifier("community.wockettsHelp")
             WktButtonRow {
                 WktPrimaryButton(title: "Start a challenge") { pushNewChallenge = true }
+            } secondary: {
                 WktSecondaryButton(title: "Share a route") { pushMyRoutes = true }
             }
         }
