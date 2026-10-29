@@ -117,6 +117,30 @@ enum WktButtonLayout {
     }
 }
 
+/// How names in narrow rows and cards change at the accessibility text sizes.
+/// At Accessibility 2 one line cut them to "Little R…", "Find a Ro…" and
+/// "9.1 mi · Hard · 1…" (F5 audit H8-H10, 2026-10-29). The normal sizes keep
+/// one line and the side-by-side layouts. Pure, so a test can pin both.
+enum WktNameLayout {
+    /// One line at the normal sizes. At the accessibility sizes as many lines
+    /// as the text needs, broken between words.
+    static func lineLimit(_ size: DynamicTypeSize) -> Int? {
+        size.isAccessibilitySize ? nil : 1
+    }
+
+    /// A tag beside a name ("Official") moves under it, and two cards that
+    /// share a row stack, the first above.
+    static func stacks(_ size: DynamicTypeSize) -> Bool {
+        size.isAccessibilitySize
+    }
+
+    /// The text with a no-break space after every number, so a wrapped line
+    /// breaks around "0.4 mi", never inside it ("0.4 / mi away").
+    static func keepingUnits(_ text: String) -> String {
+        text.replacingOccurrences(of: #"(?<=\d) "#, with: "\u{00A0}", options: .regularExpression)
+    }
+}
+
 /// A primary and a secondary button that share a row ("Start a challenge" /
 /// "Share a route"): side by side at the normal text sizes, stacked at the
 /// accessibility sizes, where half the width cut both titles. Stacked, the

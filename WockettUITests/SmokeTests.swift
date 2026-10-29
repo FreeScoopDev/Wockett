@@ -1288,6 +1288,54 @@ final class SmokeTests: XCTestCase {
         }
     }
 
+    // MARK: - 8c. Names in narrow rows at Accessibility 2
+
+    /// At Accessibility 2 Home's two Routes cards stack, and a trail's
+    /// Official chip sits under its name (spec fix/large-text-names): side by
+    /// side, they cut the names to "Find a Ro…" and "Little R…" (F5 audit
+    /// H8, H10). Frames only, since a cut-off name keeps its full text in the
+    /// accessibility tree; screenshots are the evidence for the text itself.
+    func testNamesStackAtAccessibility2() {
+        app.terminate()
+        app.launchArguments += ["-WKTDemo", "-UIPreferredContentSizeCategoryName",
+                                "UICTContentSizeCategoryAccessibilityL"]
+        app.launch()
+        XCTAssertTrue(el("home.statCard").waitForExistence(timeout: 30))
+        let window = app.windows.firstMatch.frame
+
+        // Home's Routes cards: My Routes below Find a Route, both full width.
+        let find = app.buttons["home.findRoute"]
+        let mine = app.buttons["home.myRoutes"]
+        XCTAssertTrue(find.waitForExistence(timeout: 10), "Home must show Find a Route")
+        XCTAssertTrue(mine.waitForExistence(timeout: 5), "Home must show My Routes")
+        XCTAssertGreaterThanOrEqual(mine.frame.minY, find.frame.maxY,
+                                    "My Routes must sit below Find a Route: \(find.frame) and \(mine.frame)")
+        for card in [find, mine] {
+            XCTAssertLessThanOrEqual(card.frame.maxX, window.maxX, "Past the right edge: \(card.frame) in \(window)")
+        }
+
+        // Trails near you needs a location: Routes asks for the demo one.
+        selectTab("Routes")
+        XCTAssertTrue(app.buttons["routes.findRoutes"].waitForExistence(timeout: 30))
+        selectTab("Community")
+        XCTAssertTrue(el("community.root").waitForExistence(timeout: 30))
+        let row = app.buttons.matching(NSPredicate(format: "label ENDSWITH ', Official'")).firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 30), "Community must list an official trail near the demo location")
+        let name = row.staticTexts.element(boundBy: 0)
+        let chip = row.staticTexts["Official"]
+        XCTAssertTrue(chip.exists, "The trail row must show its Official chip")
+        XCTAssertNotEqual(name.label, "Official")
+        XCTAssertTrue(row.label.hasPrefix(name.label + ","), "The first text must be the trail's name: \(name.label)")
+        // Left edge first: beside the name, the chip sits at the row's
+        // trailing edge whatever the name's length. Below alone could pass
+        // beside a short name whose detail wraps to many lines.
+        XCTAssertEqual(chip.frame.minX, name.frame.minX, accuracy: 2,
+                       "Official must start under the name: \(name.frame) and \(chip.frame)")
+        XCTAssertGreaterThanOrEqual(chip.frame.minY, name.frame.maxY,
+                                    "Official must sit below the name: \(name.frame) and \(chip.frame)")
+        XCTAssertLessThanOrEqual(row.frame.maxX, window.maxX, "Trail row past the right edge: \(row.frame)")
+    }
+
     // MARK: - 9. Terms before a first community action
 
     /// Community → Start a challenge → Create Challenge with the Terms not yet

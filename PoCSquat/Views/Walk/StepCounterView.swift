@@ -16,6 +16,7 @@ struct StepCounterView: View {
     @EnvironmentObject private var petStore: PetStore
     @EnvironmentObject private var tabRouter: TabRouter
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.dynamicTypeSize) private var typeSize
     @Environment(ActiveWalkStore.self) private var walkStore
     var streakStore: StreakStore = .shared
     @AppStorage("pinnedBadgeIds_v1") private var pinnedBadgeIdsStr: String = ""
@@ -395,8 +396,13 @@ struct StepCounterView: View {
     // MARK: Routes
 
     private var routesSection: some View {
-        WktSection(title: "Routes", actionTitle: "See all", action: { tabRouter.selected = .routes }, content: {
-            HStack(spacing: WktSpacing.betweenCards) {
+        // Stacked at the accessibility sizes: side by side, half the width
+        // cut the titles to "Find a Ro…" / "Recommend…".
+        let layout = WktNameLayout.stacks(typeSize)
+            ? AnyLayout(VStackLayout(spacing: WktSpacing.betweenCards))
+            : AnyLayout(HStackLayout(spacing: WktSpacing.betweenCards))
+        return WktSection(title: "Routes", actionTitle: "See all", action: { tabRouter.selected = .routes }, content: {
+            layout {
                 routeCard(symbol: .routes, tint: .earthGreen,
                           title: "Find a Route", subtitle: "Recommended near you") {
                     tabRouter.selected = .routes
@@ -421,12 +427,12 @@ struct StepCounterView: View {
                     Text(title)
                         .font(.wktRowTitle)
                         .foregroundColor(.earthCream)
-                        .lineLimit(1)
+                        .lineLimit(WktNameLayout.lineLimit(typeSize))
                         .minimumScaleFactor(0.85)
                     Text(subtitle)
                         .font(.wktLabel)
                         .foregroundColor(.earthMuted)
-                        .lineLimit(1)
+                        .lineLimit(WktNameLayout.lineLimit(typeSize))
                         .minimumScaleFactor(0.85)
                 }
             }
