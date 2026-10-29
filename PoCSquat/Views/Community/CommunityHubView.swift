@@ -543,10 +543,12 @@ struct CommunityHubView: View {
                         .font(.wktLabel)
                         .foregroundColor(.earthMuted)
                         .lineLimit(WktNameLayout.lineLimit(typeSize))
+                    // One line still: a username is one word, and wrapping
+                    // would break it mid-word (spec item 7, next PR).
                     Text("by \(route.authorName)")
                         .font(.wktLabel)
                         .foregroundColor(.earthMuted)
-                        .lineLimit(WktNameLayout.lineLimit(typeSize))
+                        .lineLimit(1)
                 }
                 .padding(WktSpacing.cardPadding)
             }

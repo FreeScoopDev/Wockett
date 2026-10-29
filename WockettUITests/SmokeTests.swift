@@ -1326,6 +1326,11 @@ final class SmokeTests: XCTestCase {
         XCTAssertTrue(chip.exists, "The trail row must show its Official chip")
         XCTAssertNotEqual(name.label, "Official")
         XCTAssertTrue(row.label.hasPrefix(name.label + ","), "The first text must be the trail's name: \(name.label)")
+        // Left edge first: beside the name, the chip sits at the row's
+        // trailing edge whatever the name's length. Below alone could pass
+        // beside a short name whose detail wraps to many lines.
+        XCTAssertEqual(chip.frame.minX, name.frame.minX, accuracy: 2,
+                       "Official must start under the name: \(name.frame) and \(chip.frame)")
         XCTAssertGreaterThanOrEqual(chip.frame.minY, name.frame.maxY,
                                     "Official must sit below the name: \(name.frame) and \(chip.frame)")
         XCTAssertLessThanOrEqual(row.frame.maxX, window.maxX, "Trail row past the right edge: \(row.frame)")
