@@ -267,9 +267,10 @@ struct WeatherWidget: View {
         Label(weather.statusText, systemImage: weather.statusSymbol)
             .font(.wktLabel)
             .foregroundColor(weather.statusColor)
-            // Two lines at the accessibility sizes: on one, "Good conditions"
-            // shrank to its check mark and a clipped glyph.
-            .lineLimit(typeSize.isAccessibilitySize ? 2 : 1)
+            // Wraps at the accessibility sizes: on one line "Good conditions"
+            // shrank to its check mark and a clipped glyph, and the longest
+            // status, "High chance of rain", may need three lines on a 17e.
+            .lineLimit(typeSize.isAccessibilitySize ? nil : 1)
     }
 
     var body: some View {

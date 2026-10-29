@@ -524,13 +524,15 @@ final class SmokeTests: XCTestCase {
     /// At Accessibility 2 the results panel must fit the window. One child
     /// wider than the screen widens the whole panel, which is how Save and
     /// Share went off-screen at AX5 (F5 audit B1, N6); on `main` before
-    /// spec fix/large-text-routes-panel the panel was 399 pt on a 390 pt
-    /// iPhone 17e. The WeatherKit attribution is an Apple requirement, so it
-    /// must be there and wholly inside the window. Cut-off or one-character
-    /// lines are not in the accessibility tree (a label keeps its full
-    /// text): the screenshots are the evidence for those. Run it on an
-    /// iPhone 17e as well as an iPhone 17: the small phone is the tight one.
-    func testRoutesResultsFitAtAccessibility2() {
+    /// spec fix/large-text-routes-panel the panel was 401 pt on a 390 pt
+    /// iPhone 17e and 404 pt on a 402 pt iPhone 17 (the audit saw 399), all
+    /// of it from the weather tile's row: without the tile it was 390. The
+    /// WeatherKit attribution is an Apple requirement, so it must be there
+    /// and wholly inside the window. Cut-off or one-character lines are not
+    /// in the accessibility tree (a label keeps its full text): the
+    /// screenshots are the evidence for those. Run it on an iPhone 17e as
+    /// well as an iPhone 17: the small phone is the tight one.
+    func testRoutesResultsFitAtAccessibility2() throws {
         app.terminate()
         app.launchArguments += ["-WKTDemo", "-UIPreferredContentSizeCategoryName",
                                 "UICTContentSizeCategoryAccessibilityL"]
@@ -567,13 +569,14 @@ final class SmokeTests: XCTestCase {
         XCTAssertTrue(inside(save.frame), "Save is off-screen: \(save.frame) in \(window)")
         XCTAssertTrue(inside(share.frame), "Share is off-screen: \(share.frame) in \(window)")
 
-        if hasWeather {
-            // SwiftUI's Link reaches the accessibility tree as a button.
-            let attribution = tile.buttons["Weather"].firstMatch
-            XCTAssertTrue(attribution.exists, "The weather tile must carry Apple's Weather attribution link")
-            XCTAssertTrue(inside(attribution.frame), "The attribution is off-screen: \(attribution.frame) in \(window)")
-            XCTAssertTrue(inside(tile.frame), "The weather tile is off-screen: \(tile.frame) in \(window)")
-        }
+        // Without a tile the checks above pass even with the overflow back,
+        // so say so instead of reporting a pass that guarded nothing.
+        try XCTSkipUnless(hasWeather, "No WeatherKit answer on this runner; the weather row's overflow was not exercised")
+        // SwiftUI's Link reaches the accessibility tree as a button.
+        let attribution = tile.buttons["Weather"].firstMatch
+        XCTAssertTrue(attribution.exists, "The weather tile must carry Apple's Weather attribution link")
+        XCTAssertTrue(inside(attribution.frame), "The attribution is off-screen: \(attribution.frame) in \(window)")
+        XCTAssertTrue(inside(tile.frame), "The weather tile is off-screen: \(tile.frame) in \(window)")
     }
 
     /// The elements under `root` that reach past the window's sides, widest

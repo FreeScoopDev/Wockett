@@ -9,8 +9,8 @@
   any more text would have hidden something. At the accessibility sizes the
   attribution now has a line of its own, where it stays whole and tappable
   (WeatherKit's terms require it wherever its data is shown), and the
-  weather status gets two lines, so "Good conditions" reads in full instead
-  of a check mark and a clipped letter.
+  weather status wraps, so "Good conditions" reads in full instead of a
+  check mark and a clipped letter.
 - At those sizes "New search" reads whole instead of "New / searc / h": the
   button no longer sits in a fixed 110 pt slot, and the panel's grabber
   moves above it. Route cards stack distance above time, so each value keeps
