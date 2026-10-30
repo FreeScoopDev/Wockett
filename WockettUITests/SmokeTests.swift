@@ -1395,6 +1395,13 @@ final class SmokeTests: XCTestCase {
             XCTContext.runActivity(named: "Wrap check skipped: the chip reads \"\(chip.label)\"") { _ in }
         }
         XCTAssertLessThanOrEqual(chip.frame.maxX, window.maxX, "The chip past the right edge: \(chip.frame)")
+
+        // The daily chart sums itself up for VoiceOver (spec
+        // fix/large-text-leftovers, item 1): its total, and the best day when
+        // there is one (none in a week's first two hours, as above).
+        let chart = app.otherElements.matching(NSPredicate(format: "label BEGINSWITH 'Distance by day this week'")).firstMatch
+        XCTAssertTrue(chart.exists, "Insights must show the daily chart")
+        XCTAssertTrue(chart.label.contains(" in total"), "The chart must sum itself up: \(chart.label)")
     }
 
     // MARK: - 8e. Share Route sheet at Accessibility 2

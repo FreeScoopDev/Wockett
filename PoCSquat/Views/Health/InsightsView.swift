@@ -120,10 +120,11 @@ struct InsightsView: View {
         .wktCard()
         // A container, so VoiceOver can still move bar by bar: a label on the
         // card alone read the chart as one element with no numbers in it
-        // (release check for 1.15). The value sums it up before the bars.
+        // (release check for 1.15). The label sums it up before the bars: a
+        // container's label is spoken on entering it, its value may not be.
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("Distance by day this \(period.noun)")
-        .accessibilityValue(InsightsText.chartSummary(buckets, calendar: calendar))
+        .accessibilityLabel("Distance by day this \(period.noun). "
+                            + InsightsText.chartSummary(buckets, calendar: calendar))
     }
 
     // MARK: Pro: depth
