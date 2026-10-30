@@ -8,9 +8,9 @@
   line under overlapping labels. Its difficulty chip moves under the stats
   instead of breaking as "Mode / rate". Trail Regions puts Download under the
   state's name instead of breaking both mid-word ("Connectic / ut",
-  "Downl / oad"). Badges go two to a row and a name only wraps between words,
-  shrinking a word too wide for its column instead of splitting it
-  ("Maratho / ner"). Share Achievement scrolls, so with the keyboard up its
-  heading is no longer cut and Post is not covered. Saved routes keep "0.5
-  mi" whole and New Challenge's Duration chips go two to a row. Normal text
-  sizes are unchanged.
+  "Downl / oad"). Badges go two to a row, and a one-word name too wide for
+  its column shrinks instead of splitting ("Maratho / ner"). Share
+  Achievement scrolls, and with the keyboard up it scrolls Post into view,
+  so its heading is no longer cut and Post is not covered. Saved routes keep
+  "0.5 mi" whole and New Challenge's Duration chips go two to a row. Normal
+  text sizes are unchanged.

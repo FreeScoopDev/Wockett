@@ -1538,7 +1538,7 @@ final class SmokeTests: XCTestCase {
     /// iPhone 17e: the community card's Start Walk sat beside the Wockett
     /// count ("Start…"), "9.1 mi" was two lines (56.7 pt against the 28.3 pt
     /// "by" line), and the elevation plot was 7 pt tall (48 pt at default).
-    func testRouteCardsAndElevationAtAccessibility2() {
+    func testRouteCardsAndElevationAtAccessibility2() throws {
         launchAtAccessibility2()
         let window = app.windows.firstMatch.frame
 
@@ -1554,7 +1554,12 @@ final class SmokeTests: XCTestCase {
         sleep(2)  // Animation wait: the results panel settles before the tap.
         forceTap(card)
         let mark = app.otherElements.matching(NSPredicate(format: "label MATCHES %@", "[0-9.]+ to [0-9.]+")).firstMatch
-        XCTAssertTrue(mark.waitForExistence(timeout: 15), "The route detail must show the elevation chart")
+        // The profile comes from a public elevation API: when it is down or
+        // rate-limited the card says so, and the test is skipped.
+        if !mark.waitForExistence(timeout: 15), app.staticTexts["Elevation data unavailable"].exists {
+            throw XCTSkip("The elevation service did not answer")
+        }
+        XCTAssertTrue(mark.exists, "The route detail must show the elevation chart")
         XCTAssertGreaterThan(mark.frame.height, 48, "The elevation plot must be taller than at default: \(mark.frame)")
 
         // Item 1: Community → Top community routes → See all.
@@ -1585,13 +1590,11 @@ final class SmokeTests: XCTestCase {
                           "The distance must sit on one line: \(distance.frame) against \(author.frame)")
     }
 
-    /// Spec fix/large-text-round2, items 2, 4 and 6. Frames only, as above.
+    /// Spec fix/large-text-round2, items 4 and 6. Frames only, as above.
     /// On `main` before it, on an iPhone 17e: the badges sat three across
-    /// ("Maratho / ner"), Trail Regions' Download sat beside
-    /// the state's name, and the four Duration chips sat in one row.
-    func testBadgesRegionsAndChipsAtAccessibility2() {
+    /// ("Maratho / ner") and the four Duration chips sat in one row.
+    func testBadgesAndChipsAtAccessibility2() {
         launchAtAccessibility2()
-        let window = app.windows.firstMatch.frame
 
         // Item 4: Distance badges in two columns. Not asserted: that a name
         // keeps its words whole. With two columns every name fits a line on
@@ -1630,14 +1633,17 @@ final class SmokeTests: XCTestCase {
         XCTAssertTrue(app.buttons["challenge.create.submit"].waitForExistence(timeout: 15), "The form must open")
         let chips = app.buttons.matching(NSPredicate(format: "label MATCHES %@", "[0-9]+ days")).allElementsBoundByIndex
         expectTwoColumns(chips, count: 4, name: "The Duration chips")
-        // A fresh launch rather than Cancel, which left the form's sheet up.
-        launchAtAccessibility2()
+    }
 
-        // Item 2: Trail Regions' Download goes under the state's name.
+    /// Spec fix/large-text-round2, item 2. On `main` before it, on an iPhone
+    /// 17e, Download sat beside the state's name and both broke mid-word.
+    func testTrailRegionsStackAtAccessibility2() throws {
+        launchAtAccessibility2()
+        let window = app.windows.firstMatch.frame
         selectTab("Settings")
         XCTAssertTrue(el("settings.root").waitForExistence(timeout: 30))
         let regions = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Trail Regions'")).firstMatch
-        swipes = 0
+        var swipes = 0
         while !(regions.exists && regions.isHittable) && swipes < 25 {
             app.swipeUp()
             swipes += 1
@@ -1645,10 +1651,9 @@ final class SmokeTests: XCTestCase {
         regions.tap()
         let download = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Download ' OR label BEGINSWITH 'Update '")).firstMatch
         // The regions come from CloudKit's public database: with no network
-        // the screen lists none, and the check is recorded as skipped.
+        // the screen lists none, and the test is skipped.
         guard download.waitForExistence(timeout: 30) else {
-            XCTContext.runActivity(named: "Trail Regions check skipped: no region was listed") { _ in }
-            return
+            throw XCTSkip("Trail Regions listed no region")
         }
         let state = String(download.label.split(separator: " ", maxSplits: 1)[1])
         let name = app.staticTexts[state].firstMatch

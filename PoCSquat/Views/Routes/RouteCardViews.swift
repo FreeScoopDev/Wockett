@@ -150,6 +150,7 @@ struct CommunityRouteCard: View {
             // ("9.1 / mi", "2h / 54m") and the card's only action read "Start…"
             // (spec fix/large-text-round2, item 1). As `RouteCard` does.
             let stacks = WktNameLayout.stacks(typeSize)
+            let start = WktPillButton(title: "Start Walk", action: onStart)
             let statRow = stacks
                 ? AnyLayout(VStackLayout(alignment: .leading, spacing: 6))
                 : AnyLayout(HStackLayout(spacing: 16))
@@ -193,14 +194,10 @@ struct CommunityRouteCard: View {
                     .accessibilityAddTraits(isSaved ? .isSelected : [])
                 }
 
-                if !stacks {
-                    WktPillButton(title: "Start Walk", action: onStart)
-                }
+                if !stacks { start }
             }
 
-            if stacks {
-                WktPillButton(title: "Start Walk", action: onStart)
-            }
+            if stacks { start }
         }
         .wktCard()
         .contextMenu {

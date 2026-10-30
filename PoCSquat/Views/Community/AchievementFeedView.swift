@@ -216,6 +216,26 @@ private struct AchievementPostCard: View {
 
 // MARK: - Share Achievement Sheet (presented from BadgeEarnedView)
 
+/// At the accessibility sizes, while a field is focused, scrolls `target`
+/// to the bottom of the visible area each time that area's height changes,
+/// so it follows the keyboard in rather than guessing its timing. Scrolling
+/// alone left Post under the keyboard at Accessibility 2 (spec
+/// fix/large-text-round2, item 5). Does nothing at the normal sizes.
+private struct KeepsInViewWhileFocused: ViewModifier {
+    let target: String
+    let focused: Bool
+    @Environment(\.dynamicTypeSize) private var typeSize
+
+    func body(content: Content) -> some View {
+        ScrollViewReader { scroller in
+            content.onGeometryChange(for: CGFloat.self) { $0.size.height } action: { _ in
+                guard focused, typeSize.isAccessibilitySize else { return }
+                withAnimation { scroller.scrollTo(target, anchor: .bottom) }
+            }
+        }
+    }
+}
+
 struct ShareAchievementSheet: View {
     private static let postID = "shareAchievement.post"
     let badge: WalkBadge
@@ -233,7 +253,6 @@ struct ShareAchievementSheet: View {
 
     var body: some View {
         NavigationStack {
-            ScrollViewReader { scroller in
             ZStack {
                 Color.earthBg.ignoresSafeArea()
                 VStack(spacing: 24) {
@@ -303,17 +322,7 @@ struct ShareAchievementSheet: View {
                 // covered half of Post (spec fix/large-text-round2, item 5).
                 .modifier(ScrollsAtAccessibilitySizes())
             }
-            // With the keyboard up, the scroll ends at Post, so the message
-            // and Post stay above the keyboard. The keyboard's height arrives
-            // with its animation, after the focus change, hence the wait.
-            .onChange(of: messageFocused) { _, focused in
-                guard focused, typeSize.isAccessibilitySize else { return }
-                Task {
-                    try? await Task.sleep(for: .milliseconds(450))
-                    withAnimation { scroller.scrollTo(Self.postID, anchor: .bottom) }
-                }
-            }
-            }
+            .modifier(KeepsInViewWhileFocused(target: Self.postID, focused: messageFocused))
             .navigationTitle("Share Achievement")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
