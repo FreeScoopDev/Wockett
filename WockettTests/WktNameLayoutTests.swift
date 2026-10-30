@@ -39,6 +39,48 @@ struct WktNameLayoutTests {
         #expect(WktNameLayout.keepingUnits("Little Rock Trail") == "Little Rock Trail")
     }
 
+    /// Pins the rule's values (it cannot see whether a view uses them): a
+    /// username keeps one line wherever it stands alone, and "by <name>"
+    /// gets a second line only at the accessibility sizes, for the name to
+    /// drop under "by" (spec fix/large-text-chips-rows, item 7). With any
+    /// more lines a too-wide name would break mid-word.
+    @Test func usernamesAreNeverBroken() {
+        #expect(WktNameLayout.usernameLineLimit == 1)
+        for size in Self.normal {
+            #expect(WktNameLayout.authorLineLimit(size) == 1, "\(size)")
+            #expect(WktNameLayout.usernameMinimumScale(size) == 1, "\(size)")
+        }
+        for size in Self.accessibility {
+            #expect(WktNameLayout.authorLineLimit(size) == 2, "\(size)")
+            #expect(WktNameLayout.usernameMinimumScale(size) == 0.7, "\(size)")
+        }
+    }
+
+    /// Generated names really are one word: the rule above relies on it.
+    /// Every part a name is built from, so the check is complete.
+    @Test func generatedUsernamesHaveNoSpaces() {
+        for part in CommunityNames.adjectives + CommunityNames.nouns + CommunityNames.numbers.map(String.init) {
+            let spaced = part.contains { $0.isWhitespace }
+            #expect(!spaced, "\(part)")
+        }
+        // And the parts are joined without one: a fixed sequence, so every
+        // run checks the same names.
+        var generator = CountingGenerator()
+        for _ in 0..<100 {
+            let name = CommunityNames.random(using: &generator)
+            let spaced = name.contains { $0.isWhitespace }
+            #expect(!spaced, "\(name)")
+        }
+    }
+
+    private struct CountingGenerator: RandomNumberGenerator {
+        var state: UInt64 = 0
+        mutating func next() -> UInt64 {
+            state &+= 0x9E37_79B9_7F4A_7C15
+            return state
+        }
+    }
+
     /// Every size is in one list or the other, so a new case can't slip by.
     @Test func everySizeIsCovered() {
         #expect(Set(Self.normal + Self.accessibility) == Set(DynamicTypeSize.allCases))

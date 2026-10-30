@@ -7,11 +7,15 @@ import SwiftUI
 // `WktStatusChip`, never a card; a screen has at most one `WktPrimaryButton`.
 
 /// A 30 pt capsule for a status: GPS, weather. Pass `action` to make it a button.
+/// At the accessibility sizes the text wraps between words and the chip
+/// becomes a rounded rectangle; one line cut it to "Nothing last week to…"
+/// and "Warming…" at Accessibility 2 (F5 audit H7, H14).
 struct WktStatusChip<Leading: View>: View {
     let text: String
     var textColor: Color = .earthCream
     var action: (() -> Void)?
     @ViewBuilder let leading: () -> Leading
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
         if let action {
@@ -23,16 +27,20 @@ struct WktStatusChip<Leading: View>: View {
     }
 
     private var chip: some View {
-        HStack(spacing: 6) {
+        let wraps = WktNameLayout.stacks(typeSize)
+        return HStack(spacing: 6) {
             leading()
             Text(text)
                 .font(.wktLabel)
                 .foregroundColor(textColor)
-                .lineLimit(1)
+                .lineLimit(WktNameLayout.lineLimit(typeSize))
         }
         .padding(.horizontal, 11)
+        .padding(.vertical, wraps ? 6 : 0)
         .frame(minHeight: 30)
-        .background(Color.earthRaised, in: Capsule())
+        // Two lines tall, a capsule would be a blob: a rounded rectangle.
+        .background(Color.earthRaised, in: wraps ? AnyShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
+                                                 : AnyShape(Capsule()))
         .accessibilityElement(children: .combine)
     }
 }
@@ -138,6 +146,69 @@ enum WktNameLayout {
     /// breaks around "0.4 mi", never inside it ("0.4 / mi away").
     static func keepingUnits(_ text: String) -> String {
         text.replacingOccurrences(of: #"(?<=\d) "#, with: "\u{00A0}", options: .regularExpression)
+    }
+
+    /// A username is one word ("MistyOak42", `CommunityNames`), so it gets a
+    /// line of its own and is never broken: if it alone is wider than the
+    /// row, the line ends in "…". Wrapped with other words it broke mid-word
+    /// at Accessibility 2 ("GentleMos / s earned").
+    static let usernameLineLimit = 1
+
+    /// On its own line at the accessibility sizes, a username may shrink to
+    /// 70% before it is cut: most generated names are 11-17 characters and
+    /// end in the two digits that tell them apart, which "FrostyLyn…" loses.
+    static func usernameMinimumScale(_ size: DynamicTypeSize) -> CGFloat {
+        size.isAccessibilitySize ? 0.7 : 1
+    }
+
+    /// "by MistyOak42", "You (MistyOak42)": one word, then a username. One
+    /// line at the normal sizes. At the accessibility sizes two, so the word
+    /// can sit above a name too wide to fit beside it; the name, on the last
+    /// line, is then cut with "…" rather than broken.
+    static func authorLineLimit(_ size: DynamicTypeSize) -> Int {
+        size.isAccessibilitySize ? 2 : 1
+    }
+}
+
+/// A username on a line of its own: one word, never broken (spec
+/// fix/large-text-chips-rows, item 7). At the accessibility sizes it is drawn
+/// whole at full size when it fits, else shrunk up to 70%, and only then cut
+/// with "…". A plain `minimumScaleFactor` shrank names that fit
+/// ("FrostyLynx75" at 80% in a column wide enough for it).
+struct WktUsernameText: View {
+    let name: String
+    @Environment(\.dynamicTypeSize) private var typeSize
+
+    var body: some View {
+        let line = Text(name).lineLimit(WktNameLayout.usernameLineLimit)
+        if WktNameLayout.stacks(typeSize) {
+            ViewThatFits(in: .horizontal) {
+                line
+                line.minimumScaleFactor(WktNameLayout.usernameMinimumScale(typeSize))
+            }
+        } else {
+            line
+        }
+    }
+}
+
+/// Two short labels that share a line ("0.7 mi" and "12m 58s"). At the
+/// accessibility sizes they stack, each with the row's width, rather than
+/// split a value from its unit ("0.7 / mi", F5 audit C5, N10). Not
+/// `ViewThatFits`: it judged the squeezed row to fit, and with the row's
+/// width fixed it dropped the labels' titles (seen on iOS 26.5).
+struct WktLabelPair<First: View, Second: View>: View {
+    var spacing: CGFloat = 10
+    @ViewBuilder let first: () -> First
+    @ViewBuilder let second: () -> Second
+    @Environment(\.dynamicTypeSize) private var typeSize
+
+    var body: some View {
+        if WktNameLayout.stacks(typeSize) {
+            VStack(alignment: .leading, spacing: 4) { first(); second() }
+        } else {
+            HStack(spacing: spacing) { first(); second() }
+        }
     }
 }
 
@@ -508,7 +579,8 @@ struct WktChoiceChip: View {
 }
 
 /// Lays chips out left to right and wraps to a new line when a row is full,
-/// so a card's tags never squeeze or run off its edge.
+/// so a card's tags never squeeze or run off its edge. A chip wider than the
+/// whole row is offered the row's width, so its text wraps inside it.
 struct WktFlowRow: Layout {
     var spacing: CGFloat = 6
 
@@ -519,12 +591,20 @@ struct WktFlowRow: Layout {
         return CGSize(width: proposal.width ?? width, height: height)
     }
 
+    /// The subview's own size, or, when that is wider than the row, its size
+    /// at the row's width. Every chip that fits is measured as before.
+    private func size(of subview: LayoutSubview, width: CGFloat) -> CGSize {
+        let ideal = subview.sizeThatFits(.unspecified)
+        guard ideal.width > width else { return ideal }
+        return subview.sizeThatFits(ProposedViewSize(width: width, height: nil))
+    }
+
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
         var y = bounds.minY
         for row in arrange(width: bounds.width, subviews: subviews) {
             var x = bounds.minX
             for index in row.indices {
-                let size = subviews[index].sizeThatFits(.unspecified)
+                let size = size(of: subviews[index], width: bounds.width)
                 subviews[index].place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(size))
                 x += size.width + spacing
             }
@@ -537,7 +617,7 @@ struct WktFlowRow: Layout {
     private func arrange(width: CGFloat, subviews: Subviews) -> [Row] {
         var rows: [Row] = [Row()]
         for index in subviews.indices {
-            let size = subviews[index].sizeThatFits(.unspecified)
+            let size = size(of: subviews[index], width: width)
             let needed = rows[rows.count - 1].indices.isEmpty ? size.width : rows[rows.count - 1].width + spacing + size.width
             if needed > width, !rows[rows.count - 1].indices.isEmpty {
                 rows.append(Row())

@@ -145,7 +145,7 @@ struct CommunityHubView: View {
             HStack(spacing: 12) {
                 avatar(name, size: 48, tint: .earthGreenFill, filled: true)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(name)
+                    WktUsernameText(name: name)
                         .font(.wktCardTitle)
                         .foregroundColor(.earthCream)
                     // Not "your week": the streak and badges are all-time,
@@ -344,7 +344,11 @@ struct CommunityHubView: View {
                 .buttonStyle(.plain)
                 .accessibilityElement(children: .combine)
                 if next.count > 1 {
-                    HStack(spacing: 8) {
+                    // At the accessibility sizes the chips wrap to new lines
+                    // instead of sharing one ("Warming…", "On a Roll…").
+                    let row = WktNameLayout.stacks(typeSize)
+                        ? AnyLayout(WktFlowRow(spacing: 8)) : AnyLayout(HStackLayout(spacing: 8))
+                    row {
                         ForEach(next.dropFirst(), id: \.badge.id) { item in
                             chip("\(item.badge.name) · \(WktPercent.text(item.progress))", tint: .earthMuted)
                         }
@@ -447,34 +451,33 @@ struct CommunityHubView: View {
     private func feedRow(_ post: AchievementPost) -> some View {
         let liked = model.isLiked(post.id)
         let when = Self.relative(post.createdAt)
+        // At the accessibility sizes the name takes a line of its own and the
+        // Like button goes under the text, giving the name the row's width.
+        let stacked = WktNameLayout.stacks(typeSize)
         return HStack(spacing: 12) {
             avatar(post.authorName, size: 40, tint: Self.nameTint(post.authorName), filled: false)
             VStack(alignment: .leading, spacing: 2) {
-                Text("\(post.authorName) earned \(post.badgeName)")
+                if stacked {
+                    VStack(alignment: .leading, spacing: 0) {
+                        WktUsernameText(name: post.authorName)
+                        Text("earned \(post.badgeName)")
+                    }
                     .font(.wktRowTitle)
                     .foregroundColor(.earthCream)
+                    .accessibilityElement(children: .combine)
+                } else {
+                    Text("\(post.authorName) earned \(post.badgeName)")
+                        .font(.wktRowTitle)
+                        .foregroundColor(.earthCream)
+                }
                 Text(post.message.isEmpty ? when : "\u{201C}\(post.message)\u{201D} · \(when)")
                     .font(.wktLabel)
                     .foregroundColor(.earthMuted)
                     .lineLimit(2)
+                if stacked { likeButton(post, liked: liked) }
             }
             Spacer(minLength: 0)
-            Button { termsGate.perform { model.markLiked(post) } } label: {
-                HStack(spacing: 4) {
-                    Image(wkt: .like).wktIcon(.inline, tint: .accentRun, filled: liked)
-                    Text("\(post.likes)")
-                        .font(.wktLabel)
-                        .foregroundColor(.earthCream)
-                }
-                .padding(.horizontal, 12)
-                .frame(minHeight: 30)
-                .background(Color.earthRaised, in: Capsule())
-                .padding(.vertical, 7)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(BounceButtonStyle(scale: 0.93))
-            .disabled(liked)
-            .accessibilityLabel(liked ? "Liked, \(post.likes) likes" : "Like, \(post.likes) likes")
+            if !stacked { likeButton(post, liked: liked) }
         }
         .padding(.vertical, 8)
         .contentShape(Rectangle())
@@ -482,6 +485,25 @@ struct CommunityHubView: View {
             CommunityReportButton("Report Post", author: post.author) { hubReport = CommunityReport(post: post) }
             CommunityDeleteButton(author: post.author) { hubDeletion = CommunityDeletionRequest(kind: .post, recordID: post.id) }
         }
+    }
+
+    private func likeButton(_ post: AchievementPost, liked: Bool) -> some View {
+        Button { termsGate.perform { model.markLiked(post) } } label: {
+            HStack(spacing: 4) {
+                Image(wkt: .like).wktIcon(.inline, tint: .accentRun, filled: liked)
+                Text("\(post.likes)")
+                    .font(.wktLabel)
+                    .foregroundColor(.earthCream)
+            }
+            .padding(.horizontal, 12)
+            .frame(minHeight: 30)
+            .background(Color.earthRaised, in: Capsule())
+            .padding(.vertical, 7)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(BounceButtonStyle(scale: 0.93))
+        .disabled(liked)
+        .accessibilityLabel(liked ? "Liked, \(post.likes) likes" : "Like, \(post.likes) likes")
     }
 
     // MARK: - Community routes
@@ -543,12 +565,12 @@ struct CommunityHubView: View {
                         .font(.wktLabel)
                         .foregroundColor(.earthMuted)
                         .lineLimit(WktNameLayout.lineLimit(typeSize))
-                    // One line still: a username is one word, and wrapping
-                    // would break it mid-word (spec item 7, next PR).
+                    // A username is one word: never broken, cut only if it
+                    // alone is wider than the card.
                     Text("by \(route.authorName)")
                         .font(.wktLabel)
                         .foregroundColor(.earthMuted)
-                        .lineLimit(1)
+                        .lineLimit(WktNameLayout.authorLineLimit(typeSize))
                 }
                 .padding(WktSpacing.cardPadding)
             }
@@ -637,9 +659,15 @@ struct CommunityHubView: View {
     // MARK: - Pieces
 
     private func avatar(_ name: String, size: CGFloat, tint: Color, filled: Bool) -> some View {
-        Text(CommunityHubSummary.initials(name))
+        // At the accessibility sizes both letters shrink to fit the circle
+        // rather than show "C…" (F5 audit C6).
+        let fits = WktNameLayout.stacks(typeSize)
+        return Text(CommunityHubSummary.initials(name))
             .font(.wktHeading(size * 0.34))
             .foregroundColor(filled ? .white : tint)
+            .lineLimit(fits ? 1 : nil)
+            .minimumScaleFactor(fits ? 0.4 : 1)
+            .padding(.horizontal, fits ? size * 0.12 : 0)
             .frame(width: size, height: size)
             .background(filled ? tint : tint.opacity(0.14))
             .clipShape(Circle())

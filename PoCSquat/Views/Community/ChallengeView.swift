@@ -225,6 +225,7 @@ private struct ChallengeCard: View {
     var onHide: (() -> Void)? = nil
     @State private var report: CommunityReport?
     @State private var deletion: WalkChallenge?
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
         HStack(spacing: 14) {
@@ -254,6 +255,7 @@ private struct ChallengeCard: View {
                 .font(.wktLabel)
                 Text("by \(challenge.authorName)")
                     .font(.wktLabel).foregroundColor(.earthMuted)
+                    .lineLimit(WktNameLayout.authorLineLimit(typeSize))
             }
 
             Spacer()
@@ -551,6 +553,7 @@ private struct LeaderboardRow: View {
     let rank:        Int
     let participant: ChallengeParticipant
     let challenge:   WalkChallenge
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     private var progress: Double { challenge.progress(for: participant.steps) }
     /// Gold, silver and bronze for the podium, from the app's palette.
@@ -577,10 +580,18 @@ private struct LeaderboardRow: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 4) {
-                    Text(participant.isCurrentDevice ? "You (\(participant.displayName))" : participant.displayName)
-                        .font(.wktRowTitle)
-                        .foregroundColor(participant.isCurrentDevice ? .earthGreen : .earthCream)
-                        .lineLimit(1)
+                    Group {
+                        // "You (name)" may drop the name to a second line;
+                        // anyone else's name is one word and keeps one.
+                        if participant.isCurrentDevice {
+                            Text("You (\(participant.displayName))")
+                                .lineLimit(WktNameLayout.authorLineLimit(typeSize))
+                        } else {
+                            WktUsernameText(name: participant.displayName)
+                        }
+                    }
+                    .font(.wktRowTitle)
+                    .foregroundColor(participant.isCurrentDevice ? .earthGreen : .earthCream)
                     if participant.isCurrentDevice {
                         Circle().fill(Color.earthGreen).frame(width: 5, height: 5)
                     }

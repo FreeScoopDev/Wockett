@@ -370,7 +370,32 @@ private struct PetManagementRow: View {
     @ObservedObject var historyStore: WalkHistoryStore
     let onEdit: () -> Void
 
+    @Environment(\.dynamicTypeSize) private var typeSize
+
     private var totalWalks: Int { petStore.totalWalks(for: pet, in: historyStore.sessions) }
+
+    /// "Biscuit · Golden Retriever". At the accessibility sizes, when that
+    /// does not fit one line, the breed goes under the name without the dot,
+    /// which otherwise sat alone at the end of a line (F5 audit N10).
+    @ViewBuilder private var nameLine: some View {
+        let oneLine = HStack(spacing: 4) {
+            Text(pet.name).font(.wktRowTitle).foregroundColor(.earthCream)
+            if let breed = pet.breed {
+                Text("· \(breed)").font(.wktLabel).foregroundColor(.earthMuted)
+            }
+        }
+        if WktNameLayout.stacks(typeSize), let breed = pet.breed {
+            ViewThatFits(in: .horizontal) {
+                oneLine
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(pet.name).font(.wktRowTitle).foregroundColor(.earthCream)
+                    Text(breed).font(.wktLabel).foregroundColor(.earthMuted)
+                }
+            }
+        } else {
+            oneLine
+        }
+    }
     private var totalDistText: String {
         let f = MKDistanceFormatter(); f.unitStyle = .abbreviated
         return f.string(fromDistance: petStore.totalDistance(for: pet, in: historyStore.sessions))
@@ -385,14 +410,10 @@ private struct PetManagementRow: View {
                 .background(pet.accentColor.opacity(0.16), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
 
             VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 4) {
-                    Text(pet.name).font(.wktRowTitle).foregroundColor(.earthCream)
-                    if let breed = pet.breed {
-                        Text("· \(breed)").font(.wktLabel).foregroundColor(.earthMuted)
-                    }
-                }
-                HStack(spacing: 10) {
+                nameLine
+                WktLabelPair {
                     Label { Text("\(totalWalks) walks") } icon: { Image(wkt: .walk).wktIcon(.inline, tint: .earthMuted) }
+                } second: {
                     Label { Text(totalDistText) } icon: { Image(wkt: .distance).wktIcon(.inline, tint: .earthMuted) }
                 }
                 .font(.wktLabel).foregroundColor(.earthMuted)
