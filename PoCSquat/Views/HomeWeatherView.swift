@@ -214,6 +214,7 @@ struct HomeWeatherDetailSheet: View {
     let weather: RouteWeather
     @Environment(\.openURL) private var openURL
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     private var isHot: Bool   { weather.temperatureCelsius > 28 }
     private var isRainy: Bool { weather.precipitationChance >= 0.4 }
@@ -264,7 +265,9 @@ struct HomeWeatherDetailSheet: View {
                 }
             }
         }
-        .presentationDetents([.medium])
+        // At the accessibility sizes half the screen had no room for a
+        // second line, and "Open Apple Weather" was cut to "Open Apple We…".
+        .presentationDetents(typeSize.isAccessibilitySize ? [.large] : [.medium])
     }
 
     private var advisoryText: String {

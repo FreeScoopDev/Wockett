@@ -1397,6 +1397,47 @@ final class SmokeTests: XCTestCase {
         XCTAssertLessThanOrEqual(chip.frame.maxX, window.maxX, "The chip past the right edge: \(chip.frame)")
     }
 
+    // MARK: - 8e. Share Route sheet at Accessibility 2
+
+    /// At Accessibility 2 the Share Route sheet's tiles go two to a row in a
+    /// form that scrolls (spec fix/large-text-leftovers). On `main` before
+    /// it, the tiles sat three across ("Distan…" on an iPhone 17e) in a form
+    /// that ran past the sheet and up under Cancel. Frames only: a cut-off
+    /// title keeps its full label in the accessibility tree, so screenshots
+    /// are the evidence for the text itself. The weather and Share
+    /// Achievement sheets have no UI test: under -WKTUITest Home never
+    /// fetches the weather, and the badge celebration that opens Share
+    /// Achievement is suppressed.
+    func testShareRouteSheetFitsAtAccessibility2() {
+        app.terminate()
+        app.launchArguments += ["-WKTDemo", "-UIPreferredContentSizeCategoryName",
+                                "UICTContentSizeCategoryAccessibilityL"]
+        app.launch()
+        XCTAssertTrue(el("home.statCard").waitForExistence(timeout: 30))
+
+        // Share Route, from the first route card.
+        selectTab("Routes")
+        let findRoutes = app.buttons["routes.findRoutes"]
+        XCTAssertTrue(findRoutes.waitForExistence(timeout: 30))
+        findRoutes.tap()
+        XCTAssertTrue(el("routes.resultsPanel").waitForExistence(timeout: 60), "Find Routes must list routes")
+        let share = app.buttons["Share route"].firstMatch
+        XCTAssertTrue(share.waitForExistence(timeout: 10), "The first route card must offer Share")
+        // Animation wait: the results panel settles before the tap.
+        sleep(2)
+        forceTap(share)
+        let sheetTitle = app.navigationBars["Share Route"]
+        XCTAssertTrue(sheetTitle.waitForExistence(timeout: 10), "Share must open the Share Route sheet")
+        let tileLabels = NSPredicate(format: "label MATCHES %@", ".+ (Distance|Time|Steps)(, .*)?")
+        let tiles = app.otherElements.matching(tileLabels).allElementsBoundByIndex
+            .filter { $0.frame.minY >= sheetTitle.frame.maxY }
+        // Tiles under the sheet's title only: three across, the form ran up
+        // under Cancel on an iPhone 17e, so fewer than three were counted.
+        expectTwoColumns(tiles, count: 3, name: "Share Route's tiles")
+        // Not asserted: that Post scrolls into view. With the demo route it
+        // was on screen on main as well, so the check could not fail.
+    }
+
     // MARK: - 9. Terms before a first community action
 
     /// Community → Start a challenge → Create Challenge with the Terms not yet

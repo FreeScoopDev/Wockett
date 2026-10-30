@@ -162,29 +162,37 @@ struct BadgesContentView: View {
                 VStack(spacing: 12) {
                     ForEach(Array(computedPersonalRecords.enumerated()), id: \.element.label) { index, rec in
                         if index > 0 { WktDivider() }
-                        HStack(spacing: 12) {
-                            WktIconBadge(symbol: rec.symbol)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(rec.label)
-                                    .font(.wktLabel)
-                                    .foregroundColor(.earthMuted)
-                                Text(rec.value)
-                                    .font(.wktRowTitle)
-                                    .foregroundColor(.earthCream)
-                            }
-                            Spacer()
-                            if let detail = rec.detail {
-                                Text(detail)
-                                    .font(.wktLabel)
-                                    .foregroundColor(.earthMuted)
-                            }
-                        }
-                        .accessibilityElement(children: .combine)
+                        recordRow(rec)
                     }
                 }
                 .wktCard()
             }
         }
+    }
+
+    /// At the accessibility sizes the date moves under the value, and the
+    /// value keeps its unit: beside the date, "19:52/mi" split as "19:52/ /
+    /// mi" at Accessibility 2 (F5 audit N11). The normal sizes are unchanged.
+    private func recordRow(_ rec: PersonalRecord) -> some View {
+        let stacks = WktNameLayout.stacks(typeSize)
+        let detail = rec.detail.map {
+            Text($0).font(.wktLabel).foregroundColor(.earthMuted)
+        }
+        return HStack(spacing: 12) {
+            WktIconBadge(symbol: rec.symbol)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(rec.label)
+                    .font(.wktLabel)
+                    .foregroundColor(.earthMuted)
+                Text(stacks ? WktNameLayout.keepingUnits(rec.value) : rec.value)
+                    .font(.wktRowTitle)
+                    .foregroundColor(.earthCream)
+                if stacks { detail }
+            }
+            Spacer()
+            if !stacks { detail }
+        }
+        .accessibilityElement(children: .combine)
     }
 
     private var computedPersonalRecords: [PersonalRecord] {

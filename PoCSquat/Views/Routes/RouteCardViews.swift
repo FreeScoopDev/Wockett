@@ -203,6 +203,22 @@ struct CommunityRouteCard: View {
 
 // MARK: - Post to Community Sheet
 
+/// The Share Route form scrolls at the accessibility sizes. Fixed to the
+/// sheet, at Accessibility 2 it ran past the bottom: Cancel over the tiles,
+/// the Post button cut to "Post & Save to My Rou…" and the privacy note's
+/// detail to "Leaves off at least 7…". The normal sizes keep the fixed form.
+private struct ScrollsAtAccessibilitySizes: ViewModifier {
+    @Environment(\.dynamicTypeSize) private var typeSize
+
+    func body(content: Content) -> some View {
+        if typeSize.isAccessibilitySize {
+            ScrollView { content }
+        } else {
+            content
+        }
+    }
+}
+
 struct PostToCommunitySheet: View {
     let route: SuggestedRoute
     @ObservedObject var routeStore: CustomRouteStore
@@ -235,7 +251,7 @@ struct PostToCommunitySheet: View {
             ZStack {
                 Color.earthBg.ignoresSafeArea()
                 VStack(spacing: WktSpacing.betweenSections) {
-                    HStack(spacing: WktSpacing.betweenCards) {
+                    WktStatRow {
                         WktIconStatTile(value: route.distanceText, label: "Distance", symbol: .distance)
                         WktIconStatTile(value: route.timeText,     label: "Time",     symbol: .time)
                         WktIconStatTile(value: "~\(route.estimatedSteps.formatted())", label: "Steps", symbol: .walk)
@@ -278,6 +294,7 @@ struct PostToCommunitySheet: View {
                 }
                 .padding(.horizontal, WktSpacing.screen)
                 .padding(.top, 24)
+                .modifier(ScrollsAtAccessibilitySizes())
             }
             .navigationTitle("Share Route")
             .navigationBarTitleDisplayMode(.inline)

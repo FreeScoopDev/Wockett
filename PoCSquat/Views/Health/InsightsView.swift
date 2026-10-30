@@ -13,6 +13,7 @@ struct InsightsView: View {
     @EnvironmentObject private var historyStore: WalkHistoryStore
     @EnvironmentObject private var petStore: PetStore
     @ObservedObject private var pro = ProEntitlementStore.shared
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     @State private var period: InsightsPeriod = .week
     @State private var showSupporter = false
@@ -98,10 +99,20 @@ struct InsightsView: View {
                                                       isCurrent: calendar.isDate(b.start, inSameDayAs: now)))
         }
         .chartXAxis {
-            AxisMarks(values: .stride(by: .day, count: period == .week ? 1 : 7)) { _ in
-                AxisValueLabel(format: period == .week ? .dateTime.weekday(.narrow) : .dateTime.month(.abbreviated).day())
-                    .font(.wktBody(9))
-                    .foregroundStyle(Color.earthMuted)
+            if let dates = InsightsText.accessibleAxisDates(buckets.map(\.start), period: period,
+                                                           isAccessibilitySize: typeSize.isAccessibilitySize,
+                                                           calendar: calendar) {
+                AxisMarks(values: dates) { _ in
+                    AxisValueLabel(format: .dateTime.month(.abbreviated).day())
+                        .font(.wktBody(9))
+                        .foregroundStyle(Color.earthMuted)
+                }
+            } else {
+                AxisMarks(values: .stride(by: .day, count: period == .week ? 1 : 7)) { _ in
+                    AxisValueLabel(format: period == .week ? .dateTime.weekday(.narrow) : .dateTime.month(.abbreviated).day())
+                        .font(.wktBody(9))
+                        .foregroundStyle(Color.earthMuted)
+                }
             }
         }
         .chartYAxis { InsightsText.yAxis }
@@ -109,9 +120,10 @@ struct InsightsView: View {
         .wktCard()
         // A container, so VoiceOver can still move bar by bar: a label on the
         // card alone read the chart as one element with no numbers in it
-        // (release check for 1.15).
+        // (release check for 1.15). The value sums it up before the bars.
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Distance by day this \(period.noun)")
+        .accessibilityValue(InsightsText.chartSummary(buckets, calendar: calendar))
     }
 
     // MARK: Pro: depth
@@ -304,6 +316,29 @@ enum InsightsText {
     static func barValue(meters: Double, unit: Calendar.Component, isCurrent: Bool) -> String {
         let current = unit == .day ? "today" : unit == .weekOfYear ? "this week" : "this month"
         return distance(meters) + (isCurrent ? ", \(current)" : "")
+    }
+
+    /// The x axis's dates in a month at the accessibility sizes: the 1st,
+    /// 8th, 15th and 22nd. With the weekly stride's fifth label, the 29th,
+    /// Accessibility 2 left room only for "…" (F5 audit N8). Nil means the
+    /// usual weekly stride (the week, and every normal text size).
+    static func accessibleAxisDates(_ starts: [Date], period: InsightsPeriod, isAccessibilitySize: Bool,
+                                    calendar: Calendar) -> [Date]? {
+        guard isAccessibilitySize, period == .month else { return nil }
+        return starts.filter { [1, 8, 15, 22].contains(calendar.component(.day, from: $0)) }
+    }
+
+    /// The whole chart in words, for VoiceOver before it reads the bars:
+    /// "4.2 mi in total, best day Thursday, October 15, 1.3 mi". The first
+    /// of equal days is the best; with nothing recorded, the total alone.
+    static func chartSummary(_ buckets: [InsightsBucket], calendar: Calendar, locale: Locale = .current) -> String {
+        let total = distance(buckets.reduce(0) { $0 + $1.distanceMeters }) + " in total"
+        let best = buckets.reduce(nil as InsightsBucket?) { best, b in
+            b.distanceMeters > (best?.distanceMeters ?? 0) ? b : best
+        }
+        guard let best else { return total }
+        return total + ", best day " + barLabel(start: best.start, unit: .day, calendar: calendar, locale: locale)
+            + ", " + distance(best.distanceMeters)
     }
 
     static func versus(_ previous: Int, _ period: InsightsPeriod) -> String {

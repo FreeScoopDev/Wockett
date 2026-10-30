@@ -510,6 +510,7 @@ struct SettingsView: View {
             .scrollContentBackground(.hidden)
             // Rows without their own font take the row-title size.
             .font(.wktRowTitle)
+            .labelStyle(WktRowLabelStyle())
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("settings.root")

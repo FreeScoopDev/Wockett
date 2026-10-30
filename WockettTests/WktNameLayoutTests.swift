@@ -39,6 +39,18 @@ struct WktNameLayoutTests {
         #expect(WktNameLayout.keepingUnits("Little Rock Trail") == "Little Rock Trail")
     }
 
+    /// A pace's slash is glued to its unit with a word joiner (invisible),
+    /// so "19:52/mi" cannot wrap after the slash (F5 audit N11). A slash
+    /// that is not between a number and a unit is left alone.
+    @Test func paceKeepsItsUnit() {
+        let joiner = "\u{2060}"
+        #expect(WktNameLayout.keepingUnits("19:52/mi") == "19:52/\(joiner)mi")
+        #expect(WktNameLayout.keepingUnits("6:05/km") == "6:05/\(joiner)km")
+        #expect(WktNameLayout.keepingUnits("1,379 steps") == "1,379\u{00A0}steps")
+        #expect(WktNameLayout.keepingUnits("Walk / Run") == "Walk / Run")
+        #expect(WktNameLayout.keepingUnits("and/or") == "and/or")
+    }
+
     /// Pins the rule's values (it cannot see whether a view uses them): a
     /// username keeps one line wherever it stands alone, and "by <name>"
     /// gets a second line only at the accessibility sizes, for the name to

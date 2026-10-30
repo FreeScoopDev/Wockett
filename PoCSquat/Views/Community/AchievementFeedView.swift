@@ -227,6 +227,7 @@ struct ShareAchievementSheet: View {
     @State private var termsGate = CommunityTermsGate()
     @State private var didPost    = false
     @State private var postError: String? = nil
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
         NavigationStack {
@@ -305,7 +306,9 @@ struct ShareAchievementSheet: View {
             }
         }
         .communityTermsSheet($termsGate)
-        .presentationDetents([.medium])
+        // At the accessibility sizes half the screen cut the heading to "Add
+        // a message (o…" and put Post to Community below the screen's edge.
+        .presentationDetents(typeSize.isAccessibilitySize ? [.large] : [.medium])
     }
 
     private func post() {

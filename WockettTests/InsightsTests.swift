@@ -203,4 +203,34 @@ struct InsightsTests {
         #expect(InsightsText.barValue(meters: 1_609.344, unit: .weekOfYear, isCurrent: true).hasSuffix(", this week"))
         #expect(!InsightsText.barValue(meters: 1_609.344, unit: .month, isCurrent: false).contains(","))
     }
+
+    @Test("At the accessibility sizes a month's axis labels the 1st, 8th, 15th and 22nd only")
+    func monthAxisAtAccessibilitySizes() {
+        let october = (1...31).map { date(2026, 10, $0, hour: 0) }
+        let days = InsightsText.accessibleAxisDates(october, period: .month, isAccessibilitySize: true, calendar: calendar)?
+            .map { calendar.component(.day, from: $0) }
+        #expect(days == [1, 8, 15, 22], "The 29th's label is the one that did not fit")
+        #expect(InsightsText.accessibleAxisDates(october, period: .month, isAccessibilitySize: false,
+                                                 calendar: calendar) == nil, "Normal sizes keep the weekly stride")
+        let week = (11...17).map { date(2026, 10, $0, hour: 0) }
+        #expect(InsightsText.accessibleAxisDates(week, period: .week, isAccessibilitySize: true,
+                                                 calendar: calendar) == nil, "The week keeps a letter a day")
+    }
+
+    @Test("The chart sums itself up for VoiceOver: total, then the best day")
+    func chartSummary() {
+        let us = Locale(identifier: "en_US")
+        let buckets = [
+            InsightsBucket(start: date(2026, 10, 13, hour: 0), distanceMeters: 1_000),
+            InsightsBucket(start: date(2026, 10, 14, hour: 0), distanceMeters: 3_000),
+            InsightsBucket(start: date(2026, 10, 15, hour: 0), distanceMeters: 3_000),
+            InsightsBucket(start: date(2026, 10, 16, hour: 0), distanceMeters: 0)
+        ]
+        #expect(InsightsText.chartSummary(buckets, calendar: calendar, locale: us)
+                == InsightsText.distance(7_000) + " in total, best day Wednesday, October 14, "
+                + InsightsText.distance(3_000), "The first of two equal days is the best")
+        let empty = buckets.map { InsightsBucket(start: $0.start, distanceMeters: 0) }
+        #expect(InsightsText.chartSummary(empty, calendar: calendar, locale: us)
+                == InsightsText.distance(0) + " in total", "No best day when nothing was recorded")
+    }
 }

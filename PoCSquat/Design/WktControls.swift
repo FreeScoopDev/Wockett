@@ -143,9 +143,12 @@ enum WktNameLayout {
     }
 
     /// The text with a no-break space after every number, so a wrapped line
-    /// breaks around "0.4 mi", never inside it ("0.4 / mi away").
+    /// breaks around "0.4 mi", never inside it ("0.4 / mi away"), and a word
+    /// joiner (invisible) after a slash between a number and a unit, so a
+    /// pace stays "19:52/mi" rather than "19:52/ / mi" (F5 audit N11).
     static func keepingUnits(_ text: String) -> String {
         text.replacingOccurrences(of: #"(?<=\d) "#, with: "\u{00A0}", options: .regularExpression)
+            .replacingOccurrences(of: #"(?<=\d)/(?=\p{L})"#, with: "/\u{2060}", options: .regularExpression)
     }
 
     /// A username is one word ("MistyOak42", `CommunityNames`), so it gets a
@@ -208,6 +211,25 @@ struct WktLabelPair<First: View, Second: View>: View {
             VStack(alignment: .leading, spacing: 4) { first(); second() }
         } else {
             HStack(spacing: spacing) { first(); second() }
+        }
+    }
+}
+
+/// A `Label` in a system List row. At the normal sizes it is the system's own
+/// label. At the accessibility sizes the system flows the title back under
+/// the icon ("Add Walk / Reminder", F5 audit N9); here the title keeps a
+/// column of its own beside the icon.
+struct WktRowLabelStyle: LabelStyle {
+    @Environment(\.dynamicTypeSize) private var typeSize
+
+    func makeBody(configuration: Configuration) -> some View {
+        if WktNameLayout.stacks(typeSize) {
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                configuration.icon
+                configuration.title
+            }
+        } else {
+            Label(configuration)
         }
     }
 }
