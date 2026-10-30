@@ -653,8 +653,9 @@ struct ActivityRowContent: View {
                 Text(text.title).font(.wktRowTitle).foregroundColor(.earthCream).lineLimit(1)
                 Text(text.subtitle)
                     .font(.wktLabel).foregroundColor(.earthMuted)
-                HStack(spacing: 10) {
+                WktLabelPair {
                     Label { Text(text.distance) } icon: { Image(wkt: .distance).wktIcon(.inline, tint: .earthMuted) }
+                } second: {
                     Label { Text(text.time) } icon: { Image(wkt: .time).wktIcon(.inline, tint: .earthMuted) }
                 }
                 .font(.wktLabel).foregroundColor(.earthMuted)

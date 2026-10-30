@@ -39,6 +39,28 @@ struct WktNameLayoutTests {
         #expect(WktNameLayout.keepingUnits("Little Rock Trail") == "Little Rock Trail")
     }
 
+    /// A username is one word, so it keeps one line wherever it stands
+    /// alone, and "by <name>" gets a second line only at the accessibility
+    /// sizes, for the name to drop under "by" (spec fix/large-text-chips-rows,
+    /// item 7). With any more lines a too-wide name would break mid-word.
+    @Test func usernamesAreNeverBroken() {
+        #expect(WktNameLayout.usernameLineLimit == 1)
+        for size in Self.normal {
+            #expect(WktNameLayout.authorLineLimit(size) == 1, "\(size)")
+        }
+        for size in Self.accessibility {
+            #expect(WktNameLayout.authorLineLimit(size) == 2, "\(size)")
+        }
+    }
+
+    /// Generated names really are one word: the rule above relies on it.
+    @Test func generatedUsernamesHaveNoSpaces() {
+        var generator = SystemRandomNumberGenerator()
+        for _ in 0..<200 {
+            #expect(!CommunityNames.random(using: &generator).contains(" "))
+        }
+    }
+
     /// Every size is in one list or the other, so a new case can't slip by.
     @Test func everySizeIsCovered() {
         #expect(Set(Self.normal + Self.accessibility) == Set(DynamicTypeSize.allCases))

@@ -121,6 +121,7 @@ private struct AchievementPostCard: View {
     @State private var deletion: CommunityDeletionRequest?
 
     private let green = Color.earthGreen
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
         HStack(alignment: .top, spacing: 14) {
@@ -135,11 +136,24 @@ private struct AchievementPostCard: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 // One Text, so a long name wraps instead of squeezing three
-                // separate labels into one line.
-                (Text(post.authorName).foregroundColor(.earthCream)
-                 + Text(" earned ").font(.wktBodyText).foregroundColor(.earthMuted)
-                 + Text(post.badgeName).foregroundColor(.earthGreen))
+                // separate labels into one line. At the accessibility sizes
+                // the name (one word) takes its own line, so it is never
+                // broken mid-word ("GentleMos / s earned").
+                if WktNameLayout.stacks(typeSize) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text(post.authorName).foregroundColor(.earthCream)
+                            .lineLimit(WktNameLayout.usernameLineLimit)
+                        (Text("earned ").font(.wktBodyText).foregroundColor(.earthMuted)
+                         + Text(post.badgeName).foregroundColor(.earthGreen))
+                    }
                     .font(.wktRowTitle)
+                    .accessibilityElement(children: .combine)
+                } else {
+                    (Text(post.authorName).foregroundColor(.earthCream)
+                     + Text(" earned ").font(.wktBodyText).foregroundColor(.earthMuted)
+                     + Text(post.badgeName).foregroundColor(.earthGreen))
+                        .font(.wktRowTitle)
+                }
 
                 if !post.message.isEmpty {
                     Text("\"\(post.message)\"")

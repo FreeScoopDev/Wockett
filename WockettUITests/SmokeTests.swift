@@ -1336,6 +1336,59 @@ final class SmokeTests: XCTestCase {
         XCTAssertLessThanOrEqual(row.frame.maxX, window.maxX, "Trail row past the right edge: \(row.frame)")
     }
 
+    // MARK: - 8d. Chips and rows at Accessibility 2
+
+    /// At Accessibility 2 the Insights comparison chip wraps instead of
+    /// cutting to "Nothing last week to…" (F5 audit H7), and a History row
+    /// keeps "0.7 mi" and "12m 58s" each on one line instead of splitting
+    /// value from unit (C5; spec fix/large-text-chips-rows). Frames only: a
+    /// cut-off text keeps its full label in the accessibility tree, so the
+    /// screenshots are the evidence for the text itself. One line of the
+    /// chip is 30 pt high at AX2, and of a row label 28 pt; the row's title
+    /// is one line by rule, so it is the yardstick for "one line".
+    func testChipsAndRowsWrapAtAccessibility2() {
+        app.terminate()
+        app.launchArguments += ["-WKTDemo", "-UIPreferredContentSizeCategoryName",
+                                "UICTContentSizeCategoryAccessibilityL"]
+        app.launch()
+        XCTAssertTrue(el("home.statCard").waitForExistence(timeout: 30))
+        let window = app.windows.firstMatch.frame
+
+        // History: the demo walk's distance and time, each on one line.
+        openHistoryFromHealth()
+        let row = app.buttons["history.row"].firstMatch
+        let title = row.staticTexts.element(boundBy: 0)
+        XCTAssertTrue(row.label.hasPrefix(title.label + ","), "The row's first text must be its title: \(title.label)")
+        let values = row.label.components(separatedBy: ", ").suffix(2)
+        XCTAssertEqual(values.count, 2, "The row must end with distance and time: \(row.label)")
+        for value in values {
+            let label = row.staticTexts[value]
+            XCTAssertTrue(label.exists, "History's row must show \(value)")
+            // A title laid out but not drawn has a sliver of a frame.
+            XCTAssertGreaterThan(label.frame.height, title.frame.height * 0.6,
+                                 "\(value) must be drawn at full height: \(label.frame)")
+            XCTAssertLessThan(label.frame.height, title.frame.height * 1.4,
+                              "\(value) must sit on one line: \(label.frame) against the title's \(title.frame)")
+            XCTAssertLessThanOrEqual(label.frame.maxX, window.maxX, "\(value) past the right edge: \(label.frame)")
+        }
+
+        // Insights: the comparison chip wraps to more than one line.
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(el("health.root").waitForExistence(timeout: 10))
+        let card = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Insights'")).firstMatch
+        XCTAssertTrue(card.waitForExistence(timeout: 10), "Insights missing from Health")
+        var swipes = 0
+        while !card.isHittable && swipes < 8 {
+            app.swipeUp()
+            swipes += 1
+        }
+        card.tap()
+        let chip = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Nothing last week'")).firstMatch
+        XCTAssertTrue(chip.waitForExistence(timeout: 10), "Insights must compare with last week")
+        XCTAssertGreaterThan(chip.frame.height, 45, "The chip must wrap to two lines: \(chip.frame)")
+        XCTAssertLessThanOrEqual(chip.frame.maxX, window.maxX, "The chip past the right edge: \(chip.frame)")
+    }
+
     // MARK: - 9. Terms before a first community action
 
     /// Community → Start a challenge → Create Challenge with the Terms not yet
