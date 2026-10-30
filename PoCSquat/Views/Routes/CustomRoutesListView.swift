@@ -332,6 +332,7 @@ struct CustomRouteDetailView: View {
                                         ProgressView().tint(.earthCream).scaleEffect(0.85)
                                         Text("Sharing…").font(.wktHeading(17)).foregroundColor(.earthCream)
                                     }
+                                    .wktButtonTitleLayout()
                                     .frame(maxWidth: .infinity, minHeight: 56)
                                     .background(Color.earthRaised, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                                 case .shared:

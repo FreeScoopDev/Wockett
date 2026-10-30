@@ -376,6 +376,7 @@ struct RouteFinderContentView: View {
                                 .font(.wktHeading(17))
                                 .foregroundColor(.white)
                         }
+                        .wktButtonTitleLayout()
                         .frame(maxWidth: .infinity, minHeight: 56)
                         .background(Color.earthGreenFill.opacity(0.7),
                                     in: RoundedRectangle(cornerRadius: 18, style: .continuous))

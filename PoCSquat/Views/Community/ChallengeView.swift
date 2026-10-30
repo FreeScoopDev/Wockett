@@ -428,6 +428,7 @@ struct ChallengeDetailView: View {
                             .font(.wktHeading(17))
                             .foregroundColor(.white)
                     }
+                    .wktButtonTitleLayout()
                     .frame(maxWidth: .infinity, minHeight: 56)
                     .background(Color.earthGreenFill, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                 } else {
@@ -920,6 +921,7 @@ struct CreateChallengeView: View {
                         .font(.wktHeading(17))
                         .foregroundColor(.white)
                 }
+                .wktButtonTitleLayout()
                 .frame(maxWidth: .infinity, minHeight: 56)
                 .background(Color.earthGreenFill, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
             } else {

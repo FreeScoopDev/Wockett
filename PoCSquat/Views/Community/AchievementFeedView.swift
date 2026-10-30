@@ -279,10 +279,7 @@ struct ShareAchievementSheet: View {
 
                     Button { termsGate.perform(post) } label: {
                         if isPosting {
-                            ProgressView()
-                                .tint(.white)
-                                .frame(maxWidth: .infinity, minHeight: 56)
-                                .background(Color.earthGreenFill, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                            WktPrimaryLabel(title: "Post to Community", symbol: .send, busy: true)
                         } else {
                             WktPrimaryLabel(title: didPost ? "Posted!" : "Post to Community",
                                             symbol: didPost ? .success : .send)

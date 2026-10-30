@@ -428,9 +428,7 @@ struct ActivitySummaryShareSheet: View {
             Task { await renderAndShare() }
         } label: {
             if isRendering {
-                ProgressView().tint(.white)
-                    .frame(maxWidth: .infinity, minHeight: 56)
-                    .background(Color.earthGreenFill, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                WktPrimaryLabel(title: "Share", symbol: .share, busy: true)
                     .accessibilityLabel("Preparing share image")
             } else {
                 WktPrimaryLabel(title: "Share", symbol: .share)
