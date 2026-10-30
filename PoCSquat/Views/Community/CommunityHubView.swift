@@ -145,10 +145,9 @@ struct CommunityHubView: View {
             HStack(spacing: 12) {
                 avatar(name, size: 48, tint: .earthGreenFill, filled: true)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(name)
+                    WktUsernameText(name: name)
                         .font(.wktCardTitle)
                         .foregroundColor(.earthCream)
-                        .lineLimit(WktNameLayout.usernameLineLimit)
                     // Not "your week": the streak and badges are all-time,
                     // the rank is the current challenge, Wocketts a total.
                     Text("Your progress")
@@ -460,7 +459,7 @@ struct CommunityHubView: View {
             VStack(alignment: .leading, spacing: 2) {
                 if stacked {
                     VStack(alignment: .leading, spacing: 0) {
-                        Text(post.authorName).lineLimit(WktNameLayout.usernameLineLimit)
+                        WktUsernameText(name: post.authorName)
                         Text("earned \(post.badgeName)")
                     }
                     .font(.wktRowTitle)

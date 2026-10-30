@@ -580,10 +580,18 @@ private struct LeaderboardRow: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 4) {
-                    Text(participant.isCurrentDevice ? "You (\(participant.displayName))" : participant.displayName)
-                        .font(.wktRowTitle)
-                        .foregroundColor(participant.isCurrentDevice ? .earthGreen : .earthCream)
-                        .lineLimit(WktNameLayout.authorLineLimit(typeSize))
+                    Group {
+                        // "You (name)" may drop the name to a second line;
+                        // anyone else's name is one word and keeps one.
+                        if participant.isCurrentDevice {
+                            Text("You (\(participant.displayName))")
+                                .lineLimit(WktNameLayout.authorLineLimit(typeSize))
+                        } else {
+                            WktUsernameText(name: participant.displayName)
+                        }
+                    }
+                    .font(.wktRowTitle)
+                    .foregroundColor(participant.isCurrentDevice ? .earthGreen : .earthCream)
                     if participant.isCurrentDevice {
                         Circle().fill(Color.earthGreen).frame(width: 5, height: 5)
                     }

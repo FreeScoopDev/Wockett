@@ -48,9 +48,11 @@ struct WktNameLayoutTests {
         #expect(WktNameLayout.usernameLineLimit == 1)
         for size in Self.normal {
             #expect(WktNameLayout.authorLineLimit(size) == 1, "\(size)")
+            #expect(WktNameLayout.usernameMinimumScale(size) == 1, "\(size)")
         }
         for size in Self.accessibility {
             #expect(WktNameLayout.authorLineLimit(size) == 2, "\(size)")
+            #expect(WktNameLayout.usernameMinimumScale(size) == 0.7, "\(size)")
         }
     }
 
@@ -60,6 +62,22 @@ struct WktNameLayoutTests {
         for part in CommunityNames.adjectives + CommunityNames.nouns + CommunityNames.numbers.map(String.init) {
             let spaced = part.contains { $0.isWhitespace }
             #expect(!spaced, "\(part)")
+        }
+        // And the parts are joined without one: a fixed sequence, so every
+        // run checks the same names.
+        var generator = CountingGenerator()
+        for _ in 0..<100 {
+            let name = CommunityNames.random(using: &generator)
+            let spaced = name.contains { $0.isWhitespace }
+            #expect(!spaced, "\(name)")
+        }
+    }
+
+    private struct CountingGenerator: RandomNumberGenerator {
+        var state: UInt64 = 0
+        mutating func next() -> UInt64 {
+            state &+= 0x9E37_79B9_7F4A_7C15
+            return state
         }
     }
 

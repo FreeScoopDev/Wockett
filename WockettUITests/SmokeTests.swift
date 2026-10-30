@@ -1391,6 +1391,8 @@ final class SmokeTests: XCTestCase {
         XCTAssertTrue(chip.waitForExistence(timeout: 10), "Insights must compare with last week")
         if chip.label.hasPrefix("Nothing") {
             XCTAssertGreaterThan(chip.frame.height, 45, "The chip must wrap to two lines: \(chip.frame)")
+        } else {
+            XCTContext.runActivity(named: "Wrap check skipped: the chip reads \"\(chip.label)\"") { _ in }
         }
         XCTAssertLessThanOrEqual(chip.frame.maxX, window.maxX, "The chip past the right edge: \(chip.frame)")
     }

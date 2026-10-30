@@ -141,8 +141,7 @@ private struct AchievementPostCard: View {
                 // broken mid-word ("GentleMos / s earned").
                 if WktNameLayout.stacks(typeSize) {
                     VStack(alignment: .leading, spacing: 0) {
-                        Text(post.authorName).foregroundColor(.earthCream)
-                            .lineLimit(WktNameLayout.usernameLineLimit)
+                        WktUsernameText(name: post.authorName).foregroundColor(.earthCream)
                         (Text("earned ").font(.wktBodyText).foregroundColor(.earthMuted)
                          + Text(post.badgeName).foregroundColor(.earthGreen))
                     }

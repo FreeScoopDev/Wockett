@@ -154,12 +154,41 @@ enum WktNameLayout {
     /// at Accessibility 2 ("GentleMos / s earned").
     static let usernameLineLimit = 1
 
+    /// On its own line at the accessibility sizes, a username may shrink to
+    /// 70% before it is cut: most generated names are 11-17 characters and
+    /// end in the two digits that tell them apart, which "FrostyLyn…" loses.
+    static func usernameMinimumScale(_ size: DynamicTypeSize) -> CGFloat {
+        size.isAccessibilitySize ? 0.7 : 1
+    }
+
     /// "by MistyOak42", "You (MistyOak42)": one word, then a username. One
     /// line at the normal sizes. At the accessibility sizes two, so the word
     /// can sit above a name too wide to fit beside it; the name, on the last
     /// line, is then cut with "…" rather than broken.
     static func authorLineLimit(_ size: DynamicTypeSize) -> Int {
         size.isAccessibilitySize ? 2 : 1
+    }
+}
+
+/// A username on a line of its own: one word, never broken (spec
+/// fix/large-text-chips-rows, item 7). At the accessibility sizes it is drawn
+/// whole at full size when it fits, else shrunk up to 70%, and only then cut
+/// with "…". A plain `minimumScaleFactor` shrank names that fit
+/// ("FrostyLynx75" at 80% in a column wide enough for it).
+struct WktUsernameText: View {
+    let name: String
+    @Environment(\.dynamicTypeSize) private var typeSize
+
+    var body: some View {
+        let line = Text(name).lineLimit(WktNameLayout.usernameLineLimit)
+        if WktNameLayout.stacks(typeSize) {
+            ViewThatFits(in: .horizontal) {
+                line
+                line.minimumScaleFactor(WktNameLayout.usernameMinimumScale(typeSize))
+            }
+        } else {
+            line
+        }
     }
 }
 
