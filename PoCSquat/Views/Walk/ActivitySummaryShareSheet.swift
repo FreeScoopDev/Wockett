@@ -427,12 +427,12 @@ struct ActivitySummaryShareSheet: View {
         Button {
             Task { await renderAndShare() }
         } label: {
-            if isRendering {
-                WktPrimaryLabel(title: "Share", symbol: .share, busy: true)
-                    .accessibilityLabel("Preparing share image")
-            } else {
+            WktBusyLabel(isBusy: isRendering) {
                 WktPrimaryLabel(title: "Share", symbol: .share)
                     .opacity(isShareDisabled ? 0.45 : 1)
+            } busy: {
+                ProgressView().tint(.white)
+                    .accessibilityLabel("Preparing share image")
             }
         }
         .buttonStyle(BounceButtonStyle(scale: 0.98))

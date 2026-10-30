@@ -273,12 +273,12 @@ struct PostToCommunitySheet: View {
                     }
 
                     Button { termsGate.perform(post) } label: {
-                        if isPosting {
-                            WktPrimaryLabel(title: "Post & Save to My Routes", symbol: .share, busy: true)
-                        } else {
+                        WktBusyLabel(isBusy: isPosting) {
                             WktPrimaryLabel(title: didPost ? "Shared!" : "Post & Save to My Routes",
                                             symbol: didPost ? .success : .share)
                                 .opacity(didPost ? 0.6 : 1)
+                        } busy: {
+                            ProgressView().tint(.white)
                         }
                     }
                     .buttonStyle(BounceButtonStyle(scale: 0.98))

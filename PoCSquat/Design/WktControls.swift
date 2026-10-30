@@ -90,14 +90,9 @@ struct WktSecondaryButton: View {
 struct WktPrimaryLabel: View {
     let title: String
     var symbol: WktSymbol?
-    /// A spinner in place of the title, in the space the title takes, so the
-    /// button keeps its idle size while it works ("Post to Community" is two
-    /// lines, 90 pt, at Accessibility 2; a bare spinner was 56 pt).
-    var busy = false
 
     var body: some View {
-        WktButtonLabel(title: title, symbol: symbol, fill: .earthGreenFill, text: .white, onFill: true,
-                       busy: busy)
+        WktButtonLabel(title: title, symbol: symbol, fill: .earthGreenFill, text: .white, onFill: true)
     }
 }
 
@@ -299,13 +294,42 @@ private struct WktButtonTitleLayout: ViewModifier {
     }
 }
 
+/// A shared button's label with a busy state ("Syncing…", or a spinner on its
+/// own). Busy draws over the idle label's own space, hidden, so the button
+/// keeps its size: at Accessibility 2 a two-line "Post to Community" is 90 pt,
+/// and the hand-drawn busy labels were 56 pt, so the layout jumped on tap.
+/// `fill` is the busy state's background; the idle label brings its own.
+struct WktBusyLabel<Idle: View, Busy: View>: View {
+    let isBusy: Bool
+    var fill: Color = .earthGreenFill
+    @ViewBuilder let idle: () -> Idle
+    @ViewBuilder let busy: () -> Busy
+
+    var body: some View {
+        if isBusy || WktBusyLabelHold.isOn {
+            idle()
+                .hidden()
+                .overlay { busy().wktButtonTitleLayout() }
+                .background(fill, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        } else {
+            idle()
+        }
+    }
+}
+
+/// `-WKTUITest -WKTHoldBusy` shows every `WktBusyLabel` busy, so a UI test can
+/// measure the busy states, which otherwise last only as long as a network
+/// call. Always off in release builds, where `isWKTUITestMode` is false.
+enum WktBusyLabelHold {
+    static let isOn = isWKTUITestMode && ProcessInfo.processInfo.arguments.contains("-WKTHoldBusy")
+}
+
 private struct WktButtonLabel: View {
     let title: String
     let symbol: WktSymbol?
     let fill: Color
     let text: Color
     let onFill: Bool
-    var busy = false
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: 18, style: .continuous)
@@ -319,14 +343,8 @@ private struct WktButtonLabel: View {
                 .foregroundColor(text)
         }
         .wktButtonTitleLayout()
-        // Busy keeps the title's space, hidden, so the size does not change.
-        .opacity(busy ? 0 : 1)
-        .accessibilityHidden(busy)
         .frame(maxWidth: .infinity)
         .frame(minHeight: 56)
-        .overlay {
-            if busy { ProgressView().tint(text) }
-        }
         .background(fill, in: shape)
         .contentShape(shape)
     }

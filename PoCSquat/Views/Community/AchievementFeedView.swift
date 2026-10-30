@@ -278,12 +278,12 @@ struct ShareAchievementSheet: View {
                     }
 
                     Button { termsGate.perform(post) } label: {
-                        if isPosting {
-                            WktPrimaryLabel(title: "Post to Community", symbol: .send, busy: true)
-                        } else {
+                        WktBusyLabel(isBusy: isPosting) {
                             WktPrimaryLabel(title: didPost ? "Posted!" : "Post to Community",
                                             symbol: didPost ? .success : .send)
                                 .opacity(didPost ? 0.6 : 1)
+                        } busy: {
+                            ProgressView().tint(.white)
                         }
                     }
                     .buttonStyle(BounceButtonStyle(scale: 0.98))

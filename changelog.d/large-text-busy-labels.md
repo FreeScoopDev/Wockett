@@ -1,17 +1,16 @@
 ### Fixed
-- At the accessibility text sizes the Post buttons on Share Route and Share
-  Achievement, and Share on a walk's share card, no longer shrink while they
-  work. Their busy state was a bare spinner in a 56 pt button, so a two-line,
-  90 pt "Post & Save to My Routes" dropped to 56 pt the moment it was tapped
-  and everything below it jumped up. The spinner now sits in the space the
-  title takes, so the button keeps its size (measured at Accessibility 2 on
-  iPhone 17e and 17). The normal text sizes look exactly as before.
+- At the accessibility text sizes a button no longer changes size while it
+  works. Each busy state ("Finding routes…", "Creating…", "Syncing…",
+  "Sharing…", and the spinners on Share Route's and Share Achievement's Post
+  and the walk card's Share) was drawn by hand in a 56 pt button, while the
+  idle buttons grow with the text: at Accessibility 2 "Post & Save to My
+  Routes" is two lines and 90 pt, so the button shrank the moment it was
+  tapped and everything below it jumped up. The busy state now draws over the
+  idle button's own space, so the size cannot change. The normal text sizes
+  look exactly as before.
 
 ### Internal
-- The hand-drawn busy labels ("Finding routes…", "Creating…", "Syncing…",
-  "Sharing…") now use the shared button's title layout
-  (`wktButtonTitleLayout()`): wrapped, centred and padded at the
-  accessibility sizes, like the button they replace. At Accessibility 2 on
-  the two test phones these short titles already fit, so nothing moves
-  there; the rule keeps them in step with the shared button at larger sizes
-  and for any future busy title.
+- `WktBusyLabel` is the one way to give a shared button a busy state, and
+  `wktButtonTitleLayout()` is the title rule both the button and its busy
+  state use. `-WKTUITest -WKTHoldBusy` holds every busy state on, so the new
+  UI test can measure them (always off in release builds).

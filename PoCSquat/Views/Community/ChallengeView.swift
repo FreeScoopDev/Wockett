@@ -421,18 +421,15 @@ struct ChallengeDetailView: View {
     private var syncSection: some View {
         VStack(spacing: 10) {
             Button { termsGate.perform { Task { await syncProgress() } } } label: {
-                if isSyncing {
+                WktBusyLabel(isBusy: isSyncing) {
+                    WktPrimaryLabel(title: syncButtonLabel, symbol: isJoined ? .loop : .joinPerson)
+                } busy: {
                     HStack(spacing: 8) {
                         ProgressView().tint(.white).scaleEffect(0.85)
                         Text("Syncing…")
                             .font(.wktHeading(17))
                             .foregroundColor(.white)
                     }
-                    .wktButtonTitleLayout()
-                    .frame(maxWidth: .infinity, minHeight: 56)
-                    .background(Color.earthGreenFill, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                } else {
-                    WktPrimaryLabel(title: syncButtonLabel, symbol: isJoined ? .loop : .joinPerson)
                 }
             }
             .buttonStyle(BounceButtonStyle(scale: 0.98))
@@ -914,19 +911,16 @@ struct CreateChallengeView: View {
     private var createButton: some View {
         let blank = title.trimmingCharacters(in: .whitespaces).isEmpty
         return Button { termsGate.perform { Task { await save() } } } label: {
-            if isSaving {
+            WktBusyLabel(isBusy: isSaving) {
+                WktPrimaryLabel(title: "Create Challenge", symbol: .records)
+                    .opacity(blank ? 0.45 : 1)
+            } busy: {
                 HStack(spacing: 8) {
                     ProgressView().tint(.white).scaleEffect(0.85)
                     Text("Creating…")
                         .font(.wktHeading(17))
                         .foregroundColor(.white)
                 }
-                .wktButtonTitleLayout()
-                .frame(maxWidth: .infinity, minHeight: 56)
-                .background(Color.earthGreenFill, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-            } else {
-                WktPrimaryLabel(title: "Create Challenge", symbol: .records)
-                    .opacity(blank ? 0.45 : 1)
             }
         }
         .buttonStyle(BounceButtonStyle(scale: 0.98))

@@ -37,44 +37,69 @@ struct WktButtonLayoutTests {
 
 /// A busy button keeps its idle size (spec fix/large-text-leftovers item 2).
 /// At Accessibility 2 the two-line Post buttons were 90 pt idle and 56 pt
-/// while posting, and the text busy labels ("Finding routes…") had none of
-/// the shared button's padding. Measured by laying the views out in a
-/// hosting controller, at a phone's button width. The fonts here stay at the
-/// test host's own text size (`wktHeading` scales through `UIFontMetrics`,
-/// not the environment), so only the environment-driven rules change: the
-/// line limit, the centring and the padding.
+/// while posting, and "Syncing…" was 56 pt under a two-line "Join & Sync
+/// Distance". Measured by laying the views out in a hosting controller. The
+/// fonts here stay at the test host's own text size (`wktHeading` scales
+/// through `UIFontMetrics`, not the environment), so only the
+/// environment-driven rules change: the line limit, the padding and the
+/// icon's scaled size. A narrow width stands in for a large font.
 @MainActor
 struct WktBusyLabelSizeTests {
-    private static let width: CGFloat = 350
-    private static let longTitle = "Post & Save to My Routes"
-
-    private func size(_ view: some View, _ typeSize: DynamicTypeSize) -> CGSize {
+    private func size(_ view: some View, _ typeSize: DynamicTypeSize, width: CGFloat) -> CGSize {
         let host = UIHostingController(rootView: view.environment(\.dynamicTypeSize, typeSize))
-        return host.sizeThatFits(in: CGSize(width: Self.width, height: .greatestFiniteMagnitude))
+        return host.sizeThatFits(in: CGSize(width: width, height: .greatestFiniteMagnitude))
     }
 
+    private func syncLabel(busy: Bool) -> some View {
+        WktBusyLabel(isBusy: busy) {
+            WktPrimaryLabel(title: "Join & Sync Distance for the whole of this challenge")
+        } busy: {
+            HStack(spacing: 8) {
+                ProgressView().scaleEffect(0.85)
+                Text("Syncing…").font(.wktHeading(17))
+            }
+        }
+    }
+
+    private func postLabel(busy: Bool) -> some View {
+        WktBusyLabel(isBusy: busy) {
+            WktPrimaryLabel(title: "Post & Save to My Routes", symbol: .share)
+        } busy: {
+            ProgressView()
+        }
+    }
+
+    /// A title that wraps to more lines than its busy title does.
     @Test(arguments: [DynamicTypeSize.large, .accessibility2])
-    func busyPrimaryLabelKeepsTheIdleSize(_ typeSize: DynamicTypeSize) {
-        let idle = size(WktPrimaryLabel(title: Self.longTitle, symbol: .share), typeSize)
-        let busy = size(WktPrimaryLabel(title: Self.longTitle, symbol: .share, busy: true), typeSize)
-        #expect(busy == idle)
+    func busyTextKeepsTheIdleSize(_ typeSize: DynamicTypeSize) {
+        #expect(size(syncLabel(busy: true), typeSize, width: 150)
+                == size(syncLabel(busy: false), typeSize, width: 150))
     }
 
-    /// Guards the test above: at Accessibility 2 the idle label is taller than
-    /// the 56 pt minimum, so "same size" is not two minimums agreeing.
-    @Test func idleLabelOutgrowsTheMinimumAtAccessibility2() {
-        let normal = size(WktPrimaryLabel(title: Self.longTitle, symbol: .share), .large)
-        let large = size(WktPrimaryLabel(title: Self.longTitle, symbol: .share), .accessibility2)
-        #expect(normal.height == 56)
-        #expect(large.height > 56)
+    /// A spinner on its own under a label whose icon grows at Accessibility 2.
+    @Test(arguments: [DynamicTypeSize.large, .accessibility2])
+    func busySpinnerKeepsTheIdleSize(_ typeSize: DynamicTypeSize) {
+        #expect(size(postLabel(busy: true), typeSize, width: 350)
+                == size(postLabel(busy: false), typeSize, width: 350))
     }
 
-    /// A hand-drawn busy title gets the shared button's padding: 8 pt above
-    /// and below at the accessibility sizes, none at the normal sizes.
+    /// Guards the two tests above: at Accessibility 2 both idle labels are
+    /// taller than the 56 pt minimum (the sync title wraps to three lines or more,
+    /// "Syncing…" to two at most), so
+    /// "same size" is not two minimums agreeing.
+    @Test func idleLabelsOutgrowTheMinimumAtAccessibility2() {
+        let oneLine = size(Text("Syncing…").font(.wktHeading(17)), .large, width: 150).height
+        #expect(size(syncLabel(busy: false), .accessibility2, width: 150).height >= 3 * oneLine + 16)
+        #expect(size(postLabel(busy: false), .accessibility2, width: 350).height > 56)
+        #expect(size(postLabel(busy: false), .large, width: 350).height == 56)
+    }
+
+    /// A busy title gets the shared button's padding: 8 pt above and below at
+    /// the accessibility sizes, none at the normal sizes.
     @Test func busyTitleLayoutPadsAtAccessibilitySizes() {
         let title = Text("Finding routes…").font(.wktHeading(17)).wktButtonTitleLayout()
-        let bare = size(Text("Finding routes…").font(.wktHeading(17)), .large)
-        #expect(size(title, .large).height == bare.height)
-        #expect(size(title, .accessibility2).height == bare.height + 16)
+        let bare = size(Text("Finding routes…").font(.wktHeading(17)), .large, width: 350)
+        #expect(size(title, .large, width: 350).height == bare.height)
+        #expect(size(title, .accessibility2, width: 350).height == bare.height + 16)
     }
 }

@@ -324,21 +324,20 @@ struct CustomRouteDetailView: View {
                                     }
                                 }
                             } } label: {
-                                switch shareState {
-                                case .idle:
-                                    WktSecondaryLabel(title: "Share Route", symbol: .upload)
-                                case .sharing:
+                                WktBusyLabel(isBusy: shareState == .sharing, fill: .earthRaised) {
+                                    switch shareState {
+                                    case .idle, .sharing:
+                                        WktSecondaryLabel(title: "Share Route", symbol: .upload)
+                                    case .shared:
+                                        WktSecondaryLabel(title: "Shared!", symbol: .success)
+                                    case .failed:
+                                        WktSecondaryLabel(title: "Couldn't Share", symbol: .errorCircle)
+                                    }
+                                } busy: {
                                     HStack(spacing: 8) {
                                         ProgressView().tint(.earthCream).scaleEffect(0.85)
                                         Text("Sharing…").font(.wktHeading(17)).foregroundColor(.earthCream)
                                     }
-                                    .wktButtonTitleLayout()
-                                    .frame(maxWidth: .infinity, minHeight: 56)
-                                    .background(Color.earthRaised, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                                case .shared:
-                                    WktSecondaryLabel(title: "Shared!", symbol: .success)
-                                case .failed:
-                                    WktSecondaryLabel(title: "Couldn't Share", symbol: .errorCircle)
                                 }
                             }
                             .buttonStyle(BounceButtonStyle(scale: 0.98))
