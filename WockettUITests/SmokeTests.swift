@@ -1538,9 +1538,8 @@ final class SmokeTests: XCTestCase {
     /// iPhone 17e: the community card's Start Walk sat beside the Wockett
     /// count ("Start…"), "9.1 mi" was two lines (56.7 pt against the 28.3 pt
     /// "by" line), and the elevation plot was 7 pt tall (48 pt at default).
-    func testRouteCardsAndElevationAtAccessibility2() throws {
+    func testElevationChartAtAccessibility2() throws {
         launchAtAccessibility2()
-        let window = app.windows.firstMatch.frame
 
         // Item 3: the route detail's elevation chart. Each data mark's frame
         // is the plot's full height, so a mark measures the plot.
@@ -1561,8 +1560,14 @@ final class SmokeTests: XCTestCase {
         }
         XCTAssertTrue(mark.exists, "The route detail must show the elevation chart")
         XCTAssertGreaterThan(mark.frame.height, 48, "The elevation plot must be taller than at default: \(mark.frame)")
+    }
 
-        // Item 1: Community → Top community routes → See all.
+    /// Item 1, apart from the elevation check so a skip there never hides it.
+    func testCommunityRouteCardAtAccessibility2() {
+        launchAtAccessibility2()
+        let window = app.windows.firstMatch.frame
+
+        // Community → Top community routes → See all.
         selectTab("Community")
         XCTAssertTrue(el("community.root").waitForExistence(timeout: 30))
         let heading = app.staticTexts["Top community routes"].firstMatch
