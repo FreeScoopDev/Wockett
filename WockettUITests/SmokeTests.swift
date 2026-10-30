@@ -1383,9 +1383,15 @@ final class SmokeTests: XCTestCase {
             swipes += 1
         }
         card.tap()
-        let chip = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Nothing last week'")).firstMatch
+        // The demo walk is two hours old, so for the first two hours of a
+        // week it counts as last week's and the chip says the shorter
+        // "Down 100% vs last week", which may fit one line.
+        let chip = app.staticTexts.matching(NSPredicate(
+            format: "label BEGINSWITH 'Nothing last week' OR label ENDSWITH 'vs last week'")).firstMatch
         XCTAssertTrue(chip.waitForExistence(timeout: 10), "Insights must compare with last week")
-        XCTAssertGreaterThan(chip.frame.height, 45, "The chip must wrap to two lines: \(chip.frame)")
+        if chip.label.hasPrefix("Nothing") {
+            XCTAssertGreaterThan(chip.frame.height, 45, "The chip must wrap to two lines: \(chip.frame)")
+        }
         XCTAssertLessThanOrEqual(chip.frame.maxX, window.maxX, "The chip past the right edge: \(chip.frame)")
     }
 

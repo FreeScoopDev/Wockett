@@ -128,6 +128,7 @@ struct CommunityRouteCard: View {
     let onStart: () -> Void
     var onHide: (() -> Void)? = nil
     @State private var report: CommunityReport?
+    @Environment(\.dynamicTypeSize) private var typeSize
     @State private var deletion: CommunityDeletionRequest?
 
     var body: some View {
@@ -138,6 +139,7 @@ struct CommunityRouteCard: View {
                         .font(.wktRowTitle).foregroundColor(.earthCream)
                     Text("by \(route.authorName)")
                         .font(.wktLabel).foregroundColor(.earthMuted)
+                        .lineLimit(WktNameLayout.authorLineLimit(typeSize))
                 }
                 Spacer()
                 DifficultyBadge(difficulty: route.difficulty, compact: true)

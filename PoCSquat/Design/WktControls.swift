@@ -154,9 +154,10 @@ enum WktNameLayout {
     /// at Accessibility 2 ("GentleMos / s earned").
     static let usernameLineLimit = 1
 
-    /// "by MistyOak42": one line at the normal sizes. At the accessibility
-    /// sizes two, so "by" can sit above a name too wide to fit beside it; the
-    /// name, on the last line, is then cut with "…" rather than broken.
+    /// "by MistyOak42", "You (MistyOak42)": one word, then a username. One
+    /// line at the normal sizes. At the accessibility sizes two, so the word
+    /// can sit above a name too wide to fit beside it; the name, on the last
+    /// line, is then cut with "…" rather than broken.
     static func authorLineLimit(_ size: DynamicTypeSize) -> Int {
         size.isAccessibilitySize ? 2 : 1
     }

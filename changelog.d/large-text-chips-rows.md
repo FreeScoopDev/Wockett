@@ -8,9 +8,10 @@
   "C…", a username broke mid-word ("GentleMos / s earned"), and My Pets
   showed "0 / walks" with the breed's dot floating beside it. Now the status
   chip wraps between words and becomes a rounded rectangle (every screen that
-  uses it changes together), chips that share a row flow onto new lines, a
+  uses it changes together), the Next badge chips flow onto new lines, a
   distance and a time stack rather than break, the initials shrink to fit
   their circle, and the breed goes under the pet's name without the dot.
-  A username is one word, so it gets a line of its own and is never broken;
-  only a name wider than the whole row is cut with "…". The normal text
-  sizes look exactly as before.
+  A username is one word, so wherever one appears (the feed, the You card,
+  route and challenge cards, the leaderboard) it is never broken: it moves
+  to a line of its own, and only a name wider than the whole row is cut
+  with "…". The normal text sizes look exactly as before.

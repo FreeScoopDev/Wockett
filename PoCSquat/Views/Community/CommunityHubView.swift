@@ -148,6 +148,7 @@ struct CommunityHubView: View {
                     Text(name)
                         .font(.wktCardTitle)
                         .foregroundColor(.earthCream)
+                        .lineLimit(WktNameLayout.usernameLineLimit)
                     // Not "your week": the streak and badges are all-time,
                     // the rank is the current challenge, Wocketts a total.
                     Text("Your progress")
