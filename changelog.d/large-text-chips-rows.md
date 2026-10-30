@@ -11,7 +11,7 @@
   uses it changes together), the Next badge chips flow onto new lines, a
   distance and a time stack rather than break, the initials shrink to fit
   their circle, and the breed goes under the pet's name without the dot.
-  A username is one word, so wherever one appears (the feed, the You card,
-  route and challenge cards, the leaderboard) it is never broken: it moves
-  to a line of its own, and only a name wider than the whole row is cut
-  with "…". The normal text sizes look exactly as before.
+  A username is one word, so in the community feed, the You card, route and
+  challenge cards and the leaderboard it is never broken: it moves to a line
+  of its own, shrinks a little if it is too wide for it, and only a name that
+  still does not fit is cut with "…". The normal text sizes look as before.
