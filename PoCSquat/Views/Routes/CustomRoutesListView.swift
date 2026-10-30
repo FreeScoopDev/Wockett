@@ -104,8 +104,11 @@ struct CustomRouteRow: View {
             WktIconBadge(symbol: route.isLoop ? .loop : .arrowRight)
             VStack(alignment: .leading, spacing: 4) {
                 Text(route.name).font(.wktRowTitle).foregroundColor(.earthCream)
-                HStack(spacing: 10) {
+                // Stacked at the accessibility sizes, where side by side they
+                // split "0.5 / mi" (spec fix/large-text-round2, item 6).
+                WktLabelPair(spacing: 10) {
                     Label { Text(route.distanceText) } icon: { Image(wkt: .distance).wktIcon(.inline, tint: .earthMuted) }
+                } second: {
                     Label { Text("~\(route.estimatedSteps.formatted()) steps") } icon: { Image(wkt: .walk).wktIcon(.inline, tint: .earthMuted) }
                 }
                 .font(.wktLabel).foregroundColor(.earthMuted)

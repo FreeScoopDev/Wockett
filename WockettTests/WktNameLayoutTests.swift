@@ -68,6 +68,24 @@ struct WktNameLayoutTests {
         }
     }
 
+    /// A badge name gets one line per word at the accessibility sizes, so a
+    /// line can only end between words and a word too wide for its column
+    /// shrinks instead of breaking (spec fix/large-text-round2, item 4). The
+    /// normal sizes keep no limit and no shrink, as before.
+    @Test func badgeNamesWrapOnlyBetweenWords() {
+        for size in Self.normal {
+            #expect(WktNameLayout.wholeWordsLineLimit("Community Builder", size) == nil, "\(size)")
+            #expect(WktNameLayout.wholeWordsMinimumScale(size) == 1, "\(size)")
+        }
+        for size in Self.accessibility {
+            #expect(WktNameLayout.wholeWordsLineLimit("Marathoner", size) == 1, "\(size)")
+            #expect(WktNameLayout.wholeWordsLineLimit("Community Builder", size) == 2, "\(size)")
+            #expect(WktNameLayout.wholeWordsLineLimit("Walk  with a pet", size) == 4, "\(size)")
+            #expect(WktNameLayout.wholeWordsLineLimit("", size) == 1, "\(size)")
+            #expect(WktNameLayout.wholeWordsMinimumScale(size) == 0.6, "\(size)")
+        }
+    }
+
     /// Generated names really are one word: the rule above relies on it.
     /// Every part a name is built from, so the check is complete.
     @Test func generatedUsernamesHaveNoSpaces() {

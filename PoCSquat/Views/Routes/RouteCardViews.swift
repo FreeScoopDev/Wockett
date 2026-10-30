@@ -145,7 +145,15 @@ struct CommunityRouteCard: View {
                 DifficultyBadge(difficulty: route.difficulty, compact: true)
             }
 
-            HStack(spacing: 16) {
+            // At the accessibility sizes the stats stack and Start Walk takes a
+            // row of its own: side by side, at Accessibility 2 the values split
+            // ("9.1 / mi", "2h / 54m") and the card's only action read "Start…"
+            // (spec fix/large-text-round2, item 1). As `RouteCard` does.
+            let stacks = WktNameLayout.stacks(typeSize)
+            let statRow = stacks
+                ? AnyLayout(VStackLayout(alignment: .leading, spacing: 6))
+                : AnyLayout(HStackLayout(spacing: 16))
+            statRow {
                 Label { Text(route.distanceText) } icon: { Image(wkt: .distance).wktIcon(.inline, tint: .earthMuted) }
                 Label { Text(route.timeText) } icon: { Image(wkt: .time).wktIcon(.inline, tint: .earthMuted) }
                 Label { Text("\(route.estimatedSteps.formatted()) steps") } icon: { Image(wkt: .walk).wktIcon(.inline, tint: .earthMuted) }
@@ -185,6 +193,12 @@ struct CommunityRouteCard: View {
                     .accessibilityAddTraits(isSaved ? .isSelected : [])
                 }
 
+                if !stacks {
+                    WktPillButton(title: "Start Walk", action: onStart)
+                }
+            }
+
+            if stacks {
                 WktPillButton(title: "Start Walk", action: onStart)
             }
         }
@@ -207,7 +221,8 @@ struct CommunityRouteCard: View {
 /// sheet, at Accessibility 2 it ran past the bottom: Cancel over the tiles,
 /// the Post button cut to "Post & Save to My Rou…" and the privacy note's
 /// detail to "Leaves off at least 7…". The normal sizes keep the fixed form.
-private struct ScrollsAtAccessibilitySizes: ViewModifier {
+/// Share Achievement uses it too.
+struct ScrollsAtAccessibilitySizes: ViewModifier {
     @Environment(\.dynamicTypeSize) private var typeSize
 
     func body(content: Content) -> some View {

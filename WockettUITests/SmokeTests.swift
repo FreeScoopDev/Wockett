@@ -1522,6 +1522,142 @@ final class SmokeTests: XCTestCase {
         return heights
     }
 
+    // MARK: - 8g. Round 2 at Accessibility 2
+
+    private func launchAtAccessibility2() {
+        app.terminate()
+        app.launchArguments = ["-WKTUITest", "-WKTDemo", "-UIPreferredContentSizeCategoryName",
+                               "UICTContentSizeCategoryAccessibilityL"]
+        app.launch()
+        XCTAssertTrue(el("home.statCard").waitForExistence(timeout: 30))
+    }
+
+    /// Spec fix/large-text-round2, items 1 and 3. Frames only: a cut-off
+    /// title keeps its full label in the accessibility tree, so screenshots
+    /// are the evidence for the text itself. On `main` before it, on an
+    /// iPhone 17e: the community card's Start Walk sat beside the Wockett
+    /// count ("Start…"), "9.1 mi" was two lines (56.7 pt against the 28.3 pt
+    /// "by" line), and the elevation plot was 7 pt tall (48 pt at default).
+    func testRouteCardsAndElevationAtAccessibility2() {
+        launchAtAccessibility2()
+        let window = app.windows.firstMatch.frame
+
+        // Item 3: the route detail's elevation chart. Each data mark's frame
+        // is the plot's full height, so a mark measures the plot.
+        selectTab("Routes")
+        let findRoutes = app.buttons["routes.findRoutes"]
+        XCTAssertTrue(findRoutes.waitForExistence(timeout: 30))
+        findRoutes.tap()
+        XCTAssertTrue(el("routes.resultsPanel").waitForExistence(timeout: 60), "Find Routes must list routes")
+        let card = app.buttons["routes.routeCard"].firstMatch
+        XCTAssertTrue(card.waitForExistence(timeout: 30))
+        sleep(2)  // Animation wait: the results panel settles before the tap.
+        forceTap(card)
+        let mark = app.otherElements.matching(NSPredicate(format: "label MATCHES %@", "[0-9.]+ to [0-9.]+")).firstMatch
+        XCTAssertTrue(mark.waitForExistence(timeout: 15), "The route detail must show the elevation chart")
+        XCTAssertGreaterThan(mark.frame.height, 48, "The elevation plot must be taller than at default: \(mark.frame)")
+
+        // Item 1: Community → Top community routes → See all.
+        selectTab("Community")
+        XCTAssertTrue(el("community.root").waitForExistence(timeout: 30))
+        let heading = app.staticTexts["Top community routes"].firstMatch
+        XCTAssertTrue(heading.waitForExistence(timeout: 30), "Community must list top community routes")
+        var swipes = 0
+        while !heading.isHittable && swipes < 10 {
+            app.swipeUp()
+            swipes += 1
+        }
+        let seeAll = app.buttons.matching(NSPredicate(format: "label == 'See all'")).allElementsBoundByIndex
+            .first { $0.isHittable && $0.frame.minY > heading.frame.minY - 60 }
+        XCTAssertNotNil(seeAll, "Top community routes must offer See all")
+        seeAll?.tap()
+        let start = app.buttons.matching(NSPredicate(format: "label == 'Start Walk'")).firstMatch
+        let wocketts = app.buttons.matching(NSPredicate(format: "label ENDSWITH 'Wocketts' OR label ENDSWITH 'Wockett'")).firstMatch
+        let author = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'by '")).firstMatch
+        XCTAssertTrue(start.waitForExistence(timeout: 15), "A community route card must offer Start Walk")
+        XCTAssertTrue(wocketts.exists && author.exists, "The card must show its Wockett count and author")
+        XCTAssertGreaterThanOrEqual(start.frame.minY, wocketts.frame.maxY,
+                                    "Start Walk must sit under the Wockett count: \(wocketts.frame) and \(start.frame)")
+        XCTAssertLessThanOrEqual(start.frame.maxX, window.maxX, "Start Walk past the right edge: \(start.frame)")
+        let distance = app.staticTexts.matching(NSPredicate(format: "label MATCHES %@", "[0-9.]+ (mi|km)")).firstMatch
+        XCTAssertTrue(distance.exists, "The card must show its distance")
+        XCTAssertLessThan(distance.frame.height, author.frame.height * 1.4,
+                          "The distance must sit on one line: \(distance.frame) against \(author.frame)")
+    }
+
+    /// Spec fix/large-text-round2, items 2, 4 and 6. Frames only, as above.
+    /// On `main` before it, on an iPhone 17e: the badges sat three across
+    /// ("Maratho / ner"), Trail Regions' Download sat beside
+    /// the state's name, and the four Duration chips sat in one row.
+    func testBadgesRegionsAndChipsAtAccessibility2() {
+        launchAtAccessibility2()
+        let window = app.windows.firstMatch.frame
+
+        // Item 4: Distance badges in two columns. Not asserted: that a name
+        // keeps its words whole. With two columns every name fits a line on
+        // an iPhone 17e, so a check could not fail; the rule is pinned in
+        // WktNameLayoutTests and the screenshots are the evidence.
+        selectTab("Community")
+        XCTAssertTrue(el("community.root").waitForExistence(timeout: 30))
+        let allBadges = app.buttons["All badges"].firstMatch
+        XCTAssertTrue(allBadges.waitForExistence(timeout: 15), "Community must offer All badges")
+        var swipes = 0
+        while !allBadges.isHittable && swipes < 10 {
+            app.swipeUp()
+            swipes += 1
+        }
+        allBadges.tap()
+        let names = ["First Steps", "Warming Up", "On a Roll", "Century Walk"].map { app.staticTexts[$0].firstMatch }
+        // The grid is lazy: its tiles exist only once scrolled to.
+        XCTAssertTrue(app.navigationBars["Streaks & Badges"].waitForExistence(timeout: 10))
+        swipes = 0
+        while !(names[3].exists && names[3].isHittable) && swipes < 8 {
+            app.swipeUp()
+            swipes += 1
+        }
+        expectTwoColumns(names, count: 4, name: "The Distance badges")
+
+        // Item 6: New Challenge's Duration chips, two to a row.
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        let startChallenge = app.buttons["Start a challenge"].firstMatch
+        XCTAssertTrue(startChallenge.waitForExistence(timeout: 15), "Community must offer Start a challenge")
+        swipes = 0
+        while !startChallenge.isHittable && swipes < 10 {
+            app.swipeUp()
+            swipes += 1
+        }
+        startChallenge.tap()
+        XCTAssertTrue(app.buttons["challenge.create.submit"].waitForExistence(timeout: 15), "The form must open")
+        let chips = app.buttons.matching(NSPredicate(format: "label MATCHES %@", "[0-9]+ days")).allElementsBoundByIndex
+        expectTwoColumns(chips, count: 4, name: "The Duration chips")
+        // A fresh launch rather than Cancel, which left the form's sheet up.
+        launchAtAccessibility2()
+
+        // Item 2: Trail Regions' Download goes under the state's name.
+        selectTab("Settings")
+        XCTAssertTrue(el("settings.root").waitForExistence(timeout: 30))
+        let regions = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Trail Regions'")).firstMatch
+        swipes = 0
+        while !(regions.exists && regions.isHittable) && swipes < 25 {
+            app.swipeUp()
+            swipes += 1
+        }
+        regions.tap()
+        let download = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Download ' OR label BEGINSWITH 'Update '")).firstMatch
+        // The regions come from CloudKit's public database: with no network
+        // the screen lists none, and the check is recorded as skipped.
+        guard download.waitForExistence(timeout: 30) else {
+            XCTContext.runActivity(named: "Trail Regions check skipped: no region was listed") { _ in }
+            return
+        }
+        let state = String(download.label.split(separator: " ", maxSplits: 1)[1])
+        let name = app.staticTexts[state].firstMatch
+        XCTAssertTrue(name.exists, "Trail Regions must show \(state)")
+        XCTAssertGreaterThanOrEqual(download.frame.minY, name.frame.maxY,
+                                    "\(download.label) must sit under the name: \(name.frame) and \(download.frame)")
+        XCTAssertLessThanOrEqual(download.frame.maxX, window.maxX, "Download past the right edge: \(download.frame)")
+    }
+
     // MARK: - 9. Terms before a first community action
 
     /// Community → Start a challenge → Create Challenge with the Terms not yet

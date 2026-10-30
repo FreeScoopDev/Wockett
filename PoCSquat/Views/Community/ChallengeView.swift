@@ -892,7 +892,9 @@ struct CreateChallengeView: View {
 
     private var durationSection: some View {
         formSection(title: "Duration") {
-            HStack(spacing: 8) {
+            // Two to a row at the accessibility sizes: four across, "7 days"
+            // filled its chip edge to edge (spec fix/large-text-round2, item 6).
+            WktStatRow(spacing: 8) {
                 ForEach(durationOptions, id: \.self) { d in
                     Button { duration = d } label: {
                         Text("\(d) days")
