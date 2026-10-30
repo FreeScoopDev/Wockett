@@ -1465,6 +1465,11 @@ final class SmokeTests: XCTestCase {
                            "\(name) must keep its idle height while busy")
         }
         // Without these the comparison could be two 56 pt minimums agreeing.
+        // Find Routes has no such guard: it is 56 pt idle and busy at
+        // Accessibility 2, so its comparison only shows the button is still
+        // there and tappable while held busy. Sync, Share Route on a saved
+        // route, Share Achievement and the walk card's Share are covered by
+        // WktBusyLabelSizeTests (the shared view) only.
         XCTAssertGreaterThan(idle["Post"] ?? 0, 60, "Post & Save to My Routes wraps at Accessibility 2")
         XCTAssertGreaterThan(idle["Create Challenge"] ?? 0, 56.5, "Create Challenge outgrows 56 pt at Accessibility 2")
     }
