@@ -369,18 +369,15 @@ struct RouteFinderContentView: View {
                 }
 
                 Button(action: triggerRecommend) {
-                    if routeManager.isGenerating {
+                    WktBusyLabel(isBusy: routeManager.isGenerating, fill: .earthGreenFill.opacity(0.7)) {
+                        WktPrimaryLabel(title: "Find Routes", symbol: .mapFill)
+                    } busy: {
                         HStack(spacing: 10) {
                             ProgressView().tint(.white).scaleEffect(0.9)
                             Text("Finding routes…")
                                 .font(.wktHeading(17))
                                 .foregroundColor(.white)
                         }
-                        .frame(maxWidth: .infinity, minHeight: 56)
-                        .background(Color.earthGreenFill.opacity(0.7),
-                                    in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                    } else {
-                        WktPrimaryLabel(title: "Find Routes", symbol: .mapFill)
                     }
                 }
                 .buttonStyle(BounceButtonStyle(scale: 0.98))

@@ -1445,6 +1445,83 @@ final class SmokeTests: XCTestCase {
         // was on screen on main as well, so the check could not fail.
     }
 
+    // MARK: - 8f. Busy buttons at Accessibility 2
+
+    /// A button keeps its size while it works (spec fix/large-text-leftovers,
+    /// item 2). On `main` before it, at Accessibility 2 on an iPhone 17e,
+    /// Share Route's Post went from 90 pt to a 56 pt spinner and Create
+    /// Challenge from 58.7 to 56 pt, so everything below jumped on tap.
+    /// `-WKTHoldBusy` (UI tests only) shows every `WktBusyLabel` busy; the
+    /// test measures each button idle, then held busy, and compares heights.
+    func testBusyButtonsKeepTheirSizeAtAccessibility2() {
+        let idle = busyButtonHeights(held: false)
+        let busy = busyButtonHeights(held: true)
+        for name in ["Find Routes", "Post", "Create Challenge"] {
+            guard let idleHeight = idle[name], let busyHeight = busy[name] else {
+                XCTFail("\(name) was not measured: idle \(idle), busy \(busy)")
+                continue
+            }
+            XCTAssertEqual(busyHeight, idleHeight, accuracy: 0.5,
+                           "\(name) must keep its idle height while busy")
+        }
+        // Without these the comparison could be two 56 pt minimums agreeing.
+        // Find Routes has no such guard: it is 56 pt idle and busy at
+        // Accessibility 2, so its comparison only shows the button is still
+        // there and tappable while held busy. Sync, Share Route on a saved
+        // route, Share Achievement and the walk card's Share are covered by
+        // WktBusyLabelSizeTests (the shared view) only.
+        XCTAssertGreaterThan(idle["Post"] ?? 0, 60, "Post & Save to My Routes wraps at Accessibility 2")
+        XCTAssertGreaterThan(idle["Create Challenge"] ?? 0, 56.5, "Create Challenge outgrows 56 pt at Accessibility 2")
+    }
+
+    /// The three buttons' heights at Accessibility 2, idle or held busy.
+    private func busyButtonHeights(held: Bool) -> [String: CGFloat] {
+        app.terminate()
+        app.launchArguments = ["-WKTUITest", "-WKTDemo", "-UIPreferredContentSizeCategoryName",
+                               "UICTContentSizeCategoryAccessibilityL"] + (held ? ["-WKTHoldBusy"] : [])
+        app.launch()
+        XCTAssertTrue(el("home.statCard").waitForExistence(timeout: 30))
+        var heights: [String: CGFloat] = [:]
+
+        selectTab("Routes")
+        let findRoutes = app.buttons["routes.findRoutes"]
+        XCTAssertTrue(findRoutes.waitForExistence(timeout: 30))
+        heights["Find Routes"] = findRoutes.frame.height
+        // Held busy shows only the label; the button still finds routes.
+        forceTap(findRoutes)
+        XCTAssertTrue(el("routes.resultsPanel").waitForExistence(timeout: 60), "Find Routes must list routes")
+        let share = app.buttons["Share route"].firstMatch
+        XCTAssertTrue(share.waitForExistence(timeout: 10), "The first route card must offer Share")
+        sleep(2)  // Animation wait: the results panel settles before the tap.
+        forceTap(share)
+        let sheetTitle = app.navigationBars["Share Route"]
+        XCTAssertTrue(sheetTitle.waitForExistence(timeout: 10), "Share must open the Share Route sheet")
+        // Post has no identifier; it is the first full-width button under the name field.
+        let name = app.textFields.firstMatch
+        XCTAssertTrue(name.waitForExistence(timeout: 5), "The sheet must have the route name field")
+        let post = app.buttons.allElementsBoundByIndex
+            .filter { $0.frame.minY > name.frame.maxY && $0.frame.width > 250 }
+            .min { $0.frame.minY < $1.frame.minY }
+        heights["Post"] = post?.frame.height
+        sheetTitle.buttons["Cancel"].tap()
+        XCTAssertTrue(sheetTitle.waitForNonExistence(timeout: 10), "Cancel must close the sheet")
+
+        selectTab("Community")
+        XCTAssertTrue(el("community.root").waitForExistence(timeout: 30))
+        let start = app.buttons["Start a challenge"]
+        XCTAssertTrue(start.waitForExistence(timeout: 15), "Community must offer Start a challenge")
+        var swipes = 0
+        while !start.isHittable && swipes < 8 {
+            app.swipeUp()
+            swipes += 1
+        }
+        start.tap()
+        let create = app.buttons["challenge.create.submit"]
+        XCTAssertTrue(create.waitForExistence(timeout: 15), "Start a challenge must open the form")
+        heights["Create Challenge"] = create.frame.height
+        return heights
+    }
+
     // MARK: - 9. Terms before a first community action
 
     /// Community → Start a challenge → Create Challenge with the Terms not yet

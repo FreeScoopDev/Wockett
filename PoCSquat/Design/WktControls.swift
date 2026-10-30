@@ -123,6 +123,12 @@ enum WktButtonLayout {
     static func stacksRow(_ size: DynamicTypeSize) -> Bool {
         size.isAccessibilitySize
     }
+
+    /// Space above and below the title: none at the normal sizes (the 56 pt
+    /// minimum height centres it), 8 pt once it can wrap.
+    static func titleVerticalPadding(_ size: DynamicTypeSize) -> CGFloat {
+        size.isAccessibilitySize ? 8 : 0
+    }
 }
 
 /// How names in narrow rows and cards change at the accessibility text sizes.
@@ -263,15 +269,67 @@ struct WktButtonRow<Primary: View, Secondary: View>: View {
     }
 }
 
+extension View {
+    /// The shared button's title rule and insets, for its own label and for
+    /// a label drawn by hand (a busy state: "Syncing…"). One line, shrinking
+    /// to 80%, at the normal sizes; wrapped, centred and padded at the
+    /// accessibility sizes. The busy copies had none of it, so at
+    /// Accessibility 2 a button lost its padding while busy.
+    func wktButtonTitleLayout() -> some View { modifier(WktButtonTitleLayout()) }
+}
+
+private struct WktButtonTitleLayout: ViewModifier {
+    @Environment(\.dynamicTypeSize) private var typeSize
+
+    func body(content: Content) -> some View {
+        let wraps = WktButtonLayout.titleLineLimit(typeSize) == nil
+        content
+            .lineLimit(WktButtonLayout.titleLineLimit(typeSize))
+            // Centred only where it can wrap: `.center` on the one-line
+            // title moved its glyphs by a pixel at the normal sizes.
+            .multilineTextAlignment(wraps ? .center : .leading)
+            .minimumScaleFactor(0.8)
+            .padding(.vertical, WktButtonLayout.titleVerticalPadding(typeSize))
+            .padding(.horizontal, 12)
+    }
+}
+
+/// A shared button's label with a busy state ("Syncing…", or a spinner on its
+/// own). Busy draws over the idle label's own space, hidden, so the button
+/// keeps its size: at Accessibility 2 a two-line "Post to Community" is 90 pt,
+/// and the hand-drawn busy labels were 56 pt, so the layout jumped on tap.
+/// `fill` is the busy state's background; the idle label brings its own.
+struct WktBusyLabel<Idle: View, Busy: View>: View {
+    let isBusy: Bool
+    var fill: Color = .earthGreenFill
+    @ViewBuilder let idle: () -> Idle
+    @ViewBuilder let busy: () -> Busy
+
+    var body: some View {
+        if isBusy || WktBusyLabelHold.isOn {
+            idle()
+                .hidden()
+                .overlay { busy().wktButtonTitleLayout() }
+                .background(fill, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        } else {
+            idle()
+        }
+    }
+}
+
+/// `-WKTUITest -WKTHoldBusy` shows every `WktBusyLabel` busy, so a UI test can
+/// measure the busy states, which otherwise last only as long as a network
+/// call. Always off in release builds, where `isWKTUITestMode` is false.
+enum WktBusyLabelHold {
+    static let isOn = isWKTUITestMode && ProcessInfo.processInfo.arguments.contains("-WKTHoldBusy")
+}
+
 private struct WktButtonLabel: View {
     let title: String
     let symbol: WktSymbol?
     let fill: Color
     let text: Color
     let onFill: Bool
-    @Environment(\.dynamicTypeSize) private var typeSize
-
-    private var wraps: Bool { WktButtonLayout.titleLineLimit(typeSize) == nil }
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: 18, style: .continuous)
@@ -283,14 +341,8 @@ private struct WktButtonLabel: View {
             Text(title)
                 .font(.wktHeading(17))
                 .foregroundColor(text)
-                .lineLimit(WktButtonLayout.titleLineLimit(typeSize))
-                // Centred only where it can wrap: `.center` on the one-line
-                // title moved its glyphs by a pixel at the normal sizes.
-                .multilineTextAlignment(wraps ? .center : .leading)
-                .minimumScaleFactor(0.8)
         }
-        .padding(.vertical, wraps ? 8 : 0)
-        .padding(.horizontal, 12)
+        .wktButtonTitleLayout()
         .frame(maxWidth: .infinity)
         .frame(minHeight: 56)
         .background(fill, in: shape)
