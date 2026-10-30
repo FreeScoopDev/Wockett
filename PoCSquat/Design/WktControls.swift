@@ -157,6 +157,23 @@ enum WktNameLayout {
             .replacingOccurrences(of: #"(?<=\d)/(?=\p{L})"#, with: "/\u{2060}", options: .regularExpression)
     }
 
+    /// A short name in a narrow column ("Marathoner", "Community Builder"):
+    /// at the accessibility sizes one line per word at most, so a one-word
+    /// name too wide for the column shrinks (`wholeWordsMinimumScale`)
+    /// instead of breaking ("Maratho / ner" at Accessibility 2). A longer
+    /// name whose first word overflows could still break; no badge name does
+    /// at two columns. The normal sizes keep no limit, as before.
+    static func wholeWordsLineLimit(_ text: String, _ size: DynamicTypeSize) -> Int? {
+        guard size.isAccessibilitySize else { return nil }
+        return max(1, text.split(whereSeparator: \.isWhitespace).count)
+    }
+
+    /// How far a `wholeWordsLineLimit` name may shrink: 60% at the
+    /// accessibility sizes, none at the normal sizes.
+    static func wholeWordsMinimumScale(_ size: DynamicTypeSize) -> CGFloat {
+        size.isAccessibilitySize ? 0.6 : 1
+    }
+
     /// A username is one word ("MistyOak42", `CommunityNames`), so it gets a
     /// line of its own and is never broken: if it alone is wider than the
     /// row, the line ends in "…". Wrapped with other words it broke mid-word

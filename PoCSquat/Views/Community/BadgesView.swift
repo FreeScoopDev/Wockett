@@ -245,7 +245,11 @@ struct BadgesContentView: View {
 
     private func badgeSection(title: String, badges: [WalkBadge]) -> some View {
         WktSection(title: title) {
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: WktSpacing.betweenCards), count: 3),
+            // Two to a row at the accessibility sizes, where a third of the
+            // width broke names mid-word ("Maratho / ner", "Fortnigh / t";
+            // spec fix/large-text-round2, item 4).
+            let columns = WktStatColumns.columns(typeSize) ?? 3
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: WktSpacing.betweenCards), count: columns),
                       spacing: WktSpacing.betweenCards) {
                 ForEach(badges) { badge in
                     badgeTile(badge)
@@ -264,6 +268,8 @@ struct BadgesContentView: View {
                 .font(.wktLabel)
                 .foregroundColor(earned ? .earthCream : .earthMuted)
                 .multilineTextAlignment(.center)
+                .lineLimit(WktNameLayout.wholeWordsLineLimit(badge.name, typeSize))
+                .minimumScaleFactor(WktNameLayout.wholeWordsMinimumScale(typeSize))
             // Below the 13 pt label size on purpose: three tiles to a row
             // leave about 100 pt for a sentence.
             Text(badge.description)

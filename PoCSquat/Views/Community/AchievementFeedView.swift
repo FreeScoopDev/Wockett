@@ -216,7 +216,28 @@ private struct AchievementPostCard: View {
 
 // MARK: - Share Achievement Sheet (presented from BadgeEarnedView)
 
+/// At the accessibility sizes, while a field is focused, scrolls `target`
+/// to the bottom of the visible area each time that area's height changes,
+/// so it follows the keyboard in rather than guessing its timing. Scrolling
+/// alone left Post under the keyboard at Accessibility 2 (spec
+/// fix/large-text-round2, item 5). Does nothing at the normal sizes.
+private struct KeepsInViewWhileFocused: ViewModifier {
+    let target: String
+    let focused: Bool
+    @Environment(\.dynamicTypeSize) private var typeSize
+
+    func body(content: Content) -> some View {
+        ScrollViewReader { scroller in
+            content.onGeometryChange(for: CGFloat.self) { $0.size.height } action: { _ in
+                guard focused, typeSize.isAccessibilitySize else { return }
+                withAnimation { scroller.scrollTo(target, anchor: .bottom) }
+            }
+        }
+    }
+}
+
 struct ShareAchievementSheet: View {
+    private static let postID = "shareAchievement.post"
     let badge: WalkBadge
     let onDone: () -> Void
 
@@ -228,6 +249,7 @@ struct ShareAchievementSheet: View {
     @State private var didPost    = false
     @State private var postError: String? = nil
     @Environment(\.dynamicTypeSize) private var typeSize
+    @FocusState private var messageFocused: Bool
 
     var body: some View {
         NavigationStack {
@@ -258,6 +280,7 @@ struct ShareAchievementSheet: View {
                                     .padding(.top, 10)
                             }
                             TextEditor(text: $message)
+                                .focused($messageFocused)
                                 .font(.wktBodyText)
                                 .foregroundColor(.earthCream)
                                 .scrollContentBackground(.hidden)
@@ -289,11 +312,17 @@ struct ShareAchievementSheet: View {
                     .buttonStyle(BounceButtonStyle(scale: 0.98))
                     .disabled(isPosting || didPost)
                     .padding(.horizontal, WktSpacing.screen)
+                    .id(Self.postID)
 
                     Spacer()
                 }
                 .padding(.top, 16)
+                // Scrolls at the accessibility sizes: fixed, with the keyboard
+                // up it was squeezed to "Add a message (o…" and the keyboard
+                // covered half of Post (spec fix/large-text-round2, item 5).
+                .modifier(ScrollsAtAccessibilitySizes())
             }
+            .modifier(KeepsInViewWhileFocused(target: Self.postID, focused: messageFocused))
             .navigationTitle("Share Achievement")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

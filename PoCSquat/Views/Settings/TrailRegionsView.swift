@@ -70,15 +70,24 @@ private struct RegionRow: View {
 
     private static let size = ByteCountFormatStyle(style: .file)
 
+    @Environment(\.dynamicTypeSize) private var typeSize
+
     var body: some View {
         let state = library.state(of: record)
-        HStack(alignment: .center, spacing: 12) {
+        // At the accessibility sizes the button goes under the name: beside
+        // it, both broke mid-word at Accessibility 2 ("Connectic / ut",
+        // "Downl / oad"; spec fix/large-text-round2, item 2).
+        let stacks = WktNameLayout.stacks(typeSize)
+        let row = stacks
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 4))
+            : AnyLayout(HStackLayout(alignment: .center, spacing: 12))
+        row {
             VStack(alignment: .leading, spacing: 3) {
                 Text(record.regionName).foregroundColor(.earthCream)
                 Text(detail(for: state))
                     .font(.wktLabel).foregroundColor(.earthMuted)
             }
-            Spacer()
+            if !stacks { Spacer() }
             action(for: state)
         }
         .padding(.vertical, 2)

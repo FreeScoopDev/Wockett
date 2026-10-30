@@ -389,6 +389,15 @@ struct DifficultyBadge: View {
 
 struct ElevationProfileChart: View {
     let profile: ElevationProfile
+    @Environment(\.dynamicTypeSize) private var typeSize
+
+    /// The chart's height: 110 pt at the normal sizes. At the accessibility
+    /// sizes the axis labels alone filled 110 pt, so the plot was 7 pt tall
+    /// and the profile drew as a flat line under overlapping labels
+    /// (measured at Accessibility 2; spec fix/large-text-round2, item 3).
+    static func chartHeight(_ size: DynamicTypeSize) -> CGFloat {
+        size.isAccessibilitySize ? 220 : 110
+    }
 
     // Miles in the US, like the spoken cues; elevation stays in metres.
     private var usesMiles: Bool { WalkAudioCueService.usesMiles }
@@ -404,11 +413,17 @@ struct ElevationProfileChart: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 16) {
-                elevStat("+\(Int(profile.totalGainMeters))m", label: "gain",  color: .earthGreen)
-                elevStat("-\(Int(profile.totalLossMeters))m", label: "loss",  color: .earthOrange)
-                Spacer()
+            // The difficulty chip goes under the stats at the accessibility
+            // sizes; beside them it was squeezed to "Mode / rate".
+            if WktNameLayout.stacks(typeSize) {
+                HStack(spacing: 16) { gainAndLoss }
                 DifficultyBadge(difficulty: profile.difficulty)
+            } else {
+                HStack(spacing: 16) {
+                    gainAndLoss
+                    Spacer()
+                    DifficultyBadge(difficulty: profile.difficulty)
+                }
             }
 
             Chart(profile.points) { pt in
@@ -433,9 +448,15 @@ struct ElevationProfileChart: View {
             .chartYScale(domain: yDomain)
             .chartXAxisLabel(usesMiles ? "mi" : "km", alignment: .trailing)
             .chartYAxisLabel("m", alignment: .top)
-            .frame(height: 110)
+            .frame(height: Self.chartHeight(typeSize))
         }
         .wktCard()
+    }
+
+    @ViewBuilder
+    private var gainAndLoss: some View {
+        elevStat("+\(Int(profile.totalGainMeters))m", label: "gain",  color: .earthGreen)
+        elevStat("-\(Int(profile.totalLossMeters))m", label: "loss",  color: .earthOrange)
     }
 
     private func elevStat(_ value: String, label: String, color: Color) -> some View {
