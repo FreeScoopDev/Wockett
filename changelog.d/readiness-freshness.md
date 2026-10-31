@@ -11,8 +11,8 @@
   new Watch, will see "–" (not enough data) more often than before. The
   Recovery card and the Readiness detail now say what is missing ("No HRV in
   the last 2 days", "Not enough HRV history yet: 3 of 7 days"); the card
-  stays quiet only when there is no sleep or HRV at all. A night with only
-  In Bed or Awake time counts as no sleep, not as 0 hours slept.
+  stays quiet only when there is no sleep or HRV at all. Readiness treats
+  a night with only In Bed or Awake time as no sleep, not as 0 hours slept.
 - The readiness hints describe the readings ("HRV above your 30-day average;
   slept 7h 20m") instead of telling people what to do ("push a little harder
   today", "Light activity recommended"). The score breakdown no longer labels
