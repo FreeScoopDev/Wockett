@@ -1,5 +1,6 @@
 import SwiftUI
 import CloudKit
+import Combine
 import MapKit
 
 // MARK: - Route Card
@@ -348,6 +349,8 @@ struct ShareReviewSheet<Fields: View>: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }.foregroundColor(.earthMuted)
+                        // Open until the post ends, so a failure is seen.
+                        .disabled(isPosting)
                 }
                 ToolbarItemGroup(placement: .keyboard) {
                     Spacer()
@@ -360,15 +363,19 @@ struct ShareReviewSheet<Fields: View>: View {
         }
         .communityTermsSheet($termsGate)
         .presentationDetents([.large])
+        .interactiveDismissDisabled(isPosting)
         .task(id: "\(hideEnds)-\(shareOffsetAttempt)") {
             guard hideEnds, shareOffset == nil else { return }
             shareOffsetChecked = false
-            shareOffset = await SharePrivacyOffsetStore.shared.currentIfAvailable()
+            let offset = await SharePrivacyOffsetStore.shared.currentIfAvailable()
+            // Superseded (an account change started another fetch): leave it to that one.
+            guard !Task.isCancelled else { return }
+            shareOffset = offset
             shareOffsetChecked = true
         }
         // Another iCloud account has another offset (SharePrivacyOffsetStore
         // forgets its own): fetch it again rather than publish with this one.
-        .onReceive(NotificationCenter.default.publisher(for: .CKAccountChanged)) { _ in
+        .onReceive(NotificationCenter.default.publisher(for: .CKAccountChanged).receive(on: DispatchQueue.main)) { _ in
             shareOffset = nil
             shareOffsetAttempt += 1
         }
@@ -423,7 +430,7 @@ struct ShareReviewSheet<Fields: View>: View {
         isPosting = true
         errorMessage = nil
         Task {
-            let container = CKContainer(identifier: "iCloud.Scoops.PoCSquat")
+            let container = CKContainer(identifier: WockettCloud.containerID)
             let status = try? await container.accountStatus()
             guard status == .available else {
                 errorMessage = "Sign in to iCloud in the Settings app to share routes."

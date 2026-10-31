@@ -340,6 +340,50 @@ struct SharedRouteTrimTests {
         #expect(backend.fetches == 2)
     }
 
+    /// Holds `fetch()` until released, and signals when one is held.
+    private final class GatedBackend: SharePrivacyOffsetBackend {
+        var stored: SharePrivacyOffset?
+        var fetches = 0
+        private var waiting: [CheckedContinuation<Void, Never>] = []
+        private var heldWaiters: [CheckedContinuation<Void, Never>] = []
+        func fetch() async throws -> SharePrivacyOffset? {
+            fetches += 1
+            let answer = stored
+            if fetches == 1 {
+                await withCheckedContinuation { c in
+                    waiting.append(c)
+                    let arrived = heldWaiters
+                    heldWaiters = []
+                    arrived.forEach { $0.resume() }
+                }
+            }
+            return answer
+        }
+        func create(_ offset: SharePrivacyOffset) async throws -> SharePrivacyOffset { offset }
+        func release() { waiting.forEach { $0.resume() }; waiting = [] }
+        func held() async {
+            if !waiting.isEmpty { return }
+            await withCheckedContinuation { heldWaiters.append($0) }
+        }
+    }
+
+    @Test("A fetch that began before an iCloud account change can't cache the old account's offset")
+    func storeDropsAFetchFromBeforeTheSwitch() async throws {
+        let backend = GatedBackend()
+        backend.stored = testOffset
+        let center = NotificationCenter()
+        let store = SharePrivacyOffsetStore(backend: backend, notifications: center)
+        let first = Task { @MainActor in await store.currentIfAvailable() }
+        await backend.held()
+        center.post(name: .CKAccountChanged, object: nil)
+        let other = SharePrivacyOffset(east: -70, north: 70, extra: 10)
+        backend.stored = other
+        backend.release()
+        #expect(await first.value == nil, "the old account's answer must not be used")
+        #expect(try await store.current() == other)
+        #expect(backend.fetches == 2)
+    }
+
     @Test("The private record reads back only a valid offset")
     func offsetRecord() {
         let record = CKRecord(recordType: CloudKitSharePrivacyOffsetBackend.recordType)
