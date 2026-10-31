@@ -3,8 +3,7 @@
   when the metric has data on at least 4 of the last 7 days, on its card, on
   its detail page and as "Gait: …" on the Recovery card. Before, a single day
   of data was enough, and one day says little about how someone walks. With
-  fewer days the card shows the average and "3 days of data" instead, and the
-  chart's dots and day-of-week bars stay one neutral green. People whose Watch
+  fewer days the card shows the average and "3 days of data" instead. People whose Watch
   or iPhone records gait only now and then will see fewer verdicts than
   before. The thresholds and their wording are unchanged.
 - The 7-day and 30-day averages say how many days they are based on ("based
