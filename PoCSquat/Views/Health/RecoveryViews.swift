@@ -11,7 +11,7 @@ enum RecoveryMetricType: String, Identifiable {
 
 // MARK: - Recovery Card
 
-// The first card on Health, as the Today card is on Home: last night's
+// Health's "Sleep and recovery" section (after the calendar since 2026-10-31): last night's
 // sleep, readiness and active calories, each opening its detail sheet, with
 // the readiness hint and the gait status underneath.
 struct RecoveryCard: View {

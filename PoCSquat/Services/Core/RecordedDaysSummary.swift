@@ -94,6 +94,25 @@ struct RecordedDaysSummary: Equatable {
     nonisolated static let unavailable = "Step history is unavailable right now."
 }
 
+/// What the month calendar says in place of its stats when it has none
+/// (2026-10-31). In Health mode it waits for the query for the month on
+/// screen: before that answer (or with another month's still on screen) a
+/// month with steps would read as empty and point at Health access.
+nonisolated enum MonthEmptyNote: Equatable {
+    case none, empty, unavailable
+
+    nonisolated struct Loaded: Equatable { let month: Date; let failed: Bool }
+
+    /// Called only when the month has no recorded days. App Only mode has
+    /// no query, so its note is never waiting.
+    nonisolated static func make(isFuture: Bool, healthKit: Bool, shown: Date, loaded: Loaded?) -> MonthEmptyNote {
+        guard !isFuture else { return .none }
+        guard healthKit else { return .empty }
+        guard let loaded, loaded.month == shown else { return .none }
+        return loaded.failed ? .unavailable : .empty
+    }
+}
+
 /// What the 30-day trend shows. A failed or impossible Health query
 /// (`StepManager.fetchStepCounts` returning nil) reads differently from a
 /// query that found nothing.

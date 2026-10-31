@@ -133,6 +133,23 @@ struct RecordedDaysSummaryTests {
         #expect(!RecordedDaysSummary.noHealthDataHint.contains("Settings"))
     }
 
+    // MARK: - Month calendar's empty note
+
+    @Test("The month's empty note waits for that month's Health answer")
+    func monthEmptyNote() {
+        let oct = Date(timeIntervalSince1970: 1_790_812_800)   // 2026-10-01 UTC
+        let sep = Date(timeIntervalSince1970: 1_788_220_800)   // 2026-09-01 UTC
+        func note(future: Bool = false, health: Bool = true, _ loaded: MonthEmptyNote.Loaded?) -> MonthEmptyNote {
+            MonthEmptyNote.make(isFuture: future, healthKit: health, shown: oct, loaded: loaded)
+        }
+        #expect(note(nil) == .none, "no answer yet: say nothing")
+        #expect(note(.init(month: sep, failed: false)) == .none, "the previous month's answer is still on screen")
+        #expect(note(.init(month: oct, failed: true)) == .unavailable)
+        #expect(note(.init(month: oct, failed: false)) == .empty)
+        #expect(note(health: false, nil) == .empty, "App Only has no query to wait for")
+        #expect(note(future: true, .init(month: oct, failed: false)) == .none)
+    }
+
     // MARK: - Month and trend agree
 
     private static let utc: Calendar = {

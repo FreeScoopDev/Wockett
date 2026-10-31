@@ -232,7 +232,7 @@ private struct TrendChartSection: View {
                     // The Settings row's destination: HealthKit never asks a
                     // second time, so access can only change in Health.
                     WktSecondaryButton(title: "Check Health access", symbol: .openHealth) {
-                        if let url = URL(string: "x-apple-health://") { UIApplication.shared.open(url) }
+                        if let url = HealthExtrasAccess.healthAppURL { UIApplication.shared.open(url) }
                     }
                     .accessibilityIdentifier("health.checkAccess")
                     .padding(.top, 4)
