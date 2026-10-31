@@ -229,6 +229,13 @@ private struct TrendChartSection: View {
                 if stepManager.trackingMode == .healthKit {
                     note(RecordedDaysSummary.noHealthData)
                     note(RecordedDaysSummary.noHealthDataHint)
+                    // The Settings row's destination: HealthKit never asks a
+                    // second time, so access can only change in Health.
+                    WktSecondaryButton(title: "Check Health access", symbol: .openHealth) {
+                        if let url = URL(string: "x-apple-health://") { UIApplication.shared.open(url) }
+                    }
+                    .accessibilityIdentifier("health.checkAccess")
+                    .padding(.top, 4)
                 } else {
                     note(RecordedDaysSummary.noAppOnlyData)
                 }

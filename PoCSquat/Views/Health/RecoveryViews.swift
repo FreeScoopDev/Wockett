@@ -58,6 +58,8 @@ struct RecoveryCard: View {
             }
         }
         .wktCard()
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("health.recovery")
         .task { if recovery.activeCal == nil { await recovery.load() } }
         .sheet(item: $selectedMetric) { metric in
             RecoveryMetricDetailSheet(metric: metric)

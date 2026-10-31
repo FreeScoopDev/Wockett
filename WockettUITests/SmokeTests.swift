@@ -717,6 +717,30 @@ final class SmokeTests: XCTestCase {
         XCTAssertEqual(note.label, "For general information, not medical advice. Wockett isn't a medical device.")
     }
 
+    // MARK: - 6b2. Health order
+
+    /// Health reads facts first (fix/health-tab-order, 2026-10-31): Your
+    /// activity, then the calendar, then Sleep and recovery, then the
+    /// disclaimer. Under -WKTUITest `HealthExtrasAccess` reports `.ready`, so
+    /// Recovery is drawn. Frames, not hittability: off-screen sections are
+    /// still in the tree of a plain VStack, and they are read before any swipe.
+    func testHealthSectionOrder() {
+        XCTAssertTrue(el("home.statCard").waitForExistence(timeout: 10))
+        selectTab("Health")
+        XCTAssertTrue(el("health.root").waitForExistence(timeout: 30))
+        let insights = el("health.insights")
+        let calendar = el("health.calendar")
+        let recovery = el("health.recovery")
+        let disclaimer = app.staticTexts["health.disclaimer"]
+        for (name, element) in [("insights", insights), ("calendar", calendar),
+                                ("recovery", recovery), ("disclaimer", disclaimer)] {
+            XCTAssertTrue(element.waitForExistence(timeout: 10), "health.\(name) missing from Health")
+        }
+        let order = [insights, calendar, recovery, disclaimer].map(\.frame.minY)
+        XCTAssertEqual(order, order.sorted(), "Health must read Insights, calendar, Recovery, disclaimer: \(order)")
+        XCTAssertEqual(Set(order).count, 4, "Each section must have its own place: \(order)")
+    }
+
     // MARK: - 6c. History: Repeat reviews before it starts
 
     /// Health → Activity History. A row's More menu reaches Edit details,

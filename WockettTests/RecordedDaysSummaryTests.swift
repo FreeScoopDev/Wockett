@@ -120,13 +120,17 @@ struct RecordedDaysSummaryTests {
     @Test("The empty and unavailable wording never claims access was denied")
     func neutralWording() {
         let all = [RecordedDaysSummary.noHealthData, RecordedDaysSummary.noHealthDataHint,
-                   RecordedDaysSummary.noAppOnlyData, RecordedDaysSummary.unavailable]
+                   RecordedDaysSummary.noAppOnlyData, RecordedDaysSummary.unavailable,
+                   RecordedDaysSummary.noHealthDataMonth, RecordedDaysSummary.noAppOnlyDataMonth]
         for text in all {
             #expect(!text.localizedCaseInsensitiveContains("denied"))
             #expect(!text.localizedCaseInsensitiveContains("permission"))
             #expect(!text.contains("0/0"))
         }
-        #expect(Set(all).count == 4)
+        #expect(Set(all).count == 6)
+        // The hint names where the trend's "Check Health access" button goes.
+        #expect(RecordedDaysSummary.noHealthDataHint.contains("Health app"))
+        #expect(!RecordedDaysSummary.noHealthDataHint.contains("Settings"))
     }
 
     // MARK: - Month and trend agree

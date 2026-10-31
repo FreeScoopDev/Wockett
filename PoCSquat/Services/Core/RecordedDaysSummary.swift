@@ -86,8 +86,11 @@ struct RecordedDaysSummary: Equatable {
 
     nonisolated static let noHealthData = "No step data for the last 30 days."
     nonisolated static let noHealthDataHint =
-        "Wockett reads steps from Apple Health. If you expected data, check Health access in Settings."
+        "Wockett reads steps from Apple Health. If you expected data, check Wockett's access in the Health app."
     nonisolated static let noAppOnlyData = "No recorded activities in the last 30 days."
+    /// The month calendar's versions: it shows one month, not 30 days.
+    nonisolated static let noHealthDataMonth = "No step data for this month."
+    nonisolated static let noAppOnlyDataMonth = "No recorded activities this month."
     nonisolated static let unavailable = "Step history is unavailable right now."
 }
 

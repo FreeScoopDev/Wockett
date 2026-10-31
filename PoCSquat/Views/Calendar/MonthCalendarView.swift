@@ -186,6 +186,19 @@ struct MonthCalendarView: View {
                                     .fixedSize(horizontal: false, vertical: true)
                             }
                             monthTrendChart
+                        } else if !isFutureMonth {
+                            // The trend's notes, for one month; no button in a sheet.
+                            VStack(alignment: .leading, spacing: 4) {
+                                if stepManager.trackingMode == .healthKit {
+                                    Text(RecordedDaysSummary.noHealthDataMonth)
+                                    Text(RecordedDaysSummary.noHealthDataHint)
+                                } else {
+                                    Text(RecordedDaysSummary.noAppOnlyDataMonth)
+                                }
+                            }
+                            .font(.wktLabel)
+                            .foregroundColor(.earthMuted)
+                            .fixedSize(horizontal: false, vertical: true)
                         }
                     }
                     .padding(.horizontal, WktSpacing.screen)
