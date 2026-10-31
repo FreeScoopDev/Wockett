@@ -152,14 +152,12 @@ final class CommunityRouteService {
 
     // MARK: - Publish
 
-    /// Publishes `route`'s path (`SharedRouteTrim.prepare`); with `hideEnds`,
-    /// without anything near where it starts and ends, usually home, and
-    /// nothing at all without the user's privacy offset. `route` itself, the
-    /// copy the user keeps, is not changed.
-    func publish(route: CustomRoute, hideEnds: Bool) async throws {
-        try ContentFilter.validate(name: route.name)
-        let offset = hideEnds ? await SharePrivacyOffsetStore.shared.currentIfAvailable() : nil
-        let record = try Self.record(for: route, hideEnds: hideEnds, offset: offset)
+    /// Publishes `trimmed` under `name`: the path the share screen already
+    /// prepared and drew (`ShareReview`), not a fresh trim, so what goes
+    /// public is what the user saw. The route the user keeps is not changed.
+    func publish(name: String, trimmed: SharedRouteTrim.Trimmed) async throws {
+        try ContentFilter.validate(name: name)
+        let record = try Self.record(name: name, trimmed: trimmed)
         try await SuspensionService.shared.ensureCanPost()
         record["authorName"]    = try await CommunityNameService.shared.claimedName()
 
@@ -198,11 +196,16 @@ final class CommunityRouteService {
     static func record(for route: CustomRoute, hideEnds: Bool, offset: SharePrivacyOffset?) throws -> CKRecord {
         let outcome = SharedRouteTrim.prepare(route, hideEnds: hideEnds, offset: offset)
         guard case .trimmed(let trimmed) = outcome else { throw SharedRouteTrim.CannotShareError(outcome: outcome) }
+        return try record(name: route.name, trimmed: trimmed)
+    }
+
+    /// The public record for an already prepared path, before its author is added.
+    static func record(name: String, trimmed: SharedRouteTrim.Trimmed) throws -> CKRecord {
         let distance = trimmed.keptMeters
         let waypointData = try JSONEncoder().encode(trimmed.waypoints)
 
         let record = CKRecord(recordType: recordType)
-        record["name"]           = route.name
+        record["name"]           = name
         record["waypointsJSON"]  = String(data: waypointData, encoding: .utf8) ?? "[]"
         record["isLoop"]         = trimmed.isLoop ? 1 : 0
         record["distanceMeters"] = distance
@@ -219,3 +222,10 @@ final class CommunityRouteService {
 }
 
 extension SharedRoute: CommunityModerated {}
+
+/// What a share screen publishes through; tests record it instead of CloudKit.
+protocol SharedRoutePublishing {
+    func publish(name: String, trimmed: SharedRouteTrim.Trimmed) async throws
+}
+
+extension CommunityRouteService: SharedRoutePublishing {}

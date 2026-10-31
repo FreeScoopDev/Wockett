@@ -25,6 +25,9 @@ final class SharePrivacyOffsetStore {
 
     private let backend: SharePrivacyOffsetBackend
     private var cached: SharePrivacyOffset?
+    /// Bumped by `forget()`, so a fetch that began under the old account
+    /// can't cache its answer after the switch.
+    private var generation = 0
 
     /// `notifications` is for tests, so the system's `.CKAccountChanged` on
     /// `.default` can't reach a store under test.
@@ -39,17 +42,19 @@ final class SharePrivacyOffsetStore {
     /// Drops the cached offset, so the next `current()` asks iCloud again.
     func forget() {
         cached = nil
+        generation += 1
     }
 
     func current() async throws -> SharePrivacyOffset {
         if let cached { return cached }
+        let started = generation
         let offset: SharePrivacyOffset
         if let stored = try await backend.fetch() {
             offset = stored
         } else {
             offset = try await backend.create(.random())
         }
-        guard offset.isValid else { throw Unavailable() }
+        guard offset.isValid, started == generation else { throw Unavailable() }
         cached = offset
         return offset
     }

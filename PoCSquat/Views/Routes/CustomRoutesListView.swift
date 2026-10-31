@@ -134,18 +134,9 @@ struct CustomRouteDetailView: View {
     @State private var isLoadingElevation = false
     @State private var showMapsAlert      = false
     @State private var isEditing               = false
-    @State private var shareState: ShareState  = .idle
-    /// Holds a community action until the Terms are agreed to (CommunityTermsGate).
-    @State private var termsGate = CommunityTermsGate()
-    /// Why sharing failed, when it is worth saying (a paused account).
-    @State private var shareMessage: String?
-    /// Hide start and finish: the user's last choice, off by default.
-    @AppStorage(SharedRouteTrim.hideEndsKey) private var hideShareEnds = false
-    /// The user's privacy offset (`SharePrivacyOffsetStore`), fetched only once
-    /// Hide start and finish is on; nil until iCloud answers.
-    @State private var shareOffset: SharePrivacyOffset?
-    @State private var shareOffsetChecked = false
-    @State private var shareOffsetAttempt = 0
+    /// Share Route opens the review (`ShareReviewSheet`); set once it publishes.
+    @State private var showShareReview         = false
+    @State private var didShare                = false
     @State private var showActiveSessionAlert  = false
     @State private var showRename              = false
     @State private var renameText              = ""
@@ -167,8 +158,6 @@ struct CustomRouteDetailView: View {
         guard isClassified else { return [] }
         return recordedLine?.checkpoints ?? route.waypoints.map { $0.clCoordinate }
     }
-
-    private enum ShareState { case idle, sharing, shared, failed }
 
     var body: some View {
         ZStack {
@@ -292,80 +281,34 @@ struct CustomRouteDetailView: View {
                             Text("Apple Maps doesn't support multi-stop walking routes. Wockett will navigate you to the start of your route — follow the in-app map for the full path.")
                         }
 
-                        // Community sharing
+                        // Community sharing: everything about what goes public is in the review.
                         VStack(alignment: .leading, spacing: WktSpacing.betweenCards) {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Share to Community")
-                                    .font(.wktSection).foregroundColor(.earthCream)
-                                    .accessibilityAddTraits(.isHeader)
-                                Text("Posting as \(CommunityNameService.shared.displayName)")
-                                    .font(.wktLabel).foregroundColor(.earthMuted)
-                                    // The name a share would really go out under, checked without claiming.
-                                    .task { await CommunityNameService.shared.refreshDisplayName() }
-                            }
-                            let shareRoute = shareSource
-                            let hideEnds = hideShareEnds
-                            let shareTrim = shareRoute.map {
-                                SharedRouteTrim.prepare($0, hideEnds: hideEnds, offset: shareOffset)
-                            }
-                            let sharePreparing = (shareRoute == nil && (isLoading || !isClassified))
-                                || (shareRoute != nil && hideEnds && !shareOffsetChecked)
-                            Button { termsGate.perform {
-                                guard shareState == .idle else { return }
-                                shareState = .sharing
-                                Task {
-                                    do {
-                                        guard let shareRoute else { shareState = .idle; return }
-                                        try await CommunityRouteService.shared.publish(route: shareRoute, hideEnds: hideEnds)
-                                        shareState = .shared
-                                    } catch let cannot as SharedRouteTrim.CannotShareError {
-                                        shareMessage = cannot.message
-                                        shareState = .failed
-                                    } catch {
-                                        shareMessage = (error as? CommunityAccessError)?.message
-                                        shareState = .failed
-                                    }
-                                }
-                            } } label: {
-                                WktBusyLabel(isBusy: shareState == .sharing, fill: .earthRaised) {
-                                    switch shareState {
-                                    case .idle, .sharing:
-                                        WktSecondaryLabel(title: "Share Route", symbol: .upload)
-                                    case .shared:
-                                        WktSecondaryLabel(title: "Shared!", symbol: .success)
-                                    case .failed:
-                                        WktSecondaryLabel(title: "Couldn't Share", symbol: .errorCircle)
-                                    }
-                                } busy: {
-                                    HStack(spacing: 8) {
-                                        ProgressView().tint(.earthCream).scaleEffect(0.85)
-                                        Text("Sharing…").font(.wktHeading(17)).foregroundColor(.earthCream)
-                                    }
-                                }
-                            }
-                            .buttonStyle(BounceButtonStyle(scale: 0.98))
-                            .disabled(shareState != .idle || !(shareTrim.map(RouteSharePrivacyNote.canShare) ?? false))
-                            RouteSharePrivacyNote(outcome: shareTrim ?? .notAPath, hideEnds: $hideShareEnds,
-                                                  isPreparing: sharePreparing,
-                                                  onRetry: { shareOffsetAttempt += 1 })
-                            if let shareMessage {
-                                Text(shareMessage)
-                                    .font(.wktLabel)
-                                    .foregroundColor(.earthMuted)
-                            }
+                            Text("Share to Community")
+                                .font(.wktSection).foregroundColor(.earthCream)
+                                .accessibilityAddTraits(.isHeader)
+                            WktSecondaryButton(title: didShare ? "Shared!" : "Share Route",
+                                               symbol: didShare ? .success : .upload) { showShareReview = true }
+                                .disabled(didShare)
                         }
                     }
                     .padding(WktSpacing.screen)
                 }
             }
         }
-        .task(id: "\(hideShareEnds)-\(shareOffsetAttempt)") {
-            guard hideShareEnds, shareOffset == nil else { return }
-            shareOffsetChecked = false
-            shareOffset = await SharePrivacyOffsetStore.shared.currentIfAvailable()
-            shareOffsetChecked = true
+        .sheet(isPresented: $showShareReview) {
+            ShareReviewSheet(source: shareSource, isLoadingSource: shareSource == nil && (isLoading || !isClassified),
+                             name: route.name, publishTitle: "Share Route",
+                             onPublished: { didShare = true }, fields: {
+                // The one free text that goes public, shown before it does.
+                WktSection(title: "Route name") {
+                    Text(route.name)
+                        .font(.wktBodyText).foregroundColor(.earthCream)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .wktCard()
+                        .accessibilityIdentifier("routes.shareName")
+                }
+            })
         }
-        .communityTermsSheet($termsGate)
         .navigationTitle(route.name)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
