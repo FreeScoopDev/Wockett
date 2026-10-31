@@ -131,7 +131,7 @@ struct CustomRouteDetailView: View {
     @State private var isLoading          = false
     @State private var routeWeather:      RouteWeather?
     @State private var elevationProfile:  ElevationProfile?
-    @State private var isLoadingElevation = false
+    @State private var elevationFinished  = false // answered, or could not run
     @State private var showMapsAlert      = false
     @State private var isEditing               = false
     /// Share Route opens the review (`ShareReviewSheet`); set once it publishes.
@@ -160,42 +160,37 @@ struct CustomRouteDetailView: View {
     }
 
     var body: some View {
-        ZStack {
-            Color.earthBg.ignoresSafeArea()
-            VStack(spacing: 0) {
-                ZStack {
-                    CustomRouteMapView(
-                        waypoints: pinCoordinates,
-                        routeLegs: routeLegs
-                    )
-                    if isLoading {
-                        ProgressView().tint(.earthGreen)
-                            .padding(16)
-                            .background(Color.earthBg.opacity(0.8), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    }
-                }
-                .frame(height: 320)
-
-                ScrollView {
-                    VStack(alignment: .leading, spacing: WktSpacing.betweenSections) {
-                        HStack(alignment: .top) {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(route.name)
-                                    .font(.wktCardTitle).foregroundColor(.earthCream)
-                                Label {
-                                    Text(route.isLoop ? "Loop route" : "One-way route")
-                                } icon: {
-                                    Image(wkt: route.isLoop ? .loop : .arrowRight).wktIcon(.inline, tint: .earthGreen)
-                                }
-                                .font(.wktLabel).foregroundColor(.earthGreen)
-                            }
-                            Spacer()
-                            VStack(alignment: .trailing, spacing: 4) {
-                                Text(route.distanceText).font(.wktCardTitle).foregroundColor(.earthCream)
-                                Text("~\(route.estimatedSteps.formatted()) steps")
-                                    .font(.wktBodyText).foregroundColor(.earthMuted)
-                            }
+        // Start below the page, not over it: an overlay hid taps (UI test 8h).
+        VStack(spacing: 0) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    // Scrolls away with the page; a drag below it scrolls.
+                    ZStack {
+                        CustomRouteMapView(
+                            waypoints: pinCoordinates,
+                            routeLegs: routeLegs
+                        )
+                        if isLoading {
+                            ProgressView().tint(.earthGreen)
+                                .padding(16)
+                                .background(Color.earthBg.opacity(0.8), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                         }
+                    }
+                    .frame(height: 240)
+
+                    VStack(alignment: .leading, spacing: WktSpacing.betweenSections) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(route.name)
+                                .font(.wktCardTitle).foregroundColor(.earthCream)
+                            Label {
+                                Text(route.isLoop ? "Loop route" : "One-way route")
+                            } icon: {
+                                Image(wkt: route.isLoop ? .loop : .arrowRight).wktIcon(.inline, tint: .earthGreen)
+                            }
+                            .font(.wktLabel).foregroundColor(.earthGreen)
+                        }
+
+                        summary
 
                         if let weather = routeWeather {
                             WeatherWidget(weather: weather)
@@ -203,55 +198,18 @@ struct CustomRouteDetailView: View {
 
                         if let profile = elevationProfile {
                             ElevationProfileChart(profile: profile)
-                        } else if isLoadingElevation {
-                            HStack(spacing: 8) {
-                                ProgressView().tint(.earthGreen)
-                                Text("Calculating elevation...")
-                                    .font(.wktBodyText).foregroundColor(.earthMuted)
-                            }
-                            .frame(maxWidth: .infinity, minHeight: 80)
-                            .wktCardBackground()
                         }
 
-                        HStack(spacing: WktSpacing.betweenCards) {
-                            infoTile(icon: .mapPinFill,
-                                     value: isClassified ? "\(pinCoordinates.count)" : "–",
-                                     label: recordedLine == nil ? "Waypoints" : "Checkpoints")
-                            infoTile(icon: .time,
-                                     value: route.timeText,
-                                     label: "Est. time")
+                        infoTile(icon: .mapPinFill,
+                                 value: isClassified ? "\(pinCoordinates.count)" : "–",
+                                 label: recordedLine == nil ? "Waypoints" : "Checkpoints")
+
+                        NavigationLink {
+                            RouteSessionHistoryView(route: route, historyStore: historyStore)
+                        } label: {
+                            WktSecondaryLabel(title: "View History", symbol: .history)
                         }
-
-                        VStack(spacing: WktSpacing.betweenCards) {
-                            WktSegmentedPicker(selection: $activityMode, options: [ActivityMode.walking, .running, .cycling].map {
-                                .init(value: $0, title: $0.sessionLabel, symbol: $0.wktSymbol)
-                            })
-
-                            WktPrimaryButton(title: "Start \(activityMode.sessionLabel)", symbol: activityMode.wktSymbol) {
-                                let nav = NavigableRoute(
-                                    name:          route.name,
-                                    waypoints:     route.waypoints.map { $0.clCoordinate },
-                                    lapCount:      1,
-                                    isLoop:        route.isLoop,
-                                    totalDistance: route.totalDistance,
-                                    isCustomRoute: true,
-                                    activityMode:  activityMode,
-                                    customRouteId: route.id
-                                )
-                                guard ActiveWalkStore.shared.beginSession(route: nav) != nil else {
-                                    showActiveSessionAlert = true
-                                    return
-                                }
-                                dismiss()
-                            }
-
-                            NavigationLink {
-                                RouteSessionHistoryView(route: route, historyStore: historyStore)
-                            } label: {
-                                WktSecondaryLabel(title: "View History", symbol: .history)
-                            }
-                            .buttonStyle(BounceButtonStyle(scale: 0.98))
-                        }
+                        .buttonStyle(BounceButtonStyle(scale: 0.98))
 
                         VStack(spacing: 4) {
                             Button {
@@ -294,7 +252,9 @@ struct CustomRouteDetailView: View {
                     .padding(WktSpacing.screen)
                 }
             }
+            actionBar
         }
+        .background(Color.earthBg.ignoresSafeArea())
         .sheet(isPresented: $showShareReview) {
             ShareReviewSheet(source: shareSource, isLoadingSource: shareSource == nil && (isLoading || !isClassified),
                              name: route.name, publishTitle: "Share Route",
@@ -368,6 +328,71 @@ struct CustomRouteDetailView: View {
         .task { await loadLegs() }
     }
 
+    /// Can I do this: distance, time, climb and difficulty, and why. No
+    /// difficulty without a profile; `fromDistance` is a different rule.
+    private var summary: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            WktLabelPair(spacing: 16) {
+                Label { Text(route.distanceText) } icon: { Image(wkt: .distance).wktIcon(.inline, tint: .earthGreen) }
+            } second: {
+                Label { Text("About \(route.timeText) walking") } icon: { Image(wkt: .time).wktIcon(.inline, tint: .earthGreen) }
+            }
+            .font(.wktRowTitle).foregroundColor(.earthCream)
+            Text("~\(route.estimatedSteps.formatted()) steps")
+                .font(.wktLabel).foregroundColor(.earthMuted)
+            if let profile = elevationProfile {
+                WktLabelPair(spacing: 10) {
+                    Text("+\(Int(profile.totalGainMeters)) m climb")
+                        .font(.wktBodyText).foregroundColor(.earthCream)
+                } second: {
+                    DifficultyBadge(difficulty: profile.difficulty)
+                }
+                Text(profile.difficulty.why(profile.difficultyReason))
+                    .font(.wktLabel).foregroundColor(.earthMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                Text(elevationFinished ? "Climb unavailable" : "Climb: calculating…")
+                    .font(.wktBodyText).foregroundColor(.earthMuted)
+            }
+        }
+        .wktCard()
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("routes.detailSummary")
+    }
+
+    /// How do I start, under the page. At Accessibility 2 on a 17e it is
+    /// 138 pt, 16 % of the screen, so the picker stays in it (limit 25 %).
+    private var actionBar: some View {
+        VStack(spacing: WktSpacing.betweenCards) {
+            WktSegmentedPicker(selection: $activityMode, options: [ActivityMode.walking, .running, .cycling].map {
+                .init(value: $0, title: $0.sessionLabel, symbol: $0.wktSymbol)
+            })
+            WktPrimaryButton(title: "Start \(activityMode.sessionLabel)", symbol: activityMode.wktSymbol) {
+                let nav = NavigableRoute(
+                    name:          route.name,
+                    waypoints:     route.waypoints.map { $0.clCoordinate },
+                    lapCount:      1,
+                    isLoop:        route.isLoop,
+                    totalDistance: route.totalDistance,
+                    isCustomRoute: true,
+                    activityMode:  activityMode,
+                    customRouteId: route.id
+                )
+                guard ActiveWalkStore.shared.beginSession(route: nav) != nil else {
+                    showActiveSessionAlert = true
+                    return
+                }
+                dismiss()
+            }
+            .accessibilityIdentifier("routes.detailStart")
+        }
+        .padding(.horizontal, WktSpacing.screen)
+        .padding(.vertical, 12)
+        .overlay(alignment: .top) { WktDivider() }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("routes.detailActionBar")
+    }
+
     @ViewBuilder
     private func infoTile(icon: WktSymbol, value: String, label: String) -> some View {
         HStack(spacing: 12) {
@@ -401,6 +426,7 @@ struct CustomRouteDetailView: View {
 
     private func loadLegs() async {
         isLoading = true
+        elevationFinished = false  // an edited route needs its climb measured again
         if !isClassified {
             recordedLine = RecordedRoute.line(for: route.waypoints.map { $0.clCoordinate }, isLoop: route.isLoop)
             isClassified = true
@@ -441,10 +467,10 @@ struct CustomRouteDetailView: View {
             return (0..<leg.polyline.pointCount).map { pts[$0].coordinate }
         }
         if !polylineCoords.isEmpty {
-            isLoadingElevation = true
             elevationProfile = try? await ElevationService.shared.fetchProfile(for: polylineCoords)
-            isLoadingElevation = false
         }
+        // A fetch cancelled by a push is not a failure: the next .task retries.
+        if !Task.isCancelled { elevationFinished = true }
     }
 
     private func openInMaps() {
