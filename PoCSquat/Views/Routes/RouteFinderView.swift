@@ -130,6 +130,15 @@ struct RouteFinderContentView: View {
         .onChange(of: routeManager.lastLocation) { _, _ in
             if mode == .trails { refreshTrails() }
         }
+        // Back from Settings with location on: nothing else would fetch a
+        // fix, and Trails would wait on "Finding your location…" for ever.
+        // Turned off: the list and the map drop their trails.
+        .onChange(of: routeManager.locationState) { old, new in
+            if new.canFindRoutes, !old.canFindRoutes {
+                Task { routeManager.lastLocation = await routeManager.fetchCurrentLocation() }
+            }
+            if mode == .trails { refreshTrails() }
+        }
         .onAppear {
             if let dest = tabRouter.pendingRoutesDestination { open(dest) }
             if routeManager.lastLocation == nil {

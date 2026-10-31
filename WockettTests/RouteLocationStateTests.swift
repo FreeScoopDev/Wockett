@@ -62,6 +62,14 @@ struct RouteLocationStateTests {
         }
     }
 
+    /// RouteManager passes its own fixed location as the bypass: without
+    /// it, every `-WKTDemo` and `-WKTUITest` run would see the permission
+    /// the simulator happens to have. The test host starts at .notDetermined.
+    @Test @MainActor func routeManagerWithAFixedLocationIsLive() {
+        let manager = RouteManager(fixedLocation: CLLocation(latitude: 35.78, longitude: -78.64))
+        #expect(manager.locationState == .live)
+    }
+
     @Test func liveOffersEverythingAndExplainsNothing() {
         let state = RouteLocationState.make(auth: .authorizedWhenInUse, bypass: false)
         #expect(state.canFindRoutes)
