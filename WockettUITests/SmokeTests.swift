@@ -1153,11 +1153,19 @@ final class SmokeTests: XCTestCase {
         XCTAssertTrue(app.staticTexts[reason].exists, "The reason must show before any search")
         XCTAssertTrue(app.buttons["routes.openSettings"].exists, "Routes must offer Open Settings")
         XCTAssertTrue(app.buttons["routes.planOnMap"].exists, "Routes must offer Plan on the map")
+        XCTAssertTrue(el("routes.locationNote").exists, "Routes must say what works without location")
         // "Try nearby loops" shows only after a failed search, which can't
         // happen here: RouteLocationStateTests covers its rule.
         for title in ["Search a place", "Nearby places"] {
             XCTAssertFalse(app.buttons[title].exists, "\(title) needs a location and must be hidden")
         }
+
+        // Each panel's Plan on the map opens the builder: Routes here, Trails below.
+        app.buttons["routes.planOnMap"].tap()
+        let builder = app.navigationBars["Build Route"]
+        XCTAssertTrue(builder.waitForExistence(timeout: 15), "Routes' Plan on the map must open the route builder")
+        builder.buttons.firstMatch.tap()
+        XCTAssertTrue(findRoutes.waitForExistence(timeout: 15), "Back must return to Routes")
 
         let picker = el("routes.modePicker")
         picker.buttons["Trails"].tap()
@@ -1165,13 +1173,13 @@ final class SmokeTests: XCTestCase {
         // The Routes panel leaves with an animation; until it has gone, its
         // reason and buttons would satisfy the Trails assertions below.
         XCTAssertTrue(findRoutes.waitForNonExistence(timeout: 10), "The Routes panel must give way to Trails")
+        XCTAssertTrue(el("routes.locationNote").exists, "Trails must say what works without location")
         XCTAssertTrue(app.staticTexts[reason].waitForExistence(timeout: 10), "Trails must give the same reason")
         XCTAssertTrue(app.buttons["routes.openSettings"].exists, "Trails must offer Open Settings")
         XCTAssertFalse(app.buttons["routes.trailCard"].firstMatch.exists, "No trails can be listed without a location")
 
         app.buttons["routes.planOnMap"].tap()
-        XCTAssertTrue(app.navigationBars["Build Route"].waitForExistence(timeout: 15),
-                      "Plan on the map must open the route builder")
+        XCTAssertTrue(builder.waitForExistence(timeout: 15), "Trails' Plan on the map must open the route builder")
     }
 
     // MARK: - 7b. My contributions

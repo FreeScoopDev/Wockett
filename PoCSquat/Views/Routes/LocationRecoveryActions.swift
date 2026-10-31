@@ -34,6 +34,7 @@ struct LocationRecoveryActions: View {
                 .foregroundColor(.earthMuted)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("routes.locationNote")
         }
     }
 }
