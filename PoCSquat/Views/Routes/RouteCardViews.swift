@@ -1,5 +1,6 @@
 import SwiftUI
 import CloudKit
+import MapKit
 
 // MARK: - Route Card
 
@@ -214,11 +215,11 @@ struct CommunityRouteCard: View {
 
 // MARK: - Post to Community Sheet
 
-/// The Share Route form scrolls at the accessibility sizes. Fixed to the
-/// sheet, at Accessibility 2 it ran past the bottom: Cancel over the tiles,
-/// the Post button cut to "Post & Save to My Rou…" and the privacy note's
-/// detail to "Leaves off at least 7…". The normal sizes keep the fixed form.
-/// Share Achievement uses it too.
+/// A form that scrolls at the accessibility sizes only (Share Achievement).
+/// Fixed to the sheet, at Accessibility 2 the old Share Route form ran past
+/// the bottom: Cancel over the tiles, the Post button cut to "Post & Save to
+/// My Rou…". Share Route now scrolls at every size: its map preview makes it
+/// taller than an iPhone 17e sheet.
 struct ScrollsAtAccessibilitySizes: ViewModifier {
     @Environment(\.dynamicTypeSize) private var typeSize
 
@@ -231,80 +232,116 @@ struct ScrollsAtAccessibilitySizes: ViewModifier {
     }
 }
 
+/// A suggested route's Share: its stats and the name it goes out under, then
+/// the review every share goes through.
 struct PostToCommunitySheet: View {
     let route: SuggestedRoute
     @ObservedObject var routeStore: CustomRouteStore
     let onSaved: () -> Void
 
-    @Environment(\.dismiss) private var dismiss
     @State private var routeName = ""
+    /// The path a share publishes, made once when the sheet appears.
+    @State private var shareRoute: CustomRoute?
+
+    var body: some View {
+        ShareReviewSheet(source: shareRoute, isLoadingSource: shareRoute == nil, name: routeName,
+                         publishTitle: "Post & Save to My Routes", publishSymbol: .share, onPublished: {
+            routeStore.save(route.toCustomRoute(name: routeName.trimmingCharacters(in: .whitespaces)))
+            onSaved()
+        }, fields: {
+            WktStatRow {
+                WktIconStatTile(value: route.distanceText, label: "Distance", symbol: .distance)
+                WktIconStatTile(value: route.timeText,     label: "Time",     symbol: .time)
+                WktIconStatTile(value: "~\(route.estimatedSteps.formatted())", label: "Steps", symbol: .walk)
+            }
+
+            WktSection(title: "Route name") {
+                TextField("Name your route…", text: $routeName)
+                    .font(.wktBodyText)
+                    .foregroundColor(.earthCream)
+                    .padding(.horizontal, WktSpacing.cardPadding)
+                    .frame(minHeight: 52)
+                    .wktCardBackground()
+            }
+        })
+        .onAppear {
+            routeName = route.label ?? "\(route.directionName) \(route.isLoop ? "Loop" : "Route")"
+            if shareRoute == nil { shareRoute = route.shareableRoute(name: "") }
+        }
+    }
+}
+
+/// The one screen a route is published from, for both Share buttons (a saved
+/// route's detail, a suggested route's card). Everything that decides what
+/// goes public sits above Publish: who can see it, the name it goes out
+/// under, the home warning, a map of exactly the path that will be published,
+/// Hide start and finish, and the shared length.
+struct ShareReviewSheet<Fields: View>: View {
+    /// The path to share; nil while it loads (`isLoadingSource`) or when it can't.
+    let source: CustomRoute?
+    let isLoadingSource: Bool
+    /// The route name it is published under.
+    let name: String
+    let publishTitle: String
+    var publishSymbol: WktSymbol = .upload
+    var publisher: SharedRoutePublishing = CommunityRouteService.shared
+    /// After the route is published, before the sheet closes.
+    let onPublished: () -> Void
+    /// What the entry point adds above the review, such as a name field.
+    @ViewBuilder let fields: () -> Fields
+
+    @Environment(\.dismiss) private var dismiss
     @State private var isPosting = false
     @State private var didPost = false
-    @State private var errorMessage: String? = nil
+    @State private var errorMessage: String?
     /// Holds a community action until the Terms are agreed to (CommunityTermsGate).
     @State private var termsGate = CommunityTermsGate()
-
-    /// The path a share publishes, made once when the sheet appears; the
-    /// name is filled in when posting.
-    @State private var shareRoute: CustomRoute?
-    /// Hide start and finish: the user's last choice, off by default.
-    @AppStorage(SharedRouteTrim.hideEndsKey) private var hideEnds = false
+    /// Hide start and finish: the user's last choice, on if they never chose.
+    @AppStorage(SharedRouteTrim.hideEndsKey) private var hideEnds = SharedRouteTrim.hideEndsDefault
     /// The user's privacy offset, fetched only once Hide start and finish is on.
     @State private var shareOffset: SharePrivacyOffset?
     @State private var shareOffsetChecked = false
     @State private var shareOffsetAttempt = 0
 
     var body: some View {
-        // Worked out once per render, so the note and the button agree.
-        let outcome = shareRoute.map { SharedRouteTrim.prepare($0, hideEnds: hideEnds, offset: shareOffset) }
-        let isPreparing = outcome == nil || (hideEnds && !shareOffsetChecked)
-        let canShare = !isPreparing && outcome.map(RouteSharePrivacyNote.canShare) ?? false
+        // Worked out once per render: the map draws, and Publish sends, this one value.
+        let review = ShareReview(route: source, hideEnds: hideEnds, offset: shareOffset)
+        let isPreparing = isLoadingSource || (review.route != nil && hideEnds && !shareOffsetChecked)
+        let canShare = !isPreparing && review.trimmed != nil
         NavigationStack {
             ZStack {
                 Color.earthBg.ignoresSafeArea()
-                VStack(spacing: WktSpacing.betweenSections) {
-                    WktStatRow {
-                        WktIconStatTile(value: route.distanceText, label: "Distance", symbol: .distance)
-                        WktIconStatTile(value: route.timeText,     label: "Time",     symbol: .time)
-                        WktIconStatTile(value: "~\(route.estimatedSteps.formatted())", label: "Steps", symbol: .walk)
-                    }
+                ScrollView {
+                    VStack(spacing: WktSpacing.betweenSections) {
+                        fields()
+                        audience
+                        if !isPreparing, let trimmed = review.trimmed { preview(trimmed) }
+                        RouteSharePrivacyNote(outcome: review.outcome, hideEnds: $hideEnds,
+                                              isPreparing: isPreparing, onRetry: { shareOffsetAttempt += 1 })
+                            .disabled(isPosting || didPost)
 
-                    WktSection(title: "Route name") {
-                        TextField("Name your route…", text: $routeName)
-                            .font(.wktBodyText)
-                            .foregroundColor(.earthCream)
-                            .padding(.horizontal, WktSpacing.cardPadding)
-                            .frame(minHeight: 52)
-                            .wktCardBackground()
-                    }
-
-                    if let err = errorMessage {
-                        Text(err)
-                            .font(.wktLabel).foregroundColor(.earthOrange)
-                            .multilineTextAlignment(.center)
-                    }
-
-                    Button { termsGate.perform(post) } label: {
-                        WktBusyLabel(isBusy: isPosting) {
-                            WktPrimaryLabel(title: didPost ? "Shared!" : "Post & Save to My Routes",
-                                            symbol: didPost ? .success : .share)
-                                .opacity(didPost ? 0.6 : 1)
-                        } busy: {
-                            ProgressView().tint(.white)
+                        if let err = errorMessage {
+                            Text(err)
+                                .font(.wktLabel).foregroundColor(.earthOrange)
+                                .multilineTextAlignment(.center)
                         }
+
+                        Button { termsGate.perform { post(review) } } label: {
+                            WktBusyLabel(isBusy: isPosting) {
+                                WktPrimaryLabel(title: didPost ? "Shared!" : publishTitle,
+                                                symbol: didPost ? .success : publishSymbol)
+                                    .opacity(didPost ? 0.6 : 1)
+                            } busy: {
+                                ProgressView().tint(.white)
+                            }
+                        }
+                        .buttonStyle(BounceButtonStyle(scale: 0.98))
+                        .disabled(isPosting || didPost || !canShare || name.trimmingCharacters(in: .whitespaces).isEmpty)
+                        .accessibilityIdentifier("routes.sharePublish")
                     }
-                    .buttonStyle(BounceButtonStyle(scale: 0.98))
-                    .disabled(isPosting || didPost || !canShare
-                              || routeName.trimmingCharacters(in: .whitespaces).isEmpty)
-
-                    RouteSharePrivacyNote(outcome: outcome ?? .notAPath, hideEnds: $hideEnds,
-                                          isPreparing: isPreparing, onRetry: { shareOffsetAttempt += 1 })
-
-                    Spacer()
+                    .padding(.horizontal, WktSpacing.screen)
+                    .padding(.vertical, 24)
                 }
-                .padding(.horizontal, WktSpacing.screen)
-                .padding(.top, 24)
-                .modifier(ScrollsAtAccessibilitySizes())
             }
             .navigationTitle("Share Route")
             .navigationBarTitleDisplayMode(.inline)
@@ -323,10 +360,6 @@ struct PostToCommunitySheet: View {
         }
         .communityTermsSheet($termsGate)
         .presentationDetents([.large])
-        .onAppear {
-            routeName = route.label ?? "\(route.directionName) \(route.isLoop ? "Loop" : "Route")"
-            if shareRoute == nil { shareRoute = route.shareableRoute(name: "") }
-        }
         .task(id: "\(hideEnds)-\(shareOffsetAttempt)") {
             guard hideEnds, shareOffset == nil else { return }
             shareOffsetChecked = false
@@ -335,13 +368,54 @@ struct PostToCommunitySheet: View {
         }
     }
 
-    private func post() {
-        let name = routeName.trimmingCharacters(in: .whitespaces)
-        guard !name.isEmpty, var published = shareRoute else { return }
-        published.name = name
+    /// Who can see it, the name it goes out under, and the home warning.
+    private var audience: some View {
+        VStack(alignment: .leading, spacing: WktSpacing.betweenCards) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Anyone using Wockett can see this route")
+                    .font(.wktBodyText).foregroundColor(.earthCream)
+                Text("Posting as \(CommunityNameService.shared.displayName)")
+                    .font(.wktLabel).foregroundColor(.earthMuted)
+                    // The name a share would really go out under, checked without claiming.
+                    .task { await CommunityNameService.shared.refreshDisplayName() }
+            }
+            .fixedSize(horizontal: false, vertical: true)
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Image(wkt: .warning).wktIcon(.inline, tint: .earthOrange)
+                Text(SharedRouteTrim.homeWarning)
+                    .font(.wktLabel)
+                    .foregroundColor(.earthCream)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("routes.shareHomeWarning")
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .wktCard()
+    }
+
+    /// The path Publish sends, as other people will see it.
+    private func preview(_ trimmed: SharedRouteTrim.Trimmed) -> some View {
+        Map(initialPosition: .automatic, interactionModes: []) {
+            MapPolyline(coordinates: trimmed.waypoints.map(\.clCoordinate))
+                .stroke(Color.earthGreen, style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round))
+        }
+        .mapStyle(.standard(emphasis: .muted))
+        // A new map when hiding changes the path, so it fits the path it shows.
+        .id(trimmed.hidesEnds)
+        .frame(height: 180)
+        .clipShape(RoundedRectangle.wktCard)
+        .overlay(RoundedRectangle.wktCard.strokeBorder(Color.earthStroke, lineWidth: 1))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Map of the route as it will be shared")
+        .accessibilityIdentifier("routes.sharePreview")
+    }
+
+    private func post(_ review: ShareReview) {
+        let name = name.trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty else { return }
         isPosting = true
         errorMessage = nil
-        let customRoute = route.toCustomRoute(name: name)
         Task {
             let container = CKContainer(identifier: "iCloud.Scoops.PoCSquat")
             let status = try? await container.accountStatus()
@@ -351,9 +425,8 @@ struct PostToCommunitySheet: View {
                 return
             }
             do {
-                try await CommunityRouteService.shared.publish(route: published, hideEnds: hideEnds)
-                routeStore.save(customRoute)
-                onSaved()
+                try await review.publish(name: name, with: publisher)
+                onPublished()
                 didPost = true
                 try? await Task.sleep(nanoseconds: 900_000_000)
                 dismiss()

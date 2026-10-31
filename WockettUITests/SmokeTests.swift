@@ -1445,6 +1445,75 @@ final class SmokeTests: XCTestCase {
         // was on screen on main as well, so the check could not fail.
     }
 
+    // MARK: - 8g. Share review: everything above Publish
+
+    /// Both Share buttons open one review (spec fix/share-review-sheet): the
+    /// home warning, the map of what is published, Hide start and finish and
+    /// the shared length all sit above Publish, and hiding is on when no
+    /// choice was ever stored. Publish is never tapped, so nothing is posted;
+    /// under -WKTDemo the sheet has no privacy offset, so it stays disabled.
+    func testShareReviewPutsEverythingAbovePublish() {
+        app.terminate()
+        app.launchArguments += ["-WKTDemo"]
+        app.launch()
+        XCTAssertTrue(el("home.statCard").waitForExistence(timeout: 30))
+
+        // A saved route: My Routes, the seeded Capitol Loop, Share Route.
+        let mine = app.buttons["home.myRoutes"]
+        XCTAssertTrue(mine.waitForExistence(timeout: 15), "Home must show My Routes")
+        var swipes = 0
+        while mine.frame.maxY > app.windows.firstMatch.frame.maxY - 120 && swipes < 4 {
+            app.swipeUp()
+            swipes += 1
+        }
+        forceTap(mine)
+        XCTAssertTrue(app.navigationBars["Saved Items"].waitForExistence(timeout: 10), "My Routes must open")
+        let row = app.buttons.matching(NSPredicate(format: "label CONTAINS 'Capitol Loop'")).firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 10), "The demo's saved route must be listed")
+        row.tap()
+        let share = app.buttons["Share Route"]
+        XCTAssertTrue(share.waitForExistence(timeout: 10), "The route detail must offer Share Route")
+        swipes = 0
+        while !share.isHittable && swipes < 6 {
+            app.swipeUp()
+            swipes += 1
+        }
+        share.tap()
+        expectReviewAbovePublish(from: "a saved route")
+
+        // A suggested route: Find Routes, the first card's Share.
+        app.navigationBars["Share Route"].buttons["Cancel"].tap()
+        selectTab("Routes")
+        let findRoutes = app.buttons["routes.findRoutes"]
+        XCTAssertTrue(findRoutes.waitForExistence(timeout: 30))
+        findRoutes.tap()
+        XCTAssertTrue(el("routes.resultsPanel").waitForExistence(timeout: 60), "Find Routes must list routes")
+        let cardShare = app.buttons["Share route"].firstMatch
+        XCTAssertTrue(cardShare.waitForExistence(timeout: 10), "The first route card must offer Share")
+        sleep(2)  // Animation wait: the results panel settles before the tap.
+        forceTap(cardShare)
+        expectReviewAbovePublish(from: "a suggested route")
+    }
+
+    /// The review's parts, each wholly above Publish, in the sheet just opened.
+    private func expectReviewAbovePublish(from entry: String) {
+        XCTAssertTrue(app.navigationBars["Share Route"].waitForExistence(timeout: 10),
+                      "Share from \(entry) must open the review")
+        let publish = el("routes.sharePublish")
+        XCTAssertTrue(publish.waitForExistence(timeout: 10), "The review from \(entry) must have Publish")
+        XCTAssertTrue(app.staticTexts["Anyone using Wockett can see this route"].exists,
+                      "The review from \(entry) must say who can see it")
+        for id in ["routes.shareHomeWarning", "routes.shareHideEnds", "routes.sharePrivacyNote"] {
+            let part = el(id)
+            XCTAssertTrue(part.exists, "\(id) is missing from the review from \(entry)")
+            XCTAssertLessThanOrEqual(part.frame.maxY, publish.frame.minY,
+                                     "\(id) must sit above Publish (from \(entry)): \(part.frame) vs \(publish.frame)")
+        }
+        // Only true with no stored choice, which a UI-test simulator never has.
+        XCTAssertEqual(app.switches["routes.shareHideEnds"].value as? String, "1",
+                       "Hide start and finish must default to on (from \(entry))")
+    }
+
     // MARK: - 8f. Busy buttons at Accessibility 2
 
     /// A button keeps its size while it works (spec fix/large-text-leftovers,

@@ -2,6 +2,7 @@ import Testing
 import CloudKit
 import CoreLocation
 import MapKit
+import SwiftUI
 @testable import PoCSquat
 
 /// A shared route goes public as drawn, unless the user turns on Hide start
@@ -468,6 +469,46 @@ struct SharedRouteTrimTests {
         // A leg that didn't load: nothing to share yet.
         #expect(SharedRouteTrim.shareRoute(planned: saved, legPaths: Array(legPaths.dropLast())) == nil)
         #expect(SharedRouteTrim.shareRoute(planned: saved, legPaths: Array(legPaths.dropLast()) + [[]]) == nil)
+    }
+
+    // MARK: - The share sheet's default and length sentence
+
+    @Test("Hide start and finish is on for someone who never chose, and a stored choice is kept")
+    func hideEndsDefaultsOnUnlessChosen() throws {
+        // The sheet's own declaration: @AppStorage(hideEndsKey) = hideEndsDefault.
+        let suite = "SharedRouteTrimTests.\(UUID().uuidString)"
+        let store = try #require(UserDefaults(suiteName: suite))
+        defer { store.removePersistentDomain(forName: suite) }
+        func setting() -> AppStorage<Bool> {
+            AppStorage(wrappedValue: SharedRouteTrim.hideEndsDefault, SharedRouteTrim.hideEndsKey, store: store)
+        }
+        #expect(store.object(forKey: SharedRouteTrim.hideEndsKey) == nil)
+        #expect(setting().wrappedValue == true, "no stored choice must read as on")
+        store.set(false, forKey: SharedRouteTrim.hideEndsKey)
+        #expect(setting().wrappedValue == false, "someone who turned it off keeps it off")
+        store.set(true, forKey: SharedRouteTrim.hideEndsKey)
+        #expect(setting().wrappedValue == true)
+    }
+
+    @Test("When hiding shortens the route, the sheet says why, with both lengths")
+    func lengthSentenceExplainsTheDifference() throws {
+        let t = try trimmed(line(136))
+        let shared = SharedRouteTrim.formatted(t.keptMeters), full = SharedRouteTrim.formatted(t.fullMeters)
+        #expect(shared != full)
+        #expect(RouteSharePrivacyNote.text(for: .trimmed(t))
+                == "Start and end are left off, so the shared route is \(shared), not \(full).")
+    }
+
+    @Test("When the shared length is the route's own, the sheet gives that one length")
+    func lengthSentenceGivesOneLengthWhenSame() {
+        guard case .trimmed(let t) = SharedRouteTrim.prepare(line(136), isLoop: false, hideEnds: false,
+                                                             offset: nil) else {
+            Issue.record("expected the whole path"); return
+        }
+        let shared = SharedRouteTrim.formatted(t.keptMeters)
+        let text = RouteSharePrivacyNote.text(for: .trimmed(t))
+        #expect(text == "The whole route is shared: \(shared).")
+        #expect(!text.contains("not "), "one length, nothing to explain")
     }
 
     @Test("A suggested route shares one lap of its directions path")

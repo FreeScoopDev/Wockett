@@ -45,7 +45,7 @@ struct SharePrivacyOffset: Equatable {
 
 /// What a shared route publishes. Anyone can read a shared route, and most
 /// walks start and end at home, so both share buttons warn about that and
-/// offer **Hide start and finish** (`prepare`, off until the user turns it on;
+/// offer **Hide start and finish** (`prepare`, on until the user turns it off;
 /// the choice is remembered under `hideEndsKey`). The route the user keeps on
 /// the phone is never changed. Either way:
 ///
@@ -76,8 +76,11 @@ struct SharePrivacyOffset: Equatable {
 ///
 /// This hides where a route starts and finishes, not the area around it.
 enum SharedRouteTrim {
-    /// UserDefaults: the user's last Hide start and finish choice. Off by default.
+    /// UserDefaults: the user's last Hide start and finish choice. Written
+    /// only when the toggle changes, so a missing value means the user never
+    /// chose, and gets `hideEndsDefault`; a stored off stays off.
     static let hideEndsKey = "wkt_routeShareHideEnds"
+    static let hideEndsDefault = true
     /// Shown above the choice on both share screens.
     static let homeWarning = "If this route starts or ends at your home, people will be able to see where you live."
 
