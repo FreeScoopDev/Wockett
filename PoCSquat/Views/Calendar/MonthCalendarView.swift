@@ -12,6 +12,9 @@ struct MonthCalendarView: View {
     @State private var selectedDay: CalendarDay?
     @State private var monthShiftDirection: Bool = false
     @State private var hkMonthSteps: [Date: Int] = [:]
+    /// The month the Health query last answered for, and whether it failed;
+    /// nil until the first answer. The empty note waits for it.
+    @State private var hkLoaded: MonthEmptyNote.Loaded?
 
     private static let monthFmt: DateFormatter = {
         let f = DateFormatter(); f.dateFormat = "MMMM yyyy"; return f
@@ -48,11 +51,20 @@ struct MonthCalendarView: View {
         guard stepManager.trackingMode == .healthKit else { return }
         let cal = Calendar.current
         let today = cal.startOfDay(for: Date())
-        guard let start = cal.date(from: cal.dateComponents([.year, .month], from: monthStart)),
-              start < today else { return }
-        let end = min(today, cal.date(byAdding: .month, value: 1, to: start) ?? today)
-        // nil (query failed) shows as no data here, as it always has.
-        hkMonthSteps = await stepManager.fetchStepCounts(from: start, to: end) ?? [:]
+        let month = monthStart
+        guard month < today else {
+            // Nothing before today to ask for: only today's steps count.
+            hkLoaded = .init(month: month, failed: false)
+            return
+        }
+        let end = min(today, cal.date(byAdding: .month, value: 1, to: month) ?? today)
+        let fetched = await stepManager.fetchStepCounts(from: month, to: end)
+        // A newer month cancelled this load: its answer is not for the screen.
+        guard !Task.isCancelled, month == monthStart else { return }
+        // nil (query failed) shows the cells as no data, as it always has,
+        // and the note says the history is unavailable.
+        hkMonthSteps = fetched ?? [:]
+        hkLoaded = .init(month: month, failed: fetched == nil)
     }
 
     private func goalFor(_ date: Date) -> Int {
@@ -186,6 +198,10 @@ struct MonthCalendarView: View {
                                     .fixedSize(horizontal: false, vertical: true)
                             }
                             monthTrendChart
+                        } else {
+                            emptyNote(MonthEmptyNote.make(
+                                isFuture: isFutureMonth, healthKit: stepManager.trackingMode == .healthKit,
+                                shown: monthStart, loaded: hkLoaded))
                         }
                     }
                     .padding(.horizontal, WktSpacing.screen)
@@ -205,7 +221,7 @@ struct MonthCalendarView: View {
             }
         }
         .presentationDetents([.large])
-        .task { await fetchHKSteps() }
+        .task(id: monthStart) { await fetchHKSteps() }
     }
 
     // MARK: - Trend Chart
@@ -288,8 +304,27 @@ struct MonthCalendarView: View {
 
     private func shiftMonth(_ delta: Int) {
         guard let next = Calendar.current.date(byAdding: .month, value: delta, to: displayMonth) else { return }
-        displayMonth = next
-        Task { await fetchHKSteps() }
+        displayMonth = next   // `.task(id: monthStart)` loads it
+    }
+
+    /// The trend's notes, for one month; no button in a sheet.
+    @ViewBuilder
+    private func emptyNote(_ note: MonthEmptyNote) -> some View {
+        let lines: [String] = switch note {
+        case .none:        []
+        case .unavailable: [RecordedDaysSummary.unavailable]
+        case .empty:       stepManager.trackingMode == .healthKit
+            ? [RecordedDaysSummary.noHealthDataMonth, RecordedDaysSummary.noHealthDataHint]
+            : [RecordedDaysSummary.noAppOnlyDataMonth]
+        }
+        if !lines.isEmpty {
+            VStack(alignment: .leading, spacing: 4) {
+                ForEach(lines, id: \.self) { Text($0) }
+            }
+            .font(.wktLabel)
+            .foregroundColor(.earthMuted)
+            .fixedSize(horizontal: false, vertical: true)
+        }
     }
 }
 
