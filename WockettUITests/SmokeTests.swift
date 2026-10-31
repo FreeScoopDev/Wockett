@@ -1547,6 +1547,71 @@ final class SmokeTests: XCTestCase {
                        "Hide start and finish must default to on (from \(entry))")
     }
 
+    // MARK: - 8i. Saved route: Start on the first screen
+
+    /// On a saved route, Start sits in a bar at the foot of the screen (spec
+    /// fix/route-detail-hierarchy, Part 1). Before, it came after a fixed
+    /// 320 pt map, the weather and the elevation chart: below the fold at
+    /// both sizes. The frame is asserted before any swipe, not just
+    /// hittability (CLAUDE.md: hittability misses below-the-fold). Elevation
+    /// and weather need the network, so nothing here waits for either.
+    func testSavedRouteStartIsOnTheFirstScreen() {
+        expectSavedRouteStartOnFirstScreen(contentSize: nil)
+    }
+
+    func testSavedRouteStartIsOnTheFirstScreenAtAccessibility2() {
+        expectSavedRouteStartOnFirstScreen(contentSize: "UICTContentSizeCategoryAccessibilityL")
+    }
+
+    private func expectSavedRouteStartOnFirstScreen(contentSize: String?) {
+        let size = contentSize ?? "the default size"
+        app.terminate()
+        app.launchArguments = ["-WKTUITest", "-WKTDemo"]
+            + (contentSize.map { ["-UIPreferredContentSizeCategoryName", $0] } ?? [])
+        app.launch()
+        XCTAssertTrue(el("home.statCard").waitForExistence(timeout: 30))
+        let mine = app.buttons["home.myRoutes"]
+        XCTAssertTrue(mine.waitForExistence(timeout: 15), "Home must show My Routes")
+        var swipes = 0
+        while mine.frame.maxY > app.windows.firstMatch.frame.maxY - 120 && swipes < 6 {
+            app.swipeUp()
+            swipes += 1
+        }
+        forceTap(mine)
+        XCTAssertTrue(app.navigationBars["Saved Items"].waitForExistence(timeout: 10), "My Routes must open")
+        let row = app.buttons.matching(NSPredicate(format: "label CONTAINS 'Capitol Loop'")).firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 10), "The demo's saved route must be listed")
+        row.tap()
+
+        let start = el("routes.detailStart")
+        XCTAssertTrue(start.waitForExistence(timeout: 10), "The saved route must offer Start at \(size)")
+        // Animation wait: the push settles before frames are read.
+        sleep(2)
+        let window = app.windows.firstMatch.frame
+        let frame = start.frame
+        XCTAssertGreaterThanOrEqual(frame.minY, window.minY, "Start above the window at \(size): \(frame)")
+        XCTAssertLessThanOrEqual(frame.maxY, window.maxY,
+                                 "Start below the fold at \(size): \(frame) in \(window)")
+        // After the frame: hittability alone misses below-the-fold.
+        XCTAssertTrue(start.isHittable, "Start must be tappable without scrolling at \(size)")
+        // The bar (picker and Start) keeps to a quarter of the screen, the
+        // spec's limit for keeping the picker in it: 138 pt, 16 %, at
+        // Accessibility 2 on an iPhone 17e.
+        let bar = el("routes.detailActionBar")
+        XCTAssertTrue(bar.exists, "The saved route must show its action bar")
+        XCTAssertLessThanOrEqual(bar.frame.height, window.height * 0.25,
+                                 "The bar must stay within a quarter of the screen at \(size): \(bar.frame)")
+        // At the default size the decision summary is on the first screen
+        // too, wholly above the bar (picker and Start). Without the network
+        // (CI) it is the short form: climb calculating or unavailable.
+        if contentSize == nil {
+            let summary = el("routes.detailSummary")
+            XCTAssertTrue(summary.exists, "The saved route must show its summary")
+            XCTAssertLessThanOrEqual(summary.frame.maxY, bar.frame.minY,
+                                     "The summary must sit above the bar on the first screen: \(summary.frame) vs \(bar.frame)")
+        }
+    }
+
     // MARK: - 8f. Busy buttons at Accessibility 2
 
     /// A button keeps its size while it works (spec fix/large-text-leftovers,

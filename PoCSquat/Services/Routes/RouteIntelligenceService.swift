@@ -86,6 +86,40 @@ enum RouteDifficulty: String {
         default:        return .easy
         }
     }
+
+    enum Reason: Equatable { // what decided a level, for the why-line
+        case climb(meters: Double)
+        case steepness(percent: Double)
+        case length
+        case nothingMuch
+    }
+
+    /// The one rule for a profiled route (`ElevationService.buildProfile`
+    /// calls it, so the thresholds exist once). Within a level climb is
+    /// named before steepness, and both before length.
+    nonisolated static func classify(lengthMeters: Double, climbMeters: Double,
+                                     steepestPercent: Double) -> (RouteDifficulty, Reason) {
+        if climbMeters >= 500 { return (.expert, .climb(meters: climbMeters)) }
+        if steepestPercent > 25 { return (.expert, .steepness(percent: steepestPercent)) }
+        if climbMeters >= 300 { return (.hard, .climb(meters: climbMeters)) }
+        if steepestPercent > 15 { return (.hard, .steepness(percent: steepestPercent)) }
+        if lengthMeters >= 15_000 { return (.hard, .length) }
+        if climbMeters >= 100 { return (.moderate, .climb(meters: climbMeters)) }
+        if lengthMeters >= 5_000 { return (.moderate, .length) }
+        return (.easy, .nothingMuch)
+    }
+
+    /// "Hard because of 320 m of climb". Length is never a number here: the
+    /// profile's sampled length can differ from the route distance beside it.
+    /// Steepness rounds up: an Expert (over 25 %) never reads "25 %".
+    nonisolated func why(_ reason: Reason) -> String {
+        switch reason {
+        case .climb(let meters):      return "\(rawValue) because of \(Int(meters)) m of climb"
+        case .steepness(let percent): return "\(rawValue) because one part is \(Int(percent.rounded(.up))) % steep"
+        case .length:                 return "\(rawValue) because of its length"
+        case .nothingMuch:            return "\(rawValue): short, with little climb"
+        }
+    }
 }
 
 // MARK: - Elevation Models
@@ -102,7 +136,10 @@ struct ElevationProfile {
     let totalLossMeters: Double
     let maxElevationMeters: Double
     let minElevationMeters: Double
+    /// The steepest sampled grade, in percent: one of `classify`'s inputs.
+    let steepestPercent: Double
     let difficulty: RouteDifficulty
+    let difficultyReason: RouteDifficulty.Reason
 }
 
 // MARK: - Weather Service (WeatherKit)
@@ -166,7 +203,7 @@ actor ElevationService {
         let decoded = try JSONDecoder().decode(OTDResponse.self, from: data)
         guard decoded.status == "OK" else { throw URLError(.badServerResponse) }
 
-        return buildProfile(elevations: decoded.results.map { $0.elevation ?? 0 }, coordinates: sampled)
+        return Self.buildProfile(elevations: decoded.results.map { $0.elevation ?? 0 }, coordinates: sampled)
     }
 
     private func downsample(_ coords: [CLLocationCoordinate2D], to count: Int) -> [CLLocationCoordinate2D] {
@@ -175,7 +212,7 @@ actor ElevationService {
         return (0..<count).map { i in coords[Int(round(Double(i) * step))] }
     }
 
-    private func buildProfile(elevations: [Double], coordinates: [CLLocationCoordinate2D]) -> ElevationProfile {
+    nonisolated static func buildProfile(elevations: [Double], coordinates: [CLLocationCoordinate2D]) -> ElevationProfile {
         var points: [ElevationPoint] = []
         var gain = 0.0, loss = 0.0, maxGrad = 0.0, cumKm = 0.0
 
@@ -192,12 +229,8 @@ actor ElevationService {
             points.append(ElevationPoint(distanceKm: cumKm, elevationMeters: elevations[i]))
         }
 
-        let totalM = cumKm * 1_000
-        let diff: RouteDifficulty
-        if      gain >= 500 || maxGrad > 25                      { diff = .expert }
-        else if totalM >= 15_000 || gain >= 300 || maxGrad > 15  { diff = .hard }
-        else if totalM >= 5_000  || gain >= 100                  { diff = .moderate }
-        else                                                      { diff = .easy }
+        let (diff, reason) = RouteDifficulty.classify(lengthMeters: cumKm * 1_000, climbMeters: gain,
+                                                      steepestPercent: maxGrad)
 
         return ElevationProfile(
             points:             points,
@@ -205,7 +238,9 @@ actor ElevationService {
             totalLossMeters:    loss,
             maxElevationMeters: elevations.max() ?? 0,
             minElevationMeters: elevations.min() ?? 0,
-            difficulty:         diff
+            steepestPercent:    maxGrad,
+            difficulty:         diff,
+            difficultyReason:   reason
         )
     }
 }
