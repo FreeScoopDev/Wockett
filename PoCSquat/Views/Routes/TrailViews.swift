@@ -23,6 +23,8 @@ struct TrailsPanel: View {
     let directions: TrailDirectionsModel
     let onStart: (TrailWalkPlan) -> Void
     let onStartApproach: (NavigableRoute) -> Void
+    let locationState: RouteLocationState
+    let onPlanOnMap: () -> Void
     var refreshLocation: () async -> Void = {}
 
     /// "Other paths" starts closed: it is the unnamed paths a
@@ -126,7 +128,13 @@ struct TrailsPanel: View {
                 }
                 .padding(.horizontal, 20)
 
-                if let message = emptyMessage {
+                if showsLocationRecovery, let reason = locationState.message {
+                    LocationRecoveryActions.reason(reason)
+                        .padding(.horizontal, 28)
+                        .padding(.top, 12)
+                    LocationRecoveryActions(state: locationState, activityMode: activityMode, onPlanOnMap: onPlanOnMap)
+                        .padding(.horizontal, 20)
+                } else if let message = emptyMessage {
                     Text(message)
                         .font(.wktBodyText)
                         .foregroundColor(.earthMuted)
@@ -196,10 +204,17 @@ struct TrailsPanel: View {
         .accessibilityIdentifier("routes.otherPaths")
     }
 
+    /// Off or restricted, with no other failure to report.
+    private var showsLocationRecovery: Bool {
+        finder.failure == nil && locationState.showsPlanOnMap
+    }
+
     private var emptyMessage: String? {
         if let failure = finder.failure { return failure }
+        if showsLocationRecovery { return locationState.message }
+        // Allowed but no fix yet is a wait, not something to turn on.
         if userLocation == nil {
-            return "Turn on location for Wockett to see trails near you."
+            return locationState.message ?? "Finding your location…"
         }
         guard finder.hasSearched, finder.items.isEmpty, finder.otherPaths.isEmpty else { return nil }
         let active = finder.filters != TrailFilters()
