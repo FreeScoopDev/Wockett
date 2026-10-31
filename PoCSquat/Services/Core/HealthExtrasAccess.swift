@@ -17,6 +17,9 @@ import Observation
 @Observable
 final class HealthExtrasAccess {
     static let shared = HealthExtrasAccess()
+    /// The Health app, where access is changed once HealthKit has asked:
+    /// Settings' Open Apple Health row and the empty trend's button.
+    static let healthAppURL = URL(string: "x-apple-health://")
 
     enum State: Equatable {
         /// Not known yet; the tab shows neither the card nor the cards it gates.

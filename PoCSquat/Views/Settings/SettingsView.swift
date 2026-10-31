@@ -86,7 +86,7 @@ struct SettingsView: View {
 
                     if stepManager.trackingMode == .healthKit {
                         Button {
-                            if let url = URL(string: "x-apple-health://") { UIApplication.shared.open(url) }
+                            if let url = HealthExtrasAccess.healthAppURL { UIApplication.shared.open(url) }
                         } label: {
                             Label { Text("Open Apple Health") } icon: { Image(wkt: .openHealth).wktIcon(.row, tint: .earthGreen) }
                                 .foregroundColor(.earthGreen)

@@ -120,13 +120,35 @@ struct RecordedDaysSummaryTests {
     @Test("The empty and unavailable wording never claims access was denied")
     func neutralWording() {
         let all = [RecordedDaysSummary.noHealthData, RecordedDaysSummary.noHealthDataHint,
-                   RecordedDaysSummary.noAppOnlyData, RecordedDaysSummary.unavailable]
+                   RecordedDaysSummary.noAppOnlyData, RecordedDaysSummary.unavailable,
+                   RecordedDaysSummary.noHealthDataMonth, RecordedDaysSummary.noAppOnlyDataMonth]
         for text in all {
             #expect(!text.localizedCaseInsensitiveContains("denied"))
             #expect(!text.localizedCaseInsensitiveContains("permission"))
             #expect(!text.contains("0/0"))
         }
-        #expect(Set(all).count == 4)
+        #expect(Set(all).count == 6)
+        // The hint names where the trend's "Check Health access" button goes.
+        #expect(RecordedDaysSummary.noHealthDataHint.contains("Health app"))
+        #expect(!RecordedDaysSummary.noHealthDataHint.contains("Settings"))
+    }
+
+    // MARK: - Month calendar's empty note
+
+    @Test("The month's empty note waits for that month's Health answer")
+    func monthEmptyNote() {
+        let oct = Date(timeIntervalSince1970: 1_790_812_800)   // 2026-10-01 UTC
+        let sep = Date(timeIntervalSince1970: 1_788_220_800)   // 2026-09-01 UTC
+        func note(future: Bool = false, health: Bool = true, _ loaded: MonthEmptyNote.Loaded?) -> MonthEmptyNote {
+            MonthEmptyNote.make(isFuture: future, healthKit: health, shown: oct, loaded: loaded)
+        }
+        #expect(note(nil) == .none, "no answer yet: say nothing")
+        #expect(note(.init(month: sep, failed: false)) == .none, "the previous month's answer is still on screen")
+        #expect(note(.init(month: oct, failed: true)) == .unavailable)
+        #expect(note(.init(month: oct, failed: false)) == .empty)
+        #expect(note(health: false, nil) == .empty, "App Only has no query to wait for")
+        #expect(note(future: true, .init(month: oct, failed: false)) == .none)
+        #expect(note(future: true, health: false, nil) == .none, "a future month in App Only says nothing")
     }
 
     // MARK: - Month and trend agree

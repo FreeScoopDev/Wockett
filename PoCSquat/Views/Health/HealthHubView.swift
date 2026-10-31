@@ -19,33 +19,9 @@ struct HealthHubView: View {
             Color.earthBg.ignoresSafeArea()
             ScrollView {
                 VStack(alignment: .leading, spacing: WktSpacing.betweenSections) {
-                    switch healthExtras.state {
-                    case .ready:    RecoveryCard()
-                    case .needsAsk: HealthExtrasCard()
-                    case .checking: EmptyView()
+                    ForEach(HealthHubLayout.sections(extras: healthExtras.state), id: \.self) { section in
+                        sectionView(section)
                     }
-                    WeeklyCalendarView(
-                        days: stepManager.weeklyCalendar,
-                        weekOffset: calendarWeekOffset,
-                        stepManager: stepManager,
-                        sessions: historyStore.sessions,
-                        onDayTap: { selectedCalendarDay = $0 },
-                        onWeekChange: { delta in
-                            let newOffset = (calendarWeekOffset + delta).clamped(to: -52...52)
-                            guard newOffset != calendarWeekOffset else { return }
-                            calendarWeekOffset = newOffset
-                            Task {
-                                await stepManager.refreshWeeklyCalendar(
-                                    sessions: historyStore.sessions, weekOffset: newOffset)
-                            }
-                        },
-                        onCalendarTap: { showMonthCalendar = true }
-                    )
-                    if healthExtras.state == .ready { GaitHealthSection() }
-                    HealthFunStatsCard(sessions: historyStore.sessions)
-                    insightsCard
-                    activityHistoryCard
-                    HealthDisclaimer()
                 }
                 .padding(.horizontal, WktSpacing.screen)
                 .padding(.top, 8)
@@ -81,6 +57,44 @@ struct HealthHubView: View {
                 await stepManager.refreshWeeklyCalendar(
                     sessions: historyStore.sessions, weekOffset: 0)
             }
+        }
+    }
+
+    @ViewBuilder
+    private func sectionView(_ section: HealthHubLayout.Section) -> some View {
+        switch section {
+        case .activity:
+            WktSection(title: "Your activity") {
+                insightsCard
+                activityHistoryCard
+            }
+        case .calendar:
+            WeeklyCalendarView(
+                days: stepManager.weeklyCalendar,
+                weekOffset: calendarWeekOffset,
+                stepManager: stepManager,
+                sessions: historyStore.sessions,
+                onDayTap: { selectedCalendarDay = $0 },
+                onWeekChange: { delta in
+                    let newOffset = (calendarWeekOffset + delta).clamped(to: -52...52)
+                    guard newOffset != calendarWeekOffset else { return }
+                    calendarWeekOffset = newOffset
+                    Task {
+                        await stepManager.refreshWeeklyCalendar(
+                            sessions: historyStore.sessions, weekOffset: newOffset)
+                    }
+                },
+                onCalendarTap: { showMonthCalendar = true }
+            )
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("health.calendar")
+        case .recovery:
+            WktSection(title: "Sleep and recovery") {
+                if case .needsAsk = healthExtras.state { HealthExtrasCard() } else { RecoveryCard() }
+            }
+        case .walking:    GaitHealthSection()
+        case .funFacts:   HealthFunStatsCard(sessions: historyStore.sessions)
+        case .disclaimer: HealthDisclaimer()
         }
     }
 
@@ -134,6 +148,27 @@ struct HealthHubView: View {
         }
         .buttonStyle(BounceButtonStyle(scale: 0.97))
         .accessibilityElement(children: .combine)
+    }
+}
+
+// MARK: - Layout
+
+/// The Health tab's sections, top to bottom (2026-10-31): the person's own
+/// activity and steps first, then what Health adds (sleep and recovery,
+/// walking health), then the fun facts, then the disclaimer. Recovery used
+/// to sit first, an interpretation above the facts it rests on. A section
+/// whose data has not been checked yet (`.checking`) is left out, as before.
+enum HealthHubLayout {
+    enum Section: Hashable { case activity, calendar, recovery, walking, funFacts, disclaimer }
+
+    static func sections(extras: HealthExtrasAccess.State) -> [Section] {
+        let middle: [Section]
+        switch extras {
+        case .ready:    middle = [.recovery, .walking]
+        case .needsAsk: middle = [.recovery]   // it holds the connect card
+        case .checking: middle = []
+        }
+        return [.activity, .calendar] + middle + [.funFacts, .disclaimer]
     }
 }
 
