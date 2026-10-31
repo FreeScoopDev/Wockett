@@ -303,9 +303,13 @@ struct RouteFinderContentView: View {
     /// Under -WKTUITest RouteManager reports Times Square, where there is no
     /// trail pack, so the Trails list searches from downtown Raleigh instead
     /// and the smoke test has real data. Compiled out of release builds.
+    /// With location off or restricted there is none, even a stale one: the
+    /// panel says location is off, so the map shows no trails either.
     private var trailCenter: CLLocationCoordinate2D? {
+        let state = routeManager.locationState
+        guard state.canFindRoutes else { return nil }
         // -WKTDemo wins when both flags are passed: its fixed location is lastLocation.
-        isWKTUITestMode && !isWKTDemoMode && !LocationOffForTests.isOn
+        return isWKTUITestMode && !isWKTDemoMode
             ? CLLocationCoordinate2D(latitude: 35.7796, longitude: -78.6382)
             : routeManager.lastLocation?.coordinate
     }
@@ -379,13 +383,8 @@ struct RouteFinderContentView: View {
                 }
 
                 if let reason = location.message {
-                    Text(reason)
-                        .font(.wktLabel)
-                        .foregroundColor(.earthCream)
-                        .multilineTextAlignment(.center)
-                        .fixedSize(horizontal: false, vertical: true)
+                    LocationRecoveryActions.reason(reason)
                         .padding(.horizontal, 20)
-                        .accessibilityIdentifier("routes.locationMessage")
                 }
 
                 Button(action: triggerRecommend) {
@@ -407,7 +406,7 @@ struct RouteFinderContentView: View {
                 .padding(.horizontal, 20)
 
                 if location.showsPlanOnMap {
-                    LocationRecoveryActions(state: location) { showRouteBuilder = true }
+                    LocationRecoveryActions(state: location, activityMode: activityMode) { showRouteBuilder = true }
                         .padding(.horizontal, 20)
                 }
 
@@ -422,8 +421,7 @@ struct RouteFinderContentView: View {
                     .padding(.horizontal, 20)
                     .transition(.opacity.combined(with: .move(edge: .top)))
 
-                    // A location failure would fail the same way here.
-                    if location == .live, !routeManager.locationFailed {
+                    if location.offersNearbyLoops(afterLocationFailure: routeManager.locationFailed) {
                         Button(action: triggerNearbyLoops) {
                             HStack(spacing: 6) {
                                 Image(wkt: .loop).wktIcon(.inline, tint: .earthGreen)

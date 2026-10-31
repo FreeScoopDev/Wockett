@@ -27,9 +27,15 @@ enum RouteLocationState: Equatable {
 
     var canFindRoutes: Bool { self == .live || self == .willAsk }
 
-    /// "Search a place" and "Nearby places" (each starts from the live
-    /// location) and "Try nearby loops".
+    /// "Search a place" and "Nearby places": each starts from the live
+    /// location, and waits for the prompt's answer when not asked yet.
     var showsNearbyActions: Bool { canFindRoutes }
+
+    /// After a failed search, "Try nearby loops" only if it could work: it
+    /// needs the same location the failed search lacked.
+    func offersNearbyLoops(afterLocationFailure: Bool) -> Bool {
+        self == .live && !afterLocationFailure
+    }
 
     /// Only a denial can be reversed in Settings.
     var showsOpenSettings: Bool { self == .off }

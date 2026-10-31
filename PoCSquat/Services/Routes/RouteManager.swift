@@ -542,6 +542,7 @@ final class RouteManager: NSObject, ObservableObject, CLLocationManagerDelegate 
             locationContinuation?.resume(returning: nil)
             locationContinuation = nil
             locationError = "Location error: \(error.localizedDescription)"
+            locationFailed = true
         }
     }
 

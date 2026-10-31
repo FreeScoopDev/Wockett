@@ -5,7 +5,18 @@ import SwiftUI
 /// One view, so both panels show the same actions.
 struct LocationRecoveryActions: View {
     let state: RouteLocationState
+    let activityMode: ActivityMode
     let onPlanOnMap: () -> Void
+
+    /// The reason, styled the same in Routes (above Find Routes) and Trails.
+    static func reason(_ text: String) -> some View {
+        Text(text)
+            .font(.wktLabel)
+            .foregroundColor(.earthCream)
+            .multilineTextAlignment(.center)
+            .fixedSize(horizontal: false, vertical: true)
+            .accessibilityIdentifier("routes.locationMessage")
+    }
 
     var body: some View {
         VStack(spacing: 10) {
@@ -18,7 +29,7 @@ struct LocationRecoveryActions: View {
                 WktSecondaryButton(title: "Plan on the map", symbol: .buildRoute, action: onPlanOnMap)
                     .accessibilityIdentifier("routes.planOnMap")
             }
-            Text("You can plan a route without your location. Recording a walk's path on the map needs it.")
+            Text("You can plan a route without your location. Recording a \(activityMode.noun)'s path on the map needs it.")
                 .font(.wktLabel)
                 .foregroundColor(.earthMuted)
                 .multilineTextAlignment(.center)

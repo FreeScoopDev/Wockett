@@ -128,17 +128,19 @@ struct TrailsPanel: View {
                 }
                 .padding(.horizontal, 20)
 
-                if let message = emptyMessage {
+                if showsLocationRecovery, let reason = locationState.message {
+                    LocationRecoveryActions.reason(reason)
+                        .padding(.horizontal, 28)
+                        .padding(.top, 12)
+                    LocationRecoveryActions(state: locationState, activityMode: activityMode, onPlanOnMap: onPlanOnMap)
+                        .padding(.horizontal, 20)
+                } else if let message = emptyMessage {
                     Text(message)
                         .font(.wktBodyText)
                         .foregroundColor(.earthMuted)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 28)
                         .padding(.vertical, 24)
-                    if showsLocationRecovery {
-                        LocationRecoveryActions(state: locationState, onPlanOnMap: onPlanOnMap)
-                            .padding(.horizontal, 20)
-                    }
                 } else {
                     ForEach(finder.items) { item in
                         TrailCard(item: item, activityMode: activityMode) {

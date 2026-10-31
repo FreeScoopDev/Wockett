@@ -53,6 +53,15 @@ struct RouteLocationStateTests {
         #expect(state.message == "Wockett will ask to use your location.")
     }
 
+    /// "Try nearby loops" needs the location a failed search lacked.
+    @Test func nearbyLoopsOnlyWhenLiveAndNotAfterALocationFailure() {
+        #expect(RouteLocationState.live.offersNearbyLoops(afterLocationFailure: false))
+        #expect(!RouteLocationState.live.offersNearbyLoops(afterLocationFailure: true))
+        for state in [RouteLocationState.willAsk, .off, .restricted] {
+            #expect(!state.offersNearbyLoops(afterLocationFailure: false))
+        }
+    }
+
     @Test func liveOffersEverythingAndExplainsNothing() {
         let state = RouteLocationState.make(auth: .authorizedWhenInUse, bypass: false)
         #expect(state.canFindRoutes)

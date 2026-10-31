@@ -1153,15 +1153,18 @@ final class SmokeTests: XCTestCase {
         XCTAssertTrue(app.staticTexts[reason].exists, "The reason must show before any search")
         XCTAssertTrue(app.buttons["routes.openSettings"].exists, "Routes must offer Open Settings")
         XCTAssertTrue(app.buttons["routes.planOnMap"].exists, "Routes must offer Plan on the map")
-        findRoutes.tap()
-        XCTAssertFalse(el("routes.resultsPanel").waitForExistence(timeout: 3), "A disabled Find Routes must not search")
-        for title in ["Try nearby loops instead", "Search a place", "Nearby places"] {
+        // "Try nearby loops" shows only after a failed search, which can't
+        // happen here: RouteLocationStateTests covers its rule.
+        for title in ["Search a place", "Nearby places"] {
             XCTAssertFalse(app.buttons[title].exists, "\(title) needs a location and must be hidden")
         }
 
         let picker = el("routes.modePicker")
         picker.buttons["Trails"].tap()
         XCTAssertTrue(el("routes.trailsPanel").waitForExistence(timeout: 15))
+        // The Routes panel leaves with an animation; until it has gone, its
+        // reason and buttons would satisfy the Trails assertions below.
+        XCTAssertTrue(findRoutes.waitForNonExistence(timeout: 10), "The Routes panel must give way to Trails")
         XCTAssertTrue(app.staticTexts[reason].waitForExistence(timeout: 10), "Trails must give the same reason")
         XCTAssertTrue(app.buttons["routes.openSettings"].exists, "Trails must offer Open Settings")
         XCTAssertFalse(app.buttons["routes.trailCard"].firstMatch.exists, "No trails can be listed without a location")
