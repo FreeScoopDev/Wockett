@@ -115,6 +115,16 @@ enum SharedRouteTrim {
         /// loop by routing back to its first point, which would draw the
         /// hidden ends back in.
         let isLoop: Bool
+
+        /// Only `prepare`'s steps make one, so whatever is published was trimmed by them.
+        fileprivate init(waypoints: [WaypointCoord], fullMeters: Double, keptMeters: Double,
+                         hidesEnds: Bool, isLoop: Bool) {
+            self.waypoints = waypoints
+            self.fullMeters = fullMeters
+            self.keptMeters = keptMeters
+            self.hidesEnds = hidesEnds
+            self.isLoop = isLoop
+        }
     }
 
     enum Outcome: Equatable {

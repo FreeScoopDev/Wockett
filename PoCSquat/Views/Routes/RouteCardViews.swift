@@ -366,6 +366,12 @@ struct ShareReviewSheet<Fields: View>: View {
             shareOffset = await SharePrivacyOffsetStore.shared.currentIfAvailable()
             shareOffsetChecked = true
         }
+        // Another iCloud account has another offset (SharePrivacyOffsetStore
+        // forgets its own): fetch it again rather than publish with this one.
+        .onReceive(NotificationCenter.default.publisher(for: .CKAccountChanged)) { _ in
+            shareOffset = nil
+            shareOffsetAttempt += 1
+        }
     }
 
     /// Who can see it, the name it goes out under, and the home warning.
@@ -398,7 +404,7 @@ struct ShareReviewSheet<Fields: View>: View {
     private func preview(_ trimmed: SharedRouteTrim.Trimmed) -> some View {
         Map(initialPosition: .automatic, interactionModes: []) {
             MapPolyline(coordinates: trimmed.waypoints.map(\.clCoordinate))
-                .stroke(Color.earthGreen, style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round))
+                .stroke(source?.activityMode.tileColor ?? .earthGreen, style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round))
         }
         .mapStyle(.standard(emphasis: .muted))
         // A new map when hiding changes the path, so it fits the path it shows.
@@ -435,6 +441,9 @@ struct ShareReviewSheet<Fields: View>: View {
                 isPosting = false
             } catch let cannot as SharedRouteTrim.CannotShareError {
                 errorMessage = cannot.message
+                isPosting = false
+            } catch let invalid as ContentFilter.ValidationError {
+                errorMessage = invalid.errorDescription
                 isPosting = false
             } catch let ckError as CKError {
                 switch ckError.code {

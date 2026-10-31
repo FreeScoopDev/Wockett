@@ -298,7 +298,16 @@ struct CustomRouteDetailView: View {
         .sheet(isPresented: $showShareReview) {
             ShareReviewSheet(source: shareSource, isLoadingSource: shareSource == nil && (isLoading || !isClassified),
                              name: route.name, publishTitle: "Share Route",
-                             onPublished: { didShare = true }, fields: { EmptyView() })
+                             onPublished: { didShare = true }, fields: {
+                // The one free text that goes public, shown before it does.
+                WktSection(title: "Route name") {
+                    Text(route.name)
+                        .font(.wktBodyText).foregroundColor(.earthCream)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .wktCard()
+                        .accessibilityIdentifier("routes.shareName")
+                }
+            })
         }
         .navigationTitle(route.name)
         .navigationBarTitleDisplayMode(.inline)

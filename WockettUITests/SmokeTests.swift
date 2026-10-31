@@ -1445,13 +1445,14 @@ final class SmokeTests: XCTestCase {
         // was on screen on main as well, so the check could not fail.
     }
 
-    // MARK: - 8g. Share review: everything above Publish
+    // MARK: - 8h. Share review: everything above Publish
 
     /// Both Share buttons open one review (spec fix/share-review-sheet): the
     /// home warning, the map of what is published, Hide start and finish and
     /// the shared length all sit above Publish, and hiding is on when no
-    /// choice was ever stored. Publish is never tapped, so nothing is posted;
-    /// under -WKTDemo the sheet has no privacy offset, so it stays disabled.
+    /// choice was ever stored. Publish is never tapped, so nothing is posted.
+    /// The map is not checked: it needs the privacy offset, which a simulator
+    /// with no iCloud account (CI) never gets.
     func testShareReviewPutsEverythingAbovePublish() {
         app.terminate()
         app.launchArguments += ["-WKTDemo"]
@@ -1480,6 +1481,10 @@ final class SmokeTests: XCTestCase {
         }
         share.tap()
         expectReviewAbovePublish(from: "a saved route")
+        let name = el("routes.shareName")
+        XCTAssertTrue(name.exists, "The review from a saved route must show its name")
+        XCTAssertLessThanOrEqual(name.frame.maxY, el("routes.sharePublish").frame.minY,
+                                 "The route name that goes public must show above Publish")
 
         // A suggested route: Find Routes, the first card's Share.
         app.navigationBars["Share Route"].buttons["Cancel"].tap()
@@ -1565,13 +1570,9 @@ final class SmokeTests: XCTestCase {
         forceTap(share)
         let sheetTitle = app.navigationBars["Share Route"]
         XCTAssertTrue(sheetTitle.waitForExistence(timeout: 10), "Share must open the Share Route sheet")
-        // Post has no identifier; it is the first full-width button under the name field.
-        let name = app.textFields.firstMatch
-        XCTAssertTrue(name.waitForExistence(timeout: 5), "The sheet must have the route name field")
-        let post = app.buttons.allElementsBoundByIndex
-            .filter { $0.frame.minY > name.frame.maxY && $0.frame.width > 250 }
-            .min { $0.frame.minY < $1.frame.minY }
-        heights["Post"] = post?.frame.height
+        let post = el("routes.sharePublish")
+        XCTAssertTrue(post.waitForExistence(timeout: 5), "The sheet must have Post")
+        heights["Post"] = post.frame.height
         sheetTitle.buttons["Cancel"].tap()
         XCTAssertTrue(sheetTitle.waitForNonExistence(timeout: 10), "Cancel must close the sheet")
 
