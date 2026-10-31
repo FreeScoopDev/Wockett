@@ -148,6 +148,7 @@ struct RecordedDaysSummaryTests {
         #expect(note(.init(month: oct, failed: false)) == .empty)
         #expect(note(health: false, nil) == .empty, "App Only has no query to wait for")
         #expect(note(future: true, .init(month: oct, failed: false)) == .none)
+        #expect(note(future: true, health: false, nil) == .none, "a future month in App Only says nothing")
     }
 
     // MARK: - Month and trend agree

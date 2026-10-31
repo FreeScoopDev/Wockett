@@ -54,7 +54,6 @@ struct MonthCalendarView: View {
         let month = monthStart
         guard month < today else {
             // Nothing before today to ask for: only today's steps count.
-            hkMonthSteps = [:]
             hkLoaded = .init(month: month, failed: false)
             return
         }
