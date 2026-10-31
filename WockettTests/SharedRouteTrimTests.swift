@@ -482,6 +482,8 @@ struct SharedRouteTrimTests {
         func setting() -> AppStorage<Bool> {
             AppStorage(wrappedValue: SharedRouteTrim.hideEndsDefault, SharedRouteTrim.hideEndsKey, store: store)
         }
+        // Renaming the key would read everyone's stored "off" as never chosen.
+        #expect(SharedRouteTrim.hideEndsKey == "wkt_routeShareHideEnds")
         #expect(store.object(forKey: SharedRouteTrim.hideEndsKey) == nil)
         #expect(setting().wrappedValue == true, "no stored choice must read as on")
         store.set(false, forKey: SharedRouteTrim.hideEndsKey)

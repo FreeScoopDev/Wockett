@@ -1486,8 +1486,12 @@ final class SmokeTests: XCTestCase {
         XCTAssertLessThanOrEqual(name.frame.maxY, el("routes.sharePublish").frame.minY,
                                  "The route name that goes public must show above Publish")
 
-        // A suggested route: Find Routes, the first card's Share.
+        // A suggested route: Find Routes, the first card's Share. Relaunched:
+        // the route detail, pushed from Home, hides the tab bar.
         app.navigationBars["Share Route"].buttons["Cancel"].tap()
+        app.terminate()
+        app.launch()
+        XCTAssertTrue(el("home.statCard").waitForExistence(timeout: 30))
         selectTab("Routes")
         let findRoutes = app.buttons["routes.findRoutes"]
         XCTAssertTrue(findRoutes.waitForExistence(timeout: 30))

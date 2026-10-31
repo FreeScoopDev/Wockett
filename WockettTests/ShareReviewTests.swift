@@ -39,15 +39,18 @@ struct ShareReviewTests {
         #expect(preview.waypoints != route.waypoints, "the fixture must tell the drawn route from the respaced one")
 
         let publisher = RecordingPublisher()
-        try await review.publish(name: "River walk", with: publisher)
+        // A name other than the route's own: the one typed in the sheet goes out.
+        try await review.publish(name: "Edited name", with: publisher)
 
         #expect(publisher.published.count == 1)
         let sent = try #require(publisher.published.first)
-        #expect(sent.name == "River walk")
+        #expect(sent.name == "Edited name")
         #expect(sent.trimmed.waypoints == preview.waypoints)
         #expect(sent.trimmed == preview)
         // And the record built from it holds those same points.
         let record = try CommunityRouteService.record(name: sent.name, trimmed: sent.trimmed)
+        #expect(record["name"] as? String == "Edited name")
+        #expect(record["distanceMeters"] as? Double == preview.keptMeters)
         let json = try #require(record["waypointsJSON"] as? String)
         #expect(try JSONDecoder().decode([WaypointCoord].self, from: Data(json.utf8)) == preview.waypoints)
     }
@@ -65,9 +68,12 @@ struct ShareReviewTests {
         for (review, expected) in refused {
             #expect(review.trimmed == nil)
             if case .tooShort = expected, case .tooShort = review.outcome {} else { #expect(review.outcome == expected) }
-            await #expect(throws: SharedRouteTrim.CannotShareError.self) {
+            // The refusal carries this review's own reason, so its message is the right one.
+            await #expect(throws: SharedRouteTrim.CannotShareError(outcome: review.outcome)) {
                 try await review.publish(name: "River walk", with: publisher)
             }
+            #expect(SharedRouteTrim.CannotShareError(outcome: review.outcome).message
+                    == SharedRouteTrim.message(for: expected))
         }
         #expect(publisher.published.isEmpty)
     }
