@@ -70,6 +70,9 @@ import Testing
         #expect(sampling([0.5, nil, 0.5, nil, 0.5, nil, nil]).dayColor(0.5, speed) == .earthMuted)
         #expect(sampling([0.5, nil, 0.5, nil, 0.5, nil, nil]).dayColor(1.5, speed) == .earthMuted)
         #expect(sampling([0.5, nil, 0.5, nil, 0.5, nil, 0.5]).dayColor(0.5, speed) == GaitStatus.attention.color)
+        // Each day its own colour, not the week's: 1.5 m/s (5.4 km/h) is "On track"
+        // in a "Check in" week.
+        #expect(sampling([0.5, nil, 0.5, nil, 0.5, nil, 0.5]).dayColor(1.5, speed) == GaitStatus.good.color)
     }
 
     @Test func trendNeedsThreeDaysInEachWeek() {
