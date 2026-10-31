@@ -39,6 +39,13 @@ struct ReadinessEvaluatorTests {
         #expect(r.hint == "No sleep recorded last night")
     }
 
+    /// Only In Bed or Awake samples sum to 0 hours: that is no sleep, not a sleep score of 0.
+    @Test func zeroSleepIsUnknown() {
+        let r = ReadinessEvaluator.evaluate(inputs(sleep: 0), now: now)
+        #expect(r.level == .unknown)
+        #expect(r.hint == "No sleep recorded last night")
+    }
+
     // MARK: HRV freshness
 
     @Test func hrvJustUnder48HoursCounts() {

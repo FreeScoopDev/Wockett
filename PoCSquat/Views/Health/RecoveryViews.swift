@@ -40,10 +40,10 @@ struct RecoveryCard: View {
                     value: recovery.activeCal.map { "\(Int($0))" } ?? "–")
             }
 
-            if recovery.readiness != .unknown || gaitStatus != nil {
+            if showsReadinessLine || gaitStatus != nil {
                 WktDivider()
                 HStack(alignment: .center, spacing: 8) {
-                    if recovery.readiness != .unknown {
+                    if showsReadinessLine {
                         Text(readinessLine)
                             .font(.wktLabel)
                             .foregroundColor(.earthMuted)
@@ -67,6 +67,11 @@ struct RecoveryCard: View {
                 GaitMetricDetailContentView(config: config, snapshots: gait.snapshots)
             }
         }
+    }
+
+    /// The level's readings, or what is missing; hidden only with no sleep or HRV at all (no Watch).
+    private var showsReadinessLine: Bool {
+        recovery.readiness != .unknown || recovery.sleepHours != nil || !recovery.hrvHistory.isEmpty
     }
 
     private var readinessLine: String {
@@ -263,20 +268,19 @@ struct RecoveryMetricDetailSheet: View {
 
         let sleepScore: String = {
             guard let s = recovery.sleepHours else { return "–" }
-            if s >= 7.0 { return "Good (\(RecoveryService.formatHours(s)))" }
-            if s >= 6.0 { return "Fair (\(RecoveryService.formatHours(s)))" }
-            return "Low (\(RecoveryService.formatHours(s)))"
+            let word = ["Low", "Fair", "Good"][ReadinessEvaluator.sleepScore(s)]
+            return "\(word) (\(RecoveryService.formatHours(s)))"
         }()
 
         let hrvScore: String = {
             guard let h = recovery.hrv else { return "–" }
-            if let b = recovery.hrvBaseline, b > 0 {
-                let r = h / b
-                if r >= 1.1 { return String(format: "High (%.0fms)", h) }
-                if r >= 0.85 { return String(format: "Normal (%.0fms)", h) }
-                return String(format: "Low (%.0fms)", h)
+            // Labelled only against a baseline readiness itself would use.
+            if let b = recovery.hrvBaseline, b > 0,
+               recovery.hrvBaselineDays >= ReadinessEvaluator.minimumBaselineReadings {
+                let word = ["Low", "Normal", "High"][ReadinessEvaluator.hrvScore(ratio: h / b)]
+                return "\(word) (\(String(format: "%.0fms", h)))"
             }
-            return String(format: "%.0fms", h)   // no baseline to compare against
+            return String(format: "%.0fms", h)
         }()
 
         return Group {

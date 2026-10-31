@@ -55,6 +55,7 @@ final class RecoveryService {
     var sleepHours:      Double?          // decimal hours from last night
     var hrv:             Double?          // latest SDNN in ms, last 48 hours only
     var hrvBaseline:     Double?          // 30-day personal avg SDNN
+    var hrvBaselineDays                  = 0  // days with HRV inside that 30-day window
     var restingHR:       Double?          // bpm
     var activeCal:       Double?          // kcal burned today
     var walkingHR:       Double?          // avg walking HR in bpm
@@ -110,8 +111,10 @@ final class RecoveryService {
         walkingHR      = w
         flightsClimbed = f.map { Int($0) }
         hrvBaseline    = b
+        // Days inside the baseline's own rolling 30 days; the history starts a day earlier.
+        hrvBaselineDays = hh.filter { $0.date >= now.addingTimeInterval(-30 * 86_400) }.count
         let result     = ReadinessEvaluator.evaluate(ReadinessInputs(
-            sleepHours: s, hrv: hv?.value, hrvDate: hv?.date, baseline: b, baselineReadings: hh.count
+            sleepHours: s, hrv: hv?.value, hrvDate: hv?.date, baseline: b, baselineReadings: hrvBaselineDays
         ), now: now)
         readiness      = result.level
         readinessHint  = result.hint

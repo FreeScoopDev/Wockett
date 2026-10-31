@@ -31,7 +31,8 @@ enum ReadinessEvaluator {
     /// exist; one signal alone is `.unknown`. The scores and cut-offs are the
     /// ones readiness has always used.
     static func evaluate(_ inputs: ReadinessInputs, now: Date) -> ReadinessResult {
-        guard let sleep = inputs.sleepHours else {
+        // Zero hours means only In Bed or Awake samples: no sleep to score.
+        guard let sleep = inputs.sleepHours, sleep > 0 else {
             return ReadinessResult(level: .unknown, hint: "No sleep recorded last night")
         }
         guard let hrv = inputs.hrv, let date = inputs.hrvDate,
@@ -47,8 +48,8 @@ enum ReadinessEvaluator {
         }
 
         let ratio      = hrv / baseline
-        let sleepScore = sleep >= 7.0 ? 2 : sleep >= 6.0 ? 1 : 0
-        let hrvScore   = ratio >= 1.1 ? 2 : ratio >= 0.85 ? 1 : 0
+        let sleepScore = Self.sleepScore(sleep)
+        let hrvScore   = Self.hrvScore(ratio: ratio)
         let avg        = Double(sleepScore + hrvScore) / 2
         let level: ReadinessLevel = avg >= 1.7 ? .push : avg >= 0.8 ? .active : .recover
 
@@ -56,4 +57,9 @@ enum ReadinessEvaluator {
         return ReadinessResult(level: level, hint:
             "HRV \(hrvWords) your 30-day average; slept \(RecoveryService.formatHours(sleep))")
     }
+
+    /// 0-2: 7 hours or more is 2, 6 or more is 1. The score breakdown uses these too.
+    static func sleepScore(_ hours: Double) -> Int { hours >= 7.0 ? 2 : hours >= 6.0 ? 1 : 0 }
+    /// 0-2 from HRV / baseline: 1.1 or more is 2, 0.85 or more is 1.
+    static func hrvScore(ratio: Double) -> Int { ratio >= 1.1 ? 2 : ratio >= 0.85 ? 1 : 0 }
 }
