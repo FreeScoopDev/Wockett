@@ -40,10 +40,10 @@ struct RecoveryCard: View {
                     value: recovery.activeCal.map { "\(Int($0))" } ?? "–")
             }
 
-            if recovery.readiness != .unknown || gaitStatus != nil {
+            if showsReadinessLine || gaitStatus != nil {
                 WktDivider()
                 HStack(alignment: .center, spacing: 8) {
-                    if recovery.readiness != .unknown {
+                    if showsReadinessLine {
                         Text(readinessLine)
                             .font(.wktLabel)
                             .foregroundColor(.earthMuted)
@@ -69,8 +69,13 @@ struct RecoveryCard: View {
         }
     }
 
+    /// The level's readings, or what is missing; hidden only with no sleep or HRV at all (no Watch).
+    private var showsReadinessLine: Bool {
+        recovery.readiness != .unknown || recovery.sleepHours != nil || !recovery.hrvHistory.isEmpty
+    }
+
     private var readinessLine: String {
-        var line = recovery.readiness.hint
+        var line = recovery.readinessHint
         if let flt = recovery.flightsClimbed, flt > 0 {
             line += " · \(flt) floor\(flt == 1 ? "" : "s")"
         }
@@ -263,29 +268,26 @@ struct RecoveryMetricDetailSheet: View {
 
         let sleepScore: String = {
             guard let s = recovery.sleepHours else { return "–" }
-            if s >= 7.0 { return "Good (\(RecoveryService.formatHours(s)))" }
-            if s >= 6.0 { return "Fair (\(RecoveryService.formatHours(s)))" }
-            return "Low (\(RecoveryService.formatHours(s)))"
+            let word = ["Low", "Fair", "Good"][ReadinessEvaluator.sleepScore(s)]
+            return "\(word) (\(RecoveryService.formatHours(s)))"
         }()
 
         let hrvScore: String = {
             guard let h = recovery.hrv else { return "–" }
-            if let b = recovery.hrvBaseline, b > 0 {
-                let r = h / b
-                if r >= 1.1 { return String(format: "High (%.0fms)", h) }
-                if r >= 0.85 { return String(format: "Normal (%.0fms)", h) }
-                return String(format: "Low (%.0fms)", h)
+            // Labelled only against a baseline readiness itself would use.
+            if let b = recovery.hrvBaseline, b > 0,
+               recovery.hrvBaselineDays >= ReadinessEvaluator.minimumBaselineReadings {
+                let word = ["Low", "Normal", "High"][ReadinessEvaluator.hrvScore(ratio: h / b)]
+                return "\(word) (\(String(format: "%.0fms", h)))"
             }
-            if h >= 50 { return String(format: "High (%.0fms)", h) }
-            if h >= 20 { return String(format: "Normal (%.0fms)", h) }
-            return String(format: "Low (%.0fms)", h)
+            return String(format: "%.0fms", h)
         }()
 
         return Group {
             heroHeader(
                 badge: WktIconBadge(systemName: recovery.readiness.icon, tint: recovery.readiness.color, size: 48),
                 value: recovery.readiness.label,
-                subtitle: recovery.readiness.hint,
+                subtitle: recovery.readinessHint,
                 statusLabel: nil,
                 statusColor: nil
             )
@@ -344,7 +346,7 @@ struct RecoveryMetricDetailSheet: View {
             ])
 
             infoSection(title: "How readiness is calculated") {
-                Text("Readiness combines two signals: your Heart Rate Variability (HRV) compared to your personal 30-day baseline, and last night's sleep duration. Both signals are scored 0–2 and averaged. A combined score above 1.7 is Push, above 0.8 is Active, and below that is Recover. If only one signal is available, it's used alone.")
+                Text("Readiness combines two signals: your Heart Rate Variability (HRV) compared to your personal 30-day baseline, and last night's sleep duration. Both signals are scored 0–2 and averaged. A combined score above 1.7 is Push, above 0.8 is Active, and below that is Recover. A level is shown only with all three of: last night's sleep, an HRV reading from the last 2 days, and HRV on at least 7 of the last 30 days to set the baseline.")
                     .font(.wktBodyText).foregroundColor(.earthMuted).fixedSize(horizontal: false, vertical: true)
             }
 
