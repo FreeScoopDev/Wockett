@@ -55,6 +55,14 @@ import Testing
         #expect(!sampling([nil, nil, nil, nil, nil, nil, 1.2]).showsStatus)
     }
 
+    /// What the card, the hero and the Recovery card show: 0.5 m/s (1.8 km/h)
+    /// is "Check in" on walking speed, but only once 4 days stand behind it.
+    @Test func statusComesOnlyWithFourDays() {
+        let speed = GaitMetricConfig.all[0]
+        #expect(sampling([0.5, nil, 0.5, nil, 0.5, nil, nil]).status(speed) == nil)
+        #expect(sampling([0.5, nil, 0.5, nil, 0.5, nil, 0.5]).status(speed) == .attention)
+    }
+
     @Test func trendNeedsThreeDaysInEachWeek() {
         let threeOfSeven: [Double?] = [1.0, nil, 1.0, nil, 1.0, nil, nil]
         let twoOfSeven: [Double?]   = [1.0, nil, 1.0, nil, nil, nil, nil]

@@ -26,6 +26,13 @@ struct GaitSampling {
     /// A status needs at least 4 of the last 7 days.
     var showsStatus: Bool { recent.count >= Self.minDaysForStatus }
 
+    /// The 7-day average's status, or nil with fewer than 4 days. Every gait
+    /// status on screen comes from here, so none can skip the day count.
+    func status(_ config: GaitMetricConfig) -> GaitStatus? {
+        guard showsStatus, let avg = recentAverage else { return nil }
+        return config.statusOf(avg)
+    }
+
     /// The change against the week before, only with 3 days in each week.
     var trendPct: Double? {
         guard recent.count >= Self.minDaysForTrend, prior.count >= Self.minDaysForTrend,

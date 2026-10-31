@@ -405,12 +405,12 @@ private struct GaitMetricCard: View {
                     // Side by side when both fit the narrow card, else stacked.
                     ViewThatFits(in: .horizontal) {
                         HStack(spacing: 6) {
-                            statusOrCount(cur, sampling)
+                            statusOrCount(sampling)
                             Spacer(minLength: 0)
                             if let t = sampling.trendPct { trendBadge(t) }
                         }
                         VStack(alignment: .leading, spacing: 6) {
-                            statusOrCount(cur, sampling)
+                            statusOrCount(sampling)
                             if let t = sampling.trendPct { trendBadge(t) }
                         }
                     }
@@ -431,9 +431,8 @@ private struct GaitMetricCard: View {
 
     /// The status, or with too few days for one, how many days there are.
     @ViewBuilder
-    private func statusOrCount(_ avg: Double, _ sampling: GaitSampling) -> some View {
-        if sampling.showsStatus {
-            let st = config.statusOf(avg)
+    private func statusOrCount(_ sampling: GaitSampling) -> some View {
+        if let st = sampling.status(config) {
             WktStatusChip(text: st.label, dot: st.color)
         } else {
             Text("\(GaitSampling.daysText(sampling.recent.count)) of data")
@@ -498,7 +497,7 @@ struct GaitMetricDetailContentView: View {
     }
     private var trendPct: Double? { sampling.trendPct }
     private var currentStatus: GaitStatus? {
-        sampling.showsStatus ? sevenDayAvg.map { config.statusOf($0) } : nil
+        sampling.status(config)
     }
     /// A dot or bar's colour: its status only when the 7-day status shows, so a
     /// thin week judges no single day either; otherwise the line's green.
@@ -716,21 +715,19 @@ struct GaitMetricDetailContentView: View {
     private var tipsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             Button {
-                withAnimation(.snappy(duration: 0.22)) { showsTips.toggle() }
+                withAnimation(.spring(response: 0.3)) { showsTips.toggle() }
             } label: {
                 HStack {
                     Text("Tips")
                         .font(.wktRowTitle)
                         .foregroundColor(.earthCream)
                     Spacer(minLength: 0)
-                    Image(wkt: .chevronDown)
-                        .wktIcon(.inline, tint: .earthMuted)
-                        .rotationEffect(.degrees(showsTips ? 180 : 0))
+                    Image(wkt: showsTips ? .chevronUp : .chevronDown).wktIcon(.inline, tint: .earthMuted)
                 }
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityValue(showsTips ? "Expanded" : "Collapsed")
+            .accessibilityValue(showsTips ? "Shown" : "Hidden")
             .accessibilityHint(showsTips ? "Hides the tips" : "Shows the tips")
             if showsTips { WktNumberedList(items: config.tips) }
         }

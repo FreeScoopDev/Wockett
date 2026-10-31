@@ -84,9 +84,7 @@ struct RecoveryCard: View {
 
     private var gaitStatus: (label: String, color: Color, icon: String)? {
         guard let config = GaitMetricConfig.all.first else { return nil }
-        let sampling = GaitSampling(gait.snapshots, value: config.values)
-        guard sampling.showsStatus, let avg = sampling.recentAverage else { return nil }
-        let st = config.statusOf(avg)
+        guard let st = GaitSampling(gait.snapshots, value: config.values).status(config) else { return nil }
         return (st.label, st.color, st.icon)
     }
 
