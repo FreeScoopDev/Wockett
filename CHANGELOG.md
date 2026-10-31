@@ -5,6 +5,492 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [1.18] - 2026-10-30
+
+### Added
+- Activity History has a **search** field (route names and notes, ignoring
+  case and accents) and a **filter** menu for activity, period (this week,
+  this month, last 7 days) and pet. The list was every activity ever
+  recorded with no way to find one. The menu shows how many filters are on
+  and has a Reset; a search or filter that matches nothing says "No
+  activities match" with **Clear filters**, which is a different state from
+  having no history at all. Nothing is hidden by default: short,
+  zero-distance and possibly-driven records stay listed unless the person
+  filters them out. Filters are not saved.
+- The Insights daily chart tells VoiceOver its total and best day before it
+  reads the bars one by one, so the numbers are available without stepping
+  through every day.
+
+### Changed
+- Home now opens on **Start an activity**, with **Recent activity** under it
+  and the step goal card below both. A runner or a cyclist opened the app on a
+  walking goal and had to scroll past it to start, and a saved activity could
+  only be reached through Health → Activity History. The step card keeps
+  everything it showed (ring, distance to go, crew, streak, pinned badges);
+  it has only moved.
+- Recent activity lists the three newest saved activities, worded exactly as
+  Activity History words them, and each opens the same summary History opens.
+  "All activities" opens History. With nothing saved the section is not shown
+  at all, rather than an empty card pushing the rest down.
+- Home's Recent activity no longer lists a pet's own credit entry ("Nala's
+  Indoor Walk"). An indoor walk with two pets saves the walk plus one entry
+  per pet at the same time, so those three filled every row and pushed an
+  earlier run or ride off Home. Activity History still lists every entry, and
+  nothing stored changes. With only credit entries saved, Home shows no
+  Recent activity section, as with no history at all.
+- Activity History rows have one **More** menu with **Edit details**,
+  **Repeat** and **Share**, instead of two unlabelled circles. The circular
+  arrow began a walk the moment it was touched, so a stray tap while
+  scrolling started one, and the only way to change an activity's type was
+  hidden behind a note icon. The details sheet now says "Edit details" above
+  the type picker and the note.
+- **Repeat** shows what it would start first: the activity, route, distance
+  and time of the one being repeated, and which pets would get credit. Only
+  **Start** begins it; Cancel or a swipe down begins nothing. If a walk is
+  already in progress, the same "Walk Already Active" alert appears and the
+  review stays open, since nothing started. A hike repeats as a walk on the
+  same route, and the sheet says so. An indoor walk has no route to follow,
+  so its review explains that indoor walks start from Home and offers no
+  Start.
+- The History header shows totals for **All activities** (how many, how far,
+  how long, and how many this week) instead of lifetime averages. The
+  averages mixed rides with zero-distance records and did not say what they
+  covered; the totals are the sums of the rows listed below them.
+- The History header's count, distance, time and "this week" follow the
+  search and filters, and its title names the scope ("This month · Run"),
+  so the figures are always the sums of the rows listed beneath them.
+- Finishing an outing no longer looks like losing it. Red now means lose,
+  not save: the Hold to finish button beside Pause was red outline, red text
+  and a red fill while held, and in the confirmation that follows "Finish
+  and save" was a red outline next to a red "Discard this walk", so the way
+  to keep the outing and the way to throw it away looked alike. The hold
+  button now has the look of the quieter secondary buttons (raised fill,
+  the same text colour, a thin grey outline so it still reads as something
+  to press) and fills green as you hold it; it still looks nothing like the
+  filled green Pause. In the confirmation, "Finish and save" is the filled
+  main button at the top, "Keep walking" (or running, riding…) is the
+  quieter button under it, and only Discard is red. The one-second hold,
+  the confirmation itself, the haptics and what VoiceOver says and does are
+  unchanged.
+- "This week" now means the same seven days everywhere: your calendar week
+  (Sunday to Saturday in the US, Monday to Sunday where weeks start on
+  Monday), the week Insights has always used. One pet could show 3 walks
+  "this week" in Insights, 9 in Community and 10 on its own page, because
+  each screen counted a different window under the same words. **Home's
+  week strip changed with it**: it used to show three days either side of
+  today, and now shows the calendar week, so early in the week most of it is
+  days still to come. The Health tab's week calendar shows the same days and
+  now names them ("Oct 25 – 31"); the arrows move a whole calendar week.
+- "Last 7 days" now means today plus the six calendar days before it, on the
+  pet page, the step detail sheet and the Community crew card, instead of
+  the last 168 hours (which cut today's earlier walks off a week ago and
+  counted wrongly across a daylight-saving change). The crew card counted
+  those days already but said "this week"; it now says "last 7 days". A
+  pet's "Walks this week" tile counts the calendar week, as Insights does,
+  so it can differ from its "Last 7 days" list. The gait detail's 7-day
+  average says "last 7 days", which is what it averages. Totals never count
+  an activity dated after now. No saved activity is changed.
+- A pet's page now shows the pet's own share of each outing. Its "Last 7
+  days" rows printed the whole outing's distance and your steps, while the
+  totals above them counted only the distance the pet was on, so a dog that
+  joined halfway had rows that did not add up to its own total. Each row now
+  leads with the distance credited to the pet, adds "full outing 2.0 mi" when
+  the pet was on only part of it, and the list shows every outing in the
+  last 7 days so the rows add up to the Distance tile. Total walks and Total
+  distance come first; the step figures follow them.
+- Pet steps are called estimates, because pets carry no step counter: every
+  pet "step" is distance credited to the pet divided by 0.762 m, which the
+  page now says under its tiles. "Steps today" is "Est. steps today", a goal
+  reads "Goal: 8,000 est. steps", and the breed suggestion in the pet editor
+  says it is a starting point you can change, not a health target.
+- The My Pets switch has a name. It was a switch with no label, so VoiceOver
+  read nothing about what it does; it now says "Include Nala on outings",
+  explains that pets switched on join an outing when it starts (during an
+  outing, add or remove a pet on the outing screen, which is where credit
+  starts and stops), and the row says "Joins your outings" or "Not joining"
+  in words.
+- Home names the pets that will join under the Start button ("With Nala and
+  Beef · Change"), so you know who gets credit before you start; "Change"
+  opens My Pets. With no pet switched on there is no line. No credit rule,
+  saved activity or Community or Insights number changed.
+- The You card on the Community tab says "Your progress" instead of "Your
+  week in Wockett". None of its four figures is weekly: the day streak and
+  the badge count are all-time, the rank is for your current challenge, and
+  Wocketts is a running total, so "week" misdescribed every one of them.
+- A line under the You card's figures now says what Wocketts are: votes on
+  the routes you've shared from this phone, one per walker. The number had no
+  visible definition, and that is exactly what it counts (your own vote on
+  your own route included, routes shared from another phone not).
+- The Next badge card shows what is left as well as the percentage, for
+  badges that count something: "0.4 mi to go", "2 days to go", "3 indoor
+  walks to go", in your distance units and rounded up. A percentage alone
+  gave no concrete next step. Badges that are simply done or not (Early Bird,
+  Cartographer, …) show no remainder. The remainder and the percentage come
+  from the same totals, so they cannot disagree.
+- The Community personal record that showed your longest distance is now
+  called "Longest outing" instead of "Longest walk". It has always taken the
+  longest of every activity, rides included, so a 40 km ride appeared as your
+  longest "walk". The record still counts every activity and shows the same
+  distance and date; only its name changed, so it now says what it measures.
+  The per-activity records (Longest walk, Longest run, Longest ride) are
+  unchanged.
+- Settings' Notifications section now says, under the status, what will
+  actually arrive. The reminder switches keep their on position whatever iOS
+  allows, so with notifications off, or never allowed, they looked like
+  reminders that would come. Off says to turn them on in iOS Settings and that
+  the choices are saved; never allowed says reminders can't arrive until you
+  allow them; quiet says reminders arrive in Notification Center without
+  banners or sounds. The quiet chip reads "Quiet delivery" instead of "Quiet —
+  no alerts", which was not true: quiet notifications are delivered, just
+  silently. No switch, reminder or permission request changed.
+- The untracked-walk switch's three-line caption is now one line, and the
+  rest (why the nudge arrives afterwards) sits under the section. The status
+  is read again when you come back from iOS Settings, so the line follows
+  what you changed there.
+- The Community tab now shows two people instead of a paw print, and the
+  Settings tab a gear instead of sliders. The paw print is the pets' symbol
+  elsewhere in the app, so Community looked like a pet screen, and sliders
+  read as "filter" rather than "settings". Tab names and order are unchanged.
+- The wockett.app homepage said trails were "North Carolina for now", but
+  since 1.15 the app downloads trails for more states, as the Help page says.
+  A visitor reading only the homepage would think Wockett was useless outside
+  North Carolina. It now says North Carolina is built in and more states can
+  be downloaded.
+- The homepage now wraps its content in a `<main>` landmark and gives the
+  feature cards an `<h2>` (hidden visually) so screen-reader users get a
+  proper page outline instead of a jump from `<h1>` to `<h3>`.
+- The wockett.app homepage explained the app entirely in words and emoji. It
+  now shows three real screenshots (route suggestions, a walk in progress,
+  pet progress), reused from the Help page so there is nothing new to keep in
+  step.
+- The homepage now has a canonical URL and Open Graph tags with a 1200x630
+  share card built from the app icon, so a shared link shows Wockett's icon
+  instead of a bare URL.
+
+### Fixed
+- A walk, run or ride whose save fails is no longer lost while the screen says
+  it was saved. Walk History wrote with `try?`: a write that threw left the walk
+  in the list on screen but not on disk, and ending the walk then deleted the
+  crash checkpoint, the only other copy, ended the Live Activity and finished
+  the Health workout. Now a save counts only once it is on disk. If it fails,
+  the walk keeps going with its checkpoint, Live Activity and Health workout,
+  paused while an alert asks "Couldn't save your walk" with **Try again** and
+  **Keep going** (Discard stays in the Finish sheet). It appears wherever the
+  walk was ended: the walk screen, the mini tile, the Live Activity's End or a
+  route completed while minimised. Try again finishes the Health workout at the
+  time Finish was pressed, once.
+- An indoor walk whose save fails is not marked saved: its summary says so and
+  its Save button tries again, and its pets' credit is saved with it or not at
+  all. A logged past walk keeps its sheet open with a message. The "Save walk"
+  notification's walk is kept until it is saved: a failed save shows the same
+  alert, and the next launch tries again (it used to be forgotten before the
+  save was attempted). Activity History opens only once it is saved. A
+  stale or finished walk recovered at launch keeps its checkpoint until it is
+  saved, instead of deleting it first.
+- Editing a walk's notes, type or route-stats setting, or deleting it, puts the
+  old state back on screen when the write fails, so the list never shows what
+  is not on disk. A failed delete no longer waits in the database to be carried
+  out by the next save.
+- A community route or challenge with an impossible size (a distance of
+  `1e30` metres, say) can no longer crash the app for everyone who opens the
+  Community tab. Public records are written by anyone with an iCloud account
+  and a modified client, and the distance, pace and step conversions trapped
+  on a value that large, so one bad record kept crashing every launch until a
+  moderator deleted it. Such records are now refused when they are read
+  (routes over 2,000 km, challenge goals over 10,000 km), and the conversions
+  themselves no longer trap.
+- Tapping Undo, adding a point or closing the loop while the route builder is
+  still working out directions could crash it ("Index out of range") or file a
+  leg under the wrong point. The builder now finishes the calculation before
+  taking the next edit, and Undo ignores taps while it works.
+- Ending a walk within the first moments of starting it no longer loses its
+  Apple Health workout. The workout writer was only remembered once Health had
+  answered, so a walk saved or discarded before then found nothing to finish,
+  and the workout that started afterwards stayed open. The end now waits for
+  the start. The workout's end time is also the moment the walk ended, not the
+  moment cleanup finished.
+- Repeat in Activity History no longer starts a walk that never records. A
+  walk with no saved route (logged as a Past Walk, an Untracked Walk, a free
+  walk that never got a GPS fix, or an old pet-credit entry) gave Repeat
+  nothing to follow, so the walk screen opened with a timer stuck at 0:00 and
+  nothing was saved. Its Repeat review now says it has no route to follow and
+  offers no Start, the way indoor walks already did, and Repeat stays in the
+  menu so the reason can be found. Activities with a route repeat as before.
+- Insights no longer counts a ride as steps. A ride's "steps" were only its
+  distance divided by a 0.762 m stride (the pedometer never runs on a bike),
+  so a 14 km ride added about 18,000 steps to the week. Rides still count in
+  Insights' activities, distance, time and active days; the Steps tile now
+  says "estimated · rides excluded". Steps for a person's total now come from
+  one rule, `ActivitySummaryContent.humanSteps`, the same one the summary,
+  day, step and pet screens already used to hide a ride's steps.
+- The Health tab's "Your journey in perspective" card now uses recorded
+  activities only. It used to add today's Health steps on top of every
+  recorded session, so a walk recorded today was counted twice; it gave rides
+  distance-derived steps; and it kept sessions flagged as possible driving,
+  which Insights leaves out. Its wording also overclaimed: "marathons
+  completed" was really total distance, and "up the Empire State Building"
+  presented ordinary steps as stairs. It now reads "Distance equal to N
+  marathons" and "Step count equal to N Empire State climbs", says which
+  figures are recorded distance across all activities and which are estimated
+  steps from walks and runs. No saved activity is changed.
+- Rides no longer count as steps in the step streak, the month calendar, the
+  Home week strip (App Only tracking) or the Sunday "Your week in review"
+  notification. A ride's "steps" were only its distance divided by a 0.762 m
+  stride (the pedometer never runs on a bike), so a 14 km ride counted as
+  about 18,000 steps and could keep a 10,000-step streak alive on its own.
+  These totals now use the same rule Insights and the summary screens already
+  use, `ActivitySummaryContent.humanSteps`. **A current streak that a ride day
+  was holding up will be shorter after updating, possibly 0**, because the
+  streak is worked out from history each time. The longest streak is kept.
+  Streak badges follow the current streak, as they always have, so one can
+  show as not yet earned until the streak is built back up (badges already
+  celebrated are not celebrated again). A week of rides only now gets "This week: N km.
+  Keep it up!" in the summary instead of "A new week starts today". Calendars
+  in Apple Health mode are unchanged: they come from Health. No saved
+  activity is changed.
+- The "Best day" personal record in Community no longer counts rides as
+  steps. A ride's "steps" are only its distance divided by a 0.762 m stride
+  (the pedometer never runs on a bike), so a 20 km ride day could become
+  your Best day with about 26,000 steps nobody walked, on a day the App Only
+  calendar shows as 0. Best day now totals each day with the same rule the
+  calendars use, `ActivitySummaryContent.humanSteps(on:in:calendar:)`, so the
+  two cannot disagree. If you have only ever ridden, the Best day row is
+  hidden rather than showing "0 steps" as a record. When two days tie, the
+  more recent one is shown (before, either could appear). Longest walk and
+  Best pace are unchanged, and no saved activity is changed.
+- The Health tab's "Last 30 days" and the month calendar's "This month" now
+  say which days their numbers are based on: "18 of 30 days have steps". The
+  average and the goals count were always taken over days with steps only,
+  and nothing said so; with no Health data the card read "0/0 Goals" beside
+  a flat line. Apple Health cannot tell a day you did not move from a day
+  with no step data, and never says whether Wockett may read your steps, so
+  the average is now labelled "avg on recorded days", goals read "3 of 18",
+  and the month notes say "recorded days". With no steps at all the card
+  says so in a sentence ("No step data for the last 30 days", with a pointer
+  to Health access in Settings, or "No recorded activities" in App Only
+  mode) instead of zeros, and a Health query that fails says "Step history
+  is unavailable right now" instead of looking like an empty month. The
+  30-day card's goals count now judges each day against that day's own goal,
+  as the week strip and month calendar already did, instead of today's. In App
+  Only mode the 30-day card now reads your recorded activities, as the week
+  strip and month calendar already did, instead of Apple Health. The day
+  cells and the week strip are unchanged, and the charts look as before
+  whenever there are steps to draw.
+- At the largest text sizes (Accessibility 3 to 5), Wockett's text now stops
+  growing at Accessibility 2, as the app already said it did. The limit on
+  the tab view only reached system-styled text: Wockett's own fonts work out
+  their point size before SwiftUI applies it, so they kept growing, and at
+  the largest size an audit found seven blocked actions and fourteen cut-off
+  values
+  ("Hold… / 1 second" on the Finish button, the route Save and Share buttons
+  off-screen, the WeatherKit attribution cut to "Wea"). The fonts now clamp
+  themselves to their Accessibility 2 size in one place. Nothing changes at
+  Accessibility 2 or smaller, which covers the widget at its usual sizes.
+  This is a floor, not the end: the screens can still be made to work at
+  every size, and the limit raised once they do.
+- At the accessibility text sizes the walk screen now reads in full. Even
+  with the text capped at Accessibility 2, the Finish button showed
+  "Hold to fi…" and the stats "Current pa…": Finish was a fixed 140 pt
+  beside Pause, and three stats shared one row. This is the screen people
+  look at while moving, so a cut-off instruction there matters most. At
+  those sizes Pause now sits above a full-width Finish (still a one-second
+  hold), the stats use two columns, and their labels may take two lines.
+  The pulled-up panel also scrolls in a shorter space, so it no longer
+  reaches over the map's North up control. Nothing changes at the normal
+  text sizes.
+- A paused walk no longer covers the map's North up button at the largest
+  text sizes. At those sizes the "Walk paused" banner wrapped onto several
+  lines with its own Resume pill, which made the bottom panel about 100 pt
+  taller: on an iPhone 17e at Accessibility 2 it reached 80 pt over North up
+  (84 pt pulled up), and 36 pt on an iPhone 17. A one-line banner without the
+  pill was tried first and still reached 40 pt over on the 17e, so at the
+  accessibility sizes the panel's header now says "Paused" (a guided walk's
+  progress line gives way to it while paused) and the banner row is gone.
+  The pill only repeated the main button, which already says Resume while
+  paused and is full width at those sizes, so there is now one Resume.
+  VoiceOver still hears "Walk paused". Normal text sizes are unchanged.
+- Buttons read in full at the accessibility text sizes. Every main and
+  secondary button kept its title to one line, so at Accessibility 2 they were
+  cut off: "Connect Apple He…" on Health, "Schedule this walk a…" on a walk's
+  summary, and on the Community You card, two to a row, "Start a c…" /
+  "Share a r…". At the accessibility sizes a title now takes as many lines as
+  it needs (a "Start the … hike" button carries a trail's full name, so two
+  lines are not always enough), and two buttons that share a row stack, the
+  main action on top, each the full width: the You card's pair and the route
+  builder's Save Route / Undo. The normal text sizes look exactly as before.
+  Both rows use one shared `WktButtonRow`, so the rule cannot drift between
+  screens.
+- At the accessibility text sizes a button no longer changes size while it
+  works. Each busy state ("Finding routes…", "Creating…", "Syncing…",
+  "Sharing…", and the spinners on Share Route's and Share Achievement's Post
+  and the walk card's Share) was drawn by hand in a 56 pt button, while the
+  idle buttons grow with the text: at Accessibility 2 "Post & Save to My
+  Routes" is two lines and 90 pt, so the button shrank the moment it was
+  tapped and everything below it jumped up. The busy state now draws over the
+  idle button's own space, so the size cannot change. The normal text sizes
+  look exactly as before.
+- The Routes results fit the screen at the largest text sizes. One row was
+  the cause: the weather tile kept the temperature, the status and Apple's
+  Weather attribution side by side at a fixed size, which added up to more
+  than the screen, and that one row made the whole results panel wider than
+  the window (401 pt on a 390 pt iPhone 17e; with the tile taken out the
+  panel was exactly 390). Nothing was cut off yet, but it is how Save and
+  Share went off-screen before the type scale stopped at Accessibility 2, so
+  any more text would have hidden something. At the accessibility sizes the
+  attribution now has a line of its own, where it stays whole and tappable
+  (WeatherKit's terms require it wherever its data is shown), and the
+  weather status wraps, so "Good conditions" reads in full instead of a
+  check mark and a clipped letter.
+- At those sizes "New search" reads whole instead of "New / searc / h": the
+  button no longer sits in a fixed 110 pt slot, and the panel's grabber
+  moves above it. Route cards stack distance above time, so each value keeps
+  its unit ("6.3 mi", "2h 17m") instead of one character a line. The default
+  text size is unchanged.
+- At the largest text sizes, Repeat in Activity History opens with Start and
+  Cancel on the screen. The review opened at half height, which left Start
+  half below the bottom edge on an iPhone 17e (its bottom at 858 pt on an
+  844 pt screen) and Cancel out of sight on every phone, so the one thing the
+  sheet is for needed a drag nobody would know to make. At the accessibility
+  sizes it now opens full height, as the finish-walk sheet already does; at
+  the standard sizes it opens at half height as before.
+- Health's "This week" header shows its dates in full at the largest text
+  sizes. Beside the title there was room only for "Oct 2…", so the header
+  named no week at all. At the accessibility sizes the dates sit under the
+  title and may wrap; at the standard sizes they stay beside it on one line.
+- Rows of stats read in full at the accessibility text sizes. Three or four
+  stats side by side each had a third or a quarter of the width, so at
+  Accessibility 2 the labels were cut or broken mid-word: "Distanc / e" on a
+  walk's summary, "This w…" in Activity History's header, "Day str…",
+  "Challe…" and "Wocke…" on the Community You card, "Goal str…",
+  "Apple a…" and "Best str…" on Streaks & Badges (three zeros nobody could
+  tell apart), and on a trail's detail the values themselves, "About 29…"
+  and "~3,…". At the accessibility sizes these rows now go two to a row, as
+  the pet detail already did and read cleanly, and a label may take a second
+  line, broken between words; values stay on one line. The normal text sizes
+  look exactly as before. All five follow one shared rule (`WktStatColumns`,
+  laid out by `WktStatRow`), so it cannot drift between screens.
+- Trail and route names read in full at the accessibility text sizes. The
+  name is the point of these rows, but each had one line beside something
+  else: at Accessibility 2 Community's Trails near you showed "Little R…",
+  "Rocky…" and "Walnut…" next to their Official chips, the Top community
+  routes cards cut their details to "9.1 mi · Hard · 1…", and Home's two
+  Routes cards, half the width each, read "Find a Ro…" and "Recommend…". At
+  the accessibility sizes the Official chip now sits under the trail's name,
+  names and details take as many lines as they need (broken between words,
+  and never between a number and its unit, so "0.4 mi" stays together), the
+  route cards grow taller instead of cutting, and Home's Routes cards stack
+  one above the other. The normal text sizes look exactly as before. The
+  rule lives in one place (`WktNameLayout`) so the rows cannot drift apart.
+- Status chips, activity rows, community names and pet rows read in full at
+  the accessibility text sizes. Each kept one line, or split a line in the
+  wrong place, in a space that was too narrow. At Accessibility 2 Insights
+  said "Nothing last week to…", the Next badge chips said "Warming…" and
+  "On a Roll…", History and Home's recent activity split "0.7 / mi" and
+  "12m / 58s" across lines, the community feed's round initials showed
+  "C…", a username broke mid-word ("GentleMos / s earned"), and My Pets
+  showed "0 / walks" with the breed's dot floating beside it. Now the status
+  chip wraps between words and becomes a rounded rectangle (every screen that
+  uses it changes together), the Next badge chips flow onto new lines, a
+  distance and a time stack rather than break, the initials shrink to fit
+  their circle, and the breed goes under the pet's name without the dot.
+  A username is one word, so in the community feed, the You card, route and
+  challenge cards and the leaderboard it is never broken: it moves to a line
+  of its own, shrinks a little if it is too wide for it, and only a name that
+  still does not fit is cut with "…". The normal text sizes look as before.
+- At the accessibility text sizes the last few places that still cut words
+  or hid an action now read in full. The Share Route sheet scrolls and puts
+  its tiles two to a row, because the fixed form ran past the sheet: Cancel
+  sat on the tiles, "Distance" read "Distan…" and the Post button was cut to
+  "Post & Save to My Rou…". Share Achievement and the Home weather sheet open
+  full height, because at half height Post to Community fell below the
+  screen and "Open Apple Weather" was cut short. Settings rows keep their
+  title beside the icon instead of wrapping back under it, a personal
+  record's pace reads "19:52/mi" instead of breaking after the slash, with
+  its date moved under the value, and the Insights month chart labels the
+  1st, 8th, 15th and 22nd rather than ending in a "…". Normal text sizes are
+  unchanged.
+- At the accessibility text sizes, the places a re-check found still cut or
+  broken now read in full. A community route card puts its stats one above
+  the other and Start Walk on its own line, because side by side its only
+  action read "Start…" and its values split as "9.1 / mi". The route
+  elevation chart is twice as tall, because its axis labels used up all of
+  its 110 points: the plot was 7 points high, so the climb drew as a flat
+  line under overlapping labels. Its difficulty chip moves under the stats
+  instead of breaking as "Mode / rate". Trail Regions puts Download under the
+  state's name instead of breaking both mid-word ("Connectic / ut",
+  "Downl / oad"). Badges go two to a row, and a one-word name too wide for
+  its column shrinks instead of splitting ("Maratho / ner"). Share
+  Achievement scrolls, and with the keyboard up it scrolls Post into view,
+  so its heading is no longer cut and Post is not covered. Saved routes keep
+  "0.5 mi" whole and New Challenge's Duration chips go two to a row. Normal
+  text sizes are unchanged.
+- At the accessibility text sizes the finish confirmation opens full height
+  instead of at its fixed height, which cut its title short ("Finish
+  you…"); the title now wraps, centred.
+
+### Internal
+- `CustomRouteBuilder` takes its directions lookup as a parameter, so tests
+  can hold a calculation open and edit the route while it waits.
+- Swipe-to-delete in History deletes by the activity's identity, not its
+  position. It deleted by offset into the whole history, which was only
+  safe while the screen showed the whole history: in a filtered list the
+  same offset is a different activity, so filtering without this would have
+  deleted the wrong one. A delete whose write fails still puts the activity
+  back, as before.
+- Activity History's row text and layout are now `ActivityRowText` and
+  `ActivityRowContent`, shared with Home, so the two lists cannot describe
+  one walk differently. `WktSection` takes an optional `actionIdentifier` for
+  its link. The Recent card is rebuilt when its rows change: updated in
+  place, its accessibility tree kept a newly logged walk below the one it
+  sits above, so VoiceOver read them out of order.
+- `WktBusyLabel` is the one way to give a shared button a busy state, and
+  `wktButtonTitleLayout()` is the title rule both the button and its busy
+  state use. `-WKTUITest -WKTHoldBusy` holds every busy state on, so the new
+  UI test can measure them (always off in release builds).
+- A UI test opens the Repeat review at Accessibility 2 and checks that Start
+  and Cancel are inside the window. It failed on `main` (Start's bottom at
+  858 pt on the 17e; Cancel at 919 pt on the 874 pt iPhone 17) and fails the
+  same way when the half-height detent comes back at those sizes.
+- A UI test opens Routes at Accessibility 2 and checks that the results
+  panel, the first card's Save and Share, and the weather attribution are
+  inside the window. It failed on `main` (panel 401 pt on the 390 pt 17e,
+  404 pt on the 402 pt 17) and fails again when the attribution goes back
+  into the fixed-size row. Cut-off or one-character lines are not in the
+  accessibility tree, so screenshots are the evidence for those.
+- A `-WKTDemo` launch argument starts a debug build with the state the how-to
+  videos need: one finished walk that can be saved as a custom route, one
+  saved route under My Routes, and a fixed location (downtown Raleigh) that
+  Find Routes and Trails search from. The Routes map leaves out the
+  simulator's own location in demo mode, which would otherwise pull the
+  framing across the world. The videos are recorded from UI tests on
+  a fresh simulator, which has none of that, so each recording would otherwise
+  start from a different, mostly empty screen. The seed lives in an in-memory
+  store with CloudKit off, never the user's store, and Home skips the Health
+  and notification requests, the badge celebration and the resume-walk alert
+  so a recording starts clean. Nothing from a demo session outlives it: a walk
+  recorded in demo mode writes no checkpoint (so a later launch cannot resume
+  it or save it to the real store), and streaks and seen badges stay in
+  memory. It is compiled only into debug builds, only the launch argument
+  turns it on, and `-WKTUITest` on its own is unchanged.
+- Recording tests should launch with `["-WKTDemo"]` alone, not through the
+  smoke tests' launch helper, which adds `-WKTUITest` and with it no splash and
+  no animations. If both flags are passed, `-WKTDemo` wins for the data and the
+  location: its seed instead of the screenshot seed, its Raleigh location and
+  real routes instead of Times Square and the stub "Test Route".
+- `WockettUITests/HowToVideoTests.swift` drives the screens of each batch-1
+  how-to video, one test per video (`test_video_<nn>_<slug>`), from the
+  `-WKTDemo` starting state. The videos are recorded on the simulator by a
+  script that wraps `simctl io booted recordVideo` around one test at a time,
+  so the screens have to be walked the same way on every run rather than by
+  hand. Each step waits for the screen it is about to act on first, so a
+  wrong screen fails before a recording is wasted. The tests are skipped
+  unless `WKT_HOW_TO_RECORD=1` reaches the test runner, so CI and an ordinary
+  test run report them as skipped and never spend runner time on them.
+  Videos 5 and 6 need the simulator's location to be moving, which the
+  recording script supplies. Video 6 is skipped from the demo location, which
+  is about 650 m from the nearest trail (a trail walk starts only within
+  150 m). Video 10 is skipped on a simulator that is not signed in to iCloud.
+
 ## [1.17] - 2026-10-16
 
 ### Added
