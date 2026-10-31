@@ -42,7 +42,9 @@ struct RouteDifficultyTests {
 
     @Test func whyLines() {
         #expect(RouteDifficulty.hard.why(.climb(meters: 320.6)) == "Hard because of 320 m of climb")
-        #expect(RouteDifficulty.expert.why(.steepness(percent: 27.4)) == "Expert because one part is 27 % steep")
+        #expect(RouteDifficulty.expert.why(.steepness(percent: 26.2)) == "Expert because one part is 27 % steep")
+        // Rounded up: over 25 % never reads "25 %", which is still Hard.
+        #expect(RouteDifficulty.expert.why(.steepness(percent: 25.4)) == "Expert because one part is 26 % steep")
         #expect(RouteDifficulty.moderate.why(.length) == "Moderate because of its length")
         #expect(RouteDifficulty.easy.why(.nothingMuch) == "Easy: short, with little climb")
     }

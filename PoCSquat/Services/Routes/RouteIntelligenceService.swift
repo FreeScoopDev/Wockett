@@ -87,8 +87,7 @@ enum RouteDifficulty: String {
         }
     }
 
-    /// The input that decided a level, so the screen can say why.
-    enum Reason: Equatable {
+    enum Reason: Equatable { // what decided a level, for the why-line
         case climb(meters: Double)
         case steepness(percent: Double)
         case length
@@ -112,10 +111,11 @@ enum RouteDifficulty: String {
 
     /// "Hard because of 320 m of climb". Length is never a number here: the
     /// profile's sampled length can differ from the route distance beside it.
+    /// Steepness rounds up: an Expert (over 25 %) never reads "25 %".
     nonisolated func why(_ reason: Reason) -> String {
         switch reason {
         case .climb(let meters):      return "\(rawValue) because of \(Int(meters)) m of climb"
-        case .steepness(let percent): return "\(rawValue) because one part is \(Int(percent)) % steep"
+        case .steepness(let percent): return "\(rawValue) because one part is \(Int(percent.rounded(.up))) % steep"
         case .length:                 return "\(rawValue) because of its length"
         case .nothingMuch:            return "\(rawValue): short, with little climb"
         }
@@ -212,7 +212,6 @@ actor ElevationService {
         return (0..<count).map { i in coords[Int(round(Double(i) * step))] }
     }
 
-    /// Static so a test can build a profile without the network.
     nonisolated static func buildProfile(elevations: [Double], coordinates: [CLLocationCoordinate2D]) -> ElevationProfile {
         var points: [ElevationPoint] = []
         var gain = 0.0, loss = 0.0, maxGrad = 0.0, cumKm = 0.0

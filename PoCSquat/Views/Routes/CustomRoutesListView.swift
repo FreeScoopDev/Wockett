@@ -131,8 +131,7 @@ struct CustomRouteDetailView: View {
     @State private var isLoading          = false
     @State private var routeWeather:      RouteWeather?
     @State private var elevationProfile:  ElevationProfile?
-    /// Set once the elevation fetch has answered, or was never possible.
-    @State private var elevationFinished  = false
+    @State private var elevationFinished  = false // answered, or could not run
     @State private var showMapsAlert      = false
     @State private var isEditing               = false
     /// Share Route opens the review (`ShareReviewSheet`); set once it publishes.
@@ -161,12 +160,11 @@ struct CustomRouteDetailView: View {
     }
 
     var body: some View {
-        ZStack {
-            Color.earthBg.ignoresSafeArea()
+        // Start below the page, not over it: an overlay hid taps (UI test 8h).
+        VStack(spacing: 0) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    // Inside the scroll, so it goes away with the content. Still
-                    // interactive; a drag below it scrolls the page.
+                    // Scrolls away with the page; a drag below it scrolls.
                     ZStack {
                         CustomRouteMapView(
                             waypoints: pinCoordinates,
@@ -254,10 +252,9 @@ struct CustomRouteDetailView: View {
                     .padding(WktSpacing.screen)
                 }
             }
-            // Start is always in reach, however long the page runs. The
-            // inset already sits inside the safe area: no padding for it.
-            .safeAreaInset(edge: .bottom) { actionBar }
+            actionBar
         }
+        .background(Color.earthBg.ignoresSafeArea())
         .sheet(isPresented: $showShareReview) {
             ShareReviewSheet(source: shareSource, isLoadingSource: shareSource == nil && (isLoading || !isClassified),
                              name: route.name, publishTitle: "Share Route",
@@ -363,9 +360,8 @@ struct CustomRouteDetailView: View {
         .accessibilityIdentifier("routes.detailSummary")
     }
 
-    /// How do I start: on an opaque strip at the foot of the screen. At
-    /// Accessibility 2 on an iPhone 17e it is 138 pt, 16 % of the screen, so
-    /// the picker stays in it at every size (the spec's limit is 25 %).
+    /// How do I start, under the page. At Accessibility 2 on a 17e it is
+    /// 138 pt, 16 % of the screen, so the picker stays in it (limit 25 %).
     private var actionBar: some View {
         VStack(spacing: WktSpacing.betweenCards) {
             WktSegmentedPicker(selection: $activityMode, options: [ActivityMode.walking, .running, .cycling].map {
@@ -392,8 +388,9 @@ struct CustomRouteDetailView: View {
         }
         .padding(.horizontal, WktSpacing.screen)
         .padding(.vertical, 12)
-        .background { Color.earthBg.ignoresSafeArea(edges: .bottom) }
         .overlay(alignment: .top) { WktDivider() }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("routes.detailActionBar")
     }
 
     @ViewBuilder
@@ -468,10 +465,12 @@ struct CustomRouteDetailView: View {
             let pts = leg.polyline.points()
             return (0..<leg.polyline.pointCount).map { pts[$0].coordinate }
         }
-        if !polylineCoords.isEmpty {
+        elevationFinished = elevationProfile != nil
+        if !polylineCoords.isEmpty, elevationProfile == nil {
             elevationProfile = try? await ElevationService.shared.fetchProfile(for: polylineCoords)
         }
-        elevationFinished = true
+        // A fetch cancelled by a push is not a failure: the next .task retries.
+        if !Task.isCancelled { elevationFinished = true }
     }
 
     private func openInMaps() {

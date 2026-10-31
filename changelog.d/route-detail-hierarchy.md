@@ -7,10 +7,13 @@
   fold. The map is now 240 pt and scrolls away with the page. Under the
   route's name, one card gives the distance, the time (labelled "About N min
   walking", because the estimate assumes walking whichever activity is
-  picked), the steps, the climb and the difficulty, with one line saying why:
-  "Hard because one part is 17 % steep" for the demo's half-mile city loop.
-  The difficulty never said what it was based on, so a short, nearly flat
-  loop marked Hard read as a mistake.
+  picked), the steps, the climb and the difficulty, with one line saying
+  what decided it ("Hard because of 320 m of climb"). The label never said
+  what it was based on. Saying it also shows a weakness the rule already
+  had: the demo's half-mile, nearly flat city loop reads "Hard because one
+  part is 17 % steep", which is probably elevation noise over a very short
+  stretch, not a real slope. The rule is unchanged here; fixing it is a
+  separate decision.
 
 ### Internal
 - The difficulty of a profiled route is decided by one function,

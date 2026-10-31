@@ -1571,12 +1571,15 @@ final class SmokeTests: XCTestCase {
         // After the frame: hittability alone misses below-the-fold.
         XCTAssertTrue(start.isHittable, "Start must be tappable without scrolling at \(size)")
         // At the default size the decision summary is on the first screen
-        // too, wholly above the bar that holds Start.
+        // too, wholly above the bar (picker and Start). Without the network
+        // (CI) it is the short form: climb calculating or unavailable.
         if contentSize == nil {
             let summary = el("routes.detailSummary")
+            let bar = el("routes.detailActionBar")
             XCTAssertTrue(summary.exists, "The saved route must show its summary")
-            XCTAssertLessThanOrEqual(summary.frame.maxY, frame.minY,
-                                     "The summary must sit above Start on the first screen: \(summary.frame) vs \(frame)")
+            XCTAssertTrue(bar.exists, "The saved route must show its action bar")
+            XCTAssertLessThanOrEqual(summary.frame.maxY, bar.frame.minY,
+                                     "The summary must sit above the bar on the first screen: \(summary.frame) vs \(bar.frame)")
         }
     }
 
