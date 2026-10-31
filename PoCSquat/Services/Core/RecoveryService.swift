@@ -35,15 +35,6 @@ enum ReadinessLevel: Equatable {
         case .unknown: return "minus.circle"
         }
     }
-
-    var hint: String {
-        switch self {
-        case .push:    return "Great recovery — push a little harder today"
-        case .active:  return "Normal readiness"
-        case .recover: return "Light activity recommended"
-        case .unknown: return "Wear Apple Watch overnight for readiness"
-        }
-    }
 }
 
 // MARK: - History Entry
@@ -62,13 +53,14 @@ final class RecoveryService {
 
     // Today's summary values
     var sleepHours:      Double?          // decimal hours from last night
-    var hrv:             Double?          // latest SDNN in ms
+    var hrv:             Double?          // latest SDNN in ms, last 48 hours only
     var hrvBaseline:     Double?          // 30-day personal avg SDNN
     var restingHR:       Double?          // bpm
     var activeCal:       Double?          // kcal burned today
     var walkingHR:       Double?          // avg walking HR in bpm
     var flightsClimbed:  Int?             // today
     var readiness:       ReadinessLevel  = .unknown
+    var readinessHint                    = "No sleep or HRV data yet"   // what the level rests on, or what is missing
     var isLoading                        = false
 
     // 30-day history (for detail sheets)
@@ -97,7 +89,9 @@ final class RecoveryService {
         defer { isLoading = false }
 
         async let sleep      = fetchSleepLastNight()
-        async let h          = fetchLatest(.heartRateVariabilitySDNN, unit: HKUnit(from: "ms"))
+        let now = Date()
+        async let h          = fetchLatestSample(.heartRateVariabilitySDNN, unit: HKUnit(from: "ms"),
+                                                 since: now.addingTimeInterval(-ReadinessEvaluator.hrvFreshness))
         async let rhr        = fetchLatest(.restingHeartRate,          unit: .count().unitDivided(by: .minute()))
         async let cal        = fetchTodaySum(.activeEnergyBurned,      unit: .kilocalorie())
         async let whr        = fetchLatest(.walkingHeartRateAverage,   unit: .count().unitDivided(by: .minute()))
@@ -110,13 +104,17 @@ final class RecoveryService {
         let (s, hv, r, c, w, f, b, sh, hh, ch) = await (sleep, h, rhr, cal, whr, flights, base, sleepHist, hrvHist, calHist)
 
         sleepHours     = s
-        hrv            = hv
+        hrv            = hv?.value
         restingHR      = r
         activeCal      = c
         walkingHR      = w
         flightsClimbed = f.map { Int($0) }
         hrvBaseline    = b
-        readiness      = computeReadiness(sleep: s, hrv: hv, baseline: b)
+        let result     = ReadinessEvaluator.evaluate(ReadinessInputs(
+            sleepHours: s, hrv: hv?.value, hrvDate: hv?.date, baseline: b, baselineReadings: hh.count
+        ), now: now)
+        readiness      = result.level
+        readinessHint  = result.hint
         sleepHistory   = sh
         hrvHistory     = hh
         calHistory     = ch
@@ -233,12 +231,20 @@ final class RecoveryService {
     // MARK: - Point queries
 
     private func fetchLatest(_ id: HKQuantityTypeIdentifier, unit: HKUnit) async -> Double? {
-        await withCheckedContinuation { cont in
+        await fetchLatestSample(id, unit: unit, since: nil)?.value
+    }
+
+    /// The latest sample and its end date; with `since`, only samples from then on.
+    private func fetchLatestSample(_ id: HKQuantityTypeIdentifier, unit: HKUnit,
+                                   since: Date?) async -> (value: Double, date: Date)? {
+        let pred = since.map { HKQuery.predicateForSamples(withStart: $0, end: nil) }
+        return await withCheckedContinuation { cont in
             let sort = NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: false)
             let q = HKSampleQuery(
-                sampleType: HKQuantityType(id), predicate: nil, limit: 1, sortDescriptors: [sort]
+                sampleType: HKQuantityType(id), predicate: pred, limit: 1, sortDescriptors: [sort]
             ) { _, s, _ in
-                cont.resume(returning: (s?.first as? HKQuantitySample)?.quantity.doubleValue(for: unit))
+                let sample = s?.first as? HKQuantitySample
+                cont.resume(returning: sample.map { ($0.quantity.doubleValue(for: unit), $0.endDate) })
             }
             store.execute(q)
         }
@@ -266,29 +272,6 @@ final class RecoveryService {
             ) { _, r, _ in cont.resume(returning: r?.averageQuantity()?.doubleValue(for: unit)) }
             store.execute(q)
         }
-    }
-
-    // MARK: - Readiness
-
-    private func computeReadiness(sleep: Double?, hrv: Double?, baseline: Double?) -> ReadinessLevel {
-        var scores: [Int] = []
-
-        if let s = sleep {
-            scores.append(s >= 7.0 ? 2 : s >= 6.0 ? 1 : 0)
-        }
-
-        if let h = hrv {
-            if let b = baseline, b > 0 {
-                let ratio = h / b
-                scores.append(ratio >= 1.1 ? 2 : ratio >= 0.85 ? 1 : 0)
-            } else {
-                scores.append(h >= 50 ? 2 : h >= 20 ? 1 : 0)
-            }
-        }
-
-        guard !scores.isEmpty else { return .unknown }
-        let avg = Double(scores.reduce(0, +)) / Double(scores.count)
-        return avg >= 1.7 ? .push : avg >= 0.8 ? .active : .recover
     }
 
     // MARK: - Static helpers
