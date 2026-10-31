@@ -1,4 +1,4 @@
-import Foundation
+import SwiftUI
 import Testing
 @testable import PoCSquat
 
@@ -61,6 +61,18 @@ import Testing
         let speed = GaitMetricConfig.all[0]
         #expect(sampling([0.5, nil, 0.5, nil, 0.5, nil, nil]).status(speed) == nil)
         #expect(sampling([0.5, nil, 0.5, nil, 0.5, nil, 0.5]).status(speed) == .attention)
+    }
+
+    /// Chart dots and day bars: muted below 4 days, not the "On track" green;
+    /// a day's status colour from 4. 0.5 m/s is "Check in" (orange).
+    @Test func dayColorIsMutedWithoutAStatus() {
+        let speed = GaitMetricConfig.all[0]
+        #expect(sampling([0.5, nil, 0.5, nil, 0.5, nil, nil]).dayColor(0.5, speed) == .earthMuted)
+        #expect(sampling([0.5, nil, 0.5, nil, 0.5, nil, nil]).dayColor(1.5, speed) == .earthMuted)
+        #expect(sampling([0.5, nil, 0.5, nil, 0.5, nil, 0.5]).dayColor(0.5, speed) == GaitStatus.attention.color)
+        // Each day its own colour, not the week's: 1.5 m/s (5.4 km/h) is "On track"
+        // in a "Check in" week.
+        #expect(sampling([0.5, nil, 0.5, nil, 0.5, nil, 0.5]).dayColor(1.5, speed) == GaitStatus.good.color)
     }
 
     @Test func trendNeedsThreeDaysInEachWeek() {

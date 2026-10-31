@@ -499,11 +499,6 @@ struct GaitMetricDetailContentView: View {
     private var currentStatus: GaitStatus? {
         sampling.status(config)
     }
-    /// A dot or bar's colour: its status only when the 7-day status shows, so a
-    /// thin week judges no single day either; otherwise the line's green.
-    private func pointColor(_ value: Double) -> Color {
-        currentStatus == nil ? .earthGreen : config.statusOf(value).color
-    }
 
     // Day-of-week averages (0 = Sunday … 6 = Saturday)
     private var dowAverages: [(weekday: Int, label: String, value: Double)] {
@@ -602,18 +597,20 @@ struct GaitMetricDetailContentView: View {
                 // Colored dots per status
                 ForEach(chartPts) { pt in
                     PointMark(x: .value("Day", pt.date), y: .value("Value", pt.value))
-                        .foregroundStyle(pointColor(pt.value))
+                        .foregroundStyle(sampling.dayColor(pt.value, config))
                         .symbolSize(18)
                 }
-                // "Good" threshold reference line
-                RuleMark(y: .value("Good", config.goodThresholdRaw))
-                    .lineStyle(StrokeStyle(lineWidth: 1.2, dash: [5, 4]))
-                    .foregroundStyle(Color.earthGreen.opacity(0.45))
-                    .annotation(position: .trailing, alignment: .center) {
-                        Text("Good")
-                            .font(.wktBody(9))
-                            .foregroundColor(.earthGreen.opacity(0.7))
-                    }
+                // "Good" threshold reference line, only beside a status
+                if sampling.showsStatus {
+                    RuleMark(y: .value("Good", config.goodThresholdRaw))
+                        .lineStyle(StrokeStyle(lineWidth: 1.2, dash: [5, 4]))
+                        .foregroundStyle(Color.earthGreen.opacity(0.45))
+                        .annotation(position: .trailing, alignment: .center) {
+                            Text("Good")
+                                .font(.wktBody(9))
+                                .foregroundColor(.earthGreen.opacity(0.7))
+                        }
+                }
             }
             .chartXAxis {
                 AxisMarks(values: .stride(by: .day, count: 7)) { _ in
@@ -674,7 +671,7 @@ struct GaitMetricDetailContentView: View {
                             .lineLimit(1)
                             .minimumScaleFactor(0.5)
                         Capsule()
-                            .fill(pointColor(entry.value))
+                            .fill(sampling.dayColor(entry.value, config))
                             .frame(height: max(12, 60 * normalized))
                             .frame(maxWidth: 22)
                         Text(entry.label)

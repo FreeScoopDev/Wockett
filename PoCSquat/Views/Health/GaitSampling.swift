@@ -1,4 +1,4 @@
-import Foundation
+import SwiftUI
 
 /// How many days of gait data stand behind a number, and whether that is
 /// enough for a status or a trend. Pure, so the counting rule is tested.
@@ -31,6 +31,13 @@ struct GaitSampling {
     func status(_ config: GaitMetricConfig) -> GaitStatus? {
         guard showsStatus, let avg = recentAverage else { return nil }
         return config.statusOf(avg)
+    }
+
+    /// A chart dot's or day bar's colour: that day's status colour only when
+    /// the 7-day status shows; otherwise `earthMuted`, because the "On track"
+    /// green would still give a verdict, just a kind one.
+    func dayColor(_ value: Double, _ config: GaitMetricConfig) -> Color {
+        showsStatus ? config.statusOf(value).color : .earthMuted
     }
 
     /// The change against the week before, only with 3 days in each week.
