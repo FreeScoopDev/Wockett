@@ -14,4 +14,7 @@
 
 ### Fixed
 - The month calendar with no steps for the month now says so ("No step data
-  for this month.", with the same hint) instead of showing a bare grid.
+  for this month.", with the same hint) instead of showing a bare grid. It
+  says nothing until that month's steps have loaded, so a month with steps
+  never flashes "no data", and a failed query reads "Step history is
+  unavailable right now.", as the 30-day trend does.
