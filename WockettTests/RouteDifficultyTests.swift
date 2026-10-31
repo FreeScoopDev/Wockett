@@ -35,6 +35,9 @@ struct RouteDifficultyTests {
         // Climb beats length when both qualify for the same level.
         #expect(classify(length: 16_000, climb: 320) == (.hard, .climb(meters: 320)))
         #expect(classify(length: 6_000, climb: 150) == (.moderate, .climb(meters: 150)))
+        // Climb beats steepness when both qualify for the same level.
+        #expect(classify(climb: 320, steepest: 16) == (.hard, .climb(meters: 320)))
+        #expect(classify(climb: 520, steepest: 26) == (.expert, .climb(meters: 520)))
         // A higher level's input wins over a lower level's.
         #expect(classify(length: 16_000, climb: 120) == (.hard, .length))
         #expect(classify(length: 6_000, steepest: 27) == (.expert, .steepness(percent: 27)))

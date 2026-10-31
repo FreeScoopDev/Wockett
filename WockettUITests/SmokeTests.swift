@@ -1570,14 +1570,19 @@ final class SmokeTests: XCTestCase {
                                  "Start below the fold at \(size): \(frame) in \(window)")
         // After the frame: hittability alone misses below-the-fold.
         XCTAssertTrue(start.isHittable, "Start must be tappable without scrolling at \(size)")
+        // The bar (picker and Start) keeps to a quarter of the screen, the
+        // spec's limit for keeping the picker in it: 138 pt, 16 %, at
+        // Accessibility 2 on an iPhone 17e.
+        let bar = el("routes.detailActionBar")
+        XCTAssertTrue(bar.exists, "The saved route must show its action bar")
+        XCTAssertLessThanOrEqual(bar.frame.height, window.height * 0.25,
+                                 "The bar must stay within a quarter of the screen at \(size): \(bar.frame)")
         // At the default size the decision summary is on the first screen
         // too, wholly above the bar (picker and Start). Without the network
         // (CI) it is the short form: climb calculating or unavailable.
         if contentSize == nil {
             let summary = el("routes.detailSummary")
-            let bar = el("routes.detailActionBar")
             XCTAssertTrue(summary.exists, "The saved route must show its summary")
-            XCTAssertTrue(bar.exists, "The saved route must show its action bar")
             XCTAssertLessThanOrEqual(summary.frame.maxY, bar.frame.minY,
                                      "The summary must sit above the bar on the first screen: \(summary.frame) vs \(bar.frame)")
         }
