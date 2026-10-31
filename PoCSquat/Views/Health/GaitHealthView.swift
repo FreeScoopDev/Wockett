@@ -380,21 +380,9 @@ private struct GaitMetricCard: View {
         }
     }
 
-    private var recent7: [Double] { snapshots.suffix(7).compactMap { config.values($0) } }
-    private var prior7:  [Double] { snapshots.dropLast(7).suffix(7).compactMap { config.values($0) } }
-
-    private var currentAvg: Double? {
-        recent7.isEmpty ? nil : recent7.reduce(0, +) / Double(recent7.count)
-    }
-
-    private var trendPct: Double? {
-        guard let cur = currentAvg, !prior7.isEmpty else { return nil }
-        let prev = prior7.reduce(0, +) / Double(prior7.count)
-        guard prev > 0 else { return nil }
-        return (cur - prev) / prev * 100
-    }
-
     var body: some View {
+        let sampling = GaitSampling(snapshots, value: config.values)
+        let currentAvg = sampling.recentAverage
         Button(action: onTap) {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 8) {
@@ -414,11 +402,17 @@ private struct GaitMetricCard: View {
                         .font(.wktRowTitle.monospacedDigit())
                         .foregroundColor(.earthCream)
 
-                    HStack(spacing: 6) {
-                        let st = config.statusOf(cur)
-                        WktStatusChip(text: st.label, dot: st.color)
-                        Spacer(minLength: 0)
-                        if let t = trendPct { trendBadge(t) }
+                    // Side by side when both fit the narrow card, else stacked.
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 6) {
+                            statusOrCount(cur, sampling)
+                            Spacer(minLength: 0)
+                            if let t = sampling.trendPct { trendBadge(t) }
+                        }
+                        VStack(alignment: .leading, spacing: 6) {
+                            statusOrCount(cur, sampling)
+                            if let t = sampling.trendPct { trendBadge(t) }
+                        }
                     }
                 } else {
                     Text("–")
@@ -435,15 +429,28 @@ private struct GaitMetricCard: View {
         .accessibilityElement(children: .combine)
     }
 
+    /// The status, or with too few days for one, how many days there are.
+    @ViewBuilder
+    private func statusOrCount(_ avg: Double, _ sampling: GaitSampling) -> some View {
+        if sampling.showsStatus {
+            let st = config.statusOf(avg)
+            WktStatusChip(text: st.label, dot: st.color)
+        } else {
+            Text("\(GaitSampling.daysText(sampling.recent.count)) of data")
+                .font(.wktLabel)
+                .foregroundColor(.earthMuted)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    // Neutral: which way a gait number moves is not a health judgement.
     private func trendBadge(_ pct: Double) -> some View {
-        let isUp   = pct >= 0
-        let isGood = config.higherIsBetter ? isUp : !isUp
-        return HStack(spacing: 2) {
-            Image(wkt: isUp ? .arrowUp : .arrowDown)
+        HStack(spacing: 2) {
+            Image(wkt: pct >= 0 ? .arrowUp : .arrowDown)
             Text(String(format: "%.0f%%", abs(pct)))
         }
         .font(.wktLabel)
-        .foregroundColor(isGood ? .earthGreen : .earthOrange)
+        .foregroundColor(.earthMuted)
         .lineLimit(1)
         .fixedSize()
     }
@@ -477,28 +484,26 @@ struct GaitMetricDetailContentView: View {
     let config:    GaitMetricConfig
     let snapshots: [GaitDaySnapshot]
 
+    @State private var showsTips = false
+
     // Computed statistics
     private var allValues:   [Double] { snapshots.compactMap { config.values($0) } }
-    private var recent7:     [Double] { snapshots.suffix(7).compactMap { config.values($0) } }
-    private var prior7:      [Double] { snapshots.dropLast(7).suffix(7).compactMap { config.values($0) } }
+    private var sampling:    GaitSampling { GaitSampling(snapshots, value: config.values) }
 
-    private var sevenDayAvg: Double? {
-        recent7.isEmpty ? nil : recent7.reduce(0, +) / Double(recent7.count)
-    }
-    private var thirtyDayAvg: Double? {
-        allValues.isEmpty ? nil : allValues.reduce(0, +) / Double(allValues.count)
-    }
-    private var bestValue: Double? {
+    private var sevenDayAvg: Double? { sampling.recentAverage }
+    private var thirtyDayAvg: Double? { GaitSampling.average(allValues) }
+    /// The highest speed or step length, the lowest double support or asymmetry.
+    private var extremeValue: Double? {
         config.higherIsBetter ? allValues.max() : allValues.min()
     }
-    private var trendPct: Double? {
-        guard let cur = sevenDayAvg, !prior7.isEmpty else { return nil }
-        let prev = prior7.reduce(0, +) / Double(prior7.count)
-        guard prev > 0 else { return nil }
-        return (cur - prev) / prev * 100
-    }
+    private var trendPct: Double? { sampling.trendPct }
     private var currentStatus: GaitStatus? {
-        sevenDayAvg.map { config.statusOf($0) }
+        sampling.showsStatus ? sevenDayAvg.map { config.statusOf($0) } : nil
+    }
+    /// A dot or bar's colour: its status only when the 7-day status shows, so a
+    /// thin week judges no single day either; otherwise the line's green.
+    private func pointColor(_ value: Double) -> Color {
+        currentStatus == nil ? .earthGreen : config.statusOf(value).color
     }
 
     // Day-of-week averages (0 = Sunday … 6 = Saturday)
@@ -559,17 +564,16 @@ struct GaitMetricDetailContentView: View {
             badge: WktIconBadge(symbol: config.symbol, size: 48),
             value: sevenDayAvg.map { config.format($0) } ?? "No data yet",
             valueColor: sevenDayAvg == nil ? .earthMuted : .earthCream,
-            subtitle: "7-day average · Normal: \(config.normalRange)"
+            subtitle: "7-day average, \(GaitSampling.basedOnText(sampling.recent.count, of: 7))"
+                + " · Normal: \(config.normalRange)"
         ) {
             if let st = currentStatus {
                 WktStatusChip(text: st.label, dot: st.color)
             }
             if let t = trendPct {
-                let isGood = (config.higherIsBetter && t >= 0) || (!config.higherIsBetter && t <= 0)
-                WktStatusChip(text: String(format: "%+.1f%% vs prior 7 days", t),
-                              textColor: isGood ? .earthGreen : .earthOrange) {
+                WktStatusChip(text: String(format: "%+.1f%% vs prior 7 days", t), textColor: .earthMuted) {
                     Image(wkt: t >= 0 ? .arrowUp : .arrowDown)
-                        .wktIcon(.inline, tint: isGood ? .earthGreen : .earthOrange)
+                        .wktIcon(.inline, tint: .earthMuted)
                 }
             }
         }
@@ -599,7 +603,7 @@ struct GaitMetricDetailContentView: View {
                 // Colored dots per status
                 ForEach(chartPts) { pt in
                     PointMark(x: .value("Day", pt.date), y: .value("Value", pt.value))
-                        .foregroundStyle(config.statusOf(pt.value).color)
+                        .foregroundStyle(pointColor(pt.value))
                         .symbolSize(18)
                 }
                 // "Good" threshold reference line
@@ -641,10 +645,12 @@ struct GaitMetricDetailContentView: View {
 
     private var statsGrid: some View {
         WktStatGrid(items: [
-            .init(label: "7-day avg", value: sevenDayAvg.map { config.format($0) } ?? "–", note: "last 7 days"),
-            .init(label: "30-day avg", value: thirtyDayAvg.map { config.format($0) } ?? "–", note: "last 30 days"),
-            .init(label: "Personal best", value: bestValue.map { config.format($0) } ?? "–",
-                  note: config.higherIsBetter ? "highest recorded" : "lowest recorded"),
+            .init(label: "7-day avg", value: sevenDayAvg.map { config.format($0) } ?? "–",
+                  note: GaitSampling.basedOnText(sampling.recent.count, of: 7)),
+            .init(label: "30-day avg", value: thirtyDayAvg.map { config.format($0) } ?? "–",
+                  note: GaitSampling.basedOnText(allValues.count, of: 30)),
+            .init(label: config.higherIsBetter ? "Highest recorded" : "Lowest recorded",
+                  value: extremeValue.map { config.format($0) } ?? "–", note: "in the last 30 days"),
             .init(label: "Trend", value: trendPct.map { String(format: "%+.1f%%", $0) } ?? "–",
                   note: "vs prior 7 days")
         ])
@@ -669,7 +675,7 @@ struct GaitMetricDetailContentView: View {
                             .lineLimit(1)
                             .minimumScaleFactor(0.5)
                         Capsule()
-                            .fill(config.statusOf(entry.value).color)
+                            .fill(pointColor(entry.value))
                             .frame(height: max(12, 60 * normalized))
                             .frame(maxWidth: 22)
                         Text(entry.label)
@@ -705,9 +711,30 @@ struct GaitMetricDetailContentView: View {
 
     // MARK: Tips
 
+    // Closed until asked for: advice on how to change a gait number should
+    // not be the page's last word. Not remembered between visits.
     private var tipsSection: some View {
-        WktInfoSection(title: "How to improve") {
-            WktNumberedList(items: config.tips)
+        VStack(alignment: .leading, spacing: 12) {
+            Button {
+                withAnimation(.snappy(duration: 0.22)) { showsTips.toggle() }
+            } label: {
+                HStack {
+                    Text("Tips")
+                        .font(.wktRowTitle)
+                        .foregroundColor(.earthCream)
+                    Spacer(minLength: 0)
+                    Image(wkt: .chevronDown)
+                        .wktIcon(.inline, tint: .earthMuted)
+                        .rotationEffect(.degrees(showsTips ? 180 : 0))
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityValue(showsTips ? "Expanded" : "Collapsed")
+            .accessibilityHint(showsTips ? "Hides the tips" : "Shows the tips")
+            if showsTips { WktNumberedList(items: config.tips) }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .wktCard()
     }
 }
