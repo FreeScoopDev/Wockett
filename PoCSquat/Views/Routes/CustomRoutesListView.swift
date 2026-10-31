@@ -426,6 +426,7 @@ struct CustomRouteDetailView: View {
 
     private func loadLegs() async {
         isLoading = true
+        elevationFinished = false  // an edited route needs its climb measured again
         if !isClassified {
             recordedLine = RecordedRoute.line(for: route.waypoints.map { $0.clCoordinate }, isLoop: route.isLoop)
             isClassified = true
@@ -465,8 +466,7 @@ struct CustomRouteDetailView: View {
             let pts = leg.polyline.points()
             return (0..<leg.polyline.pointCount).map { pts[$0].coordinate }
         }
-        elevationFinished = elevationProfile != nil
-        if !polylineCoords.isEmpty, elevationProfile == nil {
+        if !polylineCoords.isEmpty {
             elevationProfile = try? await ElevationService.shared.fetchProfile(for: polylineCoords)
         }
         // A fetch cancelled by a push is not a failure: the next .task retries.
