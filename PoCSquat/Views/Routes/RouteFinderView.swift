@@ -40,6 +40,7 @@ struct RouteFinderContentView: View {
     // Navigation & sheets
     @State private var showNearbySheet = false
     @State private var showDestSearch = false
+    @State private var showRouteBuilder = false
     @State private var showActiveSessionAlert = false
 
     // Active search task — stored so it can be cancelled on retry or dismissal
@@ -129,6 +130,15 @@ struct RouteFinderContentView: View {
         .onChange(of: routeManager.lastLocation) { _, _ in
             if mode == .trails { refreshTrails() }
         }
+        // Back from Settings with location on: nothing else would fetch a
+        // fix, and Trails would wait on "Finding your location…" for ever.
+        // Turned off: the list and the map drop their trails.
+        .onChange(of: routeManager.locationState) { old, new in
+            if new.canFindRoutes, !old.canFindRoutes {
+                Task { routeManager.lastLocation = await routeManager.fetchCurrentLocation() }
+            }
+            if mode == .trails { refreshTrails() }
+        }
         .onAppear {
             if let dest = tabRouter.pendingRoutesDestination { open(dest) }
             if routeManager.lastLocation == nil {
@@ -171,6 +181,12 @@ struct RouteFinderContentView: View {
                     }
                     await loadWeather()
                 }
+            }
+        }
+        .navigationDestination(isPresented: $showRouteBuilder) {
+            CustomRouteBuilderView { route in
+                routeStore.save(route)
+                UserDefaults.standard.set(true, forKey: "wkt_customRouteCreated")
             }
         }
         .sheet(isPresented: $showDestSearch) {
@@ -255,6 +271,8 @@ struct RouteFinderContentView: View {
                 beginGuidedSession(plan.navigableRoute(activityMode: activityMode))
             },
             onStartApproach: { route in beginGuidedSession(route) },
+            locationState: routeManager.locationState,
+            onPlanOnMap: { showRouteBuilder = true },
             refreshLocation: {
                 guard !isWKTUITestMode, let fresh = await routeManager.fetchCurrentLocation(maxAge: 30) else { return }
                 routeManager.lastLocation = fresh
@@ -294,9 +312,13 @@ struct RouteFinderContentView: View {
     /// Under -WKTUITest RouteManager reports Times Square, where there is no
     /// trail pack, so the Trails list searches from downtown Raleigh instead
     /// and the smoke test has real data. Compiled out of release builds.
+    /// With location off or restricted there is none, even a stale one: the
+    /// panel says location is off, so the map shows no trails either.
     private var trailCenter: CLLocationCoordinate2D? {
+        let state = routeManager.locationState
+        guard state.canFindRoutes else { return nil }
         // -WKTDemo wins when both flags are passed: its fixed location is lastLocation.
-        isWKTUITestMode && !isWKTDemoMode
+        return isWKTUITestMode && !isWKTDemoMode
             ? CLLocationCoordinate2D(latitude: 35.7796, longitude: -78.6382)
             : routeManager.lastLocation?.coordinate
     }
@@ -342,7 +364,8 @@ struct RouteFinderContentView: View {
     // MARK: - Config panel
 
     private func configPanel() -> some View {
-        VStack(spacing: 0) {
+        let location = routeManager.locationState
+        return VStack(spacing: 0) {
             Capsule()
                 .fill(Color.earthMuted.opacity(0.3))
                 .frame(width: 36, height: 4)
@@ -368,6 +391,11 @@ struct RouteFinderContentView: View {
                     .padding(.horizontal, 20)
                 }
 
+                if let reason = location.message {
+                    LocationRecoveryActions.reason(reason)
+                        .padding(.horizontal, 20)
+                }
+
                 Button(action: triggerRecommend) {
                     WktBusyLabel(isBusy: routeManager.isGenerating, fill: .earthGreenFill.opacity(0.7)) {
                         WktPrimaryLabel(title: "Find Routes", symbol: .mapFill)
@@ -381,9 +409,15 @@ struct RouteFinderContentView: View {
                     }
                 }
                 .buttonStyle(BounceButtonStyle(scale: 0.98))
-                .disabled(routeManager.isGenerating)
+                .disabled(routeManager.isGenerating || !location.canFindRoutes)
+                .opacity(location.canFindRoutes ? 1 : 0.5)
                 .accessibilityIdentifier("routes.findRoutes")
                 .padding(.horizontal, 20)
+
+                if location.showsPlanOnMap {
+                    LocationRecoveryActions(state: location, activityMode: activityMode) { showRouteBuilder = true }
+                        .padding(.horizontal, 20)
+                }
 
                 if let err = routeManager.locationError {
                     HStack(spacing: 6) {
@@ -396,42 +430,46 @@ struct RouteFinderContentView: View {
                     .padding(.horizontal, 20)
                     .transition(.opacity.combined(with: .move(edge: .top)))
 
-                    Button(action: triggerNearbyLoops) {
-                        HStack(spacing: 6) {
-                            Image(wkt: .loop).wktIcon(.inline, tint: .earthGreen)
-                            Text("Try nearby loops instead")
+                    if location.offersNearbyLoops(afterLocationFailure: routeManager.locationFailed) {
+                        Button(action: triggerNearbyLoops) {
+                            HStack(spacing: 6) {
+                                Image(wkt: .loop).wktIcon(.inline, tint: .earthGreen)
+                                Text("Try nearby loops instead")
+                            }
+                            .font(.wktBodyText)
+                            .foregroundColor(.earthGreen)
                         }
-                        .font(.wktBodyText)
-                        .foregroundColor(.earthGreen)
+                        .padding(.horizontal, 20)
+                        .transition(.opacity)
                     }
-                    .padding(.horizontal, 20)
-                    .transition(.opacity)
                 }
 
-                HStack(spacing: 20) {
-                    Button { showDestSearch = true } label: {
-                        HStack(spacing: 4) {
-                            Image(wkt: .find).wktIcon(.inline, tint: .earthMuted)
-                            Text("Search a place")
+                if location.showsNearbyActions {
+                    HStack(spacing: 20) {
+                        Button { showDestSearch = true } label: {
+                            HStack(spacing: 4) {
+                                Image(wkt: .find).wktIcon(.inline, tint: .earthMuted)
+                                Text("Search a place")
+                            }
+                            .font(.wktLabel)
+                            .foregroundColor(.earthMuted)
+                            .frame(minHeight: 44)
                         }
-                        .font(.wktLabel)
-                        .foregroundColor(.earthMuted)
-                        .frame(minHeight: 44)
-                    }
-                    Rectangle()
-                        .fill(Color.earthTrack)
-                        .frame(width: 1, height: 14)
-                    Button { showNearbySheet = true } label: {
-                        HStack(spacing: 4) {
-                            Image(wkt: .locationOn).wktIcon(.inline, tint: .earthMuted)
-                            Text("Nearby places")
+                        Rectangle()
+                            .fill(Color.earthTrack)
+                            .frame(width: 1, height: 14)
+                        Button { showNearbySheet = true } label: {
+                            HStack(spacing: 4) {
+                                Image(wkt: .locationOn).wktIcon(.inline, tint: .earthMuted)
+                                Text("Nearby places")
+                            }
+                            .font(.wktLabel)
+                            .foregroundColor(.earthMuted)
+                            .frame(minHeight: 44)
                         }
-                        .font(.wktLabel)
-                        .foregroundColor(.earthMuted)
-                        .frame(minHeight: 44)
                     }
+                    .padding(.bottom, 4)
                 }
-                .padding(.bottom, 4)
             }
             // 14, not 14 + safeAreaInsets.bottom. Measured on an iPhone 17
             // (2026-09-05): this panel's content already ends exactly at the top of

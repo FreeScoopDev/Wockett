@@ -1132,6 +1132,48 @@ final class SmokeTests: XCTestCase {
         XCTAssertTrue(firstCard.waitForExistence(timeout: 10))
     }
 
+    // MARK: - 7a. Location off
+
+    /// With location denied, Routes explains it before any search and offers
+    /// only what can work: Open Settings and Plan on the map, not Find Routes
+    /// or the nearby actions (spec fix/route-location-recovery, criteria 1
+    /// and 3). `-WKTLocationOff` makes RouteManager report a denial even
+    /// under -WKTUITest. Open Settings is never tapped: it leaves the app.
+    func testRoutesExplainLocationOffBeforeAnySearch() {
+        app.terminate()
+        app.launchArguments = ["-WKTUITest", "-WKTLocationOff"]
+        app.launch()
+        XCTAssertTrue(el("home.statCard").waitForExistence(timeout: 30))
+        selectTab("Routes")
+
+        let findRoutes = app.buttons["routes.findRoutes"]
+        XCTAssertTrue(findRoutes.waitForExistence(timeout: 30))
+        XCTAssertFalse(findRoutes.isEnabled, "Find Routes must be disabled with location off")
+        let reason = "Location is off for Wockett, so routes can't start from where you are."
+        XCTAssertTrue(app.staticTexts[reason].exists, "The reason must show before any search")
+        XCTAssertTrue(app.buttons["routes.openSettings"].exists, "Routes must offer Open Settings")
+        XCTAssertTrue(app.buttons["routes.planOnMap"].exists, "Routes must offer Plan on the map")
+        // "Try nearby loops" shows only after a failed search, which can't
+        // happen here: RouteLocationStateTests covers its rule.
+        for title in ["Search a place", "Nearby places"] {
+            XCTAssertFalse(app.buttons[title].exists, "\(title) needs a location and must be hidden")
+        }
+
+        let picker = el("routes.modePicker")
+        picker.buttons["Trails"].tap()
+        XCTAssertTrue(el("routes.trailsPanel").waitForExistence(timeout: 15))
+        // The Routes panel leaves with an animation; until it has gone, its
+        // reason and buttons would satisfy the Trails assertions below.
+        XCTAssertTrue(findRoutes.waitForNonExistence(timeout: 10), "The Routes panel must give way to Trails")
+        XCTAssertTrue(app.staticTexts[reason].waitForExistence(timeout: 10), "Trails must give the same reason")
+        XCTAssertTrue(app.buttons["routes.openSettings"].exists, "Trails must offer Open Settings")
+        XCTAssertFalse(app.buttons["routes.trailCard"].firstMatch.exists, "No trails can be listed without a location")
+
+        app.buttons["routes.planOnMap"].tap()
+        XCTAssertTrue(app.navigationBars["Build Route"].waitForExistence(timeout: 15),
+                      "Plan on the map must open the route builder")
+    }
+
     // MARK: - 7b. My contributions
 
     /// Settings → Community → My contributions opens, and with nothing

@@ -34,16 +34,32 @@ private actor DirectionsThrottler {
 
 // MARK: - Route Manager
 
+/// `-WKTUITest -WKTLocationOff` makes RouteManager report location as denied
+/// and find none, so a UI test can reach the location-off panel. Always off
+/// in release builds, where `isWKTUITestMode` is false.
+enum LocationOffForTests {
+    static let isOn = isWKTUITestMode && ProcessInfo.processInfo.arguments.contains("-WKTLocationOff")
+}
+
 @MainActor
 final class RouteManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     @Published var suggestedRoutes: [SuggestedRoute] = []
     @Published var isGenerating   = false
-    @Published var locationError: String?
+    @Published var locationError: String? {
+        didSet { if locationError == nil { locationFailed = false } }
+    }
+    /// The last search failed for want of a location, not for want of routes:
+    /// "Try nearby loops" would fail the same way, so the panel leaves it out.
+    @Published private(set) var locationFailed = false
     @Published var authStatus: CLAuthorizationStatus = .notDetermined
     @Published var lastLocation: CLLocation?
 
     private let locationManager = CLLocationManager()
     nonisolated(unsafe) private var locationContinuation: CheckedContinuation<CLLocation?, Never>?
+    /// Searches waiting for the answer to the permission prompt. A list, and
+    /// apart from `locationContinuation`: Routes opening and a Find Routes tap
+    /// can both be waiting, and neither may drop the other.
+    private var authWaiters: [CheckedContinuation<Void, Never>] = []
     // Monotonically-increasing token: each new search increments this so stale
     // tasks from a cancelled search can't overwrite isGenerating or suggestedRoutes.
     private var searchGeneration = 0
@@ -51,6 +67,13 @@ final class RouteManager: NSObject, ObservableObject, CLLocationManagerDelegate 
     /// permission prompt. Only `-WKTDemo` passes one (DemoMode, debug builds);
     /// the app passes nil otherwise, which is the path users run.
     private let fixedLocation: CLLocation?
+
+    /// What Routes and Trails offer. Built from `authStatus`, which only the
+    /// delegate fills, so no view reads CoreLocation's permission on main.
+    var locationState: RouteLocationState {
+        RouteLocationState.make(auth: LocationOffForTests.isOn ? .denied : authStatus,
+                                bypass: !LocationOffForTests.isOn && (fixedLocation != nil || isWKTUITestMode))
+    }
 
     override convenience init() {
         self.init(fixedLocation: nil)
@@ -76,7 +99,7 @@ final class RouteManager: NSObject, ObservableObject, CLLocationManagerDelegate 
         #if DEBUG
         // Not with -WKTDemo as well: the recording wants real routes around the
         // demo location, not this stub.
-        if isWKTUITestMode, fixedLocation == nil {
+        if isWKTUITestMode, fixedLocation == nil, !LocationOffForTests.isOn {
             let origin = CLLocationCoordinate2D(latitude: 40.7589, longitude: -73.9851)
             let dest   = CLLocationCoordinate2D(latitude: 40.7650, longitude: -73.9780)
             var pts    = [origin, dest, origin]
@@ -107,7 +130,7 @@ final class RouteManager: NSObject, ObservableObject, CLLocationManagerDelegate 
         defer { if searchGeneration == myGen { isGenerating = false } }
 
         guard let location = await currentLocation() else {
-            locationError = "Unable to get your location. Check that location permission is granted."
+            failNoLocation()
             return
         }
         lastLocation = location
@@ -147,7 +170,7 @@ final class RouteManager: NSObject, ObservableObject, CLLocationManagerDelegate 
         defer { if searchGeneration == myGen { isGenerating = false } }
 
         guard let location = await currentLocation() else {
-            locationError = "Unable to get your location. Check that location permission is granted."
+            failNoLocation()
             return
         }
         lastLocation = location
@@ -241,7 +264,7 @@ final class RouteManager: NSObject, ObservableObject, CLLocationManagerDelegate 
         defer { isGenerating = false }
 
         guard let location = await currentLocation() else {
-            locationError = "Unable to get your location. Check that location permission is granted."
+            failNoLocation()
             return
         }
         lastLocation = location
@@ -274,7 +297,7 @@ final class RouteManager: NSObject, ObservableObject, CLLocationManagerDelegate 
         defer { isGenerating = false }
 
         guard let location = await currentLocation() else {
-            locationError = "Unable to get your location. Check that location permission is granted."
+            failNoLocation()
             return
         }
         lastLocation = location
@@ -468,13 +491,30 @@ final class RouteManager: NSObject, ObservableObject, CLLocationManagerDelegate 
 
     // MARK: - Location
 
+    /// Denied or restricted in the meantime (a prompt answered Don't Allow):
+    /// the panel's own explanation replaces this error, so it stays unset.
+    private func failNoLocation() {
+        if locationState.canFindRoutes {
+            locationError = "Unable to get your location. Check that location permission is granted."
+        }
+        locationFailed = true
+    }
+
     private func currentLocation(maxAge: TimeInterval = 300) async -> CLLocation? {
+        if LocationOffForTests.isOn { return nil }
         // First, so -WKTDemo wins over -WKTUITest's Times Square when both are passed.
         if let fixedLocation { return fixedLocation }
         if isWKTUITestMode {
             return CLLocation(latitude: 40.7589, longitude: -73.9851)
         }
-        if authStatus == .notDetermined { locationManager.requestWhenInUseAuthorization() }
+        // Wait for the answer: guarding on the status straight after asking
+        // saw .notDetermined and failed while iOS was still showing the prompt.
+        if authStatus == .notDetermined {
+            await withCheckedContinuation { cont in
+                authWaiters.append(cont)
+                locationManager.requestWhenInUseAuthorization()
+            }
+        }
         guard authStatus == .authorizedWhenInUse || authStatus == .authorizedAlways else { return nil }
         if let cached = locationManager.location, -cached.timestamp.timeIntervalSinceNow < maxAge { return cached }
         return await withCheckedContinuation { cont in
@@ -502,6 +542,7 @@ final class RouteManager: NSObject, ObservableObject, CLLocationManagerDelegate 
             locationContinuation?.resume(returning: nil)
             locationContinuation = nil
             locationError = "Location error: \(error.localizedDescription)"
+            locationFailed = true
         }
     }
 
@@ -511,6 +552,12 @@ final class RouteManager: NSObject, ObservableObject, CLLocationManagerDelegate 
         // inside a @Sendable closure — an error under Swift 6. Same shape as
         // didUpdateLocations above, which already hoists its value out first.
         let status = manager.authorizationStatus
-        Task { @MainActor in authStatus = status }
+        Task { @MainActor in
+            authStatus = status
+            guard status != .notDetermined else { return }
+            let waiters = authWaiters
+            authWaiters = []
+            waiters.forEach { $0.resume() }
+        }
     }
 }
