@@ -74,6 +74,9 @@ import Testing
         #expect(sampling(threeOfSeven + twoAt12).trendPct == nil)
         #expect(sampling(threeOfSeven + oneAt12).trendPct == nil)
         #expect(sampling(none + threeAt12).trendPct == nil)
+        // A prior week averaging 0 has no percentage change (not +inf).
+        let zeros: [Double?] = [0, nil, 0, nil, 0, nil, nil]
+        #expect(sampling(zeros + threeAt12).trendPct == nil)
 
         // 1.2 against 1.0: +20%.
         let pct = sampling(threeOfSeven + threeAt12).trendPct
