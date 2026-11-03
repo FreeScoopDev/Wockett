@@ -44,15 +44,38 @@ enum StartReach: Equatable {
         case askFar(meters: Double)
     }
 
-    /// Ask only when a recent fix puts the person further than the threshold
-    /// from the route's first point. No fix, an old one, or a close one: start.
+    /// Ask only when a recent, usable fix puts the person further than the
+    /// threshold from the route's first point even at the near edge of its
+    /// error circle: `distance - horizontalAccuracy > threshold`. With Precise
+    /// Location off, or a cached Wi-Fi fix, the reported point can be
+    /// kilometres off, and that must not make Start say "far". A fix with a
+    /// negative accuracy is invalid (Core Location's own convention). No fix,
+    /// an old one, an invalid one, a close one, or one too vague to tell: start.
     static func decision(fix: CLLocation?,
                          routeStart: CLLocationCoordinate2D?,
                          now: Date = Date()) -> Decision {
-        if case let .far(meters) = check(live: freshCoordinate(fix, now: now), routeStart: routeStart) {
-            return .askFar(meters: meters)
-        }
-        return .startNow
+        guard let fix, fix.horizontalAccuracy >= 0,
+              case let .far(meters) = check(live: freshCoordinate(fix, now: now), routeStart: routeStart),
+              meters - fix.horizontalAccuracy > thresholdMeters else { return .startNow }
+        return .askFar(meters: meters)
+    }
+
+    /// What Start remembers at the tap, so it can tell after the fix comes
+    /// back whether the screen still shows the same thing.
+    struct Tap: Equatable {
+        let routeID: UUID
+        let activityMode: ActivityMode
+    }
+
+    /// Whether a Start tap may still act once its fix has come back: the same
+    /// route is still selected, the activity is the one tapped, and the Routes
+    /// results are still showing (not Trails, not gone). Otherwise the walk it
+    /// would start, or the question it would ask, is no longer what is on screen.
+    static func tapStillCurrent(_ tap: Tap,
+                                selectedRouteID: UUID?,
+                                activityMode: ActivityMode,
+                                showingRoutes: Bool) -> Bool {
+        showingRoutes && selectedRouteID == tap.routeID && activityMode == tap.activityMode
     }
 
     static func check(live: CLLocationCoordinate2D?,

@@ -39,6 +39,12 @@ enum ActivityMode: String, Codable {
     /// (`feat/run-pace-splits`).
     var hasPaceAndSplits: Bool { self == .walking || self == .running }
 
+    /// Apple Maps directions for this activity: a ride gets cycling
+    /// directions, everything else walking ones.
+    var mapsDirectionsMode: String {
+        self == .cycling ? MKLaunchOptionsDirectionsModeCycling : MKLaunchOptionsDirectionsModeWalking
+    }
+
     /// Every outdoor activity records its climb from GPS altitude, rides
     /// included; indoor has no GPS (`feat/walk-elevation-gain`).
     var recordsElevation: Bool { self != .stationary }
@@ -282,10 +288,7 @@ struct SuggestedRoute: Identifiable {
     }
 
     func openInAppleMaps(activityMode: ActivityMode = .walking) {
-        let mode = activityMode == .cycling
-            ? MKLaunchOptionsDirectionsModeCycling
-            : MKLaunchOptionsDirectionsModeWalking
-        openInMapsItem.openInMaps(launchOptions: [MKLaunchOptionsDirectionsModeKey: mode])
+        openInMapsItem.openInMaps(launchOptions: [MKLaunchOptionsDirectionsModeKey: activityMode.mapsDirectionsMode])
     }
 
     func toNavigableRoute(activityMode: ActivityMode = .walking) -> NavigableRoute {

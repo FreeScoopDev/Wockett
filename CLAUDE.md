@@ -217,7 +217,9 @@ way unless there's a strong reason; adding the first one is a real decision.
   `session.confirmFinish`), `summary.root`,
   `summary.done`, `accessory.miniTile`, `health.root`, `community.root`,
   `settings.root`, `routes.findRoutes`, `routes.resultsPanel`,
-  `routes.routeCard`, `routes.startWalk`, `routes.weatherTile`,
+  `routes.routeCard`, `routes.startWalk`, `routes.startFarAnyway` (Start
+  anyway, in the question a route that starts over 1 km away asks),
+  `routes.weatherTile`,
   `terms.sheet`, `terms.agree`, `terms.cancel`, `challenge.create.name`,
   `challenge.create.submit`, `challenge.create.error`, `home.tile.indoor`,
   `indoor.finish`, `home.recent` (Home's Recent activity; absent with no

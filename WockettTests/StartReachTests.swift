@@ -115,4 +115,74 @@ struct StartReachTests {
         let now = Date()
         #expect(StartReach.decision(fix: Self.fix(secondsAgo: 5, now: now), routeStart: Self.raleigh, now: now) == .startNow)
     }
+
+    // MARK: - How sure the fix is
+
+    /// About 1.5 km north of Raleigh: past the 1 km line.
+    private static let fifteenHundredNorth = CLLocationCoordinate2D(latitude: 35.7796 + 0.0135, longitude: -78.6382)
+
+    private static func fixAt(_ c: CLLocationCoordinate2D, accuracy: Double, now: Date) -> CLLocation {
+        CLLocation(coordinate: c, altitude: 0, horizontalAccuracy: accuracy, verticalAccuracy: 10, timestamp: now)
+    }
+
+    @Test func aVagueFixPastTheLineJustStarts() {
+        // Precise Location off or a cached Wi-Fi fix: the point can be 3 km
+        // off, so 1.5 km away says nothing about being far.
+        let now = Date()
+        let vague = Self.fixAt(Self.fifteenHundredNorth, accuracy: 3_000, now: now)
+        #expect(StartReach.distanceMeters(Self.fifteenHundredNorth, Self.raleigh) > 1_400)
+        #expect(StartReach.decision(fix: vague, routeStart: Self.raleigh, now: now) == .startNow)
+    }
+
+    @Test func aPreciseFixPastTheLineAsks() {
+        let now = Date()
+        let precise = Self.fixAt(Self.fifteenHundredNorth, accuracy: 10, now: now)
+        guard case .askFar = StartReach.decision(fix: precise, routeStart: Self.raleigh, now: now) else {
+            Issue.record("expected .askFar")
+            return
+        }
+    }
+
+    @Test func aVagueFixFarBeyondItsErrorStillAsks() {
+        // Another town 35 km away is far even with a 5 km error circle.
+        let now = Date()
+        let durham = Self.fixAt(Self.durham, accuracy: 5_000, now: now)
+        guard case .askFar = StartReach.decision(fix: durham, routeStart: Self.raleigh, now: now) else {
+            Issue.record("expected .askFar")
+            return
+        }
+    }
+
+    @Test func anInvalidFixJustStarts() {
+        let now = Date()
+        let invalid = Self.fixAt(Self.durham, accuracy: -1, now: now)
+        #expect(StartReach.decision(fix: invalid, routeStart: Self.raleigh, now: now) == .startNow)
+    }
+
+    // MARK: - Is the tap still what is on screen
+
+    private static let tap = StartReach.Tap(routeID: UUID(), activityMode: .walking)
+
+    @Test func anUnchangedScreenLetsTheTapAct() {
+        #expect(StartReach.tapStillCurrent(Self.tap, selectedRouteID: Self.tap.routeID,
+                                           activityMode: .walking, showingRoutes: true))
+    }
+
+    @Test func aDeselectedOrDifferentRouteStopsTheTap() {
+        #expect(!StartReach.tapStillCurrent(Self.tap, selectedRouteID: nil,
+                                            activityMode: .walking, showingRoutes: true))
+        #expect(!StartReach.tapStillCurrent(Self.tap, selectedRouteID: UUID(),
+                                            activityMode: .walking, showingRoutes: true))
+    }
+
+    @Test func aSwitchedActivityStopsTheTap() {
+        // Walk -> Run while the fix was taken must not start a Run.
+        #expect(!StartReach.tapStillCurrent(Self.tap, selectedRouteID: Self.tap.routeID,
+                                            activityMode: .running, showingRoutes: true))
+    }
+
+    @Test func leavingTheRoutesResultsStopsTheTap() {
+        #expect(!StartReach.tapStillCurrent(Self.tap, selectedRouteID: Self.tap.routeID,
+                                            activityMode: .walking, showingRoutes: false))
+    }
 }

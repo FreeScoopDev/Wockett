@@ -46,8 +46,10 @@ struct RouteFinderContentView: View {
     /// A route planned from a chosen place that starts far from where the person is
     /// (spec fix/route-start-far-from-here): Start asks before it records.
     @State private var farStart: FarStart?
-    /// True while Start is taking a fresh location fix, so a second tap waits.
-    @State private var checkingStart = false
+    /// Start taking a fresh location fix. Stored so leaving the results
+    /// (deselecting, Walk/Run, Trails, leaving the screen) cancels it, and
+    /// non-nil drives the button's busy state and ignores a second tap.
+    @State private var startCheckTask: Task<Void, Never>?
 
     // Active search task — stored so it can be cancelled on retry or dismissal
     @State private var activeTask: Task<Void, Never>?
@@ -125,6 +127,7 @@ struct RouteFinderContentView: View {
         .animation(.spring(response: 0.38, dampingFraction: 0.88), value: mode)
         .onChange(of: mode) { _, newMode in
             selectedTrail = nil
+            cancelStartCheck()
             if newMode == .trails { refreshTrails() }
         }
         .onChange(of: trailFinder.filters) { _, _ in refreshTrails() }
@@ -163,7 +166,10 @@ struct RouteFinderContentView: View {
         .onChange(of: tabRouter.pendingRoutesDestination) { _, dest in
             if let dest { open(dest) }
         }
-        .onChange(of: selectedRoute?.id) { _, _ in loadElevation() }
+        .onChange(of: selectedRoute?.id) { _, _ in
+            cancelStartCheck()
+            loadElevation()
+        }
         .onChange(of: activityMode) { _, v in
             UserDefaults.standard.set(v.rawValue, forKey: "wkt_lastActivityMode_v1")
             clearRoutes()
@@ -179,13 +185,15 @@ struct RouteFinderContentView: View {
                                                  set: { if !$0 { farStart = nil } }),
                             titleVisibility: .visible,
                             presenting: farStart) { far in
-            Button("Start anyway") { startWalk(far.route) }
+            Button("Start anyway") { beginGuidedSession(far.route.toNavigableRoute(activityMode: far.activityMode)) }
                 .accessibilityIdentifier("routes.startFarAnyway")
-            Button("Open directions to the start in Apple Maps") { openDirectionsToStart(far.route) }
+            Button("Open directions to the start in Apple Maps") {
+                openDirectionsToStart(far.route, activityMode: far.activityMode)
+            }
             Button("Cancel", role: .cancel) {}
         } message: { far in
             Text("It starts \(MKDistanceFormatter.abbreviated.string(fromDistance: far.meters)) from where you are. "
-                 + "Starting now would record the \(activityMode.noun) from there.")
+                 + "Starting now would record the \(far.activityMode.noun) from there.")
         }
         .communityTermsSheet($termsGate)
         .sheet(item: $routeForPosting) { route in
@@ -325,7 +333,7 @@ struct RouteFinderContentView: View {
         return option.sessionMode(current: activityMode).tileUIColor
     }
 
-    /// A trail walk, or a session heading to a trail, from the Trails panel.
+    /// A trail walk, a session heading to a trail, or a route's Start.
     private func beginGuidedSession(_ route: NavigableRoute) {
         guard ActiveWalkStore.shared.beginSession(route: route) != nil else {
             showActiveSessionAlert = true
@@ -677,6 +685,7 @@ struct RouteFinderContentView: View {
     private struct FarStart: Identifiable {
         let id = UUID()
         let route: SuggestedRoute
+        let activityMode: ActivityMode
         let meters: Double
     }
 
@@ -684,51 +693,64 @@ struct RouteFinderContentView: View {
     /// be another town. When the person has allowed location, take a fresh fix
     /// and ask before recording a walk that begins far from them. Anything else
     /// (their own location was used, location is off, restricted or not yet
-    /// asked for, no fix came back) starts as before: this never prompts for
-    /// location permission and never blocks Start.
-    private func attemptStart(_ route: SuggestedRoute) async {
-        guard !checkingStart else { return }
+    /// asked for, no usable fix came back) starts as before: this never prompts
+    /// for location permission and never blocks Start. The activity is the one
+    /// on screen at the tap; if the screen changed while the fix was taken, the
+    /// tap does nothing (`StartReach.tapStillCurrent`).
+    private func attemptStart(_ route: SuggestedRoute) {
+        guard startCheckTask == nil else { return }
+        let tap = StartReach.Tap(routeID: route.id, activityMode: activityMode)
         guard routeManager.chosenStart != nil, routeManager.locationState.base == .live else {
-            startWalk(route)
+            beginGuidedSession(route.toNavigableRoute(activityMode: tap.activityMode))
             return
         }
-        checkingStart = true
-        let fix = await routeManager.fetchCurrentLocation(maxAge: StartReach.maxFixAgeSeconds)
-        checkingStart = false
-        switch StartReach.decision(fix: fix, routeStart: route.legWaypoints.first) {
-        case .askFar(let meters): farStart = FarStart(route: route, meters: meters)
-        case .startNow: startWalk(route)
+        startCheckTask = Task {
+            let fix = await routeManager.fetchCurrentLocation(maxAge: StartReach.maxFixAgeSeconds)
+            // Cancelled: cancelStartCheck already cleared the slot, which a
+            // newer tap may now hold.
+            guard !Task.isCancelled else { return }
+            startCheckTask = nil
+            guard StartReach.tapStillCurrent(tap, selectedRouteID: selectedRoute?.id, activityMode: activityMode,
+                                             showingRoutes: mode == .routes && !showingConfig) else { return }
+            switch StartReach.decision(fix: fix, routeStart: route.legWaypoints.first) {
+            case .askFar(let meters):
+                farStart = FarStart(route: route, activityMode: tap.activityMode, meters: meters)
+            case .startNow:
+                beginGuidedSession(route.toNavigableRoute(activityMode: tap.activityMode))
+            }
         }
     }
 
-    private func startWalk(_ route: SuggestedRoute) {
-        let nav = route.toNavigableRoute(activityMode: activityMode)
-        guard ActiveWalkStore.shared.beginSession(route: nav) != nil else {
-            showActiveSessionAlert = true
-            return
-        }
-        onNavigateAway?()
+    private func cancelStartCheck() {
+        startCheckTask?.cancel()
+        startCheckTask = nil
     }
 
-    private func openDirectionsToStart(_ route: SuggestedRoute) {
+    private func openDirectionsToStart(_ route: SuggestedRoute, activityMode: ActivityMode) {
         guard let start = route.legWaypoints.first else { return }
         let item = MKMapItem(location: CLLocation(latitude: start.latitude, longitude: start.longitude), address: nil)
         item.name = "Route start"
-        let mode = activityMode == .cycling
-            ? MKLaunchOptionsDirectionsModeCycling
-            : MKLaunchOptionsDirectionsModeWalking
-        item.openInMaps(launchOptions: [MKLaunchOptionsDirectionsModeKey: mode])
+        item.openInMaps(launchOptions: [MKLaunchOptionsDirectionsModeKey: activityMode.mapsDirectionsMode])
     }
 
     private func startWalkButton(for route: SuggestedRoute) -> some View {
         Button {
-            Task { await attemptStart(route) }
+            attemptStart(route)
         } label: {
-            WktPrimaryLabel(title: "Start \(activityMode.sessionLabel)", symbol: activityMode.wktSymbol)
+            WktBusyLabel(isBusy: startCheckTask != nil) {
+                WktPrimaryLabel(title: "Start \(activityMode.sessionLabel)", symbol: activityMode.wktSymbol)
+            } busy: {
+                HStack(spacing: 10) {
+                    ProgressView().tint(.white).scaleEffect(0.9)
+                    Text("Checking location…")
+                        .font(.wktHeading(17))
+                        .foregroundColor(.white)
+                }
+            }
         }
         .buttonStyle(BounceButtonStyle(scale: 0.98))
         .accessibilityIdentifier("routes.startWalk")
-        .disabled(checkingStart)
+        .disabled(startCheckTask != nil)
         .padding(.horizontal, 20)
     }
 
@@ -899,6 +921,7 @@ struct RouteFinderContentView: View {
     private func clearRoutes() {
         activeTask?.cancel()
         activeTask = nil
+        cancelStartCheck()
         elevationTask?.cancel()
         elevationTask = nil
         routeManager.isGenerating = false
