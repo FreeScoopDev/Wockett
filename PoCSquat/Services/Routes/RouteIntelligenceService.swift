@@ -12,10 +12,66 @@ struct HourlyWeatherPoint: Sendable {
     let precipitationChance: Double
 
     var hourLabel: String {
-        if Calendar.current.isDate(date, equalTo: Date(), toGranularity: .hour) { return "Now" }
-        let f = DateFormatter()
-        f.dateFormat = "ha"
-        return f.string(from: date)  // e.g. "3PM"
+        Self.label(for: date, now: Date(), calendar: .autoupdatingCurrent, locale: .autoupdatingCurrent)
+    }
+
+    /// "Now" for the current hour, otherwise the hour in the person's 12/24-hour
+    /// setting ("3 PM", or "15"). A fixed "ha" format ignored that setting.
+    static func label(for date: Date, now: Date, calendar: Calendar, locale: Locale) -> String {
+        if calendar.isDate(date, equalTo: now, toGranularity: .hour) { return "Now" }
+        return ForecastPeriod.hour(date, calendar: calendar, locale: locale)
+    }
+}
+
+/// The words around an hourly forecast: which hours it covers and when it was
+/// fetched. Bare hours crossing midnight ("23, 00, 01") read as a list of
+/// numbers, so the period names its days.
+enum ForecastPeriod {
+    private static func style(_ calendar: Calendar, _ locale: Locale) -> Date.FormatStyle {
+        Date.FormatStyle(date: .omitted, time: .omitted, locale: locale, calendar: calendar, timeZone: calendar.timeZone)
+    }
+
+    /// The hour as the hourly strip shows it: "3 PM" or "15".
+    static func hour(_ date: Date, calendar: Calendar, locale: Locale) -> String {
+        date.formatted(style(calendar, locale).hour())
+    }
+
+    /// A clock time for a sentence: "3 PM" on a 12-hour phone, "15:00" on a
+    /// 24-hour one, where a bare "15" would not read as a time.
+    private static func time(_ date: Date, calendar: Calendar, locale: Locale) -> String {
+        let probe = calendar.date(bySettingHour: 13, minute: 0, second: 0, of: date) ?? date
+        let is24Hour = hour(probe, calendar: calendar, locale: locale).contains("13")
+        return date.formatted(is24Hour ? style(calendar, locale).hour().minute() : style(calendar, locale).hour())
+    }
+
+    private static func day(_ date: Date, now: Date, calendar: Calendar, locale: Locale) -> String {
+        let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: now),
+                                           to: calendar.startOfDay(for: date)).day ?? 0
+        switch days {
+        case -1: return "Yesterday"
+        case 0: return "Today"
+        case 1: return "Tomorrow"
+        default: return date.formatted(style(calendar, locale).weekday(.wide))
+        }
+    }
+
+    /// "Today, 3 PM – 8 PM", or "Today 10 PM – tomorrow 3 AM" when it crosses
+    /// midnight. WeatherKit's hourly forecast can begin hours before now (seen
+    /// starting at 22:00 the evening before, at 08:53), so "Yesterday" is real.
+    static func text(first: Date, last: Date, now: Date, calendar: Calendar, locale: Locale) -> String {
+        let start = time(first, calendar: calendar, locale: locale)
+        let end = time(last, calendar: calendar, locale: locale)
+        let firstDay = day(first, now: now, calendar: calendar, locale: locale)
+        if calendar.isDate(first, inSameDayAs: last) { return "\(firstDay), \(start) – \(end)" }
+        let lastDay = day(last, now: now, calendar: calendar, locale: locale)
+        let relative = ["Yesterday", "Today", "Tomorrow"]
+        let lastDayInSentence = relative.contains(lastDay) ? lastDay.lowercased() : lastDay
+        return "\(firstDay) \(start) – \(lastDayInSentence) \(end)"
+    }
+
+    /// "2:41 PM", or "14:41".
+    static func clock(_ date: Date, calendar: Calendar, locale: Locale) -> String {
+        date.formatted(style(calendar, locale).hour().minute())
     }
 }
 
@@ -26,6 +82,8 @@ struct RouteWeather: Sendable {
     let precipitationChance: Double
     let temperatureCelsius: Double
     let hourlyForecast: [HourlyWeatherPoint]
+    /// WeatherKit's own date for the current conditions (`metadata.date`).
+    let asOf: Date
 
     var statusText: String {
         switch precipitationChance {
@@ -170,7 +228,8 @@ actor RouteWeatherService {
                 temperatureText:      tempText,
                 precipitationChance:  precipChance,
                 temperatureCelsius:   current.temperature.converted(to: .celsius).value,
-                hourlyForecast:       hourly
+                hourlyForecast:       hourly,
+                asOf:                 current.metadata.date
             )
         } catch {
             #if DEBUG
@@ -274,6 +333,8 @@ extension OTDResult: Decodable {
 
 struct WeatherWidget: View {
     let weather: RouteWeather
+    /// Where the forecast is for, shown above the hourly strip; nil shows none.
+    let placeLabel: String?
 
     @State private var isExpanded: Bool
     @Environment(\.dynamicTypeSize) private var typeSize
@@ -282,10 +343,11 @@ struct WeatherWidget: View {
     /// @State initialised from a parameter does not update when that parameter
     /// changes on a re-render, so keeping it as a property would read as live
     /// configuration while silently ignoring changes. The Routes results panel is
-    /// height-capped and passes false to keep route cards above the fold; screens
-    /// with room to spare take the default.
-    init(weather: RouteWeather, initiallyExpanded: Bool = true) {
+    /// Every screen opens it collapsed: the one-line row already says whether
+    /// conditions are good, and the hours are a tap away.
+    init(weather: RouteWeather, placeLabel: String? = nil, initiallyExpanded: Bool = false) {
         self.weather = weather
+        self.placeLabel = placeLabel
         _isExpanded = State(initialValue: initiallyExpanded)
     }
 
@@ -298,14 +360,40 @@ struct WeatherWidget: View {
             .lineLimit(1)
     }
 
-    private var statusLabel: some View {
+    /// `wraps`: the last resort when the row is too narrow for one line. It
+    /// truncated there ("Good conditi…" at the default size on a 17e); now it
+    /// takes a second line instead.
+    private func statusLabel(wraps: Bool = false) -> some View {
         Label(weather.statusText, systemImage: weather.statusSymbol)
             .font(.wktLabel)
             .foregroundColor(weather.statusColor)
             // Wraps at the accessibility sizes: on one line "Good conditions"
             // shrank to its check mark and a clipped glyph, and the longest
             // status, "High chance of rain", may need three lines on a 17e.
-            .lineLimit(typeSize.isAccessibilitySize ? nil : 1)
+            .lineLimit(typeSize.isAccessibilitySize ? nil : (wraps ? 2 : 1))
+            .fixedSize(horizontal: false, vertical: wraps)
+    }
+
+    /// Place, then the hours covered and when WeatherKit's answer is from.
+    /// Wraps rather than truncates.
+    private var caption: some View {
+        let calendar = Calendar.autoupdatingCurrent
+        let locale = Locale.autoupdatingCurrent
+        let hours = weather.hourlyForecast
+        let period = ForecastPeriod.text(first: hours.first?.date ?? weather.asOf,
+                                         last: hours.last?.date ?? weather.asOf,
+                                         now: Date(), calendar: calendar, locale: locale)
+        let freshness = "Updated \(ForecastPeriod.clock(weather.asOf, calendar: calendar, locale: locale))"
+        return VStack(alignment: .leading, spacing: 2) {
+            if let placeLabel { Text(placeLabel) }
+            Text("\(period) · \(freshness)")
+        }
+        .font(.wktLabel)
+        .foregroundColor(.earthMuted)
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("routes.weatherCaption")
     }
 
     var body: some View {
@@ -346,15 +434,15 @@ struct WeatherWidget: View {
                             HStack(spacing: 10) {
                                 conditionText.fixedSize()
                                 Spacer(minLength: 6)
-                                statusLabel.fixedSize()
+                                statusLabel().fixedSize()
                             }
                             HStack(spacing: 0) {
                                 Spacer(minLength: 6)
-                                statusLabel.fixedSize()
+                                statusLabel().fixedSize()
                             }
                             HStack(spacing: 0) {
                                 Spacer(minLength: 6)
-                                statusLabel
+                                statusLabel(wraps: true)
                             }
                         }
 
@@ -386,6 +474,9 @@ struct WeatherWidget: View {
             if isExpanded && hasForecast {
                 WktDivider()
                     .padding(.horizontal, WktSpacing.cardPadding)
+                caption
+                    .padding(.horizontal, WktSpacing.cardPadding)
+                    .padding(.top, 10)
                 HourlyWeatherRow(points: weather.hourlyForecast)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 10)
