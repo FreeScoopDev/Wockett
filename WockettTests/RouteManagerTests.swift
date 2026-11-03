@@ -123,4 +123,51 @@ struct RouteManagerTests {
         #expect(abs(displaced.latitude  - origin.latitude)  < 1e-9)
         #expect(abs(displaced.longitude - origin.longitude) < 1e-9)
     }
+
+    // MARK: - Chosen starting place (spec fix/route-start-place)
+
+    private static let fixed = CLLocation(latitude: 40.0, longitude: -75.0)
+    private static var place: MKMapItem {
+        let item = MKMapItem(location: CLLocation(latitude: 35.7796, longitude: -78.6382), address: nil)
+        item.name = "Pullen Park"
+        return item
+    }
+
+    @Test @MainActor func planningOrigin_prefersTheChosenPlace_andIsNotLive() async throws {
+        let manager = RouteManager(fixedLocation: Self.fixed)
+        manager.choose(Self.place)
+        let origin = try #require(await manager.planningOrigin())
+        #expect(origin.location.coordinate.latitude == 35.7796)
+        #expect(origin.location.coordinate.longitude == -78.6382)
+        #expect(!origin.isLive)
+    }
+
+    /// Community "near you" and trail directions read lastLocation.
+    @Test @MainActor func recordOrigin_neverWritesAChosenPlaceIntoLastLocation() async throws {
+        let manager = RouteManager(fixedLocation: Self.fixed)
+        manager.lastLocation = Self.fixed
+        manager.choose(Self.place)
+        manager.recordOrigin(try #require(await manager.planningOrigin()))
+        #expect(manager.lastLocation?.coordinate.latitude == 40.0)
+    }
+
+    @Test @MainActor func withNoChosenPlace_theLiveLocationIsUsedAndRecorded() async throws {
+        let manager = RouteManager(fixedLocation: Self.fixed)
+        let origin = try #require(await manager.planningOrigin())
+        #expect(origin.isLive)
+        #expect(origin.location.coordinate.latitude == 40.0)
+        manager.recordOrigin(origin)
+        #expect(manager.lastLocation?.coordinate.latitude == 40.0)
+    }
+
+    @Test @MainActor func useMyLocation_clearsTheChosenPlace() async throws {
+        let manager = RouteManager(fixedLocation: Self.fixed)
+        manager.choose(Self.place)
+        #expect(manager.chosenStart?.name == "Pullen Park")
+        #expect(manager.locationState == .chosen(over: .live))
+        manager.useMyLocation()
+        #expect(manager.chosenStart == nil)
+        #expect(manager.locationState == .live)
+        #expect(try #require(await manager.planningOrigin()).isLive)
+    }
 }

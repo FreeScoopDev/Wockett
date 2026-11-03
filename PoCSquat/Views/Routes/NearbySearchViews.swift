@@ -10,6 +10,8 @@ private struct SearchResult: Identifiable {
 }
 
 struct DestinationSearchSheet: View {
+    var title = "Walk to a Destination"
+    var prompt = "Search for anywhere you'd like to walk — a café, park, gym, landmark, or friend's street."
     let userLocation: CLLocation?
     let onSelect: (MKMapItem) -> Void
 
@@ -47,7 +49,7 @@ struct DestinationSearchSheet: View {
                     if searchText.isEmpty {
                         Spacer()
                         WktEmptyState(symbol: .place,
-                                      message: "Search for anywhere you'd like to walk — a café, park, gym, landmark, or friend's street.")
+                                      message: prompt)
                         Spacer()
                     } else if isSearching {
                         Spacer()
@@ -75,7 +77,7 @@ struct DestinationSearchSheet: View {
                     }
                 }
             }
-            .navigationTitle("Walk to a Destination")
+            .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -207,6 +209,7 @@ struct POICategory: Identifiable {
 // MARK: - Nearby Places Sheet
 
 struct NearbyPlacesSheet: View {
+    var title = "What's around you?"
     let fetchLocation: () async -> CLLocation?
     let onSelect: (MKMapItem, Bool) -> Void   // (destination, wantsLoop)
 
@@ -228,7 +231,7 @@ struct NearbyPlacesSheet: View {
                     }
                 }
             }
-            .navigationTitle(selectedCategory?.name ?? "What's around you?")
+            .navigationTitle(selectedCategory?.name ?? title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {

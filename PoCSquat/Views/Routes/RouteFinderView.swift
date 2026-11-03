@@ -40,6 +40,7 @@ struct RouteFinderContentView: View {
     // Navigation & sheets
     @State private var showNearbySheet = false
     @State private var showDestSearch = false
+    @State private var showChooseStart = false
     @State private var showRouteBuilder = false
     @State private var showActiveSessionAlert = false
 
@@ -134,11 +135,13 @@ struct RouteFinderContentView: View {
         // fix, and Trails would wait on "Finding your location…" for ever.
         // Turned off: the list and the map drop their trails.
         .onChange(of: routeManager.locationState) { old, new in
-            if new.canFindRoutes, !old.canFindRoutes {
+            if RouteLocationState.needsFreshFix(from: old, to: new) {
                 Task { routeManager.lastLocation = await routeManager.fetchCurrentLocation() }
             }
             if mode == .trails { refreshTrails() }
         }
+        // Results never mix two starting points.
+        .onChange(of: routeManager.chosenStart) { _, _ in clearRoutes() }
         .onAppear {
             if let dest = tabRouter.pendingRoutesDestination { open(dest) }
             if routeManager.lastLocation == nil {
@@ -170,7 +173,8 @@ struct RouteFinderContentView: View {
             }
         }
         .sheet(isPresented: $showNearbySheet) {
-            NearbyPlacesSheet(fetchLocation: { await routeManager.fetchCurrentLocation() }) { dest, wantsLoop in
+            NearbyPlacesSheet(title: routeManager.chosenStart.map { "What's around \($0.name)?" } ?? "What's around you?",
+                              fetchLocation: { await routeManager.planningOrigin()?.location }) { dest, wantsLoop in
                 clearRoutes()
                 let mode = activityMode
                 Task {
@@ -184,13 +188,13 @@ struct RouteFinderContentView: View {
             }
         }
         .navigationDestination(isPresented: $showRouteBuilder) {
-            CustomRouteBuilderView { route in
+            CustomRouteBuilderView(initialCenter: routeManager.planningCoordinate) { route in
                 routeStore.save(route)
                 UserDefaults.standard.set(true, forKey: "wkt_customRouteCreated")
             }
         }
         .sheet(isPresented: $showDestSearch) {
-            DestinationSearchSheet(userLocation: routeManager.lastLocation) { dest in
+            DestinationSearchSheet(userLocation: routeManager.planningCoordinate.map { CLLocation(latitude: $0.latitude, longitude: $0.longitude) }) { dest in
                 clearRoutes()
                 let mode = activityMode
                 Task {
@@ -198,6 +202,11 @@ struct RouteFinderContentView: View {
                     await loadWeather()
                 }
             }
+        }
+        .sheet(isPresented: $showChooseStart) {
+            DestinationSearchSheet(title: "Choose a starting place",
+                                   prompt: "Search for where you'll start: an address, a park, a station.",
+                                   userLocation: routeManager.lastLocation) { routeManager.choose($0) }
         }
     }
 
@@ -242,7 +251,8 @@ struct RouteFinderContentView: View {
             routes: mode == .routes ? routeManager.suggestedRoutes : [],
             selectedRoute: mode == .routes ? $selectedRoute : .constant(nil),
             goalDistanceMeters: Double(stepManager.currentGoal) * 0.762,
-            userLocation: mode == .trails ? trailCenter : routeManager.lastLocation?.coordinate,
+            userLocation: mode == .trails ? trailCenter : routeManager.planningCoordinate,
+            includesUserDot: mode == .trails || routeManager.chosenStart == nil,
             trails: mode == .trails ? trailFinder.items : [],
             selectedTrailID: mode == .trails ? selectedTrail?.id : nil,
             mutedBase: mode == .trails,
@@ -271,7 +281,7 @@ struct RouteFinderContentView: View {
                 beginGuidedSession(plan.navigableRoute(activityMode: activityMode))
             },
             onStartApproach: { route in beginGuidedSession(route) },
-            locationState: routeManager.locationState,
+            locationState: routeManager.locationState.base,
             onPlanOnMap: { showRouteBuilder = true },
             refreshLocation: {
                 guard !isWKTUITestMode, let fresh = await routeManager.fetchCurrentLocation(maxAge: 30) else { return }
@@ -315,7 +325,7 @@ struct RouteFinderContentView: View {
     /// With location off or restricted there is none, even a stale one: the
     /// panel says location is off, so the map shows no trails either.
     private var trailCenter: CLLocationCoordinate2D? {
-        let state = routeManager.locationState
+        let state = routeManager.locationState.base
         guard state.canFindRoutes else { return nil }
         // -WKTDemo wins when both flags are passed: its fixed location is lastLocation.
         return isWKTUITestMode && !isWKTDemoMode
@@ -414,8 +424,12 @@ struct RouteFinderContentView: View {
                 .accessibilityIdentifier("routes.findRoutes")
                 .padding(.horizontal, 20)
 
-                if location.showsPlanOnMap {
-                    LocationRecoveryActions(state: location, activityMode: activityMode) { showRouteBuilder = true }
+                if location.showsPlanOnMap || location.isChosen {
+                    LocationRecoveryActions(state: location, activityMode: activityMode,
+                                            onPlanOnMap: { showRouteBuilder = true },
+                                            onChooseStart: { showChooseStart = true },
+                                            chosenName: routeManager.chosenStart?.name,
+                                            onUseMyLocation: routeManager.useMyLocation)
                         .padding(.horizontal, 20)
                 }
 
@@ -854,8 +868,8 @@ struct RouteFinderContentView: View {
     }
 
     private func loadWeather() async {
-        guard let loc = routeManager.lastLocation, !routeManager.suggestedRoutes.isEmpty else { return }
-        routeWeather = await RouteWeatherService.shared.fetchWeather(for: loc.coordinate)
+        guard let loc = routeManager.planningCoordinate, !routeManager.suggestedRoutes.isEmpty else { return }
+        routeWeather = await RouteWeatherService.shared.fetchWeather(for: loc)
     }
 
     private func saveIntent() {
@@ -912,6 +926,8 @@ struct RouteFinderMapView: UIViewRepresentable {
     @Binding var selectedRoute: SuggestedRoute?
     let goalDistanceMeters: Double
     let userLocation: CLLocationCoordinate2D?
+    /// Off while routes start from a chosen place: the blue dot may be a continent away.
+    var includesUserDot = true
     var trails: [TrailListItem] = []
     var selectedTrailID: String?
     /// Tones Apple's base map down so the trail lines carry the screen.
@@ -950,6 +966,13 @@ struct RouteFinderMapView: UIViewRepresentable {
             let span = max(goalDistanceMeters * 2.5, 1500)
             map.setRegion(MKCoordinateRegion(center: loc, latitudinalMeters: span, longitudinalMeters: span), animated: false)
         }
+        // A newly chosen place (or Change) moves the empty map there.
+        let centre = includesUserDot ? nil : userLocation.map { "\($0.latitude),\($0.longitude)" }
+        if let loc = userLocation, let centre, routes.isEmpty, centre != context.coordinator.lastChosenCentre {
+            context.coordinator.lastChosenCentre = centre
+            let span = max(goalDistanceMeters * 2.5, 1500)
+            map.setRegion(MKCoordinateRegion(center: loc, latitudinalMeters: span, longitudinalMeters: span), animated: true)
+        }
 
         let currentIds = routes.map { $0.id }
 
@@ -972,7 +995,7 @@ struct RouteFinderMapView: UIViewRepresentable {
                     let pts = pl.points()
                     for i in 0..<pl.pointCount { coords.append(pts[i].coordinate) }
                 }
-                if !isWKTDemoMode, let user = map.userLocation.location { coords.append(user.coordinate) }
+                if includesUserDot, !isWKTDemoMode, let user = map.userLocation.location { coords.append(user.coordinate) }
                 if !coords.isEmpty {
                     let rect = coords.reduce(MKMapRect.null) { r, c in
                         let p = MKMapPoint(c)
@@ -1078,7 +1101,7 @@ struct RouteFinderMapView: UIViewRepresentable {
                 rect = rect.union(MKMapRect(x: p.x, y: p.y, width: 0, height: 0))
             }
         }
-        if selectedRoute == nil, !isWKTDemoMode, let user = map.userLocation.location {
+        if selectedRoute == nil, includesUserDot, !isWKTDemoMode, let user = map.userLocation.location {
             let p = MKMapPoint(user.coordinate)
             rect = rect.union(MKMapRect(x: p.x, y: p.y, width: 0, height: 0))
         }
@@ -1258,6 +1281,7 @@ struct RouteFinderMapView: UIViewRepresentable {
         var lastMutedBase = false
         var regionBeforeTrail: MKCoordinateRegion?
         var hasSetInitialRegion = false
+        var lastChosenCentre: String?
         var lastApproachSource: MKPolyline?
         var lastApproachColor: UIColor?
         var lastFramedInset: CGFloat = 0

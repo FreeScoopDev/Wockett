@@ -11,10 +11,13 @@ struct CustomRouteBuilderView: View {
     @Environment(\.dismiss) private var dismiss
     let onSave: (CustomRoute) -> Void
     private let initialIsLoop: Bool
+    /// Where the empty map opens, when the person has no location to show.
+    private let initialCenter: CLLocationCoordinate2D?
 
-    init(initialWaypoints: [CLLocationCoordinate2D] = [], initialIsLoop: Bool = false, initialActivityMode: ActivityMode = .walking, routeName: String = "", onSave: @escaping (CustomRoute) -> Void) {
+    init(initialCenter: CLLocationCoordinate2D? = nil, initialWaypoints: [CLLocationCoordinate2D] = [], initialIsLoop: Bool = false, initialActivityMode: ActivityMode = .walking, routeName: String = "", onSave: @escaping (CustomRoute) -> Void) {
         _builder = StateObject(wrappedValue: CustomRouteBuilder(initialWaypoints: initialWaypoints, initialActivityMode: initialActivityMode))
         self.initialIsLoop = initialIsLoop
+        self.initialCenter = initialCenter
         self._routeName    = State(initialValue: routeName)
         self.onSave        = onSave
     }
@@ -24,7 +27,8 @@ struct CustomRouteBuilderView: View {
             CustomRouteMapView(
                 waypoints: builder.waypoints,
                 routeLegs: builder.allLegs.map { RouteLeg($0) },
-                onTap:     { builder.addWaypoint($0) }
+                onTap:     { builder.addWaypoint($0) },
+                initialCenter: initialCenter
             )
             .ignoresSafeArea()
 
