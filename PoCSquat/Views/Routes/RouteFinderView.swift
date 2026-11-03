@@ -44,7 +44,8 @@ struct RouteFinderContentView: View {
     @State private var showRouteBuilder = false
     @State private var showActiveSessionAlert = false
     /// A route planned from a chosen place that starts far from where the person is
-    /// (spec fix/route-start-far-from-here): Start asks before it records.
+    /// (PR #307, "Routes: ask before starting a route that begins far from
+    /// you"): Start asks before it records.
     @State private var farStart: FarStart?
     /// Start taking a fresh location fix. Stored so leaving the results
     /// (deselecting, Walk/Run, Trails, leaving the screen) cancels it, and
@@ -144,7 +145,8 @@ struct RouteFinderContentView: View {
         // Turned off: the list and the map drop their trails.
         .onChange(of: routeManager.locationState) { old, new in
             if RouteLocationState.needsFreshFix(from: old, to: new) {
-                Task { routeManager.lastLocation = await routeManager.fetchCurrentLocation() }
+                // Never back to nil: an overlapping fetch (Start's) answers this one nil.
+                Task { if let fix = await routeManager.fetchCurrentLocation() { routeManager.lastLocation = fix } }
             }
             if mode == .trails { refreshTrails() }
         }
@@ -156,7 +158,7 @@ struct RouteFinderContentView: View {
         .onAppear {
             if let dest = tabRouter.pendingRoutesDestination { open(dest) }
             if routeManager.lastLocation == nil {
-                Task { routeManager.lastLocation = await routeManager.fetchCurrentLocation() }
+                Task { if let fix = await routeManager.fetchCurrentLocation() { routeManager.lastLocation = fix } }
             }
             if !isWKTUITestMode { Task { await communityModel.load() } }
         }
@@ -699,6 +701,11 @@ struct RouteFinderContentView: View {
     /// tap does nothing (`StartReach.tapStillCurrent`).
     private func attemptStart(_ route: SuggestedRoute) {
         guard startCheckTask == nil else { return }
+        // Before the fix, so "Session Already Active" shows at once.
+        guard !ActiveWalkStore.shared.isActive else {
+            showActiveSessionAlert = true
+            return
+        }
         let tap = StartReach.Tap(routeID: route.id, activityMode: activityMode)
         guard routeManager.chosenStart != nil, routeManager.locationState.base == .live else {
             beginGuidedSession(route.toNavigableRoute(activityMode: tap.activityMode))
@@ -706,12 +713,16 @@ struct RouteFinderContentView: View {
         }
         startCheckTask = Task {
             let fix = await routeManager.fetchCurrentLocation(maxAge: StartReach.maxFixAgeSeconds)
+            // A live fix only (never the chosen place), and it may have
+            // answered another fetch with nil, so keep it.
+            if let fix { routeManager.lastLocation = fix }
             // Cancelled: cancelStartCheck already cleared the slot, which a
             // newer tap may now hold.
             guard !Task.isCancelled else { return }
             startCheckTask = nil
             guard StartReach.tapStillCurrent(tap, selectedRouteID: selectedRoute?.id, activityMode: activityMode,
-                                             showingRoutes: mode == .routes && !showingConfig) else { return }
+                                             showingRoutes: mode == .routes && !showingConfig,
+                                             presenting: isPresentingOverRoutes) else { return }
             switch StartReach.decision(fix: fix, routeStart: route.legWaypoints.first) {
             case .askFar(let meters):
                 farStart = FarStart(route: route, activityMode: tap.activityMode, meters: meters)
@@ -719,6 +730,13 @@ struct RouteFinderContentView: View {
                 beginGuidedSession(route.toNavigableRoute(activityMode: tap.activityMode))
             }
         }
+    }
+
+    /// A sheet or the route builder is over the results: a late Start must not
+    /// begin a walk or ask from underneath it.
+    private var isPresentingOverRoutes: Bool {
+        termsGate.pending != nil || routeForPosting != nil || showNearbySheet || showDestSearch
+            || showChooseStart || showRouteBuilder
     }
 
     private func cancelStartCheck() {

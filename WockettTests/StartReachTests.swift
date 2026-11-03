@@ -3,7 +3,8 @@ import Testing
 @testable import PoCSquat
 
 /// The Start button on a route planned from a chosen place asks this before it
-/// starts recording (spec fix/route-start-far-from-here).
+/// starts recording (PR #307, "Routes: ask before starting a route that begins
+/// far from you").
 struct StartReachTests {
     private static let raleigh = CLLocationCoordinate2D(latitude: 35.7796, longitude: -78.6382)
 
@@ -165,24 +166,31 @@ struct StartReachTests {
 
     @Test func anUnchangedScreenLetsTheTapAct() {
         #expect(StartReach.tapStillCurrent(Self.tap, selectedRouteID: Self.tap.routeID,
-                                           activityMode: .walking, showingRoutes: true))
+                                           activityMode: .walking, showingRoutes: true, presenting: false))
     }
 
     @Test func aDeselectedOrDifferentRouteStopsTheTap() {
         #expect(!StartReach.tapStillCurrent(Self.tap, selectedRouteID: nil,
-                                            activityMode: .walking, showingRoutes: true))
+                                            activityMode: .walking, showingRoutes: true, presenting: false))
         #expect(!StartReach.tapStillCurrent(Self.tap, selectedRouteID: UUID(),
-                                            activityMode: .walking, showingRoutes: true))
+                                            activityMode: .walking, showingRoutes: true, presenting: false))
     }
 
     @Test func aSwitchedActivityStopsTheTap() {
         // Walk -> Run while the fix was taken must not start a Run.
         #expect(!StartReach.tapStillCurrent(Self.tap, selectedRouteID: Self.tap.routeID,
-                                            activityMode: .running, showingRoutes: true))
+                                            activityMode: .running, showingRoutes: true, presenting: false))
     }
 
     @Test func leavingTheRoutesResultsStopsTheTap() {
         #expect(!StartReach.tapStillCurrent(Self.tap, selectedRouteID: Self.tap.routeID,
-                                            activityMode: .walking, showingRoutes: false))
+                                            activityMode: .walking, showingRoutes: false, presenting: false))
+    }
+
+    @Test func aSheetOverTheResultsStopsTheTap() {
+        // Post to Community, the Terms or another sheet opened while the fix
+        // was taken: no walk starts and no question appears underneath it.
+        #expect(!StartReach.tapStillCurrent(Self.tap, selectedRouteID: Self.tap.routeID,
+                                            activityMode: .walking, showingRoutes: true, presenting: true))
     }
 }

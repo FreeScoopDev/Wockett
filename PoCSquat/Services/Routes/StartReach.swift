@@ -68,14 +68,16 @@ enum StartReach: Equatable {
     }
 
     /// Whether a Start tap may still act once its fix has come back: the same
-    /// route is still selected, the activity is the one tapped, and the Routes
-    /// results are still showing (not Trails, not gone). Otherwise the walk it
-    /// would start, or the question it would ask, is no longer what is on screen.
+    /// route is still selected, the activity is the one tapped, the Routes
+    /// results are still showing (not Trails, not gone), and nothing (a sheet,
+    /// the Terms, the route builder) is presented over them. Otherwise the walk
+    /// it would start, or the question it would ask, is no longer what is on screen.
     static func tapStillCurrent(_ tap: Tap,
                                 selectedRouteID: UUID?,
                                 activityMode: ActivityMode,
-                                showingRoutes: Bool) -> Bool {
-        showingRoutes && selectedRouteID == tap.routeID && activityMode == tap.activityMode
+                                showingRoutes: Bool,
+                                presenting: Bool) -> Bool {
+        showingRoutes && !presenting && selectedRouteID == tap.routeID && activityMode == tap.activityMode
     }
 
     static func check(live: CLLocationCoordinate2D?,
