@@ -1613,6 +1613,48 @@ final class SmokeTests: XCTestCase {
         expectSavedRouteStartOnFirstScreen(contentSize: "UICTContentSizeCategoryAccessibilityL")
     }
 
+    // MARK: - 8j. Saved route: weather opens collapsed
+
+    /// The saved route's weather opens as its one-line summary, and the
+    /// caption (place, hours covered, when it was updated) appears only once
+    /// the tile is tapped (spec fix/route-weather-block). Weather needs
+    /// WeatherKit, which GitHub's runner may not reach, so on CI this skips:
+    /// it guards the collapsed default on local runs only.
+    func testSavedRouteWeatherOpensCollapsed() throws {
+        try XCTSkipIf(ProcessInfo.processInfo.environment["WOCKETT_CI"] == "1",
+                      "WeatherKit may not answer on the CI runner")
+        app.terminate()
+        app.launchArguments = ["-WKTUITest", "-WKTDemo"]
+        app.launch()
+        XCTAssertTrue(el("home.statCard").waitForExistence(timeout: 30))
+        let mine = app.buttons["home.myRoutes"]
+        XCTAssertTrue(mine.waitForExistence(timeout: 15), "Home must show My Routes")
+        var swipes = 0
+        while mine.frame.maxY > app.windows.firstMatch.frame.maxY - 120 && swipes < 6 {
+            app.swipeUp()
+            swipes += 1
+        }
+        forceTap(mine)
+        XCTAssertTrue(app.navigationBars["Saved Items"].waitForExistence(timeout: 10), "My Routes must open")
+        let row = app.buttons.matching(NSPredicate(format: "label CONTAINS 'Capitol Loop'")).firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 10), "The demo's saved route must be listed")
+        row.tap()
+
+        let tile = el("routes.weatherTile")
+        try XCTSkipUnless(tile.waitForExistence(timeout: 30),
+                          "No WeatherKit answer here; the collapsed default was not exercised")
+        XCTAssertFalse(el("routes.weatherCaption").exists, "The weather must open collapsed, with no caption")
+        let toggle = tile.buttons.firstMatch
+        swipes = 0
+        while !toggle.isHittable && swipes < 6 {
+            app.swipeUp()
+            swipes += 1
+        }
+        toggle.tap()
+        XCTAssertTrue(el("routes.weatherCaption").waitForExistence(timeout: 5),
+                      "Tapping the weather must show the caption above the hours")
+    }
+
     private func expectSavedRouteStartOnFirstScreen(contentSize: String?) {
         let size = contentSize ?? "the default size"
         app.terminate()

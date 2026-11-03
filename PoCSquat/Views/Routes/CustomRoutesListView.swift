@@ -193,7 +193,7 @@ struct CustomRouteDetailView: View {
                         summary
 
                         if let weather = routeWeather {
-                            WeatherWidget(weather: weather)
+                            WeatherWidget(weather: weather, placeLabel: "Near the middle of this route")
                         }
 
                         if let profile = elevationProfile {
