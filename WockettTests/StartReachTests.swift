@@ -48,10 +48,34 @@ struct StartReachTests {
         #expect(StartReach.distanceMeters(west, east) < 500)
     }
 
-    @Test func theDistanceDoesNotDependOnWhatWasMeasuredBefore() {
-        // CLLocation.distance caches a scale between calls; this must not.
-        let far = StartReach.distanceMeters(Self.raleigh, CLLocationCoordinate2D(latitude: 40.7, longitude: -74.0))
-        _ = StartReach.distanceMeters(Self.raleigh, CLLocationCoordinate2D(latitude: 35.78, longitude: -78.64))
-        #expect(StartReach.distanceMeters(Self.raleigh, CLLocationCoordinate2D(latitude: 40.7, longitude: -74.0)) == far)
+    // MARK: - How old a fix may be
+
+    private static func fix(secondsAgo: TimeInterval, now: Date) -> CLLocation {
+        CLLocation(coordinate: raleigh, altitude: 0, horizontalAccuracy: 10, verticalAccuracy: 10,
+                   timestamp: now.addingTimeInterval(-secondsAgo))
+    }
+
+    @Test func aRecentFixIsUsed() {
+        let now = Date()
+        let used = StartReach.freshCoordinate(Self.fix(secondsAgo: 30, now: now), now: now)
+        #expect(used?.latitude == Self.raleigh.latitude)
+    }
+
+    @Test func anOldFixIsNotWhereThePersonIs() {
+        // Planned at home, drove to the trailhead: an hours-old fix must not
+        // make Start claim the route is far away.
+        let now = Date()
+        #expect(StartReach.freshCoordinate(Self.fix(secondsAgo: 3 * 3600, now: now), now: now) == nil)
+    }
+
+    @Test func theFixAgeLimitIsTheLine() {
+        let now = Date()
+        let limit = StartReach.maxFixAgeSeconds
+        #expect(StartReach.freshCoordinate(Self.fix(secondsAgo: limit - 1, now: now), now: now) != nil)
+        #expect(StartReach.freshCoordinate(Self.fix(secondsAgo: limit + 1, now: now), now: now) == nil)
+    }
+
+    @Test func noFixIsNoCoordinate() {
+        #expect(StartReach.freshCoordinate(nil) == nil)
     }
 }

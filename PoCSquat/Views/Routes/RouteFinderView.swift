@@ -679,10 +679,11 @@ struct RouteFinderContentView: View {
     }
 
     /// The person's own position, never a chosen place, and none at all when
-    /// location is off or restricted (a stale fix is not where they are).
+    /// location is off or restricted, or when the last fix is old: after
+    /// planning at home and driving to the trailhead it would still say home.
     private var liveCoordinate: CLLocationCoordinate2D? {
         guard routeManager.locationState.base.canFindRoutes else { return nil }
-        return routeManager.lastLocation?.coordinate
+        return StartReach.freshCoordinate(routeManager.lastLocation)
     }
 
     /// A route planned from the person's own location starts where they are, so

@@ -22,6 +22,21 @@ enum StartReach: Equatable {
     /// by the trailhead is, another town is not.
     static let thresholdMeters: Double = 1_000
 
+    /// How old a location fix may be and still count as "where the person is".
+    /// `RouteManager.lastLocation` is only refreshed by a live search, a
+    /// permission change and a few screens, so after planning at home and
+    /// driving to the trailhead it can be hours old. An old fix must not make
+    /// Start say the route is far away when the person is standing at it.
+    static let maxFixAgeSeconds: TimeInterval = 120
+
+    /// The coordinate of a fix that is recent enough, else nil (`.unknown`).
+    static func freshCoordinate(_ fix: CLLocation?,
+                                now: Date = Date(),
+                                maxAge: TimeInterval = StartReach.maxFixAgeSeconds) -> CLLocationCoordinate2D? {
+        guard let fix, now.timeIntervalSince(fix.timestamp) <= maxAge else { return nil }
+        return fix.coordinate
+    }
+
     static func check(live: CLLocationCoordinate2D?,
                       routeStart: CLLocationCoordinate2D?,
                       thresholdMeters: Double = StartReach.thresholdMeters) -> StartReach {
