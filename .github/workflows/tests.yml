@@ -34,10 +34,12 @@ on:
     branches: [main]
 
 # A newer push to the same PR cancels the run in progress, as Xcode Cloud's
-# auto-cancel did.
+# auto-cancel did. Runs on main are never cancelled.
 concurrency:
   group: tests-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  # Only a pull request run is superseded by a newer push. A push to main is the
+  # one test of the merged state, so the next merge must not cancel it.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   changes:

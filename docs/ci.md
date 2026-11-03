@@ -34,9 +34,9 @@ Anything else reported on a PR is advisory and does not gate the merge.
 
 ## GitHub Actions — `.github/workflows/guards.yml`
 
-Cheap repo guards that need no Apple toolchain. The macOS jobs that used to live
-in `tests.yml` were removed on 2026-09-04: they billed at 10×, so a 14-minute UI
-test job cost 140 of the 2,000 free minutes a month.
+Cheap repo guards that need no Apple toolchain. The macOS jobs were removed from
+here on 2026-09-04 because they billed at 10× on a private repository; they came
+back as `tests.yml` on 2026-09-28 (below), free now that the repository is public.
 
 | Job | Required? | What it does |
 | --- | --- | --- |
@@ -166,7 +166,7 @@ trigger filters, so the required `Unit tests (iOS)` check still reports
 merge always follows a ready-for-review run. Converting a PR back to draft does not
 cancel or restart anything.
 
-A newer push to the same PR cancels the run in progress. A failing run uploads
+A newer push to the same PR cancels the run in progress; a push to `main` is never cancelled by the next merge (`cancel-in-progress` is on only for `pull_request` events), because that run is the only test of the merged state. A failing run uploads
 the xcodebuild log, its stderr and the xcresult bundle as the `test-results`
 artifact (7 days).
 
@@ -230,7 +230,7 @@ here as it was.
 | Clean | **Off** — restores derived data and caches, so runs stay fast |
 | Notifies | Slack `#ci_tests`, all successes and failures. No email recipients. |
 
-This is the source of the required `Wockett | CI Tests | Test - iOS` check. Note
+This workflow used to be the source of the required `Wockett | CI Tests | Test - iOS` check; it is no longer required (since 2026-09-28, `Unit tests (iOS)` replaced it). Note
 that "Use Scheme Setting" means **the `PoCSquat` scheme decides which test
 targets run** — if a target is added to or removed from the scheme's Test
 action, CI coverage changes with no visible edit to this workflow or to CI
