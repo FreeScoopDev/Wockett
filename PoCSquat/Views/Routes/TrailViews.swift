@@ -224,7 +224,8 @@ struct TrailsPanel: View {
 
     private var recoveryActions: some View {
         LocationRecoveryActions(state: locationState, activityMode: activityMode, onPlanOnMap: onPlanOnMap,
-                                onChooseStart: onChooseStart, chosenName: chosenName, onUseMyLocation: onUseMyLocation)
+                                onChooseStart: onChooseStart, chosenName: chosenName, onUseMyLocation: onUseMyLocation,
+                                compact: locationState.isChosen)
             .padding(.horizontal, 20)
     }
 
