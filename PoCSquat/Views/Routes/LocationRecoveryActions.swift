@@ -11,6 +11,7 @@ struct LocationRecoveryActions: View {
     var onChooseStart: (() -> Void)?
     var chosenName: String?
     var onUseMyLocation: () -> Void = {}
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     /// The reason, styled the same in Routes (above Find Routes) and Trails.
     static func reason(_ text: String) -> some View {
@@ -31,7 +32,7 @@ struct LocationRecoveryActions: View {
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityIdentifier("routes.startingFrom")
-                WktFlowRow(spacing: 8) {
+                HStack(spacing: 8) {
                     WktPillButton(title: "Change", action: onChooseStart)
                         .accessibilityIdentifier("routes.changeStart")
                     if state.canUseLiveLocation {
@@ -40,7 +41,9 @@ struct LocationRecoveryActions: View {
                     }
                 }
             } else if let onChooseStart {
-                WktSecondaryButton(title: "Choose a starting place", symbol: .find, action: onChooseStart)
+                // No icon at the accessibility sizes: the panel has no height left for a second line.
+                WktSecondaryButton(title: "Choose a starting place", symbol: typeSize.isAccessibilitySize ? nil : .find,
+                                   action: onChooseStart)
                     .accessibilityIdentifier("routes.chooseStart")
             }
             if state.showsOpenSettings, let url = URL(string: UIApplication.openSettingsURLString) {
@@ -49,8 +52,15 @@ struct LocationRecoveryActions: View {
                     .accessibilityIdentifier("routes.openSettings")
             }
             if state.showsPlanOnMap {
-                WktSecondaryButton(title: "Plan on the map", symbol: .buildRoute, action: onPlanOnMap)
-                    .accessibilityIdentifier("routes.planOnMap")
+                // A link, not a button: at Accessibility 2 a third button left
+                // "Choose a starting place" no room to wrap (spec owner decision 2).
+                Button(action: onPlanOnMap) {
+                    Label { Text("Plan on the map") } icon: { Image(wkt: .buildRoute).wktIcon(.inline, tint: .earthGreen) }
+                        .font(.wktBodyText)
+                        .foregroundColor(.earthGreen)
+                        .frame(minHeight: 44)
+                }
+                .accessibilityIdentifier("routes.planOnMap")
             }
             if !state.canUseLiveLocation {
                 Text("You can plan a route without your location. Recording a \(activityMode.noun)'s path on the map needs it.")

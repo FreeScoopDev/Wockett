@@ -7,7 +7,9 @@
   says "Starting from <place>" in full, with Change, and Use my location once
   location is back on. Weather and the map follow the chosen place, and the
   map no longer frames routes together with a blue dot that may be far away.
-  Plan on the map now opens the builder around the chosen place. The place is
+  Plan on the map now opens the builder around the chosen place, and is a
+  text link rather than a button in Routes and Trails: at the largest text
+  sizes a third button left no room for the new one's title. The place is
   kept until the app quits, and never stands in for where you are: Community
   "near you" and trail directions still use your own location only. Recording
   a walk with location off is unchanged. Trails follows in a separate change.
