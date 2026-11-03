@@ -1268,6 +1268,8 @@ final class SmokeTests: XCTestCase {
         // detail has no origin and says so, though the list has a centre.
         card.tap()
         XCTAssertTrue(el("routes.trailDetail").waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'from Test Place'")).firstMatch.exists,
+                      "The detail must say the distance is from the chosen place")
         XCTAssertTrue(el("routes.trailNoLocation").waitForExistence(timeout: 10),
                       "Directions must not start from the chosen place")
     }

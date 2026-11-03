@@ -138,8 +138,8 @@ struct TrailsPanel: View {
                 }
                 .padding(.horizontal, 20)
 
-                // Above the list, the empty message and a failure alike, so Change,
-                // Use my location and Open Settings never vanish with the trails.
+                // Above the list, the empty message and a failure alike, so Change
+                // and Use my location never vanish with the trails.
                 if locationState.isChosen { recoveryActions }
 
                 if showsLocationRecovery, let reason = locationState.message {
