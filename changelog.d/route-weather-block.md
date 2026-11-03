@@ -3,8 +3,8 @@
   route included. The row already says whether conditions are good; the hours
   are a tap away, so the route itself is what fills the first screen.
 - The hourly forecast now says where it is for, which hours it covers and
-  when it was updated ("Near the middle of this route" / "Yesterday 10 PM –
-  today 3 AM · Updated 8:58 AM"). Six bare hours crossing midnight read as a
+  when it was updated ("Near the middle of this route" / "Today, 3 PM – 8 PM
+  · Updated 2:41 PM"). Six bare hours crossing midnight read as a
   list of numbers, with no day, place or time to judge them by.
 
 ### Fixed

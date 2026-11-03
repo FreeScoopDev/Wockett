@@ -342,7 +342,7 @@ struct WeatherWidget: View {
     /// `initiallyExpanded` seeds @State once and is deliberately NOT stored: SwiftUI
     /// @State initialised from a parameter does not update when that parameter
     /// changes on a re-render, so keeping it as a property would read as live
-    /// configuration while silently ignoring changes. The Routes results panel is
+    /// configuration while silently ignoring changes.
     /// Every screen opens it collapsed: the one-line row already says whether
     /// conditions are good, and the hours are a tap away.
     init(weather: RouteWeather, placeLabel: String? = nil, initiallyExpanded: Bool = false) {
