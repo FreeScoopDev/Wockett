@@ -43,6 +43,9 @@ struct RouteFinderContentView: View {
     @State private var showChooseStart = false
     @State private var showRouteBuilder = false
     @State private var showActiveSessionAlert = false
+    /// A route planned from a chosen place that starts far from where the person is
+    /// (spec fix/route-start-far-from-here): Start asks before it records.
+    @State private var farStart: FarStart?
 
     // Active search task — stored so it can be cancelled on retry or dismissal
     @State private var activeTask: Task<Void, Never>?
@@ -168,6 +171,19 @@ struct RouteFinderContentView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text("You have a session in progress. Return to the home screen to resume or end it first.")
+        }
+        .confirmationDialog("This route starts far from you",
+                            isPresented: Binding(get: { farStart != nil },
+                                                 set: { if !$0 { farStart = nil } }),
+                            titleVisibility: .visible,
+                            presenting: farStart) { far in
+            Button("Start anyway") { startWalk(far.route) }
+                .accessibilityIdentifier("routes.startFarAnyway")
+            Button("Open directions to the start in Apple Maps") { openDirectionsToStart(far.route) }
+            Button("Cancel", role: .cancel) {}
+        } message: { far in
+            Text("It starts \(MKDistanceFormatter.abbreviated.string(fromDistance: far.meters)) from where you are. "
+                 + "Starting now would record the \(activityMode.noun) from there.")
         }
         .communityTermsSheet($termsGate)
         .sheet(item: $routeForPosting) { route in
@@ -655,14 +671,55 @@ struct RouteFinderContentView: View {
         }
     }
 
+    /// Where a "far start" confirmation is shown from.
+    private struct FarStart: Identifiable {
+        let id = UUID()
+        let route: SuggestedRoute
+        let meters: Double
+    }
+
+    /// The person's own position, never a chosen place, and none at all when
+    /// location is off or restricted (a stale fix is not where they are).
+    private var liveCoordinate: CLLocationCoordinate2D? {
+        guard routeManager.locationState.base.canFindRoutes else { return nil }
+        return routeManager.lastLocation?.coordinate
+    }
+
+    /// A route planned from the person's own location starts where they are, so
+    /// it is never "far". One planned from a chosen place starts there, which
+    /// can be another town: say so before recording a walk that begins there.
+    /// With no live position to compare, nothing changes.
+    private func startReach(for route: SuggestedRoute) -> StartReach {
+        guard routeManager.chosenStart != nil else { return .near }
+        return StartReach.check(live: liveCoordinate, routeStart: route.legWaypoints.first)
+    }
+
+    private func startWalk(_ route: SuggestedRoute) {
+        let nav = route.toNavigableRoute(activityMode: activityMode)
+        guard ActiveWalkStore.shared.beginSession(route: nav) != nil else {
+            showActiveSessionAlert = true
+            return
+        }
+        onNavigateAway?()
+    }
+
+    private func openDirectionsToStart(_ route: SuggestedRoute) {
+        guard let start = route.legWaypoints.first else { return }
+        let item = MKMapItem(location: CLLocation(latitude: start.latitude, longitude: start.longitude), address: nil)
+        item.name = "Route start"
+        let mode = activityMode == .cycling
+            ? MKLaunchOptionsDirectionsModeCycling
+            : MKLaunchOptionsDirectionsModeWalking
+        item.openInMaps(launchOptions: [MKLaunchOptionsDirectionsModeKey: mode])
+    }
+
     private func startWalkButton(for route: SuggestedRoute) -> some View {
         Button {
-            let nav = route.toNavigableRoute(activityMode: activityMode)
-            guard ActiveWalkStore.shared.beginSession(route: nav) != nil else {
-                showActiveSessionAlert = true
-                return
+            if case let .far(meters) = startReach(for: route) {
+                farStart = FarStart(route: route, meters: meters)
+            } else {
+                startWalk(route)
             }
-            onNavigateAway?()
         } label: {
             WktPrimaryLabel(title: "Start \(activityMode.sessionLabel)", symbol: activityMode.wktSymbol)
         }

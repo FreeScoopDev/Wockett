@@ -1,0 +1,2 @@
+### Fixed
+- Start on a route planned from a chosen place now asks first when the route begins far from where you are. Before, planning a route in another town and tapping Start began recording a walk that started a long way from you, with nothing to say so. The question says how far away the start is and offers Start anyway, directions to the start in Apple Maps, or Cancel. Routes planned from your own location are unchanged, and with location off or no fix there is nothing to compare, so Start behaves as before.
