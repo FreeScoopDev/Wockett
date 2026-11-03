@@ -154,6 +154,8 @@ struct CustomRouteMapView: UIViewRepresentable {
     let waypoints:  [CLLocationCoordinate2D]
     let routeLegs:  [RouteLeg]
     var onTap:      ((CLLocationCoordinate2D) -> Void)? = nil
+    /// Builder only: a 2 km region to open on before any waypoint, kept when the blue dot arrives.
+    var initialCenter: CLLocationCoordinate2D?
 
     func makeUIView(context: Context) -> MKMapView {
         let map = MKMapView()
@@ -166,6 +168,10 @@ struct CustomRouteMapView: UIViewRepresentable {
                                              action: #selector(Coordinator.handleTap(_:)))
             tap.delegate = context.coordinator
             map.addGestureRecognizer(tap)
+            if let initialCenter, waypoints.isEmpty {
+                map.setRegion(MKCoordinateRegion(center: initialCenter, latitudinalMeters: 2_000, longitudinalMeters: 2_000), animated: false)
+                context.coordinator.hasZoomedToUser = true
+            }
         }
         return map
     }
@@ -220,7 +226,7 @@ struct CustomRouteMapView: UIViewRepresentable {
         var onTap:             ((CLLocationCoordinate2D) -> Void)?
         var lastWaypointCount  = 0
         var lastLegCount       = 0
-        private var hasZoomedToUser = false
+        var hasZoomedToUser = false
 
         init(onTap: ((CLLocationCoordinate2D) -> Void)?) { self.onTap = onTap }
 

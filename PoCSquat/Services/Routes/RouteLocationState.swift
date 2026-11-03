@@ -12,10 +12,18 @@ enum RouteLocationState: Equatable {
     case off
     /// Restricted (Screen Time, a managed phone): the person usually can't change it.
     case restricted
+    /// Routes start from a place the person searched for (spec
+    /// fix/route-start-place), over whatever the permission is.
+    indirect case chosen(over: RouteLocationState)
 
     /// `bypass` is a `-WKTDemo` or `-WKTUITest` run, whose RouteManager
     /// answers with a fixed location and never asks iOS.
-    static func make(auth: CLAuthorizationStatus, bypass: Bool) -> RouteLocationState {
+    static func make(auth: CLAuthorizationStatus, bypass: Bool, hasChosenPlace: Bool = false) -> RouteLocationState {
+        let base = permission(auth: auth, bypass: bypass)
+        return hasChosenPlace ? .chosen(over: base) : base
+    }
+
+    private static func permission(auth: CLAuthorizationStatus, bypass: Bool) -> RouteLocationState {
         if bypass { return .live }
         switch auth {
         case .authorizedAlways, .authorizedWhenInUse: return .live
@@ -25,26 +33,40 @@ enum RouteLocationState: Equatable {
         }
     }
 
-    var canFindRoutes: Bool { self == .live || self == .willAsk }
+    /// The permission alone, without a chosen place.
+    var base: RouteLocationState {
+        if case .chosen(let over) = self { return over }
+        return self
+    }
 
-    /// "Search a place" and "Nearby places": each starts from the live
-    /// location, and waits for the prompt's answer when not asked yet.
+    var isChosen: Bool { self != base }
+
+    var canFindRoutes: Bool { isChosen || self == .live || self == .willAsk }
+
+    /// "Search a place" and "Nearby places": each starts from the chosen place
+    /// or the live location, and waits for the prompt's answer when not asked yet.
     var showsNearbyActions: Bool { canFindRoutes }
 
     /// After a failed search, "Try nearby loops" only if it could work: it
     /// needs the same location the failed search lacked.
     func offersNearbyLoops(afterLocationFailure: Bool) -> Bool {
-        self == .live && !afterLocationFailure
+        (isChosen || self == .live) && !afterLocationFailure
     }
 
-    /// Only a denial can be reversed in Settings.
-    var showsOpenSettings: Bool { self == .off }
+    /// Only a denial can be reversed in Settings (still the way back to recording).
+    var showsOpenSettings: Bool { base == .off }
 
-    var showsPlanOnMap: Bool { self == .off || self == .restricted }
+    var showsPlanOnMap: Bool { base == .off || base == .restricted }
+
+    /// Whether "Use my location" could work.
+    var canUseLiveLocation: Bool { base.canFindRoutes }
+
+    /// Routes start from the live location (or will, once asked).
+    var usesLiveLocation: Bool { self == .live || self == .willAsk }
 
     var message: String? {
         switch self {
-        case .live: return nil
+        case .live, .chosen: return nil
         case .willAsk: return "Wockett will ask to use your location."
         case .off: return "Location is off for Wockett, so routes can't start from where you are."
         case .restricted: return "Location is restricted on this iPhone."

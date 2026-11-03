@@ -1184,6 +1184,16 @@ final class SmokeTests: XCTestCase {
             XCTAssertFalse(app.buttons[title].exists, "\(title) needs a location and must be hidden")
         }
 
+        // Choose a starting place opens the place search (spec
+        // fix/route-start-place). Nothing is typed: CI may have no network.
+        let chooseStart = app.buttons["routes.chooseStart"]
+        XCTAssertTrue(chooseStart.exists, "Routes must offer Choose a starting place")
+        chooseStart.tap()
+        let chooseSheet = app.navigationBars["Choose a starting place"]
+        XCTAssertTrue(chooseSheet.waitForExistence(timeout: 15), "Choose a starting place must open the place search")
+        chooseSheet.buttons["Cancel"].tap()
+        XCTAssertTrue(chooseSheet.waitForNonExistence(timeout: 10))
+
         // Each panel's Plan on the map opens the builder: Routes here, Trails below.
         app.buttons["routes.planOnMap"].tap()
         let builder = app.navigationBars["Build Route"]
@@ -1204,6 +1214,33 @@ final class SmokeTests: XCTestCase {
 
         app.buttons["routes.planOnMap"].tap()
         XCTAssertTrue(builder.waitForExistence(timeout: 15), "Trails' Plan on the map must open the route builder")
+    }
+
+    // MARK: - 7a2. A chosen starting place
+
+    /// With location off and a place chosen, Routes says where it starts and
+    /// plans from there (spec fix/route-start-place, criteria 2 and 4).
+    /// `-WKTChosenStart` chooses "Test Place"; Find Routes lists the stub.
+    func testRoutesPlanFromAChosenPlaceWithLocationOff() {
+        app.terminate()
+        app.launchArguments = ["-WKTUITest", "-WKTLocationOff", "-WKTChosenStart"]
+        app.launch()
+        XCTAssertTrue(el("home.statCard").waitForExistence(timeout: 30))
+        selectTab("Routes")
+
+        let findRoutes = app.buttons["routes.findRoutes"]
+        XCTAssertTrue(findRoutes.waitForExistence(timeout: 30))
+        let startingFrom = el("routes.startingFrom")
+        XCTAssertTrue(startingFrom.waitForExistence(timeout: 10), "The panel must say where routes start")
+        XCTAssertTrue(startingFrom.label.contains("Test Place"), "The row must name the chosen place, got \(startingFrom.label)")
+        XCTAssertTrue(app.buttons["routes.changeStart"].exists, "A chosen place can be changed")
+        XCTAssertFalse(app.buttons["routes.useMyLocation"].exists, "Use my location can't work with location off")
+        XCTAssertFalse(app.buttons["routes.chooseStart"].exists, "The row replaces Choose a starting place")
+        XCTAssertTrue(findRoutes.isEnabled, "Find Routes must work from a chosen place")
+
+        findRoutes.tap()
+        XCTAssertTrue(app.buttons["routes.routeCard"].firstMatch.waitForExistence(timeout: 30),
+                      "Find Routes must list routes from the chosen place")
     }
 
     // MARK: - 7b. My contributions

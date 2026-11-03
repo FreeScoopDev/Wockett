@@ -78,4 +78,50 @@ struct RouteLocationStateTests {
         #expect(!state.showsPlanOnMap)
         #expect(state.message == nil)
     }
+
+    // MARK: - A chosen starting place (spec fix/route-start-place)
+
+    @Test(arguments: allStatuses, [false, true])
+    func aChosenPlaceIsChosenOverItsPermission(status: CLAuthorizationStatus, bypass: Bool) {
+        let base = RouteLocationState.make(auth: status, bypass: bypass)
+        let state = RouteLocationState.make(auth: status, bypass: bypass, hasChosenPlace: true)
+        #expect(state == .chosen(over: base))
+        #expect(state.base == base)
+        #expect(state.canFindRoutes)
+        #expect(state.showsNearbyActions)
+        #expect(state.offersNearbyLoops(afterLocationFailure: false))
+        #expect(!state.offersNearbyLoops(afterLocationFailure: true))
+        #expect(!state.usesLiveLocation, "A chosen place is never the live location")
+        #expect(state.message == nil)
+        #expect(state.showsOpenSettings == base.showsOpenSettings)
+        #expect(state.canUseLiveLocation == base.canFindRoutes)
+    }
+
+    @Test func chosenOverDeniedCanSearchAndStillOffersSettings() {
+        let state = RouteLocationState.make(auth: .denied, bypass: false, hasChosenPlace: true)
+        #expect(state.canFindRoutes)
+        #expect(state.showsOpenSettings)
+        #expect(!state.canUseLiveLocation)
+    }
+
+    @Test func chosenOverRestrictedHidesSettings() {
+        let state = RouteLocationState.make(auth: .restricted, bypass: false, hasChosenPlace: true)
+        #expect(state.canFindRoutes)
+        #expect(!state.showsOpenSettings)
+        #expect(!state.canUseLiveLocation)
+    }
+
+    @Test func chosenOverLiveCanUseTheLiveLocation() {
+        let state = RouteLocationState.make(auth: .authorizedWhenInUse, bypass: false, hasChosenPlace: true)
+        #expect(state.canUseLiveLocation)
+        #expect(!state.usesLiveLocation)
+    }
+
+    @Test(arguments: allStatuses, [false, true])
+    func noChosenPlaceIsTheSameAsBefore(status: CLAuthorizationStatus, bypass: Bool) {
+        let state = RouteLocationState.make(auth: status, bypass: bypass, hasChosenPlace: false)
+        #expect(state == RouteLocationState.make(auth: status, bypass: bypass))
+        #expect(!state.isChosen)
+        #expect(state.usesLiveLocation == state.canFindRoutes)
+    }
 }

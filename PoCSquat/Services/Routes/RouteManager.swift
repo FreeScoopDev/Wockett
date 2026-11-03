@@ -39,7 +39,21 @@ private actor DirectionsThrottler {
 /// in release builds, where `isWKTUITestMode` is false.
 enum LocationOffForTests {
     static let isOn = isWKTUITestMode && ProcessInfo.processInfo.arguments.contains("-WKTLocationOff")
+    /// `-WKTChosenStart` starts with "Test Place" chosen, in Raleigh like the trails.
+    static let chosenStart = isWKTUITestMode && ProcessInfo.processInfo.arguments.contains("-WKTChosenStart")
 }
+
+/// A place the person chose to start routes from, instead of where they are.
+struct ChosenPlace: Equatable {
+    let name: String
+    let coordinate: CLLocationCoordinate2D
+
+    static func == (a: ChosenPlace, b: ChosenPlace) -> Bool {
+        a.name == b.name && a.coordinate.latitude == b.coordinate.latitude && a.coordinate.longitude == b.coordinate.longitude
+    }
+}
+
+typealias PlanningOrigin = (location: CLLocation, isLive: Bool)
 
 @MainActor
 final class RouteManager: NSObject, ObservableObject, CLLocationManagerDelegate {
@@ -52,7 +66,11 @@ final class RouteManager: NSObject, ObservableObject, CLLocationManagerDelegate 
     /// "Try nearby loops" would fail the same way, so the panel leaves it out.
     @Published private(set) var locationFailed = false
     @Published var authStatus: CLAuthorizationStatus = .notDetermined
+    /// The person's own location, never a chosen place: Community "near you"
+    /// and trail directions read it.
     @Published var lastLocation: CLLocation?
+    /// In memory only, so it lasts until the app quits.
+    @Published private(set) var chosenStart: ChosenPlace?
 
     private let locationManager = CLLocationManager()
     nonisolated(unsafe) private var locationContinuation: CheckedContinuation<CLLocation?, Never>?
@@ -72,8 +90,12 @@ final class RouteManager: NSObject, ObservableObject, CLLocationManagerDelegate 
     /// delegate fills, so no view reads CoreLocation's permission on main.
     var locationState: RouteLocationState {
         RouteLocationState.make(auth: LocationOffForTests.isOn ? .denied : authStatus,
-                                bypass: !LocationOffForTests.isOn && (fixedLocation != nil || isWKTUITestMode))
+                                bypass: !LocationOffForTests.isOn && (fixedLocation != nil || isWKTUITestMode),
+                                hasChosenPlace: chosenStart != nil)
     }
+
+    /// Where weather and the map look: the chosen place, else the person.
+    var planningCoordinate: CLLocationCoordinate2D? { chosenStart?.coordinate ?? lastLocation?.coordinate }
 
     override convenience init() {
         self.init(fixedLocation: nil)
@@ -82,6 +104,9 @@ final class RouteManager: NSObject, ObservableObject, CLLocationManagerDelegate 
     init(fixedLocation: CLLocation?) {
         self.fixedLocation = fixedLocation
         super.init()
+        if LocationOffForTests.chosenStart {
+            chosenStart = ChosenPlace(name: "Test Place", coordinate: .init(latitude: 35.7796, longitude: -78.6382))
+        }
         locationManager.delegate = self
         locationManager.desiredAccuracy = kCLLocationAccuracyHundredMeters
         // No `authStatus = locationManager.authorizationStatus` here. This init
@@ -94,12 +119,30 @@ final class RouteManager: NSObject, ObservableObject, CLLocationManagerDelegate 
 
     // MARK: - Public
 
+    func choose(_ item: MKMapItem) {
+        chosenStart = ChosenPlace(name: item.name ?? "the chosen place", coordinate: item.location.coordinate)
+    }
+
+    func useMyLocation() { chosenStart = nil }
+
+    /// The chosen place, else the live location. Every generator starts here.
+    func planningOrigin() async -> PlanningOrigin? {
+        if let c = chosenStart?.coordinate { return (CLLocation(latitude: c.latitude, longitude: c.longitude), false) }
+        guard let live = await currentLocation() else { return nil }
+        return (live, true)
+    }
+
+    /// Only the person's own location is kept in `lastLocation`.
+    func recordOrigin(_ origin: PlanningOrigin) {
+        if origin.isLive { lastLocation = origin.location }
+    }
+
     func generateRoutes(remainingMeters: Double,
                         transportType: MKDirectionsTransportType = .walking) async {
         #if DEBUG
         // Not with -WKTDemo as well: the recording wants real routes around the
         // demo location, not this stub.
-        if isWKTUITestMode, fixedLocation == nil, !LocationOffForTests.isOn {
+        if isWKTUITestMode, fixedLocation == nil, !LocationOffForTests.isOn || chosenStart != nil {
             let origin = CLLocationCoordinate2D(latitude: 40.7589, longitude: -73.9851)
             let dest   = CLLocationCoordinate2D(latitude: 40.7650, longitude: -73.9780)
             var pts    = [origin, dest, origin]
@@ -129,11 +172,12 @@ final class RouteManager: NSObject, ObservableObject, CLLocationManagerDelegate 
         // Only set isGenerating = false if no newer search has already taken over.
         defer { if searchGeneration == myGen { isGenerating = false } }
 
-        guard let location = await currentLocation() else {
+        guard let origin = await planningOrigin() else {
             failNoLocation()
             return
         }
-        lastLocation = location
+        recordOrigin(origin)
+        let location = origin.location
 
         // Apply +12% buffer so routes slightly exceed the remaining goal.
         let targetMeters = remainingMeters * 1.12
@@ -169,11 +213,12 @@ final class RouteManager: NSObject, ObservableObject, CLLocationManagerDelegate 
         await DirectionsThrottler.shared.reset()
         defer { if searchGeneration == myGen { isGenerating = false } }
 
-        guard let location = await currentLocation() else {
+        guard let origin = await planningOrigin() else {
             failNoLocation()
             return
         }
-        lastLocation = location
+        recordOrigin(origin)
+        let location = origin.location
 
         let targetMeters = remainingMeters * 1.12
         // Tight legs so the loop stays close to home regardless of overall goal distance.
@@ -263,11 +308,12 @@ final class RouteManager: NSObject, ObservableObject, CLLocationManagerDelegate 
         await DirectionsThrottler.shared.reset()
         defer { isGenerating = false }
 
-        guard let location = await currentLocation() else {
+        guard let origin = await planningOrigin() else {
             failNoLocation()
             return
         }
-        lastLocation = location
+        recordOrigin(origin)
+        let location = origin.location
 
         let destCoord = destination.location.coordinate
         guard let leg = await route(from: location.coordinate, to: destCoord, transportType: transportType) else {
@@ -296,11 +342,12 @@ final class RouteManager: NSObject, ObservableObject, CLLocationManagerDelegate 
         await DirectionsThrottler.shared.reset()
         defer { isGenerating = false }
 
-        guard let location = await currentLocation() else {
+        guard let origin = await planningOrigin() else {
             failNoLocation()
             return
         }
-        lastLocation = location
+        recordOrigin(origin)
+        let location = origin.location
 
         let destCoord = destination.location.coordinate
         guard let outbound = await route(from: location.coordinate, to: destCoord, transportType: transportType),
