@@ -7,7 +7,7 @@ struct LocationRecoveryActions: View {
     let state: RouteLocationState
     let activityMode: ActivityMode
     let onPlanOnMap: () -> Void
-    /// Routes only, for now: Trails leaves these out and offers Part 1's actions.
+    /// Choosing a starting place, in Routes and Trails: both panels pass them.
     var onChooseStart: (() -> Void)?
     var chosenName: String?
     var onUseMyLocation: () -> Void = {}

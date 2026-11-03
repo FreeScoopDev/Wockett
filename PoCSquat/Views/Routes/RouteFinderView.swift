@@ -335,10 +335,9 @@ struct RouteFinderContentView: View {
     /// The person's own location, never a chosen place: trail directions,
     /// reach and the walk plan start here.
     /// Under -WKTUITest RouteManager reports Times Square, where there is no
-    /// trail pack, so the Trails list searches from downtown Raleigh instead
-    /// and the smoke test has real data. Compiled out of release builds.
-    /// With location off or restricted there is none, even a stale one: the
-    /// panel says location is off, so the map shows no trails either.
+    /// trail pack, so this is downtown Raleigh instead, for the smoke test's
+    /// trail data. Compiled out of release builds. With location off or
+    /// restricted there is none, even a stale one.
     private var directionsOrigin: CLLocationCoordinate2D? {
         let state = routeManager.locationState.base
         guard state.canFindRoutes else { return nil }

@@ -138,6 +138,10 @@ struct TrailsPanel: View {
                 }
                 .padding(.horizontal, 20)
 
+                // Above the list, the empty message and a failure alike, so Change,
+                // Use my location and Open Settings never vanish with the trails.
+                if locationState.isChosen { recoveryActions }
+
                 if showsLocationRecovery, let reason = locationState.message {
                     LocationRecoveryActions.reason(reason)
                         .padding(.horizontal, 28)
@@ -151,7 +155,6 @@ struct TrailsPanel: View {
                         .padding(.horizontal, 28)
                         .padding(.vertical, 24)
                 } else {
-                    if locationState.isChosen { recoveryActions.padding(.bottom, 4) }
                     ForEach(finder.items) { item in
                         TrailCard(item: item, activityMode: activityMode) {
                             withAnimation(.spring(response: 0.3)) { selected = item }
