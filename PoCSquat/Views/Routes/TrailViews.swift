@@ -16,7 +16,11 @@ struct TrailsPanel: View {
     @Binding var selected: TrailListItem?
     @Binding var groupSections: Bool
     @Binding var includeShortPaths: Bool
+    /// Where the list is centred: the chosen place, else the person.
     let userLocation: CLLocationCoordinate2D?
+    /// The person's own location only, for directions, reach and the walk
+    /// plan: never a chosen place (spec fix/route-start-place, item 11).
+    let directionsOrigin: CLLocationCoordinate2D?
     let activityMode: ActivityMode
     let containerHeight: CGFloat
     let modePicker: AnyView
@@ -25,7 +29,13 @@ struct TrailsPanel: View {
     let onStartApproach: (NavigableRoute) -> Void
     let locationState: RouteLocationState
     let onPlanOnMap: () -> Void
+    var chosenName: String?
+    var onChooseStart: (() -> Void)?
+    var onUseMyLocation: () -> Void = {}
     var refreshLocation: () async -> Void = {}
+
+    /// What the headings call the place the list is around.
+    private var originName: String { chosenName ?? "you" }
 
     /// "Other paths" starts closed: it is the unnamed paths a
     /// downloaded state pack carries, there if wanted but not in the way.
@@ -40,7 +50,7 @@ struct TrailsPanel: View {
     @State private var featuredNews: [Contribution] = []
 
     /// Trails in this list that Joe features, in list order, each once. They
-    /// stay in "Trails near you" too.
+    /// stay in "Trails near <place>" too.
     private var featured: [(item: TrailListItem, feature: FeaturedTrail)] {
         FeaturedTrails.featuredItems(finder.items, in: shownFeatures, at: Date()) { !TrailPackLibrary.shared.trails(key: $0).isEmpty }
     }
@@ -54,7 +64,7 @@ struct TrailsPanel: View {
                 .padding(.bottom, 14)
 
             if let item = selected {
-                TrailDetailView(item: item, userLocation: userLocation, activityMode: activityMode,
+                TrailDetailView(item: item, userLocation: directionsOrigin, originName: originName, activityMode: activityMode,
                                 directions: directions, onStart: onStart, onStartApproach: onStartApproach,
                                 refreshLocation: refreshLocation) {
                     withAnimation(.spring(response: 0.3)) { selected = nil }
@@ -88,7 +98,7 @@ struct TrailsPanel: View {
                 }
                 let picks = emptyMessage == nil ? featured : []
                 if !picks.isEmpty {
-                    WktSectionHeader(title: "Featured near you")
+                    WktSectionHeader(title: "Featured near \(originName)")
                         .padding(.horizontal, 20)
                     ForEach(picks, id: \.item.id) { pick in
                         FeaturedTrailCard(item: pick.item, feature: pick.feature, activityMode: activityMode) {
@@ -98,7 +108,7 @@ struct TrailsPanel: View {
                     }
                 }
                 HStack(alignment: .firstTextBaseline) {
-                    Text("Trails near you")
+                    Text("Trails near \(originName)")
                         .font(.wktSection)
                         .foregroundColor(.earthCream)
                     Spacer()
@@ -132,8 +142,7 @@ struct TrailsPanel: View {
                     LocationRecoveryActions.reason(reason)
                         .padding(.horizontal, 28)
                         .padding(.top, 12)
-                    LocationRecoveryActions(state: locationState, activityMode: activityMode, onPlanOnMap: onPlanOnMap)
-                        .padding(.horizontal, 20)
+                    recoveryActions
                 } else if let message = emptyMessage {
                     Text(message)
                         .font(.wktBodyText)
@@ -142,6 +151,7 @@ struct TrailsPanel: View {
                         .padding(.horizontal, 28)
                         .padding(.vertical, 24)
                 } else {
+                    if locationState.isChosen { recoveryActions.padding(.bottom, 4) }
                     ForEach(finder.items) { item in
                         TrailCard(item: item, activityMode: activityMode) {
                             withAnimation(.spring(response: 0.3)) { selected = item }
@@ -204,9 +214,15 @@ struct TrailsPanel: View {
         .accessibilityIdentifier("routes.otherPaths")
     }
 
-    /// Off or restricted, with no other failure to report.
+    /// Off or restricted with no place chosen, and no other failure to report.
     private var showsLocationRecovery: Bool {
-        finder.failure == nil && locationState.showsPlanOnMap
+        finder.failure == nil && locationState.showsPlanOnMap && !locationState.isChosen
+    }
+
+    private var recoveryActions: some View {
+        LocationRecoveryActions(state: locationState, activityMode: activityMode, onPlanOnMap: onPlanOnMap,
+                                onChooseStart: onChooseStart, chosenName: chosenName, onUseMyLocation: onUseMyLocation)
+            .padding(.horizontal, 20)
     }
 
     private var emptyMessage: String? {
@@ -303,7 +319,9 @@ struct TrailTagRow: View {
 
 struct TrailDetailView: View {
     let item: TrailListItem
+    /// Live only: directions never start from a chosen place.
     let userLocation: CLLocationCoordinate2D?
+    var originName = "you"
     let activityMode: ActivityMode
     let directions: TrailDirectionsModel
     let onStart: (TrailWalkPlan) -> Void
@@ -369,7 +387,7 @@ struct TrailDetailView: View {
                     Text(item.name)
                         .font(.wktCardTitle)
                         .foregroundColor(.earthCream)
-                    Text(TrailText.detailSubtitle(for: item))
+                    Text(TrailText.detailSubtitle(for: item, from: originName))
                         .font(.wktBodyText)
                         .foregroundColor(.earthMuted)
                 }
@@ -668,8 +686,8 @@ enum TrailText {
 
     /// A trail in several pieces is neither a loop nor provably an out and
     /// back, so it gets no shape word.
-    static func detailSubtitle(for item: TrailListItem) -> String {
-        let from = "\(distance(item.distanceMeters)) from you"
+    static func detailSubtitle(for item: TrailListItem, from origin: String = "you") -> String {
+        let from = "\(distance(item.distanceMeters)) from \(origin)"
         if item.isGroup { return from }
         return "\(item.isLoop ? "Loop" : "Out and back") · \(from)"
     }

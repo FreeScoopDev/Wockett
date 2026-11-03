@@ -141,7 +141,10 @@ struct RouteFinderContentView: View {
             if mode == .trails { refreshTrails() }
         }
         // Results never mix two starting points.
-        .onChange(of: routeManager.chosenStart) { _, _ in clearRoutes() }
+        .onChange(of: routeManager.chosenStart) { _, _ in
+            clearRoutes()
+            if mode == .trails { refreshTrails() }
+        }
         .onAppear {
             if let dest = tabRouter.pendingRoutesDestination { open(dest) }
             if routeManager.lastLocation == nil {
@@ -273,6 +276,7 @@ struct RouteFinderContentView: View {
             groupSections: $groupTrailSections,
             includeShortPaths: $showShortTrailPaths,
             userLocation: trailCenter,
+            directionsOrigin: directionsOrigin,
             activityMode: activityMode,
             containerHeight: containerHeight,
             modePicker: AnyView(modePicker),
@@ -281,8 +285,11 @@ struct RouteFinderContentView: View {
                 beginGuidedSession(plan.navigableRoute(activityMode: activityMode))
             },
             onStartApproach: { route in beginGuidedSession(route) },
-            locationState: routeManager.locationState.base,
+            locationState: routeManager.locationState,
             onPlanOnMap: { showRouteBuilder = true },
+            chosenName: routeManager.chosenStart?.name,
+            onChooseStart: { showChooseStart = true },
+            onUseMyLocation: routeManager.useMyLocation,
             refreshLocation: {
                 guard !isWKTUITestMode, let fresh = await routeManager.fetchCurrentLocation(maxAge: 30) else { return }
                 routeManager.lastLocation = fresh
@@ -319,12 +326,20 @@ struct RouteFinderContentView: View {
         .accessibilityIdentifier("routes.modePicker")
     }
 
+    /// Where the Trails list and map are centred. A chosen place wins (spec
+    /// fix/route-start-place, item 10), else the person's own location.
+    private var trailCenter: CLLocationCoordinate2D? {
+        routeManager.chosenStart?.coordinate ?? directionsOrigin
+    }
+
+    /// The person's own location, never a chosen place: trail directions,
+    /// reach and the walk plan start here.
     /// Under -WKTUITest RouteManager reports Times Square, where there is no
     /// trail pack, so the Trails list searches from downtown Raleigh instead
     /// and the smoke test has real data. Compiled out of release builds.
     /// With location off or restricted there is none, even a stale one: the
     /// panel says location is off, so the map shows no trails either.
-    private var trailCenter: CLLocationCoordinate2D? {
+    private var directionsOrigin: CLLocationCoordinate2D? {
         let state = routeManager.locationState.base
         guard state.canFindRoutes else { return nil }
         // -WKTDemo wins when both flags are passed: its fixed location is lastLocation.
