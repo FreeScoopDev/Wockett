@@ -75,6 +75,34 @@ enum ForecastPeriod {
     }
 }
 
+/// Which of WeatherKit's hours the strip shows. Its hourly forecast can begin
+/// 10-11 hours before now (22:00 the evening before, seen at 08:53), so taking
+/// the first six showed hours already over, and the rain chance described a
+/// past hour.
+enum UpcomingForecast {
+    /// The first `count` points from the start of the current hour on. The
+    /// current hour stays, so the strip still opens on "Now".
+    nonisolated static func upcomingHours(_ points: [HourlyWeatherPoint], now: Date,
+                                          calendar: Calendar, count: Int = 6) -> [HourlyWeatherPoint] {
+        let hourStart = calendar.dateInterval(of: .hour, for: now)?.start ?? now
+        return Array(points.filter { $0.date >= hourStart }.prefix(count))
+    }
+
+    /// The rain chance the status reads: the first upcoming hour's, 0 when none.
+    nonisolated static func rainChance(of upcoming: [HourlyWeatherPoint]) -> Double {
+        upcoming.first?.precipitationChance ?? 0
+    }
+
+    /// What `fetchWeather` keeps from all of WeatherKit's hours: the strip and
+    /// its rain chance, both from the upcoming hours. Pure, so a test can see
+    /// which list the rain chance came from.
+    nonisolated static func strip(from points: [HourlyWeatherPoint], now: Date,
+                                  calendar: Calendar) -> (hours: [HourlyWeatherPoint], rainChance: Double) {
+        let hours = upcomingHours(points, now: now, calendar: calendar)
+        return (hours, rainChance(of: hours))
+    }
+}
+
 struct RouteWeather: Sendable {
     let symbolName: String
     let conditionDescription: String
@@ -213,8 +241,7 @@ actor RouteWeatherService {
             let current = weather.currentWeather
             let tempFormat = Measurement<UnitTemperature>.FormatStyle.measurement(width: .abbreviated, usage: .weather, numberFormatStyle: .number.precision(.fractionLength(0)))
             let tempText = current.temperature.formatted(tempFormat)
-            let precipChance = weather.hourlyForecast.first?.precipitationChance ?? 0
-            let hourly: [HourlyWeatherPoint] = weather.hourlyForecast.prefix(6).map { h in
+            let allHours: [HourlyWeatherPoint] = weather.hourlyForecast.map { h in
                 HourlyWeatherPoint(
                     date:               h.date,
                     temperatureText:    h.temperature.formatted(tempFormat),
@@ -222,6 +249,8 @@ actor RouteWeatherService {
                     precipitationChance: h.precipitationChance
                 )
             }
+            let (hourly, precipChance) = UpcomingForecast.strip(from: allHours, now: Date(),
+                                                                calendar: .autoupdatingCurrent)
             return RouteWeather(
                 symbolName:           current.symbolName,
                 conditionDescription: current.condition.description,
