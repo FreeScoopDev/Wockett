@@ -252,7 +252,7 @@ struct RouteFinderContentView: View {
             selectedRoute: mode == .routes ? $selectedRoute : .constant(nil),
             goalDistanceMeters: Double(stepManager.currentGoal) * 0.762,
             userLocation: mode == .trails ? trailCenter : routeManager.planningCoordinate,
-            includesUserDot: routeManager.chosenStart == nil,
+            includesUserDot: mode == .trails || routeManager.chosenStart == nil,
             trails: mode == .trails ? trailFinder.items : [],
             selectedTrailID: mode == .trails ? selectedTrail?.id : nil,
             mutedBase: mode == .trails,
