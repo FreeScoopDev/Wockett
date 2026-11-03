@@ -146,8 +146,11 @@ final class RouteManager: NSObject, ObservableObject, CLLocationManagerDelegate 
         // Not with -WKTDemo as well: the recording wants real routes around the
         // demo location, not this stub.
         if isWKTUITestMode, fixedLocation == nil, !LocationOffForTests.isOn || chosenStart != nil {
-            let origin = CLLocationCoordinate2D(latitude: 40.7589, longitude: -73.9851)
-            let dest   = CLLocationCoordinate2D(latitude: 40.7650, longitude: -73.9780)
+            // From the chosen place when there is one (Raleigh under
+            // -WKTChosenStart), so with location on its Start is far from the
+            // Times Square fix and asks; otherwise Times Square.
+            let origin = chosenStart?.coordinate ?? CLLocationCoordinate2D(latitude: 40.7589, longitude: -73.9851)
+            let dest   = CLLocationCoordinate2D(latitude: origin.latitude + 0.0061, longitude: origin.longitude + 0.0071)
             var pts    = [origin, dest, origin]
             let poly   = MKPolyline(coordinates: &pts, count: pts.count)
             suggestedRoutes = [SuggestedRoute(

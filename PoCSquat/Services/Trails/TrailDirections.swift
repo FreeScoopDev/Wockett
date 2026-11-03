@@ -37,7 +37,7 @@ enum TrailDirectionsMode: String, CaseIterable, Hashable {
     }
 
     var launchMode: String {
-        self == .cycling ? MKLaunchOptionsDirectionsModeCycling : MKLaunchOptionsDirectionsModeWalking
+        sessionMode(current: .walking).mapsDirectionsMode
     }
 }
 

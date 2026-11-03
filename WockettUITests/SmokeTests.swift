@@ -1243,6 +1243,38 @@ final class SmokeTests: XCTestCase {
                       "Find Routes must list routes (the UI-test stub; RouteManagerTests covers the origin)")
     }
 
+    /// A route planned from a chosen place that starts far from the person
+    /// asks before it records (PR #307). Location is on, so the fix is the
+    /// UI-test Times Square one, and `-WKTChosenStart` plans the stub route
+    /// from "Test Place" in Raleigh: Start must ask, and Start anyway starts.
+    func testRouteFarFromHereAsksBeforeStarting() {
+        app.terminate()
+        app.launchArguments = ["-WKTUITest", "-WKTChosenStart"]
+        app.launch()
+        XCTAssertTrue(el("home.statCard").waitForExistence(timeout: 30))
+        selectTab("Routes")
+
+        let findRoutes = app.buttons["routes.findRoutes"]
+        XCTAssertTrue(findRoutes.waitForExistence(timeout: 30))
+        findRoutes.tap()
+        let card = app.buttons["routes.routeCard"].firstMatch
+        XCTAssertTrue(card.waitForExistence(timeout: 30))
+        forceTap(card)
+        let startWalk = app.buttons["routes.startWalk"]
+        XCTAssertTrue(startWalk.waitForExistence(timeout: 10))
+        forceTap(startWalk)
+
+        let anyway = app.buttons["routes.startFarAnyway"].firstMatch
+        XCTAssertTrue(anyway.waitForExistence(timeout: 15),
+                      "Start must ask first when the route begins far from the fix")
+        XCTAssertFalse(el("session.root").exists, "Nothing may record before the answer")
+        anyway.tap()
+        XCTAssertTrue(el("session.root").waitForExistence(timeout: 30),
+                      "Start anyway must open the guided walk screen")
+        // Stops here; tearDown ends the app. Ending a session is
+        // testWalkLifecycle's job.
+    }
+
     /// Trails lists trails around a chosen place, with headings that name it,
     /// while location is off (spec fix/route-start-place, criterion 7).
     func testTrailsListAroundAChosenPlaceWithLocationOff() {
