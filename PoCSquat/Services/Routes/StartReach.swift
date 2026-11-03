@@ -25,8 +25,9 @@ enum StartReach: Equatable {
     /// How old a location fix may be and still count as "where the person is".
     /// `RouteManager.lastLocation` is only refreshed by a live search, a
     /// permission change and a few screens, so after planning at home and
-    /// driving to the trailhead it can be hours old. An old fix must not make
-    /// Start say the route is far away when the person is standing at it.
+    /// driving to the trailhead it can be hours old. Start therefore takes a
+    /// fresh fix when it is tapped (asking for no more than this age), and an
+    /// older one never makes it say the route is far away.
     static let maxFixAgeSeconds: TimeInterval = 120
 
     /// The coordinate of a fix that is recent enough, else nil (`.unknown`).
@@ -35,6 +36,23 @@ enum StartReach: Equatable {
                                 maxAge: TimeInterval = StartReach.maxFixAgeSeconds) -> CLLocationCoordinate2D? {
         guard let fix, now.timeIntervalSince(fix.timestamp) <= maxAge else { return nil }
         return fix.coordinate
+    }
+
+    /// What Start does, given the fix taken when it was tapped.
+    enum Decision: Equatable {
+        case startNow
+        case askFar(meters: Double)
+    }
+
+    /// Ask only when a recent fix puts the person further than the threshold
+    /// from the route's first point. No fix, an old one, or a close one: start.
+    static func decision(fix: CLLocation?,
+                         routeStart: CLLocationCoordinate2D?,
+                         now: Date = Date()) -> Decision {
+        if case let .far(meters) = check(live: freshCoordinate(fix, now: now), routeStart: routeStart) {
+            return .askFar(meters: meters)
+        }
+        return .startNow
     }
 
     static func check(live: CLLocationCoordinate2D?,

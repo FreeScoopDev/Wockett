@@ -46,6 +46,8 @@ struct RouteFinderContentView: View {
     /// A route planned from a chosen place that starts far from where the person is
     /// (spec fix/route-start-far-from-here): Start asks before it records.
     @State private var farStart: FarStart?
+    /// True while Start is taking a fresh location fix, so a second tap waits.
+    @State private var checkingStart = false
 
     // Active search task — stored so it can be cancelled on retry or dismissal
     @State private var activeTask: Task<Void, Never>?
@@ -678,21 +680,25 @@ struct RouteFinderContentView: View {
         let meters: Double
     }
 
-    /// The person's own position, never a chosen place, and none at all when
-    /// location is off or restricted, or when the last fix is old: after
-    /// planning at home and driving to the trailhead it would still say home.
-    private var liveCoordinate: CLLocationCoordinate2D? {
-        guard routeManager.locationState.base.canFindRoutes else { return nil }
-        return StartReach.freshCoordinate(routeManager.lastLocation)
-    }
-
-    /// A route planned from the person's own location starts where they are, so
-    /// it is never "far". One planned from a chosen place starts there, which
-    /// can be another town: say so before recording a walk that begins there.
-    /// With no live position to compare, nothing changes.
-    private func startReach(for route: SuggestedRoute) -> StartReach {
-        guard routeManager.chosenStart != nil else { return .near }
-        return StartReach.check(live: liveCoordinate, routeStart: route.legWaypoints.first)
+    /// A route planned from a chosen place starts where it was planned, which can
+    /// be another town. When the person has allowed location, take a fresh fix
+    /// and ask before recording a walk that begins far from them. Anything else
+    /// (their own location was used, location is off, restricted or not yet
+    /// asked for, no fix came back) starts as before: this never prompts for
+    /// location permission and never blocks Start.
+    private func attemptStart(_ route: SuggestedRoute) async {
+        guard !checkingStart else { return }
+        guard routeManager.chosenStart != nil, routeManager.locationState.base == .live else {
+            startWalk(route)
+            return
+        }
+        checkingStart = true
+        let fix = await routeManager.fetchCurrentLocation(maxAge: StartReach.maxFixAgeSeconds)
+        checkingStart = false
+        switch StartReach.decision(fix: fix, routeStart: route.legWaypoints.first) {
+        case .askFar(let meters): farStart = FarStart(route: route, meters: meters)
+        case .startNow: startWalk(route)
+        }
     }
 
     private func startWalk(_ route: SuggestedRoute) {
@@ -716,16 +722,13 @@ struct RouteFinderContentView: View {
 
     private func startWalkButton(for route: SuggestedRoute) -> some View {
         Button {
-            if case let .far(meters) = startReach(for: route) {
-                farStart = FarStart(route: route, meters: meters)
-            } else {
-                startWalk(route)
-            }
+            Task { await attemptStart(route) }
         } label: {
             WktPrimaryLabel(title: "Start \(activityMode.sessionLabel)", symbol: activityMode.wktSymbol)
         }
         .buttonStyle(BounceButtonStyle(scale: 0.98))
         .accessibilityIdentifier("routes.startWalk")
+        .disabled(checkingStart)
         .padding(.horizontal, 20)
     }
 

@@ -78,4 +78,41 @@ struct StartReachTests {
     @Test func noFixIsNoCoordinate() {
         #expect(StartReach.freshCoordinate(nil) == nil)
     }
+
+    // MARK: - What Start does
+
+    private static let durham = CLLocationCoordinate2D(latitude: 35.9940, longitude: -78.8986)
+
+    @Test func aRecentFixFarFromTheStartAsks() {
+        let now = Date()
+        let fix = CLLocation(coordinate: Self.durham, altitude: 0, horizontalAccuracy: 10, verticalAccuracy: 10,
+                             timestamp: now)
+        guard case let .askFar(meters) = StartReach.decision(fix: fix, routeStart: Self.raleigh, now: now) else {
+            Issue.record("expected .askFar")
+            return
+        }
+        #expect(meters > 30_000)
+    }
+
+    @Test func anOldFixNeverAsks() {
+        let now = Date()
+        let old = Self.fix(secondsAgo: 3 * 3600, now: now)   // at Raleigh, but old: must not matter
+        let farAndOld = CLLocation(coordinate: Self.durham, altitude: 0, horizontalAccuracy: 10, verticalAccuracy: 10,
+                                   timestamp: now.addingTimeInterval(-3 * 3600))
+        #expect(StartReach.decision(fix: old, routeStart: Self.raleigh, now: now) == .startNow)
+        #expect(StartReach.decision(fix: farAndOld, routeStart: Self.raleigh, now: now) == .startNow)
+    }
+
+    @Test func noFixOrNoRouteStartJustStarts() {
+        let now = Date()
+        let fix = CLLocation(coordinate: Self.durham, altitude: 0, horizontalAccuracy: 10, verticalAccuracy: 10,
+                             timestamp: now)
+        #expect(StartReach.decision(fix: nil, routeStart: Self.raleigh, now: now) == .startNow)
+        #expect(StartReach.decision(fix: fix, routeStart: nil, now: now) == .startNow)
+    }
+
+    @Test func aRecentFixNearTheStartJustStarts() {
+        let now = Date()
+        #expect(StartReach.decision(fix: Self.fix(secondsAgo: 5, now: now), routeStart: Self.raleigh, now: now) == .startNow)
+    }
 }
