@@ -547,7 +547,7 @@ struct RouteFinderContentView: View {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 14) {
                     if let weather = routeWeather {
-                        WeatherWidget(weather: weather, placeLabel: "Where you are")
+                        WeatherWidget(weather: weather, placeLabel: routeManager.weatherPlaceLabel)
                             .padding(.horizontal, 20)
                     }
 

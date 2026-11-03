@@ -9,3 +9,5 @@
   walk plan still start from your own location only, since a route that
   begins somewhere you aren't can't be walked from here; with location off
   the trail's page keeps saying so.
+- The weather on a route search from a chosen starting place says "Near
+  <place>" instead of "Where you are", since it was fetched there.

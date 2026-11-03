@@ -97,6 +97,9 @@ final class RouteManager: NSObject, ObservableObject, CLLocationManagerDelegate 
     /// Where weather and the map look: the chosen place, else the person.
     var planningCoordinate: CLLocationCoordinate2D? { chosenStart?.coordinate ?? lastLocation?.coordinate }
 
+    /// Where the results panel's weather says it is from.
+    var weatherPlaceLabel: String { chosenStart.map { "Near \($0.name)" } ?? "Where you are" }
+
     override convenience init() {
         self.init(fixedLocation: nil)
     }
