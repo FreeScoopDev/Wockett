@@ -5,10 +5,9 @@
 # minutes a GitHub Free private repo gets each month. Anything that does not
 # genuinely need Xcode belongs here instead.
 #
-# Building and testing the app moves to Xcode Cloud (25 compute hours/month,
-# included with the Apple Developer Program). Once that is verified green on a
-# pull request, tests.yml is deleted and this is the only GitHub Actions
-# workflow left.
+# Building and testing the app runs in tests.yml (macos-26, free because the
+# repository is public); its `Unit tests (iOS)` job is a required check. Xcode
+# Cloud only runs a daily full-scheme test on main and Release Flow archives.
 
 name: Guards
 
