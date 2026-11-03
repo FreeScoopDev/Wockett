@@ -78,6 +78,7 @@ struct TrailDirectionsSection: View {
                 .foregroundColor(.earthMuted)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity)
+                .accessibilityIdentifier("routes.trailNoLocation")
         }
     }
 

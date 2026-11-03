@@ -110,6 +110,15 @@ struct TrailListTests {
         #expect(!TrailText.detailSubtitle(for: item).hasPrefix("Out and back"), "pieces are not provably an out and back")
     }
 
+    /// Spec fix/route-start-place, item 12: the subtitle names where the distance is from.
+    @Test("The detail subtitle says who the distance is from")
+    func detailSubtitleNamesTheOrigin() {
+        let item = TrailListItem(id: "g1-2", name: "Creek Trail",
+                                 sections: [section(1, "Creek Trail"), section(2, "Creek Trail")], distanceMeters: 800)
+        #expect(TrailText.detailSubtitle(for: item).hasSuffix("from you"))
+        #expect(TrailText.detailSubtitle(for: item, from: "Pullen Park").hasSuffix("from Pullen Park"))
+    }
+
     // MARK: Official trails
 
     @Test("Only a trail's own name is official: a road-derived name and no name are not")

@@ -160,6 +160,19 @@ struct RouteManagerTests {
         #expect(manager.lastLocation?.coordinate.latitude == 40.0)
     }
 
+    /// The results panel's weather must not claim to be where the person is
+    /// when it was fetched at a chosen place (spec fix/route-start-place).
+    @Test @MainActor func weatherLabelNamesTheChosenPlace() {
+        let manager = RouteManager(fixedLocation: Self.fixed)
+        #expect(manager.weatherPlaceLabel == "Where you are")
+        let item = MKMapItem(location: CLLocation(latitude: 35.78, longitude: -78.64), address: nil)
+        item.name = "Pullen Park"
+        manager.choose(item)
+        #expect(manager.weatherPlaceLabel == "Near Pullen Park")
+        manager.useMyLocation()
+        #expect(manager.weatherPlaceLabel == "Where you are")
+    }
+
     @Test @MainActor func useMyLocation_clearsTheChosenPlace() async throws {
         let manager = RouteManager(fixedLocation: Self.fixed)
         manager.choose(Self.place)

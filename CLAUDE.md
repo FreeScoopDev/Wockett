@@ -231,7 +231,13 @@ way unless there's a strong reason; adding the first one is a real decision.
   `history.filter` (the Filters menu), `history.header` (the totals; its
   label reads them), `history.noMatch` (a search or filter matching nothing),
   `settings.notifications.status` (the line under Settings' notification
-  status saying what will arrive; absent when fully enabled).
+  status saying what will arrive; absent when fully enabled),
+  `routes.chooseStart` (opens the starting-place search; Routes and Trails,
+  with location off and no place chosen), `routes.startingFrom` (the "Starting
+  from <place>" line; its label names the place), `routes.changeStart`,
+  `routes.useMyLocation` (only when location is usable) and
+  `routes.trailNoLocation` (a trail's no-location directions text). Launch with
+  `-WKTUITest -WKTLocationOff -WKTChosenStart` to start with "Test Place" chosen.
 - **Tab bar buttons are addressed by visible title**, not identifier — iOS 26
   discards `.accessibilityIdentifier` on `Tab`.
 - **Notifications go through `NotificationService`.** It owns permission,

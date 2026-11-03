@@ -7,10 +7,13 @@ struct LocationRecoveryActions: View {
     let state: RouteLocationState
     let activityMode: ActivityMode
     let onPlanOnMap: () -> Void
-    /// Routes only, for now: Trails leaves these out and offers Part 1's actions.
+    /// Choosing a starting place, in Routes and Trails: both panels pass them.
     var onChooseStart: (() -> Void)?
     var chosenName: String?
     var onUseMyLocation: () -> Void = {}
+    /// Trails with a place chosen: only the starting-from row, so the list
+    /// stays on screen. Settings and the builder are one tap away in Routes.
+    var compact = false
     @Environment(\.dynamicTypeSize) private var typeSize
 
     /// The reason, styled the same in Routes (above Find Routes) and Trails.
@@ -46,12 +49,12 @@ struct LocationRecoveryActions: View {
                                    action: onChooseStart)
                     .accessibilityIdentifier("routes.chooseStart")
             }
-            if state.showsOpenSettings, let url = URL(string: UIApplication.openSettingsURLString) {
+            if !compact, state.showsOpenSettings, let url = URL(string: UIApplication.openSettingsURLString) {
                 // Only iOS Settings can reverse a denial.
                 WktSecondaryButton(title: "Open Settings", symbol: .settings) { UIApplication.shared.open(url) }
                     .accessibilityIdentifier("routes.openSettings")
             }
-            if state.showsPlanOnMap {
+            if !compact, state.showsPlanOnMap {
                 // A link, not a button: at Accessibility 2 a third button left
                 // "Choose a starting place" no room to wrap (spec owner decision 2).
                 Button(action: onPlanOnMap) {
@@ -62,7 +65,7 @@ struct LocationRecoveryActions: View {
                 }
                 .accessibilityIdentifier("routes.planOnMap")
             }
-            if !state.canUseLiveLocation {
+            if !compact, !state.canUseLiveLocation {
                 Text("You can plan a route without your location. Recording a \(activityMode.noun)'s path on the map needs it.")
                     .font(.wktLabel)
                     .foregroundColor(.earthMuted)

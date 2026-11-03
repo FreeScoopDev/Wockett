@@ -1243,6 +1243,37 @@ final class SmokeTests: XCTestCase {
                       "Find Routes must list routes (the UI-test stub; RouteManagerTests covers the origin)")
     }
 
+    /// Trails lists trails around a chosen place, with headings that name it,
+    /// while location is off (spec fix/route-start-place, criterion 7).
+    func testTrailsListAroundAChosenPlaceWithLocationOff() {
+        app.terminate()
+        app.launchArguments = ["-WKTUITest", "-WKTLocationOff", "-WKTChosenStart"]
+        app.launch()
+        XCTAssertTrue(el("home.statCard").waitForExistence(timeout: 30))
+        selectTab("Routes")
+        let picker = el("routes.modePicker")
+        XCTAssertTrue(picker.waitForExistence(timeout: 30))
+        picker.buttons["Trails"].tap()
+        XCTAssertTrue(el("routes.trailsPanel").waitForExistence(timeout: 15))
+        XCTAssertTrue(app.staticTexts["Trails near Test Place"].waitForExistence(timeout: 15),
+                      "The heading must name the chosen place")
+        // Until the Routes panel has gone, its own row would satisfy this.
+        XCTAssertTrue(app.buttons["routes.findRoutes"].waitForNonExistence(timeout: 10), "The Routes panel must give way to Trails")
+        XCTAssertTrue(el("routes.startingFrom").exists, "Trails must show where it starts from")
+        XCTAssertTrue(app.buttons["routes.changeStart"].exists, "Trails must offer Change")
+        let card = app.buttons["routes.trailCard"].firstMatch
+        XCTAssertTrue(card.waitForExistence(timeout: 15), "Trails must list trails around the chosen place")
+
+        // Directions never start from a chosen place: with location off the
+        // detail has no origin and says so, though the list has a centre.
+        card.tap()
+        XCTAssertTrue(el("routes.trailDetail").waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'from Test Place'")).firstMatch.exists,
+                      "The detail must say the distance is from the chosen place")
+        XCTAssertTrue(el("routes.trailNoLocation").waitForExistence(timeout: 10),
+                      "Directions must not start from the chosen place")
+    }
+
     // MARK: - 7b. My contributions
 
     /// Settings → Community → My contributions opens, and with nothing
