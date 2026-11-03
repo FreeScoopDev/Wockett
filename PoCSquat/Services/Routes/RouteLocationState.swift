@@ -64,6 +64,12 @@ enum RouteLocationState: Equatable {
     /// Routes start from the live location (or will, once asked).
     var usesLiveLocation: Bool { self == .live || self == .willAsk }
 
+    /// Back from Settings with location on, chosen place or not: nothing
+    /// else fetches a fix, and Trails would wait on "Finding your location…".
+    static func needsFreshFix(from old: RouteLocationState, to new: RouteLocationState) -> Bool {
+        new.canUseLiveLocation && !old.canUseLiveLocation
+    }
+
     var message: String? {
         switch self {
         case .live, .chosen: return nil

@@ -135,7 +135,7 @@ struct RouteFinderContentView: View {
         // fix, and Trails would wait on "Finding your location…" for ever.
         // Turned off: the list and the map drop their trails.
         .onChange(of: routeManager.locationState) { old, new in
-            if new.usesLiveLocation, !old.usesLiveLocation {
+            if RouteLocationState.needsFreshFix(from: old, to: new) {
                 Task { routeManager.lastLocation = await routeManager.fetchCurrentLocation() }
             }
             if mode == .trails { refreshTrails() }
@@ -966,6 +966,13 @@ struct RouteFinderMapView: UIViewRepresentable {
             let span = max(goalDistanceMeters * 2.5, 1500)
             map.setRegion(MKCoordinateRegion(center: loc, latitudinalMeters: span, longitudinalMeters: span), animated: false)
         }
+        // A newly chosen place (or Change) moves the empty map there.
+        let centre = includesUserDot ? nil : userLocation.map { "\($0.latitude),\($0.longitude)" }
+        if let loc = userLocation, let centre, routes.isEmpty, centre != context.coordinator.lastChosenCentre {
+            context.coordinator.lastChosenCentre = centre
+            let span = max(goalDistanceMeters * 2.5, 1500)
+            map.setRegion(MKCoordinateRegion(center: loc, latitudinalMeters: span, longitudinalMeters: span), animated: true)
+        }
 
         let currentIds = routes.map { $0.id }
 
@@ -1274,6 +1281,7 @@ struct RouteFinderMapView: UIViewRepresentable {
         var lastMutedBase = false
         var regionBeforeTrail: MKCoordinateRegion?
         var hasSetInitialRegion = false
+        var lastChosenCentre: String?
         var lastApproachSource: MKPolyline?
         var lastApproachColor: UIColor?
         var lastFramedInset: CGFloat = 0

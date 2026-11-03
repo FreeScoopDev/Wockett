@@ -1240,7 +1240,7 @@ final class SmokeTests: XCTestCase {
 
         findRoutes.tap()
         XCTAssertTrue(app.buttons["routes.routeCard"].firstMatch.waitForExistence(timeout: 30),
-                      "Find Routes must list routes from the chosen place")
+                      "Find Routes must list routes (the UI-test stub; RouteManagerTests covers the origin)")
     }
 
     // MARK: - 7b. My contributions

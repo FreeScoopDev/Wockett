@@ -117,6 +117,16 @@ struct RouteLocationStateTests {
         #expect(!state.usesLiveLocation)
     }
 
+    /// Back from Settings with location on, a chosen place or not, a fix is
+    /// fetched; choosing a place never asks for one (critic, PR A).
+    @Test func aFreshFixOnlyWhenLiveLocationBecomesUsable() {
+        #expect(RouteLocationState.needsFreshFix(from: .chosen(over: .off), to: .chosen(over: .live)))
+        #expect(RouteLocationState.needsFreshFix(from: .off, to: .live))
+        #expect(!RouteLocationState.needsFreshFix(from: .off, to: .chosen(over: .off)))
+        #expect(!RouteLocationState.needsFreshFix(from: .live, to: .chosen(over: .live)))
+        #expect(!RouteLocationState.needsFreshFix(from: .chosen(over: .live), to: .live))
+    }
+
     @Test(arguments: allStatuses, [false, true])
     func noChosenPlaceIsTheSameAsBefore(status: CLAuthorizationStatus, bypass: Bool) {
         let state = RouteLocationState.make(auth: status, bypass: bypass, hasChosenPlace: false)

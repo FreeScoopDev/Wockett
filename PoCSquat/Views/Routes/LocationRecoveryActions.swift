@@ -52,12 +52,14 @@ struct LocationRecoveryActions: View {
                 WktSecondaryButton(title: "Plan on the map", symbol: .buildRoute, action: onPlanOnMap)
                     .accessibilityIdentifier("routes.planOnMap")
             }
-            Text("You can plan a route without your location. Recording a \(activityMode.noun)'s path on the map needs it.")
-                .font(.wktLabel)
-                .foregroundColor(.earthMuted)
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
-                .accessibilityIdentifier("routes.locationNote")
+            if !state.canUseLiveLocation {
+                Text("You can plan a route without your location. Recording a \(activityMode.noun)'s path on the map needs it.")
+                    .font(.wktLabel)
+                    .foregroundColor(.earthMuted)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("routes.locationNote")
+            }
         }
     }
 }
