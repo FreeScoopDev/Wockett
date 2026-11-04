@@ -51,17 +51,17 @@ is red. Warnings do not fail it; read the `Found N violations, M serious` line
 in the job log for those. (Until 2026-09-09 the job ran with
 `continue-on-error` and its green tick meant nothing — that caveat is gone.)
 
-**Current, as of 2026-09-09** (SwiftLint 0.65.1, `scripts/lint.sh`):
+**Current, as of 2026-11-04** (SwiftLint 0.65.1, `scripts/lint.sh`):
 
 ```
-151 violations, 0 at error severity
+140 violations, 0 at error severity
 ```
 
 The 32 error-severity violations that stood on 2026-09-08 (26 `force_unwrapping`,
 3 `large_tuple`, 1 `function_parameter_count`, 1 `force_try`, 1 `force_cast`)
 were cleared in #17 and `continue-on-error` removed the same day. `large_tuple`
 and `function_parameter_count` were disabled rather than fixed — style rules from
-the same family as the four size rules already off. The remaining 151 are
+the same family as the four size rules already off. The remaining 140 are
 warnings and do not fail the job.
 
 The pre-tuning baseline was **863 violations, 33 serious**, of which 669 were
