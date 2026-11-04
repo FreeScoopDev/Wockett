@@ -727,7 +727,8 @@ struct RouteFinderContentView: View {
             return
         }
         let tap = StartReach.Tap(routeID: route.id, activityMode: activityMode)
-        guard routeManager.chosenStart != nil, routeManager.locationState.base == .live else {
+        guard StartReach.needsFarCheck(hasChosenStart: routeManager.chosenStart != nil,
+                                      location: routeManager.locationState) else {
             beginGuidedSession(route.toNavigableRoute(activityMode: tap.activityMode))
             return
         }

@@ -30,6 +30,13 @@ enum StartReach: Equatable {
     /// older one never makes it say the route is far away.
     static let maxFixAgeSeconds: TimeInterval = 120
 
+    /// Whether Start takes a fresh fix and may ask: only for a route planned from
+    /// a chosen place, and only when location is already allowed. Any other
+    /// state would make the fix request itself raise the permission prompt.
+    static func needsFarCheck(hasChosenStart: Bool, location: RouteLocationState) -> Bool {
+        hasChosenStart && location.base == .live
+    }
+
     /// The coordinate of a fix that is recent enough, else nil (`.unknown`).
     static func freshCoordinate(_ fix: CLLocation?,
                                 now: Date = Date(),

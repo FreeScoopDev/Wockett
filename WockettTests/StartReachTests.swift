@@ -8,6 +8,21 @@ import Testing
 struct StartReachTests {
     private static let raleigh = CLLocationCoordinate2D(latitude: 35.7796, longitude: -78.6382)
 
+    /// Widening this gate (to `canFindRoutes`, say) would make Start raise the
+    /// location prompt, and nothing else would notice.
+    @Test func onlyAChosenStartWithLocationAlreadyAllowedIsChecked() {
+        let states: [(RouteLocationState, Bool)] = [
+            (.live, true), (.chosen(over: .live), true),
+            (.willAsk, false), (.chosen(over: .willAsk), false),
+            (.off, false), (.chosen(over: .off), false),
+            (.restricted, false), (.chosen(over: .restricted), false),
+        ]
+        for (state, allowed) in states {
+            #expect(StartReach.needsFarCheck(hasChosenStart: true, location: state) == allowed)
+            #expect(!StartReach.needsFarCheck(hasChosenStart: false, location: state))
+        }
+    }
+
     @Test func samePointIsNear() {
         #expect(StartReach.check(live: Self.raleigh, routeStart: Self.raleigh) == .near)
     }
