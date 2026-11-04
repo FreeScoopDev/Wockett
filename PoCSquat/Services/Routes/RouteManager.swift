@@ -3,6 +3,31 @@ import Combine
 import MapKit
 import CoreLocation
 
+// MARK: - Location waiters
+
+/// Everyone waiting on one location request. CoreLocation answers a
+/// `requestLocation()` once, so every caller waiting when it answers gets the
+/// same answer: the fix, or nil when it failed. Until 2026-11-03 a second
+/// request answered the first with nil, so a caller could not tell a failure
+/// from being overtaken, and Routes kept an old fix after a real failure.
+struct LocationWaiters<Answer> {
+    private var waiting: [(Answer) -> Void] = []
+
+    /// Adds a waiter. True for the first, which should ask CoreLocation;
+    /// later ones share the request already in flight.
+    mutating func add(_ resume: @escaping (Answer) -> Void) -> Bool {
+        waiting.append(resume)
+        return waiting.count == 1
+    }
+
+    /// Answers every waiter once with `answer`, and empties the list.
+    mutating func answerAll(_ answer: Answer) {
+        let all = waiting
+        waiting = []
+        all.forEach { $0(answer) }
+    }
+}
+
 // MARK: - Directions Throttler
 
 // Apple's Maps daemon (geod) throttles apps that exceed ~50 MKDirections requests
@@ -73,9 +98,10 @@ final class RouteManager: NSObject, ObservableObject, CLLocationManagerDelegate 
     @Published private(set) var chosenStart: ChosenPlace?
 
     private let locationManager = CLLocationManager()
-    nonisolated(unsafe) private var locationContinuation: CheckedContinuation<CLLocation?, Never>?
+    /// Everyone waiting on the one `requestLocation()` in flight.
+    private var locationWaiters = LocationWaiters<CLLocation?>()
     /// Searches waiting for the answer to the permission prompt. A list, and
-    /// apart from `locationContinuation`: Routes opening and a Find Routes tap
+    /// apart from `locationWaiters`: Routes opening and a Find Routes tap
     /// can both be waiting, and neither may drop the other.
     private var authWaiters: [CheckedContinuation<Void, Never>] = []
     // Monotonically-increasing token: each new search increments this so stale
@@ -571,12 +597,11 @@ final class RouteManager: NSObject, ObservableObject, CLLocationManagerDelegate 
         guard authStatus == .authorizedWhenInUse || authStatus == .authorizedAlways else { return nil }
         if let cached = locationManager.location, -cached.timestamp.timeIntervalSinceNow < maxAge { return cached }
         return await withCheckedContinuation { cont in
-            // Two callers at once (Routes opening, a trail's directions): the
-            // earlier one gets nil rather than waiting for ever on a
-            // continuation that was overwritten.
-            locationContinuation?.resume(returning: nil)
-            locationContinuation = cont
-            locationManager.requestLocation()
+            // Two callers at once (Routes opening, Start's check): both wait
+            // on the one request and get its answer.
+            if locationWaiters.add({ cont.resume(returning: $0) }) {
+                locationManager.requestLocation()
+            }
         }
     }
 
@@ -584,16 +609,12 @@ final class RouteManager: NSObject, ObservableObject, CLLocationManagerDelegate 
 
     nonisolated func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         let loc = locations.last
-        Task { @MainActor in
-            locationContinuation?.resume(returning: loc)
-            locationContinuation = nil
-        }
+        Task { @MainActor in locationWaiters.answerAll(loc) }
     }
 
     nonisolated func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
         Task { @MainActor in
-            locationContinuation?.resume(returning: nil)
-            locationContinuation = nil
+            locationWaiters.answerAll(nil)
             locationError = "Location error: \(error.localizedDescription)"
             locationFailed = true
         }
@@ -607,6 +628,11 @@ final class RouteManager: NSObject, ObservableObject, CLLocationManagerDelegate 
         let status = manager.authorizationStatus
         Task { @MainActor in
             authStatus = status
+            // Location turned off with a request in flight: answer its waiters
+            // now instead of waiting for CoreLocation's kCLErrorDenied. Only the
+            // first waiter asks and nothing times out, so every other case still
+            // relies on requestLocation() answering once, as documented.
+            if status == .denied || status == .restricted { locationWaiters.answerAll(nil) }
             guard status != .notDetermined else { return }
             let waiters = authWaiters
             authWaiters = []

@@ -183,4 +183,44 @@ struct RouteManagerTests {
         #expect(manager.locationState == .live)
         #expect(try #require(await manager.planningOrigin()).isLive)
     }
+
+    // MARK: - Location waiters (fix/route-start-follow-ups)
+
+    /// Routes opening and Start's check can both wait on one location request.
+    /// Before, the second answered the first with nil, so the first could not
+    /// tell being overtaken from a real failure.
+    @Test @MainActor func overlappingWaiters_allGetTheSameFix() {
+        var waiters = LocationWaiters<Int?>()
+        var first: Int?? = .none
+        var second: Int?? = .none
+        #expect(waiters.add { first = $0 }, "the first waiter asks CoreLocation")
+        #expect(!waiters.add { second = $0 }, "a later waiter shares the request in flight")
+        #expect(first == .none, "nobody is answered before the request is")
+        waiters.answerAll(7)
+        #expect(first == .some(7))
+        #expect(second == .some(7))
+    }
+
+    @Test @MainActor func aFailedRequest_answersEveryWaiterNil() {
+        var waiters = LocationWaiters<Int?>()
+        var answers: [Int?] = []
+        _ = waiters.add { answers.append($0) }
+        _ = waiters.add { answers.append($0) }
+        waiters.answerAll(nil)
+        #expect(answers == [nil, nil])
+    }
+
+    /// Each continuation is resumed exactly once: a second answer (CoreLocation
+    /// can deliver more than one update) reaches nobody, and the next caller
+    /// starts a request of its own.
+    @Test @MainActor func answeredWaiters_areNotAnsweredAgain() {
+        var waiters = LocationWaiters<Int?>()
+        var calls = 0
+        _ = waiters.add { _ in calls += 1 }
+        _ = waiters.add { _ in calls += 1 }
+        waiters.answerAll(1)
+        waiters.answerAll(2)
+        #expect(calls == 2, "two waiters, each answered once")
+        #expect(waiters.add { _ in }, "after an answer, the next waiter asks again")
+    }
 }

@@ -35,6 +35,7 @@ struct RouteFinderContentView: View {
     // Community
     @Environment(CommunityRoutesModel.self) private var communityModel
     @Environment(\.dynamicTypeSize) private var typeSize
+    @Environment(\.scenePhase) private var scenePhase
     @State private var showCommunityRoutes = true
 
     // Navigation & sheets
@@ -101,7 +102,9 @@ struct RouteFinderContentView: View {
 
     private var showingConfig: Bool { routeManager.suggestedRoutes.isEmpty }
 
-    var body: some View {
+    /// The body is two halves because the CI compiler (Xcode 26.6) gives up
+    /// type-checking one modifier chain this long.
+    private var routesStack: some View {
         GeometryReader { geo in
             ZStack {
                 routesMap(bottomSafeArea: geo.safeAreaInsets.bottom)
@@ -145,10 +148,15 @@ struct RouteFinderContentView: View {
         // Turned off: the list and the map drop their trails.
         .onChange(of: routeManager.locationState) { old, new in
             if RouteLocationState.needsFreshFix(from: old, to: new) {
-                // Never back to nil: an overlapping fetch (Start's) answers this one nil.
-                Task { if let fix = await routeManager.fetchCurrentLocation() { routeManager.lastLocation = fix } }
+                Task { routeManager.lastLocation = await routeManager.fetchCurrentLocation() }
             }
             if mode == .trails { refreshTrails() }
+        }
+        // Leaving the app during Start's check (Open in Apple Maps, the
+        // weather attribution link, the Home screen) cancels it, so a late
+        // answer never starts a walk or asks while the person is elsewhere.
+        .onChange(of: scenePhase) { _, phase in
+            if phase != .active { cancelStartCheck() }
         }
         // Results never mix two starting points.
         .onChange(of: routeManager.chosenStart) { _, _ in
@@ -158,7 +166,7 @@ struct RouteFinderContentView: View {
         .onAppear {
             if let dest = tabRouter.pendingRoutesDestination { open(dest) }
             if routeManager.lastLocation == nil {
-                Task { if let fix = await routeManager.fetchCurrentLocation() { routeManager.lastLocation = fix } }
+                Task { routeManager.lastLocation = await routeManager.fetchCurrentLocation() }
             }
             if !isWKTUITestMode { Task { await communityModel.load() } }
         }
@@ -177,14 +185,21 @@ struct RouteFinderContentView: View {
             clearRoutes()
             if mode == .trails { refreshTrails() }
         }
+    }
+
+    private var farStartPresented: Binding<Bool> {
+        Binding(get: { farStart != nil }, set: { if !$0 { farStart = nil } })
+    }
+
+    var body: some View {
+        routesStack
         .alert("Session Already Active", isPresented: $showActiveSessionAlert) {
             Button("OK", role: .cancel) {}
         } message: {
             Text("You have a session in progress. Return to the home screen to resume or end it first.")
         }
         .confirmationDialog("This route starts far from you",
-                            isPresented: Binding(get: { farStart != nil },
-                                                 set: { if !$0 { farStart = nil } }),
+                            isPresented: farStartPresented,
                             titleVisibility: .visible,
                             presenting: farStart) { far in
             Button("Start anyway") { beginGuidedSession(far.route.toNavigableRoute(activityMode: far.activityMode)) }
@@ -618,7 +633,12 @@ struct RouteFinderContentView: View {
                         appleMapsButton(for: selected)
                     }
 
+                    // A community card's own Report and Delete sheets, its Start
+                    // and the terms prompt would sit over a late answer from
+                    // Start's check, so the section waits for it.
                     communitySection
+                        .disabled(startCheckTask != nil)
+                        .opacity(startCheckTask != nil ? 0.5 : 1)
                 }
                 // 14, not 14 + safeAreaInsets.bottom — same reason as configPanel.
                 // Here the extra inset had no measurable effect whatsoever: this
@@ -713,9 +733,9 @@ struct RouteFinderContentView: View {
         }
         startCheckTask = Task {
             let fix = await routeManager.fetchCurrentLocation(maxAge: StartReach.maxFixAgeSeconds)
-            // A live fix only (never the chosen place), and it may have
-            // answered another fetch with nil, so keep it.
-            if let fix { routeManager.lastLocation = fix }
+            // A live fix or nil, never the chosen place. Overlapping fetches
+            // share one answer, so nil here is a real failure.
+            routeManager.lastLocation = fix
             // Cancelled: cancelStartCheck already cleared the slot, which a
             // newer tap may now hold.
             guard !Task.isCancelled else { return }
