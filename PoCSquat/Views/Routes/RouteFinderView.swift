@@ -102,7 +102,9 @@ struct RouteFinderContentView: View {
 
     private var showingConfig: Bool { routeManager.suggestedRoutes.isEmpty }
 
-    var body: some View {
+    /// The body is two halves because the CI compiler (Xcode 26.6) gives up
+    /// type-checking one modifier chain this long.
+    private var routesStack: some View {
         GeometryReader { geo in
             ZStack {
                 routesMap(bottomSafeArea: geo.safeAreaInsets.bottom)
@@ -183,14 +185,21 @@ struct RouteFinderContentView: View {
             clearRoutes()
             if mode == .trails { refreshTrails() }
         }
+    }
+
+    private var farStartPresented: Binding<Bool> {
+        Binding(get: { farStart != nil }, set: { if !$0 { farStart = nil } })
+    }
+
+    var body: some View {
+        routesStack
         .alert("Session Already Active", isPresented: $showActiveSessionAlert) {
             Button("OK", role: .cancel) {}
         } message: {
             Text("You have a session in progress. Return to the home screen to resume or end it first.")
         }
         .confirmationDialog("This route starts far from you",
-                            isPresented: Binding(get: { farStart != nil },
-                                                 set: { if !$0 { farStart = nil } }),
+                            isPresented: farStartPresented,
                             titleVisibility: .visible,
                             presenting: farStart) { far in
             Button("Start anyway") { beginGuidedSession(far.route.toNavigableRoute(activityMode: far.activityMode)) }
