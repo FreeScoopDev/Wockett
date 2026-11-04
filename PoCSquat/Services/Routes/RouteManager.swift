@@ -629,8 +629,9 @@ final class RouteManager: NSObject, ObservableObject, CLLocationManagerDelegate 
         Task { @MainActor in
             authStatus = status
             // Location turned off with a request in flight: answer its waiters
-            // now rather than rely on CoreLocation's error, since a waiter that
-            // is never answered holds every later request with it.
+            // now instead of waiting for CoreLocation's kCLErrorDenied. Only the
+            // first waiter asks and nothing times out, so every other case still
+            // relies on requestLocation() answering once, as documented.
             if status == .denied || status == .restricted { locationWaiters.answerAll(nil) }
             guard status != .notDetermined else { return }
             let waiters = authWaiters
