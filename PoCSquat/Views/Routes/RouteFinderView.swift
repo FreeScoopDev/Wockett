@@ -629,6 +629,7 @@ struct RouteFinderContentView: View {
                     // Start's check, so the section waits for it.
                     communitySection
                         .disabled(startCheckTask != nil)
+                        .opacity(startCheckTask != nil ? 0.5 : 1)
                 }
                 // 14, not 14 + safeAreaInsets.bottom — same reason as configPanel.
                 // Here the extra inset had no measurable effect whatsoever: this

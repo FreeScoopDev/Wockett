@@ -628,6 +628,10 @@ final class RouteManager: NSObject, ObservableObject, CLLocationManagerDelegate 
         let status = manager.authorizationStatus
         Task { @MainActor in
             authStatus = status
+            // Location turned off with a request in flight: answer its waiters
+            // now rather than rely on CoreLocation's error, since a waiter that
+            // is never answered holds every later request with it.
+            if status == .denied || status == .restricted { locationWaiters.answerAll(nil) }
             guard status != .notDetermined else { return }
             let waiters = authWaiters
             authWaiters = []
