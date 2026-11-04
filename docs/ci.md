@@ -201,6 +201,20 @@ not a block; run `scripts/test.sh` (the full scheme) locally before pushing
 a change that touches the UI, as the process already asks. When it has
 proven itself, add `UI smoke tests (iOS)` to `requiredChecks` and re-apply.
 
+**What the UI job does not check.** The job sets `WOCKETT_CI=1`
+(`TEST_RUNNER_WOCKETT_CI` in `tests.yml`), and these tests react to it or to
+the runner's lack of outside services. All of them run on a local
+`scripts/test.sh` and on Xcode Cloud's daily run, where `WOCKETT_CI` is not set.
+
+| Test (`WockettUITests`) | On the Actions runner | Why |
+| --- | --- | --- |
+| `testGuidedWalkEndedFromLiveActivityReturnsHome` (`SmokeTests`) | Skipped | The runner doesn't drive Notification Centre reliably (flaky across runs, see the test's comment). |
+| `testSavedRouteWeatherOpensCollapsed` (`SmokeTests`) | Skipped | Needs WeatherKit, which the runner may not reach. |
+| `testRoutesResultsFitAtAccessibility2` (`SmokeTests`) | Runs, but doesn't require the weather tile | Same WeatherKit reason. |
+| `testElevationChartAtAccessibility2` (`SmokeTests`) | Skips when the elevation service doesn't answer | Public elevation API; any run, not only CI. |
+| `testTrailRegionsStackAtAccessibility2` (`SmokeTests`) | Skips when no region is listed | Needs CloudKit's public database and a network; any run. |
+| `test_video_10_start_a_challenge_and_share_it` (`HowToVideoTests`) | Skips when Create Challenge errors | Needs a simulator signed in to iCloud; any run. |
+
 ## Xcode Cloud
 
 Configured at App Store Connect → Wockett → Xcode Cloud → Manage Workflows.
