@@ -55,6 +55,20 @@ struct ChosenPlace: Equatable {
 
 typealias PlanningOrigin = (location: CLLocation, isLive: Bool)
 
+/// Callers waiting on one location answer: each gets it. A single slot let a
+/// second caller push the first out with nil.
+struct LocationWaiters {
+    private var waiting: [CheckedContinuation<CLLocation?, Never>] = []
+    var count: Int { waiting.count }
+    var isEmpty: Bool { waiting.isEmpty }
+    mutating func add(_ waiter: CheckedContinuation<CLLocation?, Never>) { waiting.append(waiter) }
+    mutating func resumeAll(with location: CLLocation?) {
+        let all = waiting
+        waiting = []
+        all.forEach { $0.resume(returning: location) }
+    }
+}
+
 @MainActor
 final class RouteManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     @Published var suggestedRoutes: [SuggestedRoute] = []
@@ -73,9 +87,9 @@ final class RouteManager: NSObject, ObservableObject, CLLocationManagerDelegate 
     @Published private(set) var chosenStart: ChosenPlace?
 
     private let locationManager = CLLocationManager()
-    nonisolated(unsafe) private var locationContinuation: CheckedContinuation<CLLocation?, Never>?
+    private var locationWaiters = LocationWaiters()
     /// Searches waiting for the answer to the permission prompt. A list, and
-    /// apart from `locationContinuation`: Routes opening and a Find Routes tap
+    /// apart from `locationWaiters`: Routes opening and a Find Routes tap
     /// can both be waiting, and neither may drop the other.
     private var authWaiters: [CheckedContinuation<Void, Never>] = []
     // Monotonically-increasing token: each new search increments this so stale
@@ -571,12 +585,11 @@ final class RouteManager: NSObject, ObservableObject, CLLocationManagerDelegate 
         guard authStatus == .authorizedWhenInUse || authStatus == .authorizedAlways else { return nil }
         if let cached = locationManager.location, -cached.timestamp.timeIntervalSinceNow < maxAge { return cached }
         return await withCheckedContinuation { cont in
-            // Two callers at once (Routes opening, a trail's directions): the
-            // earlier one gets nil rather than waiting for ever on a
-            // continuation that was overwritten.
-            locationContinuation?.resume(returning: nil)
-            locationContinuation = cont
-            locationManager.requestLocation()
+            // Two callers at once (Routes opening, a trail's directions) share
+            // the one request: both get its answer.
+            let requestInFlight = !locationWaiters.isEmpty
+            locationWaiters.add(cont)
+            if !requestInFlight { locationManager.requestLocation() }
         }
     }
 
@@ -585,15 +598,13 @@ final class RouteManager: NSObject, ObservableObject, CLLocationManagerDelegate 
     nonisolated func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         let loc = locations.last
         Task { @MainActor in
-            locationContinuation?.resume(returning: loc)
-            locationContinuation = nil
+            locationWaiters.resumeAll(with: loc)
         }
     }
 
     nonisolated func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
         Task { @MainActor in
-            locationContinuation?.resume(returning: nil)
-            locationContinuation = nil
+            locationWaiters.resumeAll(with: nil)
             locationError = "Location error: \(error.localizedDescription)"
             locationFailed = true
         }

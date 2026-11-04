@@ -6,6 +6,32 @@ import CoreLocation
 
 struct RouteManagerTests {
 
+    // MARK: - Location waiters
+
+    /// Two callers waiting at once both get the answer; neither is pushed out with nil.
+    @Test @MainActor func everyWaiterGetsTheLocationAnswer() async {
+        final class Holder { var waiters = LocationWaiters() }
+        let holder = Holder()
+        let here = CLLocation(latitude: 37.77, longitude: -122.43)
+        func wait() -> Task<CLLocation?, Never> {
+            Task { @MainActor in
+                await withCheckedContinuation { (cont: CheckedContinuation<CLLocation?, Never>) in
+                    holder.waiters.add(cont)
+                }
+            }
+        }
+        let first = wait()
+        let second = wait()
+        while true {
+            await Task.yield()
+            if holder.waiters.count == 2 { break }
+        }
+        holder.waiters.resumeAll(with: here)
+        #expect(await first.value == here)
+        #expect(await second.value == here)
+        #expect(holder.waiters.isEmpty)
+    }
+
     // MARK: - Helpers
 
     private func route(
