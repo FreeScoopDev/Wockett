@@ -217,9 +217,10 @@ struct RouteManagerTests {
         var waiters = LocationWaiters<Int?>()
         var calls = 0
         _ = waiters.add { _ in calls += 1 }
+        _ = waiters.add { _ in calls += 1 }
         waiters.answerAll(1)
         waiters.answerAll(2)
-        #expect(calls == 1)
+        #expect(calls == 2, "two waiters, each answered once")
         #expect(waiters.add { _ in }, "after an answer, the next waiter asks again")
     }
 }
