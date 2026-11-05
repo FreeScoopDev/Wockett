@@ -11,8 +11,10 @@
   summary's formatter, which rounds to the nearest whole metre or foot, so a
   98.6 m climb reads "99 m" where the chart used to cut it to "98m". The
   chart's shape is unchanged; only the numbers on its axis change. Heights are
-  still stored in metres. A result card's distance moves onto the same rule,
-  so a device set to UK units no longer reads miles beside a climb in metres.
+  still stored in metres. A route result card's distance moves onto the
+  same rule, so on a device set to UK units the card no longer reads miles
+  beside a climb in metres (a saved route's own page still uses the
+  region's distance unit there).
 - The "already active" alert on a saved route's Start says "session", not
   "walk": the route can be started as a run or a ride.
 
