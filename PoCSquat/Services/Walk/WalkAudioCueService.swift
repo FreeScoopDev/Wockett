@@ -52,7 +52,8 @@ final class WalkAudioCueService: NSObject {
 
     /// Miles in the US, kilometres everywhere else: the rule the rest of the
     /// app follows (`Locale.current.measurementSystem == .us` means miles).
-    nonisolated static var usesMiles: Bool { Locale.current.measurementSystem == .us }
+    nonisolated static var usesMiles: Bool { usesMiles(in: .current) }
+    nonisolated static func usesMiles(in locale: Locale) -> Bool { locale.measurementSystem == .us }
 
     nonisolated static let metersPerMile = 1609.344
 

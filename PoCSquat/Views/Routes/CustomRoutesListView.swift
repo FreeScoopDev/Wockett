@@ -126,7 +126,6 @@ struct CustomRouteDetailView: View {
     @ObservedObject var historyStore: WalkHistoryStore
     @ObservedObject var routeStore:   CustomRouteStore
     @Environment(\.dismiss) private var dismiss
-    @State private var activityMode:      ActivityMode
     @State private var routeLegs:         [RouteLeg] = []
     @State private var isLoading          = false
     @State private var routeWeather:      RouteWeather?
@@ -137,7 +136,6 @@ struct CustomRouteDetailView: View {
     /// Share Route opens the review (`ShareReviewSheet`); set once it publishes.
     @State private var showShareReview         = false
     @State private var didShare                = false
-    @State private var showActiveSessionAlert  = false
     @State private var showRename              = false
     @State private var renameText              = ""
     /// Set when the route is a recorded walk (`RecordedRoute`): drawn as its
@@ -151,7 +149,6 @@ struct CustomRouteDetailView: View {
         self.route        = route
         self.historyStore = historyStore
         self.routeStore   = routeStore
-        _activityMode     = State(initialValue: route.activityMode)
     }
 
     private var pinCoordinates: [CLLocationCoordinate2D] {
@@ -300,11 +297,6 @@ struct CustomRouteDetailView: View {
         } message: {
             Text("This route follows a recorded line, so it keeps that shape.")
         }
-        .alert("Walk Already Active", isPresented: $showActiveSessionAlert) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text("You have a walk in progress. Return to the home screen to resume or end it first.")
-        }
         .navigationDestination(isPresented: $isEditing) {
             CustomRouteBuilderView(
                 initialWaypoints:    route.waypoints.map { $0.clCoordinate },
@@ -342,7 +334,7 @@ struct CustomRouteDetailView: View {
                 .font(.wktLabel).foregroundColor(.earthMuted)
             if let profile = elevationProfile {
                 WktLabelPair(spacing: 10) {
-                    Text("+\(Int(profile.totalGainMeters)) m climb")
+                    Text(RouteElevation.gain(profile.totalGainMeters) + " climb")
                         .font(.wktBodyText).foregroundColor(.earthCream)
                 } second: {
                     DifficultyBadge(difficulty: profile.difficulty)
@@ -363,32 +355,7 @@ struct CustomRouteDetailView: View {
     /// How do I start, under the page. At Accessibility 2 on a 17e it is
     /// 138 pt, 16 % of the screen, so the picker stays in it (limit 25 %).
     private var actionBar: some View {
-        VStack(spacing: WktSpacing.betweenCards) {
-            WktSegmentedPicker(selection: $activityMode, options: [ActivityMode.walking, .running, .cycling].map {
-                .init(value: $0, title: $0.sessionLabel, symbol: $0.wktSymbol)
-            })
-            WktPrimaryButton(title: "Start \(activityMode.sessionLabel)", symbol: activityMode.wktSymbol) {
-                let nav = NavigableRoute(
-                    name:          route.name,
-                    waypoints:     route.waypoints.map { $0.clCoordinate },
-                    lapCount:      1,
-                    isLoop:        route.isLoop,
-                    totalDistance: route.totalDistance,
-                    isCustomRoute: true,
-                    activityMode:  activityMode,
-                    customRouteId: route.id
-                )
-                guard ActiveWalkStore.shared.beginSession(route: nav) != nil else {
-                    showActiveSessionAlert = true
-                    return
-                }
-                dismiss()
-            }
-            .accessibilityIdentifier("routes.detailStart")
-        }
-        .wktActionBar()
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("routes.detailActionBar")
+        RouteStartBar(route: route, startID: "routes.detailStart", barID: "routes.detailActionBar") { dismiss() }
     }
 
     @ViewBuilder
@@ -497,5 +464,62 @@ struct CustomRouteDetailView: View {
         let item = MKMapItem(location: CLLocation(latitude: first.clCoordinate.latitude, longitude: first.clCoordinate.longitude), address: nil)
         item.name = "\(route.name) — Start"
         item.openInMaps(launchOptions: [MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeWalking])
+    }
+}
+
+// MARK: - Route Start Bar
+
+/// A saved route's mode picker and Start, the only way it begins a session:
+/// under the route's detail, and in Route History's start sheet, so the two
+/// cannot drift. Shows the already-active alert itself; `onStarted` runs
+/// only once a session has begun.
+struct RouteStartBar: View {
+    let route: CustomRoute
+    let startID: String
+    let barID: String
+    let onStarted: () -> Void
+    @State private var activityMode: ActivityMode
+    @State private var showActiveSessionAlert = false
+
+    init(route: CustomRoute, startID: String, barID: String, onStarted: @escaping () -> Void) {
+        self.route = route
+        self.startID = startID
+        self.barID = barID
+        self.onStarted = onStarted
+        _activityMode = State(initialValue: route.activityMode)
+    }
+
+    var body: some View {
+        VStack(spacing: WktSpacing.betweenCards) {
+            WktSegmentedPicker(selection: $activityMode, options: [ActivityMode.walking, .running, .cycling].map {
+                .init(value: $0, title: $0.sessionLabel, symbol: $0.wktSymbol)
+            })
+            WktPrimaryButton(title: "Start \(activityMode.sessionLabel)", symbol: activityMode.wktSymbol) {
+                let nav = NavigableRoute(
+                    name:          route.name,
+                    waypoints:     route.waypoints.map { $0.clCoordinate },
+                    lapCount:      1,
+                    isLoop:        route.isLoop,
+                    totalDistance: route.totalDistance,
+                    isCustomRoute: true,
+                    activityMode:  activityMode,
+                    customRouteId: route.id
+                )
+                guard ActiveWalkStore.shared.beginSession(route: nav) != nil else {
+                    showActiveSessionAlert = true
+                    return
+                }
+                onStarted()
+            }
+            .accessibilityIdentifier(startID)
+        }
+        .wktActionBar()
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier(barID)
+        .alert("Walk Already Active", isPresented: $showActiveSessionAlert) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("You have a walk in progress. Return to the home screen to resume or end it first.")
+        }
     }
 }

@@ -244,10 +244,12 @@ struct SuggestedRoute: Identifiable {
     var elevationLossMeters: Double = 0
     var colorIndex: Int = 0     // position in result list; drives unique hue per route
 
-    var elevationSummary: String? {
+    /// In the chart's unit, not `MKDistanceFormatter`'s, which follows the
+    /// region and spoke miles and yards for en_GB while the app uses km.
+    func elevationSummary(metric: Bool = RouteElevation.defaultMetric) -> String? {
         guard elevationGainMeters > 0 || elevationLossMeters > 0 else { return nil }
-        let f = MKDistanceFormatter.abbreviated
-        return "↑ \(f.string(fromDistance: elevationGainMeters)) · ↓ \(f.string(fromDistance: elevationLossMeters))"
+        return "↑ \(RouteElevation.text(elevationGainMeters, metric: metric)) · "
+            + "↓ \(RouteElevation.text(elevationLossMeters, metric: metric))"
     }
 
     static func paletteColor(index: Int, total: Int) -> Color {
