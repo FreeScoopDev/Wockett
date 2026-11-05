@@ -107,14 +107,32 @@ struct TrailFilters: Hashable {
     /// How many things differ from a fresh list: each filter that is on, plus
     /// each list option moved off its default. The number on the Filters button.
     func activeCount(groupSections: Bool, showShortPaths: Bool) -> Int {
-        [loopsOnly, surface != nil, shortOnly, hideNoDogs,
-         groupSections != Self.defaultGroupSections,
-         showShortPaths != Self.defaultShowShortPaths].filter { $0 }.count
+        let flags: [Bool] = [loopsOnly, surface != nil, shortOnly, hideNoDogs,
+                             groupSections != Self.defaultGroupSections,
+                             showShortPaths != Self.defaultShowShortPaths]
+        return flags.filter { $0 }.count
     }
 
-    /// Every filter off. The caller resets the two list options.
+    /// Whether these settings can leave out a trail the default list shows:
+    /// any filter, or listing segments separately (each piece then meets the
+    /// short-path cut-off on its own). Showing short paths only adds rows, so
+    /// an empty list with nothing else changed is the pack's doing, and the
+    /// empty message says to download a state, not that filters hid it.
+    func canNarrowList(groupSections: Bool) -> Bool {
+        self != TrailFilters() || groupSections != Self.defaultGroupSections
+    }
+
+    /// Every filter off.
     mutating func reset() {
         self = TrailFilters()
+    }
+
+    /// Every filter off and both list options back to their defaults: what
+    /// the sheet's Reset and the empty list's "Reset filters" do.
+    mutating func reset(groupSections: inout Bool, showShortPaths: inout Bool) {
+        reset()
+        groupSections = Self.defaultGroupSections
+        showShortPaths = Self.defaultShowShortPaths
     }
 }
 

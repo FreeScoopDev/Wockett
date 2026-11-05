@@ -171,6 +171,9 @@ struct TrailsPanel: View {
             shownFeatures = featuredTrails.list
             featuredNews += contributions.takeBanner()
         }
+        // On the scroll view, not the button: a sheet hosted inside the
+        // LazyVStack could be dismissed when its row is unloaded.
+        .sheet(isPresented: $showFilters) { filtersSheet }
         .task { await featuredTrails.refreshIfStale() }
         // At most daily; a status that arrives now is announced now.
         .task { featuredNews += await contributions.bannerAfterRefresh() }
@@ -222,7 +225,7 @@ struct TrailsPanel: View {
             return locationState.message ?? "Finding your location…"
         }
         guard finder.hasSearched, finder.items.isEmpty, finder.otherPaths.isEmpty else { return nil }
-        return activeFilterCount > 0
+        return finder.filters.canNarrowList(groupSections: groupSections)
             ? Self.noFilterMatch
             : "No trails within 10 miles. Download your state in Settings → Trail Regions to see its trails. More states are on the way."
     }
@@ -241,9 +244,7 @@ struct TrailsPanel: View {
     private var filtersEmptiedList: Bool { emptyMessage == Self.noFilterMatch }
 
     private func resetFilters() {
-        finder.filters.reset()
-        groupSections = TrailFilters.defaultGroupSections
-        includeShortPaths = TrailFilters.defaultShowShortPaths
+        finder.filters.reset(groupSections: &groupSections, showShortPaths: &includeShortPaths)
     }
 
     private var filtersButton: some View {
@@ -259,10 +260,11 @@ struct TrailsPanel: View {
         .accessibilityLabel("Filters")
         .accessibilityValue(TrailText.filtersValue(activeCount: activeFilterCount))
         .accessibilityIdentifier("routes.trailFilters")
-        .sheet(isPresented: $showFilters) {
-            TrailFiltersSheet(filters: $finder.filters, groupSections: $groupSections,
-                              includeShortPaths: $includeShortPaths, onReset: resetFilters)
-        }
+    }
+
+    private var filtersSheet: some View {
+        TrailFiltersSheet(filters: $finder.filters, groupSections: $groupSections,
+                          includeShortPaths: $includeShortPaths, onReset: resetFilters)
     }
 }
 
@@ -344,12 +346,7 @@ struct TrailFiltersSheet: View {
         List {
             Section {
                 toggle("Loops only", isOn: $filters.loopsOnly)
-                WktSegmentedPicker(selection: $filters.surface, options: [
-                    .init(value: nil, title: "Any"),
-                    .init(value: .paved, title: "Paved"),
-                    .init(value: .unpaved, title: "Unpaved")
-                ])
-                .listRowBackground(Color.earthCard)
+                surfacePicker
                 toggle(usesMiles ? "Under 2 mi only" : "Under 3 km only", isOn: $filters.shortOnly)
             } header: { WktListHeader(title: "Show") }
             Section {
@@ -367,6 +364,23 @@ struct TrailFiltersSheet: View {
         }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
+    }
+
+    private static let surfaceOptions: [WktSegmentedPicker<TrailSurfaceKind?>.Option] = [
+        .init(value: nil, title: "Any"),
+        .init(value: .paved, title: "Paved"),
+        .init(value: .unpaved, title: "Unpaved")
+    ]
+
+    /// Labelled as Settings labels its pickers, so "Any" says what it is about.
+    private var surfacePicker: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Surface").foregroundColor(.earthCream)
+            WktSegmentedPicker(selection: $filters.surface, options: Self.surfaceOptions)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Surface")
+        .listRowBackground(Color.earthCard)
     }
 
     /// Checkmark rows, not `WktSegmentedPicker`: its one-line options cut
