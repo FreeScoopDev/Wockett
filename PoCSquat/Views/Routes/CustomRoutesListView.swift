@@ -239,6 +239,16 @@ struct CustomRouteDetailView: View {
                             Text("Apple Maps doesn't support multi-stop walking routes. Wockett will navigate you to the start of your route — follow the in-app map for the full path.")
                         }
 
+                        VStack(spacing: 4) {
+                            NavigationLink { TrailRegionsView() } label: {
+                                WktSecondaryLabel(title: "Trail regions", symbol: .cloudDownload)
+                            }
+                            .buttonStyle(BounceButtonStyle(scale: 0.98))
+                            .accessibilityIdentifier("routes.detailTrailRegions")
+                            Text("Trail lines and details you can use offline.")
+                                .font(.wktLabel).foregroundColor(.earthMuted)
+                        }
+
                         // Community sharing: everything about what goes public is in the review.
                         VStack(alignment: .leading, spacing: WktSpacing.betweenCards) {
                             Text("Share to Community")

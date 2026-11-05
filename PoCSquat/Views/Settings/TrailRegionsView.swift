@@ -13,21 +13,17 @@ struct TrailRegionsView: View {
 
     var body: some View {
         List {
+            let groups = TrailPackLibrary.ordered(library.catalog, isOnPhone: library.isOnPhone)
+            regionSection("On this phone", groups.onPhone)
+            regionSection("Available", groups.available)
             Section {
-                ForEach(library.catalog) { record in
-                    RegionRow(record: record)
-                        .listRowBackground(Color.earthCard)
-                }
                 if library.catalog.isEmpty && !library.isRefreshingCatalog {
                     Text(library.catalogError ?? "No regions are published yet.")
                         .font(.wktLabel).foregroundColor(.earthMuted)
                         .listRowBackground(Color.earthCard)
                 }
-            } header: {
-                WktListHeader(title: "Regions")
             } footer: {
-                Text("North Carolina's named trails come with Wockett. Download a state for all of its trails, unnamed paths included. Downloads stay on this device and aren't backed up; you can always download them again.")
-                    .font(.wktLabel).foregroundColor(.earthMuted)
+                Text(Self.footer).font(.wktLabel).foregroundColor(.earthMuted)
             }
 
             if let error = library.catalogError, !library.catalog.isEmpty {
@@ -62,13 +58,42 @@ struct TrailRegionsView: View {
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("settings.trailRegions")
     }
+
+    static let footer = "North Carolina's named trails come with Wockett. Download a state for all of its trails, unnamed paths included. Downloaded regions keep trail lines and details on this phone, so the Trails list and trail pages work without a signal. They don't include map tiles. The map, directions and weather still need a connection, or an offline map saved in Apple Maps. Downloads aren't backed up; you can always download them again."
+
+    @ViewBuilder
+    private func regionSection(_ title: String, _ records: [TrailRegionRecord]) -> some View {
+        if !records.isEmpty {
+            Section {
+                ForEach(records) { record in
+                    RegionRow(record: record).listRowBackground(Color.earthCard)
+                }
+            } header: {
+                WktListHeader(title: title)
+            }
+        }
+    }
+}
+
+/// The regions screen as a sheet, for the entries outside Settings.
+struct TrailRegionsSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            TrailRegionsView().toolbar {
+                ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
+            }
+        }
+    }
 }
 
 private struct RegionRow: View {
     let record: TrailRegionRecord
     private var library: TrailPackLibrary { .shared }
 
-    private static let size = ByteCountFormatStyle(style: .file)
+    /// The open pack's own date, local: no fetch.
+    private var dataDate: Date? { library.packInfos.first { $0.region == record.region }?.builtAt }
 
     @Environment(\.dynamicTypeSize) private var typeSize
 
@@ -84,27 +109,13 @@ private struct RegionRow: View {
         row {
             VStack(alignment: .leading, spacing: 3) {
                 Text(record.regionName).foregroundColor(.earthCream)
-                Text(detail(for: state))
+                Text(TrailRegionText.detail(state: state, record: record, dataDate: dataDate))
                     .font(.wktLabel).foregroundColor(.earthMuted)
             }
             if !stacks { Spacer() }
             action(for: state)
         }
         .padding(.vertical, 2)
-    }
-
-    private func detail(for state: TrailPackLibrary.RegionState) -> String {
-        let size = record.sizeBytes.formatted(Self.size)
-        let count = "\(record.trailCount.formatted()) trails"
-        switch state {
-        case .bundled: return "Named trails included · full pack \(count), \(size)"
-        case .installed: return "Installed · \(count)"
-        case .updateAvailable: return "Update available · \(count), \(size)"
-        case .available: return "\(count) · \(size)"
-        case .needsAppUpdate: return "Needs a newer version of Wockett"
-        case .downloading(let p): return p > 0 ? "Downloading \(Int(p * 100))%…" : "Downloading…"
-        case .failed(let why): return why
-        }
     }
 
     @ViewBuilder
@@ -144,5 +155,29 @@ private struct RegionRow: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("\(title) \(record.regionName)")
+    }
+}
+
+enum TrailRegionText {
+    private static let size = ByteCountFormatStyle(style: .file)
+
+    /// A row's second line. A date or size shows only where it is known: the
+    /// date from the pack on this phone, the size from the catalogue (what a
+    /// download costs; the file on the phone is not measured).
+    static func detail(state: TrailPackLibrary.RegionState, record: TrailRegionRecord, dataDate: Date?) -> String {
+        let count = "\(record.trailCount.formatted()) trails"
+        let size: String? = record.sizeBytes > 0 ? "\(record.sizeBytes.formatted(Self.size)) download size" : nil
+        let date = dataDate.map { "Data from \($0.formatted(date: .abbreviated, time: .omitted))" }
+        let parts: [String?]
+        switch state {
+        case .bundled: parts = ["Named trails included", date, "full pack \(count)", size]
+        case .installed: parts = ["Installed", count, date]
+        case .updateAvailable: parts = ["Update available", count, size, date]
+        case .available: parts = [count, size]
+        case .needsAppUpdate: return "Needs a newer version of Wockett"
+        case .downloading(let p): return p > 0 ? "Downloading \(Int(p * 100))%…" : "Downloading…"
+        case .failed(let why): return why
+        }
+        return parts.compactMap { $0 }.joined(separator: " · ")
     }
 }

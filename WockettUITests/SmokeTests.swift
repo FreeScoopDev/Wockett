@@ -1202,6 +1202,31 @@ final class SmokeTests: XCTestCase {
         XCTAssertTrue(reset.waitForNonExistence(timeout: 10), "Done must close the sheet")
     }
 
+    /// Trail regions is reachable from Trails, not only from Settings (spec
+    /// fix/trail-filters-regions, PR B, item 7): the link under the list
+    /// opens the regions screen in a sheet, and Done closes it.
+    func testTrailsOpensTrailRegions() {
+        XCTAssertTrue(el("home.statCard").waitForExistence(timeout: 10))
+        selectTab("Routes")
+        let picker = el("routes.modePicker")
+        XCTAssertTrue(picker.waitForExistence(timeout: 30))
+        picker.buttons["Trails"].tap()
+        XCTAssertTrue(app.buttons["routes.trailCard"].firstMatch.waitForExistence(timeout: 15), "No trails listed")
+
+        // Under the last card, below the credit line: scroll the panel to it.
+        let link = app.buttons["routes.trailRegions"]
+        let panel = el("routes.trailsPanel")
+        var swipes = 0
+        while !(link.exists && link.isHittable) && swipes < 25 {
+            panel.swipeUp()
+            swipes += 1
+        }
+        link.tap()
+        XCTAssertTrue(el("settings.trailRegions").waitForExistence(timeout: 10), "The link must open Trail Regions")
+        app.navigationBars.buttons["Done"].tap()
+        XCTAssertTrue(el("settings.trailRegions").waitForNonExistence(timeout: 10), "Done must close the sheet")
+    }
+
     private func wait(for element: XCUIElement, value: String) -> Bool {
         let expectation = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", value), object: element)
         return XCTWaiter().wait(for: [expectation], timeout: 10) == .completed

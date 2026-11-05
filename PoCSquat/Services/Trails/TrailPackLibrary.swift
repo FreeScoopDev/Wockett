@@ -186,6 +186,20 @@ final class TrailPackLibrary {
         return Self.bundledRegions.contains(record.region) ? .bundled : .available
     }
 
+    /// Whether the region has data on this phone: downloaded (current, out of
+    /// date or mid-update) or bundled. By install, not by `state(of:)`, so a
+    /// row being updated does not jump to "Available" while it downloads.
+    func isOnPhone(_ record: TrailRegionRecord) -> Bool {
+        installed[record.region] != nil || Self.bundledRegions.contains(record.region)
+    }
+
+    /// The regions screen's two groups, each alphabetical by name.
+    static func ordered(_ records: [TrailRegionRecord], isOnPhone: (TrailRegionRecord) -> Bool)
+        -> (onPhone: [TrailRegionRecord], available: [TrailRegionRecord]) {
+        let sorted = records.sorted { $0.regionName.localizedStandardCompare($1.regionName) == .orderedAscending }
+        return (sorted.filter(isOnPhone), sorted.filter { !isOnPhone($0) })
+    }
+
     // MARK: Download and remove
 
     /// Downloads and installs `record`'s pack, replacing whatever is open

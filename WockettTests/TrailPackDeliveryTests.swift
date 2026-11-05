@@ -98,6 +98,51 @@ struct TrailPackDeliveryTests {
         #expect(list.first { $0.region == "nc" }?.packVersion == 3)
     }
 
+    @Test("Regions on this phone come first, each group alphabetical by name")
+    func orderedOnPhoneFirst() {
+        let named = { (code: String, name: String) in
+            TrailRegionRecord(region: code, regionName: name, schemaVersion: 1, packVersion: 1, builtAt: nil,
+                              trailCount: 6, sizeBytes: 53_248, recordName: "rec-\(code)")
+        }
+        let catalogue = [named("va", "Virginia"), named("sc", "South Carolina"), named("tn", "Tennessee"),
+                         named("nc", "North Carolina"), named("ga", "Georgia")]
+        let groups = TrailPackLibrary.ordered(catalogue) { ["va", "nc"].contains($0.region) }
+        #expect(groups.onPhone.map(\.regionName) == ["North Carolina", "Virginia"])
+        #expect(groups.available.map(\.regionName) == ["Georgia", "South Carolina", "Tennessee"])
+    }
+
+    @Test("Bundled, installed and out-of-date regions are on the phone; ordering leaves states alone")
+    func onPhoneByInstall() async throws {
+        let remote = FakeRemote(regions: [record("va"), record("sc"), record("nc")], fileToServe: try fixtureURL)
+        let library = TrailPackLibrary(registry: TrailAttributionRegistry(), remote: remote, packsDirectory: scratchDirectory())
+        await library.refreshCatalog()
+        await library.download(record("va"))
+        let newer = [record("nc"), record("sc"), record("va", version: 2)]
+        let before = newer.map(library.state(of:))
+        let groups = TrailPackLibrary.ordered(newer, isOnPhone: library.isOnPhone)
+        #expect(groups.onPhone.map(\.region) == ["nc", "va"])
+        #expect(groups.available.map(\.region) == ["sc"])
+        #expect(newer.map(library.state(of:)) == before)
+        #expect(before[2] == .updateAvailable(installed: 1, latest: 2))
+    }
+
+    @Test("A row shows a date only from the pack on the phone, and a size only when the catalogue gives one")
+    func regionRowDetail() throws {
+        let date = try #require(ISO8601DateFormatter().date(from: "2026-10-08T12:00:00Z"))
+        let shown = "Data from \(date.formatted(date: .abbreviated, time: .omitted))"
+        let installed = TrailRegionText.detail(state: .installed(packVersion: 1), record: record("va"), dataDate: date)
+        #expect(installed == "Installed · 6 trails · \(shown)")
+        #expect(TrailRegionText.detail(state: .installed(packVersion: 1), record: record("va"), dataDate: nil)
+                == "Installed · 6 trails")
+        let available = TrailRegionText.detail(state: .available, record: record("sc"), dataDate: nil)
+        #expect(available.hasSuffix("download size") && available.hasPrefix("6 trails · "))
+        let unsized = TrailRegionRecord(region: "sc", regionName: "SC", schemaVersion: 1, packVersion: 1, builtAt: nil,
+                                        trailCount: 6, sizeBytes: 0, recordName: "rec-sc")
+        #expect(TrailRegionText.detail(state: .available, record: unsized, dataDate: nil) == "6 trails")
+        let bundled = TrailRegionText.detail(state: .bundled, record: record("nc"), dataDate: date)
+        #expect(bundled.hasPrefix("Named trails included · \(shown) · full pack 6 trails · "))
+    }
+
     @Test("A catalogue error is recorded, not thrown")
     func catalogError() async {
         let remote = FakeRemote(regions: [], fileToServe: nil)
