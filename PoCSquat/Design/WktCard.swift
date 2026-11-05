@@ -43,6 +43,17 @@ extension View {
     func wktChoiceBackground(selected: Bool) -> some View {
         wktCardBackground(fill: selected ? .earthGreenFill : .earthCard)
     }
+
+    /// A bar of actions under a screen's or panel's scrolling content (Start),
+    /// so it never scrolls out of view. Put it below the `ScrollView` in a
+    /// `VStack`, never in `.safeAreaInset`, which hid Share Route on a saved
+    /// route (#300). The caller keeps its own accessibility container and id.
+    func wktActionBar() -> some View {
+        self
+            .padding(.horizontal, WktSpacing.screen)
+            .padding(.vertical, 12)
+            .overlay(alignment: .top) { WktDivider() }
+    }
 }
 
 /// "Routes ········ See all": a section's heading and optional link.

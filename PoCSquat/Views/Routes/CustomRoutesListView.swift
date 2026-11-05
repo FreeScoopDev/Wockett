@@ -386,9 +386,7 @@ struct CustomRouteDetailView: View {
             }
             .accessibilityIdentifier("routes.detailStart")
         }
-        .padding(.horizontal, WktSpacing.screen)
-        .padding(.vertical, 12)
-        .overlay(alignment: .top) { WktDivider() }
+        .wktActionBar()
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("routes.detailActionBar")
     }

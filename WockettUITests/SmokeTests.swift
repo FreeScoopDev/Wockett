@@ -1804,6 +1804,78 @@ final class SmokeTests: XCTestCase {
         }
     }
 
+    // MARK: - 8k. Route results: Start under the list
+
+    /// With a route picked, Start sits in a bar under the results list, not
+    /// at the end of it (spec fix/route-start-visible). Before, it came after
+    /// every card, the elevation chart and Apple Maps: measured on `main`
+    /// (e6b4b98) with this stub, y 849 on an iPhone 17e at the default size
+    /// and y 1181 at Accessibility 2, under a window 844 pt tall. The frame
+    /// is asserted before any drag, then again after one: hittability alone
+    /// misses below-the-fold (CLAUDE.md). `-WKTUITest` only, so no network.
+    func testRouteResultsStartIsOnTheFirstScreen() {
+        expectRouteResultsStartPinned(contentSize: nil)
+    }
+
+    func testRouteResultsStartIsOnTheFirstScreenAtAccessibility2() {
+        expectRouteResultsStartPinned(contentSize: "UICTContentSizeCategoryAccessibilityL")
+    }
+
+    private func expectRouteResultsStartPinned(contentSize: String?) {
+        let size = contentSize ?? "the default size"
+        app.terminate()
+        app.launchArguments = ["-WKTUITest"]
+            + (contentSize.map { ["-UIPreferredContentSizeCategoryName", $0] } ?? [])
+        app.launch()
+        XCTAssertTrue(el("home.statCard").waitForExistence(timeout: 30))
+        selectTab("Routes")
+        let findRoutes = app.buttons["routes.findRoutes"]
+        XCTAssertTrue(findRoutes.waitForExistence(timeout: 30))
+        findRoutes.tap()
+        let panel = el("routes.resultsPanel")
+        XCTAssertTrue(panel.waitForExistence(timeout: 30), "Find Routes must list routes")
+        let card = app.buttons["routes.routeCard"].firstMatch
+        XCTAssertTrue(card.waitForExistence(timeout: 10), "No route card listed")
+        sleep(2)  // Animation wait: the results panel settles before the tap.
+        forceTap(card)
+        let start = app.buttons["routes.startWalk"]
+        XCTAssertTrue(start.waitForExistence(timeout: 10), "Picking a route must offer Start at \(size)")
+        sleep(2)  // Animation wait: the bar slides in before frames are read.
+
+        let window = app.windows.firstMatch.frame
+        let frame = start.frame
+        XCTAssertTrue(window.contains(frame), "Start is outside the window at \(size): \(frame) in \(window)")
+        XCTAssertTrue(panel.frame.contains(frame), "Start is outside the panel at \(size): \(frame) in \(panel.frame)")
+        // The tab bar floats over the bottom of the panel, and the list runs
+        // on under it; Start must end above it to be seen.
+        let tabBar = app.tabBars.firstMatch.frame
+        XCTAssertLessThanOrEqual(frame.maxY, tabBar.minY, "Start is behind the tab bar at \(size): \(frame) vs \(tabBar)")
+        // After the frame: hittability alone misses below-the-fold.
+        XCTAssertTrue(start.isHittable, "Start must be tappable without scrolling at \(size)")
+
+        // Structural: Start is not in the list, so no length of list can push
+        // it down. The list is the panel's one scroll view.
+        let list = panel.scrollViews.firstMatch
+        XCTAssertTrue(list.exists, "The results panel must contain its scrolling list")
+        XCTAssertFalse(list.descendants(matching: .any).matching(identifier: "routes.startWalk").firstMatch.exists,
+                       "Start must sit under the list, not in it, at \(size)")
+
+        // At the default size a whole card shows above the bar (criterion 6).
+        // At Accessibility 2 the stub's one card is taller than the room left.
+        if contentSize == nil {
+            XCTAssertLessThanOrEqual(card.frame.maxY, frame.minY,
+                                     "A whole route card must show above Start: \(card.frame) vs \(frame)")
+        }
+
+        // Dragging the list leaves Start where it is.
+        let cardBefore = card.frame
+        card.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            .press(forDuration: 0.1, thenDragTo: app.windows.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.2)))
+        sleep(1)  // Animation wait: the scroll settles.
+        XCTAssertLessThan(card.frame.minY, cardBefore.minY - 20, "The drag must scroll the list, or it proves nothing")
+        XCTAssertEqual(start.frame.minY, frame.minY, accuracy: 1, "Start must not move when the list scrolls at \(size)")
+    }
+
     // MARK: - 8f. Busy buttons at Accessibility 2
 
     /// A button keeps its size while it works (spec fix/large-text-leftovers,

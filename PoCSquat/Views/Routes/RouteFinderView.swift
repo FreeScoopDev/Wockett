@@ -77,6 +77,8 @@ struct RouteFinderContentView: View {
     /// The height of whichever panel covers the bottom of the map (results,
     /// or Trails), so the map frames routes and trails above it.
     @State private var panelHeight: CGFloat = 0
+    /// The results panel's Start bar, which the list gives up its height to.
+    @State private var startBarHeight: CGFloat = 0
     /// Walking and cycling routes to the open trail, kept across closing and
     /// reopening it so MapKit is asked once per trail and place.
     @State private var trailDirections = TrailDirectionsModel()
@@ -629,7 +631,6 @@ struct RouteFinderContentView: View {
 
                     if let selected = selectedRoute {
                         elevationSection
-                        startWalkButton(for: selected)
                         appleMapsButton(for: selected)
                     }
 
@@ -647,13 +648,24 @@ struct RouteFinderContentView: View {
                 // actually fixed the "cards cut off" report was the 0.45 height cap
                 // below and the compact weather tile, both in the same commit.
                 .padding(.bottom, 14)
-                .animation(.easeInOut(duration: 0.2), value: selectedRoute?.id)
                 .animation(.spring(response: 0.4, dampingFraction: 0.85), value: elevationProfile == nil)
             }
-            // 0.35 left the route list and Start Walk below the fold on a fresh
-            // search; 0.45 puts at least two cards in the first screenful.
-            .frame(maxHeight: containerHeight * 0.45)
+            // 0.35 left the route list below the fold on a fresh search; 0.45
+            // puts at least two cards in the first screenful. With a route
+            // picked, the Start bar under the list takes its height from it.
+            .frame(maxHeight: ResultsPanelLayout.scrollCap(container: containerHeight,
+                                                           barHeight: selectedRoute == nil ? 0 : startBarHeight))
+
+            // Under the list, not in it: Start was the last thing in the
+            // scroll, after every card and the elevation chart.
+            if let selected = selectedRoute {
+                startWalkButton(for: selected)
+                    .wktActionBar()
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { startBarHeight = $0 }
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
         }
+        .animation(.easeInOut(duration: 0.2), value: selectedRoute?.id)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("routes.resultsPanel")
         .clipShape(UnevenRoundedRectangle(topLeadingRadius: 24, topTrailingRadius: 24))
@@ -790,7 +802,6 @@ struct RouteFinderContentView: View {
         .buttonStyle(BounceButtonStyle(scale: 0.98))
         .accessibilityIdentifier("routes.startWalk")
         .disabled(startCheckTask != nil)
-        .padding(.horizontal, 20)
     }
 
     private func appleMapsButton(for route: SuggestedRoute) -> some View {
