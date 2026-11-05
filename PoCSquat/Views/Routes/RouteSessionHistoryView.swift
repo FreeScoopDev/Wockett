@@ -21,7 +21,8 @@ struct RouteSessionHistoryView: View {
         ZStack {
             Color.earthBg.ignoresSafeArea()
             Group {
-                if sessions.isEmpty { emptyState } else { sessionList }
+                // Scrolls only when the buttons would not fit (large text).
+                if sessions.isEmpty { ViewThatFits(in: .vertical) { emptyState; ScrollView { emptyState } } } else { sessionList }
             }
         }
         .navigationTitle("Route History")
@@ -37,7 +38,7 @@ struct RouteSessionHistoryView: View {
     private var emptyState: some View {
         VStack(spacing: WktSpacing.betweenSections) {
             WktEmptyState(symbol: .history,
-                          title: "No \(route.activityMode.noun)s yet",
+                          title: split.hidden > 0 ? "Nothing in route history" : "No \(route.activityMode.noun)s yet",
                           message: RouteHistoryEmpty.message(noun: route.activityMode.noun, routeName: route.name,
                                                              hidden: split.hidden))
             VStack(spacing: WktSpacing.betweenCards) {

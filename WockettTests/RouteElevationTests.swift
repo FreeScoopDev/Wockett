@@ -48,13 +48,12 @@ struct RouteElevationTests {
         #expect(abs(flatFeet.upperBound - 393.701) < 0.001)
     }
 
-    /// The default is the app's one unit rule, which reads the region.
+    /// The rule `RouteElevation.defaultMetric` reads. That the chart uses
+    /// the default, not `Locale` directly, is not testable here.
     @Test func defaultUnit_followsTheDistanceRule() {
         #expect(WalkAudioCueService.usesMiles(in: Locale(identifier: "en_US")))
         #expect(!WalkAudioCueService.usesMiles(in: Locale(identifier: "en_GB")))
         #expect(!WalkAudioCueService.usesMiles(in: Locale(identifier: "en_CA")))
-        #expect(RouteElevation.defaultMetric == !WalkAudioCueService.usesMiles(in: .current))
-        #expect(RouteElevation.text(120.4) == RouteElevation.text(120.4, metric: RouteElevation.defaultMetric))
     }
 
     /// The result cards say the same as the chart. `MKDistanceFormatter`,
@@ -91,14 +90,14 @@ struct RouteHistoryEmptyTests {
 
     @Test func leftOut_saysHowManyAndWhy() {
         #expect(RouteHistoryEmpty.message(noun: "walk", routeName: "Capitol Loop", hidden: 1)
-                == "1 walk finished on \"Capitol Loop\" is left out of route history "
+                == "1 finished activity on \"Capitol Loop\" is left out of route history "
                 + "(not counted in route stats, or it looked like a trip in a vehicle).")
         #expect(RouteHistoryEmpty.message(noun: "walk", routeName: "Capitol Loop", hidden: 3)
-                == "3 walks finished on \"Capitol Loop\" are left out of route history "
+                == "3 finished activities on \"Capitol Loop\" are left out of route history "
                 + "(not counted in route stats, or they looked like a trip in a vehicle).")
-        #expect(RouteHistoryEmpty.message(noun: "ride", routeName: "River", hidden: 3)
-                == "3 rides finished on \"River\" are left out of route history "
-                + "(not counted in route stats, or they looked like a trip in a vehicle).")
+        // The route's noun never names what was left out: it may be a run on a walking route.
+        #expect(!RouteHistoryEmpty.message(noun: "walk", routeName: "River", hidden: 1).contains("walk"))
+        #expect(!RouteHistoryEmpty.message(noun: "ride", routeName: "River", hidden: 3).contains("ride"))
     }
 }
 

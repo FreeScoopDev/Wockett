@@ -2025,14 +2025,37 @@ final class SmokeTests: XCTestCase {
         forceTap(startRoute)
         XCTAssertTrue(el("history.startSheet").waitForExistence(timeout: 5), "Start this route must open the start sheet")
         XCTAssertTrue(el("history.sheetStart").exists, "The sheet must hold the route's Start")
-        XCTAssertFalse(el("session.root").exists, "Opening the sheet must not begin a session")
+        // The mini tile shows whenever a session is active; session.root
+        // is not presented over a pushed route screen, so it proves nothing.
+        let miniTile = app.buttons["accessory.miniTile"]
+        XCTAssertFalse(miniTile.waitForExistence(timeout: 3), "Opening the sheet must not begin a session")
 
         el("history.startCancel").tap()
         XCTAssertTrue(el("history.startSheet").waitForNonExistence(timeout: 5), "Cancel must close the sheet")
-        XCTAssertFalse(el("session.root").exists, "Cancelling the sheet must not begin a session")
+        XCTAssertFalse(miniTile.waitForExistence(timeout: 3), "Cancelling the sheet must not begin a session")
         forceTap(el("history.backToRoute"))
         XCTAssertTrue(el("routes.detailStart").waitForExistence(timeout: 5), "Back to route must return to the route")
         XCTAssertFalse(app.navigationBars["Route History"].exists, "Back to route must leave Route History")
+
+        // Start in the sheet begins the session, closes the sheet and leaves Route History.
+        history.tap()
+        forceTap(el("history.startRoute"))
+        let sheetStart = el("history.sheetStart")
+        XCTAssertTrue(sheetStart.waitForExistence(timeout: 5), "Start this route must open the sheet again")
+        sheetStart.tap()
+        XCTAssertTrue(miniTile.waitForExistence(timeout: 15), "Start in the sheet must begin a session")
+        XCTAssertTrue(el("history.startSheet").waitForNonExistence(timeout: 5), "Start must close the sheet")
+        let historyGone = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == NO"),
+                                                    object: app.navigationBars["Route History"])
+        XCTAssertEqual(XCTWaiter().wait(for: [historyGone], timeout: 5), .completed, "Start must leave Route History")
+        // Discard it, so no session carries into the next test's launch.
+        let end = app.buttons["End walk"]
+        XCTAssertTrue(end.waitForExistence(timeout: 10), "The mini tile's End button must be there")
+        end.tap()
+        let discard = app.buttons["Discard Walk"]
+        XCTAssertTrue(discard.waitForExistence(timeout: 10), "End must offer Discard")
+        discard.tap()
+        XCTAssertTrue(miniTile.waitForNonExistence(timeout: 10), "Discard must end the session")
     }
 
     // MARK: - 8f. Busy buttons at Accessibility 2

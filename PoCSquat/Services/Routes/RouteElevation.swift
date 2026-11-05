@@ -46,11 +46,12 @@ enum RouteHistoryEmpty {
         switch hidden {
         case ...0:
             return "No \(noun)s finished on \"\(routeName)\" yet. Finish one and it appears here."
+        // Not the route's noun: a walking route can be started as a run.
         case 1:
-            return "1 \(noun) finished on \"\(routeName)\" is left out of route history "
+            return "1 finished activity on \"\(routeName)\" is left out of route history "
                 + "(not counted in route stats, or it looked like a trip in a vehicle)."
         default:
-            return "\(hidden) \(noun)s finished on \"\(routeName)\" are left out of route history "
+            return "\(hidden) finished activities on \"\(routeName)\" are left out of route history "
                 + "(not counted in route stats, or they looked like a trip in a vehicle)."
         }
     }

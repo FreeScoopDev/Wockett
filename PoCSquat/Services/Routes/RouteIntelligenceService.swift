@@ -197,10 +197,11 @@ enum RouteDifficulty: String {
 
     /// "Hard because of 320 m of climb". Length is never a number here: the
     /// profile's sampled length can differ from the route distance beside it.
-    /// Steepness rounds up: an Expert (over 25 %) never reads "25 %".
-    nonisolated func why(_ reason: Reason) -> String {
+    /// Steepness rounds up: an Expert (over 25 %) never reads "25 %". The
+    /// climb reads like the "+395 ft climb" line above it.
+    func why(_ reason: Reason, metric: Bool = RouteElevation.defaultMetric) -> String {
         switch reason {
-        case .climb(let meters):      return "\(rawValue) because of \(Int(meters)) m of climb"
+        case .climb(let meters):      return "\(rawValue) because of \(RouteElevation.text(meters, metric: metric)) of climb"
         case .steepness(let percent): return "\(rawValue) because one part is \(Int(percent.rounded(.up))) % steep"
         case .length:                 return "\(rawValue) because of its length"
         case .nothingMuch:            return "\(rawValue): short, with little climb"
