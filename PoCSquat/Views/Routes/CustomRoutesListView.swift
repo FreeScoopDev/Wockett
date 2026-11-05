@@ -516,10 +516,10 @@ struct RouteStartBar: View {
         .wktActionBar()
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier(barID)
-        .alert("Walk Already Active", isPresented: $showActiveSessionAlert) {
+        .alert("Session Already Active", isPresented: $showActiveSessionAlert) {
             Button("OK", role: .cancel) {}
         } message: {
-            Text("You have a walk in progress. Return to the home screen to resume or end it first.")
+            Text("You have a session in progress. Return to the home screen to resume or end it first.")
         }
     }
 }

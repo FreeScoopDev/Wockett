@@ -69,6 +69,16 @@ struct RouteElevationTests {
         #expect(route(gain: 0, loss: 0).elevationSummary(metric: true) == nil)
     }
 
+    /// The card's distance follows the same rule, not the region: before,
+    /// `MKDistanceFormatter`'s default said miles on a UK device.
+    @Test func resultCard_distanceUsesTheAppsUnit() {
+        let card = route(gain: 0, loss: 0)  // 280 m
+        #expect(card.distanceText(metric: true).hasSuffix(" m"))
+        #expect(card.distanceText(metric: false).hasSuffix(" ft"))
+        #expect(card.distanceText(metric: true) != card.distanceText(metric: false))
+        #expect(card.distanceText == card.distanceText(metric: RouteElevation.defaultMetric))
+    }
+
     private func route(gain: Double, loss: Double) -> SuggestedRoute {
         var coords = [CLLocationCoordinate2D(latitude: 35.7779, longitude: -78.6387),
                       CLLocationCoordinate2D(latitude: 35.7804, longitude: -78.6387)]

@@ -278,10 +278,23 @@ struct SuggestedRoute: Identifiable {
         }
     }
 
-    var distanceText: String {
-        let f = MKDistanceFormatter.abbreviated
+    var distanceText: String { distanceText(metric: RouteElevation.defaultMetric) }
+
+    /// On the app's unit rule, like the heights beside it: the region's own
+    /// (`MKDistanceFormatter`'s default) gave miles on a UK device.
+    func distanceText(metric: Bool) -> String {
+        let f = metric ? Self.metricFormatter : Self.imperialFormatter
         if lapCount > 1 { return "\(f.string(fromDistance: perLapDistance)) × \(lapCount)" }
         return f.string(fromDistance: totalDistance)
+    }
+
+    private static let metricFormatter = formatter(.metric)
+    private static let imperialFormatter = formatter(.imperial)
+    private static func formatter(_ units: MKDistanceFormatter.Units) -> MKDistanceFormatter {
+        let f = MKDistanceFormatter()
+        f.unitStyle = .abbreviated
+        f.units = units
+        return f
     }
 
     var timeText: String {

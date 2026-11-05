@@ -18,7 +18,7 @@ enum RouteElevation {
     static func loss(_ meters: Double, metric: Bool = defaultMetric) -> String { "-" + text(meters, metric: metric) }
 
     static func axisValue(_ meters: Double, metric: Bool = defaultMetric) -> Double {
-        metric ? meters : meters / 0.3048
+        metric ? meters : meters / WalkAudioCueService.metersPerFoot
     }
 
     static func axisUnit(metric: Bool = defaultMetric) -> String { metric ? "m" : "ft" }

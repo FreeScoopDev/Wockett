@@ -56,6 +56,7 @@ final class WalkAudioCueService: NSObject {
     nonisolated static func usesMiles(in locale: Locale) -> Bool { locale.measurementSystem == .us }
 
     nonisolated static let metersPerMile = 1609.344
+    nonisolated static let metersPerFoot = 0.3048
 
     /// Whole units covered so far: the milestone counter.
     nonisolated static func unitsCovered(meters: Double, usesMiles: Bool) -> Int {

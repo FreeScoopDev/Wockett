@@ -11,9 +11,10 @@
   summary's formatter, which rounds to the nearest whole metre or foot, so a
   98.6 m climb reads "99 m" where the chart used to cut it to "98m". The
   chart's shape is unchanged; only the numbers on its axis change. Heights are
-  still stored in metres. One case is left: a result card's distance still
-  uses Apple's formatter, so in a region with UK units it reads miles beside
-  a height in metres (Wockett is sold in the US and Canada only).
+  still stored in metres. A result card's distance moves onto the same rule,
+  so a device set to UK units no longer reads miles beside a climb in metres.
+- The "already active" alert on a saved route's Start says "session", not
+  "walk": the route can be started as a run or a ride.
 
 ### Changed
 - An empty Route History now says why and offers a way on. When finished
