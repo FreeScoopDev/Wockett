@@ -4,6 +4,12 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex, nofollow">
+  <!-- Content Security Policy (GitHub Pages can't send headers, so it is a
+       meta tag): scripts only from this folder and Apple's CloudKit JS CDN,
+       network only to CloudKit, frames only from Apple (the sign-in button and
+       sign-in flow), no plugins, no forms, no base URL tricks. A script that
+       slipped into the page could not load code or send data elsewhere. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' https://cdn.apple-cloudkit.com; connect-src https://api.apple-cloudkit.com https://*.apple-cloudkit.com; style-src 'self' 'unsafe-inline' https://cdn.apple-cloudkit.com; img-src 'self' data: https://*.apple-cloudkit.com https://*.icloud.com https://*.apple.com; frame-src https://*.apple-cloudkit.com https://*.apple.com https://*.icloud.com; font-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
   <title>Wockett Staff</title>
   <link rel="stylesheet" href="styles.css">
   <!-- Apple's CloudKit JS, from Apple. The only script not in this folder. -->
