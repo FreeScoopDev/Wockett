@@ -1156,6 +1156,57 @@ final class SmokeTests: XCTestCase {
         XCTAssertTrue(firstCard.waitForExistence(timeout: 10))
     }
 
+    // MARK: - 7. Trails filters
+
+    /// The Filters button counts what is on and Reset clears it (spec
+    /// fix/trail-filters-regions, PR A): its accessibility value and its
+    /// visible "Filters (1)", which XCUI still lists as the button's text.
+    func testTrailsFiltersCountAndReset() {
+        XCTAssertTrue(el("home.statCard").waitForExistence(timeout: 10))
+        selectTab("Routes")
+        let picker = el("routes.modePicker")
+        XCTAssertTrue(picker.waitForExistence(timeout: 30))
+        picker.buttons["Trails"].tap()
+
+        let button = app.buttons["routes.trailFilters"]
+        XCTAssertTrue(button.waitForExistence(timeout: 15), "Trails must show the Filters button")
+        XCTAssertEqual(button.label, "Filters")
+        XCTAssertEqual(button.value as? String, "None active")
+        XCTAssertFalse(el("routes.trailGrouping").exists, "The old Grouped / Sections menu must be gone")
+        button.tap()
+
+        let reset = app.buttons["routes.trailFiltersReset"]
+        XCTAssertTrue(reset.waitForExistence(timeout: 10), "The sheet must offer Reset")
+        XCTAssertFalse(reset.isEnabled, "Reset must be disabled with nothing on")
+        let loops = app.switches["Loops only"]
+        XCTAssertTrue(loops.waitForExistence(timeout: 5), "The sheet must offer Loops only")
+        loops.switches.firstMatch.tap()
+        XCTAssertTrue(wait(for: button, value: "1 active"), "One filter on must read 1 active: \(String(describing: button.value))")
+        XCTAssertTrue(button.staticTexts["Filters (1)"].exists, "The button must show the count: \(button.debugDescription)")
+        XCTAssertTrue(reset.isEnabled, "Reset must be enabled with a filter on")
+        // A list option counts too, and Reset must put it back as well.
+        // Further down the sheet: open it to full height so the List loads the row.
+        app.buttons["Sheet Grabber"].swipeUp()
+        let separate = app.buttons["Show individual trail segments"]
+        XCTAssertTrue(separate.waitForExistence(timeout: 5), "The sheet must offer the segments choice")
+        separate.tap()
+        XCTAssertTrue(wait(for: button, value: "2 active"), "A list option must count: \(String(describing: button.value))")
+
+        reset.tap()
+        // "None active" also proves segments are combined again: they count.
+        XCTAssertTrue(wait(for: button, value: "None active"), "Reset must clear the count: \(String(describing: button.value))")
+        XCTAssertFalse(reset.isEnabled, "Reset must be disabled again after resetting")
+        XCTAssertTrue(button.staticTexts["Filters"].exists, "The button must read plain Filters again")
+        XCTAssertTrue(app.buttons["Combine segments of the same trail"].isSelected, "Reset must combine segments again")
+        app.buttons["routes.trailFiltersDone"].tap()
+        XCTAssertTrue(reset.waitForNonExistence(timeout: 10), "Done must close the sheet")
+    }
+
+    private func wait(for element: XCUIElement, value: String) -> Bool {
+        let expectation = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", value), object: element)
+        return XCTWaiter().wait(for: [expectation], timeout: 10) == .completed
+    }
+
     // MARK: - 7a. Location off
 
     /// With location denied, Routes explains it before any search and offers

@@ -96,6 +96,44 @@ struct TrailFilters: Hashable {
             loopsOnly: loopsOnly
         )
     }
+
+    /// The two list options kept in `@AppStorage` beside the filters. They
+    /// are not filters, but they change what the list shows, so the Filters
+    /// button counts them and Reset puts them back (spec
+    /// fix/trail-filters-regions, owner decision 3).
+    static let defaultGroupSections = true
+    static let defaultShowShortPaths = false
+
+    /// How many things differ from a fresh list: each filter that is on, plus
+    /// each list option moved off its default. The number on the Filters button.
+    func activeCount(groupSections: Bool, showShortPaths: Bool) -> Int {
+        let flags: [Bool] = [loopsOnly, surface != nil, shortOnly, hideNoDogs,
+                             groupSections != Self.defaultGroupSections,
+                             showShortPaths != Self.defaultShowShortPaths]
+        return flags.filter { $0 }.count
+    }
+
+    /// Whether these settings can leave out a trail the default list shows:
+    /// any filter, or listing segments separately (each piece then meets the
+    /// short-path cut-off on its own). Showing short paths only adds rows, so
+    /// an empty list with nothing else changed is the pack's doing, and the
+    /// empty message says to download a state, not that filters hid it.
+    func canNarrowList(groupSections: Bool) -> Bool {
+        self != TrailFilters() || groupSections != Self.defaultGroupSections
+    }
+
+    /// Every filter off.
+    mutating func reset() {
+        self = TrailFilters()
+    }
+
+    /// Every filter off and both list options back to their defaults: what
+    /// the sheet's Reset and the empty list's "Reset filters" do.
+    mutating func reset(groupSections: inout Bool, showShortPaths: inout Bool) {
+        reset()
+        groupSections = Self.defaultGroupSections
+        showShortPaths = Self.defaultShowShortPaths
+    }
 }
 
 /// One row of the list: a single section, or every nearby section of one trail.

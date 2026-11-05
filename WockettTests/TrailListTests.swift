@@ -672,6 +672,65 @@ struct TrailListTests {
         #expect(q.loopsOnly)
     }
 
+    // MARK: Filters button: count and Reset
+
+    private let defaults = (group: TrailFilters.defaultGroupSections, short: TrailFilters.defaultShowShortPaths)
+
+    @Test("A fresh list counts no filters; the defaults are combined segments, short paths hidden")
+    func activeCountDefaults() {
+        #expect(TrailFilters().activeCount(groupSections: true, showShortPaths: false) == 0)
+        #expect(defaults.group == true && defaults.short == false)
+    }
+
+    @Test("Each of the six counts one on its own, and all six count six")
+    func activeCountEach() {
+        var loops = TrailFilters(); loops.loopsOnly = true
+        var paved = TrailFilters(); paved.surface = .paved
+        var unpaved = TrailFilters(); unpaved.surface = .unpaved
+        var short = TrailFilters(); short.shortOnly = true
+        var dogs = TrailFilters(); dogs.hideNoDogs = true
+        for filters in [loops, paved, unpaved, short, dogs] {
+            #expect(filters.activeCount(groupSections: defaults.group, showShortPaths: defaults.short) == 1, "\(filters)")
+        }
+        #expect(TrailFilters().activeCount(groupSections: false, showShortPaths: defaults.short) == 1)
+        #expect(TrailFilters().activeCount(groupSections: defaults.group, showShortPaths: true) == 1)
+
+        var all = TrailFilters(loopsOnly: true, surface: .unpaved, shortOnly: true, hideNoDogs: true)
+        #expect(all.activeCount(groupSections: false, showShortPaths: true) == 6)
+        all.reset()
+        #expect(all == TrailFilters())
+        #expect(all.activeCount(groupSections: defaults.group, showShortPaths: defaults.short) == 0)
+    }
+
+    @Test("Reset puts the filters and both list options back, so the count is 0")
+    func resetIncludesListOptions() {
+        var filters = TrailFilters(loopsOnly: true, surface: .paved, shortOnly: true, hideNoDogs: true)
+        var group = false
+        var short = true
+        filters.reset(groupSections: &group, showShortPaths: &short)
+        #expect(filters == TrailFilters())
+        #expect(group == defaults.group && short == defaults.short)
+        #expect(filters.activeCount(groupSections: group, showShortPaths: short) == 0)
+    }
+
+    @Test("An empty list blames the filters only when they can hide a trail; short paths only add")
+    func canNarrowList() {
+        #expect(!TrailFilters().canNarrowList(groupSections: defaults.group))
+        #expect(TrailFilters().canNarrowList(groupSections: false), "separate segments can drop short pieces")
+        var dogs = TrailFilters(); dogs.hideNoDogs = true
+        #expect(dogs.canNarrowList(groupSections: defaults.group))
+        var paved = TrailFilters(); paved.surface = .paved
+        #expect(paved.canNarrowList(groupSections: defaults.group))
+    }
+
+    @Test("The button reads Filters, or Filters (2), and says how many are active")
+    func filtersButtonText() {
+        #expect(TrailText.filtersTitle(activeCount: 0) == "Filters")
+        #expect(TrailText.filtersTitle(activeCount: 2) == "Filters (2)")
+        #expect(TrailText.filtersValue(activeCount: 0) == "None active")
+        #expect(TrailText.filtersValue(activeCount: 2) == "2 active")
+    }
+
     // MARK: Finder against the fixture pack
 
     private func fixtureLibrary() throws -> TrailPackLibrary {
