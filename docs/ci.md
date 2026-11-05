@@ -214,6 +214,7 @@ the runner's lack of outside services. All of them run on a local
 | `testElevationChartAtAccessibility2` (`SmokeTests`) | Skips when the elevation service doesn't answer | Public elevation API; any run, not only CI. |
 | `testTrailRegionsStackAtAccessibility2` (`SmokeTests`) | Skips when no region is listed | Needs CloudKit's public database and a network; any run. |
 | `test_video_10_start_a_challenge_and_share_it` (`HowToVideoTests`) | Skips when Create Challenge errors | Needs a simulator signed in to iCloud; any run. |
+| `testTrailStartIsOnTheFirstScreenAtAccessibility2` (`SmokeTests`) | Always skips | No `-WKTUITest` location is within 150 m of a trail, so trail Start never shows; any run. Checked by hand with a temporary radius change (spec fix/route-start-visible). |
 
 ## Xcode Cloud
 
