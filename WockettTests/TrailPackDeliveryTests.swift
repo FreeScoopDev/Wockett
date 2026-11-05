@@ -153,6 +153,17 @@ struct TrailPackDeliveryTests {
         #expect(TrailRegionText.detail(state: .available, record: unsized, dataDate: nil) == "6 trails")
         let bundled = TrailRegionText.detail(state: .bundled, record: record("nc"), dataDate: date)
         #expect(bundled.hasPrefix("Named trails included · \(shown) · full pack 6 trails · "))
+        // Every other state: a date passed for a region not on the phone is not shown.
+        let size = available.replacingOccurrences(of: "6 trails · ", with: "")
+        #expect(TrailRegionText.detail(state: .available, record: record("sc"), dataDate: date) == available)
+        #expect(TrailRegionText.detail(state: .updateAvailable(installed: 1, latest: 2), record: record("va"), dataDate: date)
+                == "Update available · 6 trails · \(size) · \(shown)")
+        #expect(TrailRegionText.detail(state: .updateAvailable(installed: 1, latest: 2), record: record("va"), dataDate: nil)
+                == "Update available · 6 trails · \(size)")
+        #expect(TrailRegionText.detail(state: .needsAppUpdate, record: record("zz"), dataDate: date) == "Needs a newer version of Wockett")
+        #expect(TrailRegionText.detail(state: .downloading(progress: 0), record: record("va"), dataDate: nil) == "Downloading…")
+        #expect(TrailRegionText.detail(state: .downloading(progress: 0.5), record: record("va"), dataDate: nil) == "Downloading 50%…")
+        #expect(TrailRegionText.detail(state: .failed("boom"), record: record("va"), dataDate: date) == "boom")
     }
 
     @Test("A catalogue error is recorded, not thrown")
