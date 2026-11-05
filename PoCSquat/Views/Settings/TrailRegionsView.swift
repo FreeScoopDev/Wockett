@@ -92,8 +92,7 @@ private struct RegionRow: View {
     let record: TrailRegionRecord
     private var library: TrailPackLibrary { .shared }
 
-    /// The open pack's own date, local: no fetch.
-    private var dataDate: Date? { library.packInfos.first { $0.region == record.region }?.builtAt }
+    private var dataDate: Date? { library.dataDate(for: record) }
 
     @Environment(\.dynamicTypeSize) private var typeSize
 

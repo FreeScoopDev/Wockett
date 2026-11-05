@@ -132,8 +132,8 @@ struct TrailsPanel: View {
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 28)
                         .padding(.top, 24)
-                        .padding(.bottom, filtersEmptiedList || message == Self.noTrailsNearby ? 8 : 24)
-                    if message == Self.noTrailsNearby {
+                        .padding(.bottom, emptyMessageBottom)
+                    if offersRegions {
                         WktSecondaryButton(title: "Trail regions", symbol: .cloudDownload) { showRegions = true }
                             .accessibilityIdentifier("routes.trailRegionsEmpty")
                             .padding(.horizontal, 28)
@@ -170,7 +170,8 @@ struct TrailsPanel: View {
 
                 TrailCreditLine()
                     .padding(.top, 4)
-                regionsLink
+                // The empty message already offers the same screen.
+                if !offersRegions { regionsLink }
             }
             .padding(.bottom, 14)
         }
@@ -247,11 +248,16 @@ struct TrailsPanel: View {
     }
 
     private static let noFilterMatch = "No trails within 10 miles match these filters."
-    private static let noTrailsNearby = "No trails within 10 miles. Download your state in Trail regions to see its trails. More states are on the way."
+    private static let noTrailsNearby = "No trails within 10 miles. Download your state in Trail Regions to see its trails. More states are on the way."
 
     // MARK: Trail regions
 
     @State private var showRegions = false
+
+    /// No trails nearby and no filter to blame: download a state.
+    private var offersRegions: Bool { emptyMessage == Self.noTrailsNearby }
+
+    private var emptyMessageBottom: CGFloat { filtersEmptiedList || offersRegions ? 8 : 24 }
 
     /// Where offline trail data lives; the same screen as Settings → Trail Regions.
     private var regionsLink: some View {

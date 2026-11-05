@@ -126,6 +126,18 @@ struct TrailPackDeliveryTests {
         #expect(before[2] == .updateAvailable(installed: 1, latest: 2))
     }
 
+    @Test("A downloaded region's data date comes from the pack opened for it, whatever region its file names")
+    func dataDateFromOpenPack() async throws {
+        // The fixture's own meta says region "fixture"; it is opened as "va".
+        let remote = FakeRemote(regions: [record("va")], fileToServe: try fixtureURL)
+        let library = TrailPackLibrary(registry: TrailAttributionRegistry(), remote: remote, packsDirectory: scratchDirectory())
+        #expect(library.dataDate(for: record("va")) == nil)
+        await library.download(record("va"))
+        let built = try #require(ISO8601DateFormatter().date(from: "2026-09-16T00:00:00Z"))
+        #expect(library.dataDate(for: record("va")) == built)
+        #expect(library.dataDate(for: record("sc")) == nil)
+    }
+
     @Test("A row shows a date only from the pack on the phone, and a size only when the catalogue gives one")
     func regionRowDetail() throws {
         let date = try #require(ISO8601DateFormatter().date(from: "2026-10-08T12:00:00Z"))

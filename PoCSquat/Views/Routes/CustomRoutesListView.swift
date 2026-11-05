@@ -244,9 +244,12 @@ struct CustomRouteDetailView: View {
                                 WktSecondaryLabel(title: "Trail regions", symbol: .cloudDownload)
                             }
                             .buttonStyle(BounceButtonStyle(scale: 0.98))
+                            .accessibilityHint("Trail lines and details you can use offline.")
                             .accessibilityIdentifier("routes.detailTrailRegions")
                             Text("Trail lines and details you can use offline.")
                                 .font(.wktLabel).foregroundColor(.earthMuted)
+                                .multilineTextAlignment(.center)
+                                .accessibilityHidden(true)
                         }
 
                         // Community sharing: everything about what goes public is in the review.

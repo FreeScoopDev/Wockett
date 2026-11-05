@@ -193,6 +193,12 @@ final class TrailPackLibrary {
         installed[record.region] != nil || Self.bundledRegions.contains(record.region)
     }
 
+    /// When the pack open for this region was built: local, no fetch. By the
+    /// key the pack was opened under, not the region its file names.
+    func dataDate(for record: TrailRegionRecord) -> Date? {
+        sources[record.region]?.packInfo.builtAt
+    }
+
     /// The regions screen's two groups, each alphabetical by name.
     static func ordered(_ records: [TrailRegionRecord], isOnPhone: (TrailRegionRecord) -> Bool)
         -> (onPhone: [TrailRegionRecord], available: [TrailRegionRecord]) {
