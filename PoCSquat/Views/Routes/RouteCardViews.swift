@@ -63,7 +63,7 @@ struct RouteCard: View {
                         Label { Text(route.timeText) }     icon: { Image(wkt: .time).wktIcon(.inline, tint: .earthMuted) }
                     }
                     .font(.wktLabel).foregroundColor(.earthMuted)
-                    if let elev = route.elevationSummary {
+                    if let elev = route.elevationSummary() {
                         Text(elev)
                             .font(.wktLabel).foregroundColor(routeColor)
                     }

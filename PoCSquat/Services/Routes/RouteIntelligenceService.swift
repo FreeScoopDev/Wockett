@@ -197,10 +197,11 @@ enum RouteDifficulty: String {
 
     /// "Hard because of 320 m of climb". Length is never a number here: the
     /// profile's sampled length can differ from the route distance beside it.
-    /// Steepness rounds up: an Expert (over 25 %) never reads "25 %".
-    nonisolated func why(_ reason: Reason) -> String {
+    /// Steepness rounds up: an Expert (over 25 %) never reads "25 %". The
+    /// climb reads like the "+395 ft climb" line above it.
+    func why(_ reason: Reason, metric: Bool = RouteElevation.defaultMetric) -> String {
         switch reason {
-        case .climb(let meters):      return "\(rawValue) because of \(Int(meters)) m of climb"
+        case .climb(let meters):      return "\(rawValue) because of \(RouteElevation.text(meters, metric: metric)) of climb"
         case .steepness(let percent): return "\(rawValue) because one part is \(Int(percent.rounded(.up))) % steep"
         case .length:                 return "\(rawValue) because of its length"
         case .nothingMuch:            return "\(rawValue): short, with little climb"
@@ -554,7 +555,7 @@ struct ElevationProfileChart: View {
         size.isAccessibilitySize ? 220 : 110
     }
 
-    // Miles in the US, like the spoken cues; elevation stays in metres.
+    // Miles and feet in the US, like the spoken cues; km and metres elsewhere.
     private var usesMiles: Bool { WalkAudioCueService.usesMiles }
 
     private func axisDistance(_ km: Double) -> Double {
@@ -562,8 +563,7 @@ struct ElevationProfileChart: View {
     }
 
     private var yDomain: ClosedRange<Double> {
-        let pad = max((profile.maxElevationMeters - profile.minElevationMeters) * 0.3, 15)
-        return (profile.minElevationMeters - pad)...(profile.maxElevationMeters + pad)
+        RouteElevation.axisDomain(min: profile.minElevationMeters, max: profile.maxElevationMeters)
     }
 
     var body: some View {
@@ -584,7 +584,7 @@ struct ElevationProfileChart: View {
             Chart(profile.points) { pt in
                 AreaMark(
                     x: .value("Dist", axisDistance(pt.distanceKm)),
-                    y: .value("Elev", pt.elevationMeters)
+                    y: .value("Elev", RouteElevation.axisValue(pt.elevationMeters))
                 )
                 .foregroundStyle(
                     LinearGradient(
@@ -594,7 +594,7 @@ struct ElevationProfileChart: View {
                 )
                 LineMark(
                     x: .value("Dist", axisDistance(pt.distanceKm)),
-                    y: .value("Elev", pt.elevationMeters)
+                    y: .value("Elev", RouteElevation.axisValue(pt.elevationMeters))
                 )
                 .foregroundStyle(Color.earthGreen)
                 .lineStyle(StrokeStyle(lineWidth: 2))
@@ -602,7 +602,7 @@ struct ElevationProfileChart: View {
             }
             .chartYScale(domain: yDomain)
             .chartXAxisLabel(usesMiles ? "mi" : "km", alignment: .trailing)
-            .chartYAxisLabel("m", alignment: .top)
+            .chartYAxisLabel(RouteElevation.axisUnit(), alignment: .top)
             .frame(height: Self.chartHeight(typeSize))
         }
         .wktCard()
@@ -610,8 +610,8 @@ struct ElevationProfileChart: View {
 
     @ViewBuilder
     private var gainAndLoss: some View {
-        elevStat("+\(Int(profile.totalGainMeters))m", label: "gain",  color: .earthGreen)
-        elevStat("-\(Int(profile.totalLossMeters))m", label: "loss",  color: .earthOrange)
+        elevStat(RouteElevation.gain(profile.totalGainMeters), label: "gain", color: .earthGreen)
+        elevStat(RouteElevation.loss(profile.totalLossMeters), label: "loss", color: .earthOrange)
     }
 
     private func elevStat(_ value: String, label: String, color: Color) -> some View {

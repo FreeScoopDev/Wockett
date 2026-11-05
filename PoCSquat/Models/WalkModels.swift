@@ -244,10 +244,12 @@ struct SuggestedRoute: Identifiable {
     var elevationLossMeters: Double = 0
     var colorIndex: Int = 0     // position in result list; drives unique hue per route
 
-    var elevationSummary: String? {
+    /// In the chart's unit, not `MKDistanceFormatter`'s, which follows the
+    /// region and spoke miles and yards for en_GB while the app uses km.
+    func elevationSummary(metric: Bool = RouteElevation.defaultMetric) -> String? {
         guard elevationGainMeters > 0 || elevationLossMeters > 0 else { return nil }
-        let f = MKDistanceFormatter.abbreviated
-        return "↑ \(f.string(fromDistance: elevationGainMeters)) · ↓ \(f.string(fromDistance: elevationLossMeters))"
+        return "↑ \(RouteElevation.text(elevationGainMeters, metric: metric)) · "
+            + "↓ \(RouteElevation.text(elevationLossMeters, metric: metric))"
     }
 
     static func paletteColor(index: Int, total: Int) -> Color {
@@ -276,10 +278,23 @@ struct SuggestedRoute: Identifiable {
         }
     }
 
-    var distanceText: String {
-        let f = MKDistanceFormatter.abbreviated
+    var distanceText: String { distanceText(metric: RouteElevation.defaultMetric) }
+
+    /// On the app's unit rule, like the heights beside it: the region's own
+    /// (`MKDistanceFormatter`'s default) gave miles on a UK device.
+    func distanceText(metric: Bool) -> String {
+        let f = metric ? Self.metricFormatter : Self.imperialFormatter
         if lapCount > 1 { return "\(f.string(fromDistance: perLapDistance)) × \(lapCount)" }
         return f.string(fromDistance: totalDistance)
+    }
+
+    private static let metricFormatter = formatter(.metric)
+    private static let imperialFormatter = formatter(.imperial)
+    private static func formatter(_ units: MKDistanceFormatter.Units) -> MKDistanceFormatter {
+        let f = MKDistanceFormatter()
+        f.unitStyle = .abbreviated
+        f.units = units
+        return f
     }
 
     var timeText: String {
