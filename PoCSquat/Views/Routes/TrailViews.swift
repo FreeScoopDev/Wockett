@@ -132,7 +132,13 @@ struct TrailsPanel: View {
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 28)
                         .padding(.top, 24)
-                        .padding(.bottom, filtersEmptiedList ? 8 : 24)
+                        .padding(.bottom, emptyMessageBottom)
+                    if offersRegions {
+                        WktSecondaryButton(title: "Trail regions", symbol: .cloudDownload) { showRegions = true }
+                            .accessibilityIdentifier("routes.trailRegionsEmpty")
+                            .padding(.horizontal, 28)
+                            .padding(.bottom, 16)
+                    }
                     if filtersEmptiedList {
                         WktSecondaryButton(title: "Reset filters", action: resetFilters)
                             .accessibilityIdentifier("routes.trailFiltersResetEmpty")
@@ -164,6 +170,8 @@ struct TrailsPanel: View {
 
                 TrailCreditLine()
                     .padding(.top, 4)
+                // The empty message already offers the same screen.
+                if !offersRegions { regionsLink }
             }
             .padding(.bottom, 14)
         }
@@ -174,6 +182,7 @@ struct TrailsPanel: View {
         // On the scroll view, not the button: a sheet hosted inside the
         // LazyVStack could be dismissed when its row is unloaded.
         .sheet(isPresented: $showFilters) { filtersSheet }
+        .sheet(isPresented: $showRegions) { TrailRegionsSheet() }
         .task { await featuredTrails.refreshIfStale() }
         // At most daily; a status that arrives now is announced now.
         .task { featuredNews += await contributions.bannerAfterRefresh() }
@@ -227,7 +236,7 @@ struct TrailsPanel: View {
         guard finder.hasSearched, finder.items.isEmpty, finder.otherPaths.isEmpty else { return nil }
         return finder.filters.canNarrowList(groupSections: groupSections)
             ? Self.noFilterMatch
-            : "No trails within 10 miles. Download your state in Settings → Trail Regions to see its trails. More states are on the way."
+            : Self.noTrailsNearby
     }
 
     // MARK: Filters button and sheet
@@ -239,6 +248,25 @@ struct TrailsPanel: View {
     }
 
     private static let noFilterMatch = "No trails within 10 miles match these filters."
+    private static let noTrailsNearby = "No trails within 10 miles. Download your state in Trail Regions to see its trails. More states are on the way."
+
+    // MARK: Trail regions
+
+    @State private var showRegions = false
+
+    /// No trails nearby and no filter to blame: download a state.
+    private var offersRegions: Bool { emptyMessage == Self.noTrailsNearby }
+
+    private var emptyMessageBottom: CGFloat { filtersEmptiedList || offersRegions ? 8 : 24 }
+
+    /// Where offline trail data lives; the same screen as Settings → Trail Regions.
+    private var regionsLink: some View {
+        Button("Trail regions and offline data") { showRegions = true }
+            .font(.wktLabel)
+            .foregroundColor(.earthGreen)
+            .frame(minHeight: 44)
+            .accessibilityIdentifier("routes.trailRegions")
+    }
 
     /// The empty message is the filters' doing, so it offers to undo them.
     private var filtersEmptiedList: Bool { emptyMessage == Self.noFilterMatch }

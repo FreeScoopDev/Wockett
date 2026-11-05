@@ -1202,6 +1202,70 @@ final class SmokeTests: XCTestCase {
         XCTAssertTrue(reset.waitForNonExistence(timeout: 10), "Done must close the sheet")
     }
 
+    /// Trail regions is reachable from Trails, not only from Settings (spec
+    /// fix/trail-filters-regions, PR B, item 7): the link under the list
+    /// opens the regions screen in a sheet, and Done closes it.
+    func testTrailsOpensTrailRegions() {
+        XCTAssertTrue(el("home.statCard").waitForExistence(timeout: 10))
+        selectTab("Routes")
+        let picker = el("routes.modePicker")
+        XCTAssertTrue(picker.waitForExistence(timeout: 30))
+        picker.buttons["Trails"].tap()
+        XCTAssertTrue(app.buttons["routes.trailCard"].firstMatch.waitForExistence(timeout: 15), "No trails listed")
+
+        // Under the last card, below the credit line: scroll the list to it.
+        // Dragged in the panel's lower part, which is the list: its centre
+        // can be the mode picker or the chips, which do not scroll.
+        let link = app.buttons["routes.trailRegions"]
+        // The panel runs under the tab bar, so stop above the bar: a drag
+        // that starts on it switches tabs.
+        let panel = el("routes.trailsPanel").frame
+        let bottom = min(panel.maxY, app.tabBars.firstMatch.frame.minY) - 30
+        let origin = app.coordinate(withNormalizedOffset: .zero)
+        let from = origin.withOffset(CGVector(dx: panel.midX, dy: bottom))
+        let to = origin.withOffset(CGVector(dx: panel.midX, dy: bottom - 200))
+        var swipes = 0
+        while !(link.exists && link.isHittable) && swipes < 40 {
+            from.press(forDuration: 0.05, thenDragTo: to, withVelocity: .fast, thenHoldForDuration: 0)
+            swipes += 1
+        }
+        link.tap()
+        XCTAssertTrue(el("settings.trailRegions").waitForExistence(timeout: 10), "The link must open Trail Regions")
+        app.navigationBars.buttons["Done"].tap()
+        XCTAssertTrue(el("settings.trailRegions").waitForNonExistence(timeout: 10), "Done must close the sheet")
+    }
+
+    /// A saved route's detail links to Trail Regions too (PR B, item 8): the
+    /// demo's Capitol Loop, then the row below Open in Apple Maps.
+    func testSavedRouteOpensTrailRegions() {
+        app.terminate()
+        app.launchArguments = ["-WKTUITest", "-WKTDemo"]
+        app.launch()
+        XCTAssertTrue(el("home.statCard").waitForExistence(timeout: 30))
+        let mine = app.buttons["home.myRoutes"]
+        XCTAssertTrue(mine.waitForExistence(timeout: 15), "Home must show My Routes")
+        var swipes = 0
+        while mine.frame.maxY > app.windows.firstMatch.frame.maxY - 120 && swipes < 6 {
+            app.swipeUp()
+            swipes += 1
+        }
+        forceTap(mine)
+        XCTAssertTrue(app.navigationBars["Saved Items"].waitForExistence(timeout: 10), "My Routes must open")
+        let row = app.buttons.matching(NSPredicate(format: "label CONTAINS 'Capitol Loop'")).firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 10), "The demo's saved route must be listed")
+        row.tap()
+
+        let link = app.buttons["routes.detailTrailRegions"]
+        XCTAssertTrue(link.waitForExistence(timeout: 10), "The route detail must offer Trail regions")
+        swipes = 0
+        while !link.isHittable && swipes < 8 {
+            app.swipeUp()
+            swipes += 1
+        }
+        link.tap()
+        XCTAssertTrue(el("settings.trailRegions").waitForExistence(timeout: 10), "The row must open Trail Regions")
+    }
+
     private func wait(for element: XCUIElement, value: String) -> Bool {
         let expectation = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", value), object: element)
         return XCTWaiter().wait(for: [expectation], timeout: 10) == .completed
