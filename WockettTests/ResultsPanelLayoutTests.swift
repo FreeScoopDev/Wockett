@@ -4,8 +4,9 @@ import CoreGraphics
 
 /// The Routes results list gives the Start bar its height, down to a floor
 /// (spec fix/route-start-visible, decision 6). Expected values are written
-/// out from a 900 pt container (about an iPhone 17e's), not derived from the
-/// constants under test.
+/// out for a round 900 pt container, not derived from the constants under
+/// test. (On an iPhone 17e the Routes container is about 714 pt: 844 less the
+/// status bar and the tab bar.)
 struct ResultsPanelLayoutTests {
     @Test func noBarKeepsTheOldCap() {
         #expect(ResultsPanelLayout.scrollCap(container: 900, barHeight: 0) == 405)

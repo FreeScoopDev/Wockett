@@ -1876,6 +1876,52 @@ final class SmokeTests: XCTestCase {
         XCTAssertEqual(start.frame.minY, frame.minY, accuracy: 1, "Start must not move when the list scrolls at \(size)")
     }
 
+    // MARK: - 8l. Trail detail: Start under the details
+
+    /// At a trail, Start sits in a bar under the trail's details (spec
+    /// fix/route-start-visible). On `main` (e6b4b98) it was in the scroll,
+    /// under the name and the Distance | Time chooser: at Accessibility 2 on
+    /// an iPhone 17e it ended 4.7 pt above the tab bar under a two-line name,
+    /// so a longer name pushed it under. Start appears only within 150 m of a
+    /// trail, and no -WKTUITest location is (downtown Raleigh is about 650 m
+    /// from the nearest), so today this skips, saying so; it runs once a
+    /// fixture places the test at a trail.
+    func testTrailStartIsOnTheFirstScreenAtAccessibility2() throws {
+        app.terminate()
+        app.launchArguments = ["-WKTUITest", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityL"]
+        app.launch()
+        XCTAssertTrue(el("home.statCard").waitForExistence(timeout: 30))
+        selectTab("Routes")
+        let picker = el("routes.modePicker")
+        XCTAssertTrue(picker.waitForExistence(timeout: 30))
+        picker.buttons["Trails"].tap()
+        let card = app.buttons["routes.trailCard"].firstMatch
+        XCTAssertTrue(card.waitForExistence(timeout: 15), "No trails listed near downtown Raleigh")
+        card.tap()
+        let start = app.buttons["routes.trailStart"]
+        let approach = app.buttons["routes.trailApproachStart"]
+        let either = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in start.exists || approach.exists },
+                                               object: nil)
+        XCTAssertEqual(XCTWaiter().wait(for: [either], timeout: 20), .completed,
+                       "The trail detail must offer a way to start")
+        try XCTSkipUnless(start.exists, "No -WKTUITest location is within 150 m of a trail, so the detail offers "
+                          + "only the walk to it; trail Start's place was checked by hand (spec fix/route-start-visible)")
+        sleep(2)  // Animation wait: the detail settles before frames are read.
+
+        let panel = el("routes.trailsPanel")
+        let window = app.windows.firstMatch.frame
+        let frame = start.frame
+        XCTAssertTrue(window.contains(frame), "Trail Start is outside the window: \(frame) in \(window)")
+        XCTAssertTrue(panel.frame.contains(frame), "Trail Start is outside the panel: \(frame) in \(panel.frame)")
+        let tabBar = app.tabBars.firstMatch.frame
+        XCTAssertLessThanOrEqual(frame.maxY, tabBar.minY, "Trail Start is behind the tab bar: \(frame) vs \(tabBar)")
+        XCTAssertTrue(start.isHittable, "Trail Start must be tappable without scrolling")
+        let details = panel.scrollViews.firstMatch
+        XCTAssertTrue(details.exists, "The trail detail must scroll its details")
+        XCTAssertFalse(details.descendants(matching: .any).matching(identifier: "routes.trailStart").firstMatch.exists,
+                       "Trail Start must sit under the details, not in them")
+    }
+
     // MARK: - 8f. Busy buttons at Accessibility 2
 
     /// A button keeps its size while it works (spec fix/large-text-leftovers,
