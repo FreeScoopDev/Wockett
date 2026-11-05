@@ -48,12 +48,15 @@ struct RouteElevationTests {
         #expect(abs(flatFeet.upperBound - 393.701) < 0.001)
     }
 
-    /// The rule `RouteElevation.defaultMetric` reads. That the chart uses
-    /// the default, not `Locale` directly, is not testable here.
+    /// The rule `RouteElevation.defaultMetric` reads. That each Routes
+    /// surface calls the default is read in source, not tested.
     @Test func defaultUnit_followsTheDistanceRule() {
         #expect(WalkAudioCueService.usesMiles(in: Locale(identifier: "en_US")))
         #expect(!WalkAudioCueService.usesMiles(in: Locale(identifier: "en_GB")))
         #expect(!WalkAudioCueService.usesMiles(in: Locale(identifier: "en_CA")))
+        // Not a restatement: it fails if the default is ever hard-wired to
+        // one unit (or read some other way), on any simulator region.
+        #expect(RouteElevation.defaultMetric == !WalkAudioCueService.usesMiles(in: .current))
     }
 
     /// The result cards say the same as the chart. `MKDistanceFormatter`,
@@ -124,6 +127,19 @@ struct RouteHistorySplitTests {
         let split = RouteHistoryEmpty.split(all, route: routeID)
         #expect(split.shown.map(\.id) == [newer.id, kept.id])
         #expect(split.hidden == 2)
+    }
+
+    /// The screen's text comes from the route's own sessions.
+    @Test func emptyScreenText_countsTheRoutesLeftOutSessions() {
+        let route = CustomRoute(id: routeID, name: "Loop", waypoints: [], totalDistance: 800, isLoop: true,
+                                createdAt: Date(timeIntervalSince1970: 1_800_000_000), activityMode: .cycling)
+        let none = RouteHistoryEmpty.text(for: route, sessions: [session(route: UUID(), daysAgo: 1, counts: false)])
+        #expect(none.title == "No rides yet")
+        #expect(none.message == RouteHistoryEmpty.message(noun: "ride", routeName: "Loop", hidden: 0))
+        let two = RouteHistoryEmpty.text(for: route, sessions: [session(route: routeID, daysAgo: 1, counts: false),
+                                                                 session(route: routeID, daysAgo: 2, vehicle: true)])
+        #expect(two.title == "Nothing in route history")
+        #expect(two.message == RouteHistoryEmpty.message(noun: "ride", routeName: "Loop", hidden: 2))
     }
 
     @Test func noSessions_hidesNone() {

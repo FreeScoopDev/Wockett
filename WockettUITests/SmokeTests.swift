@@ -2048,14 +2048,15 @@ final class SmokeTests: XCTestCase {
         let historyGone = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == NO"),
                                                     object: app.navigationBars["Route History"])
         XCTAssertEqual(XCTWaiter().wait(for: [historyGone], timeout: 5), .completed, "Start must leave Route History")
-        // Discard it, so no session carries into the next test's launch.
-        let end = app.buttons["End walk"]
-        XCTAssertTrue(end.waitForExistence(timeout: 10), "The mini tile's End button must be there")
-        end.tap()
-        let discard = app.buttons["Discard Walk"]
-        XCTAssertTrue(discard.waitForExistence(timeout: 10), "End must offer Discard")
+        // Discard it, so no session carries into the next test's launch. The
+        // tab bar is hidden on a pushed route screen, so through the session.
+        forceTap(miniTile)
+        XCTAssertTrue(el("session.root").waitForExistence(timeout: 20), "The mini tile must open the session")
+        el("session.finish").press(forDuration: 1.4)
+        let discard = el("session.discard")
+        XCTAssertTrue(discard.waitForExistence(timeout: 5), "Finish must offer Discard")
         discard.tap()
-        XCTAssertTrue(miniTile.waitForNonExistence(timeout: 10), "Discard must end the session")
+        XCTAssertTrue(el("session.root").waitForNonExistence(timeout: 15), "Discard must end the session")
     }
 
     // MARK: - 8f. Busy buttons at Accessibility 2

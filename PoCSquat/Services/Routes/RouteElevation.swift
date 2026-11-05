@@ -42,6 +42,14 @@ enum RouteHistoryEmpty {
         return (shown.sorted { $0.date > $1.date }, mine.count - shown.count)
     }
 
+    /// The empty screen's title and reason for `route`, from every session.
+    static func text(for route: CustomRoute, sessions: [WalkSession]) -> (title: String, message: String) {
+        let hidden = split(sessions, route: route.id).hidden
+        let noun = route.activityMode.noun
+        return (hidden > 0 ? "Nothing in route history" : "No \(noun)s yet",
+                message(noun: noun, routeName: route.name, hidden: hidden))
+    }
+
     static func message(noun: String, routeName: String, hidden: Int) -> String {
         switch hidden {
         case ...0:

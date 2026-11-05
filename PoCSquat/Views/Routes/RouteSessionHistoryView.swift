@@ -37,10 +37,8 @@ struct RouteSessionHistoryView: View {
     // a session itself: the sheet's bar does, after a mode and a tap.
     private var emptyState: some View {
         VStack(spacing: WktSpacing.betweenSections) {
-            WktEmptyState(symbol: .history,
-                          title: split.hidden > 0 ? "Nothing in route history" : "No \(route.activityMode.noun)s yet",
-                          message: RouteHistoryEmpty.message(noun: route.activityMode.noun, routeName: route.name,
-                                                             hidden: split.hidden))
+            let text = RouteHistoryEmpty.text(for: route, sessions: historyStore.sessions)
+            WktEmptyState(symbol: .history, title: text.title, message: text.message)
             VStack(spacing: WktSpacing.betweenCards) {
                 WktPrimaryButton(title: "Start this route", symbol: route.activityMode.wktSymbol) { showStartSheet = true }
                     .accessibilityIdentifier("history.startRoute")
