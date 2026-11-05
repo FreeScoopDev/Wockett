@@ -14,6 +14,11 @@ on:
     branches: [main]
     types: [opened, edited, synchronize, reopened]
 
+# Read the code, nothing more: the job's token can't push, comment or
+# change the repo, whatever the repository's default says.
+permissions:
+  contents: read
+
 jobs:
   critic-verdict:
     name: Critic verdict
@@ -21,7 +26,7 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Check out repo
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           fetch-depth: 0
 
