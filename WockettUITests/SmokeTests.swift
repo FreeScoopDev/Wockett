@@ -1845,7 +1845,14 @@ final class SmokeTests: XCTestCase {
         let window = app.windows.firstMatch.frame
         let frame = start.frame
         XCTAssertTrue(window.contains(frame), "Start is outside the window at \(size): \(frame) in \(window)")
-        XCTAssertTrue(panel.frame.contains(frame), "Start is outside the panel at \(size): \(frame) in \(panel.frame)")
+        // 1 pt of slack: the bar's bottom and the panel's bottom are the same
+        // edge, and their frames can differ in the last bits.
+        XCTAssertTrue(panel.frame.insetBy(dx: -1, dy: -1).contains(frame),
+                      "Start is outside the panel at \(size): \(frame) in \(panel.frame)")
+        // Not checked here: that the list gives the bar its height (decision
+        // 6). A panel-top comparison across the pick stayed green with the
+        // bar's height ignored (test-auditor, 2026-11-05), so it would be
+        // decorative; ResultsPanelLayoutTests covers the arithmetic only.
         // The tab bar floats over the bottom of the panel, and the list runs
         // on under it; Start must end above it to be seen.
         let tabBar = app.tabBars.firstMatch.frame
@@ -1912,7 +1919,8 @@ final class SmokeTests: XCTestCase {
         let window = app.windows.firstMatch.frame
         let frame = start.frame
         XCTAssertTrue(window.contains(frame), "Trail Start is outside the window: \(frame) in \(window)")
-        XCTAssertTrue(panel.frame.contains(frame), "Trail Start is outside the panel: \(frame) in \(panel.frame)")
+        XCTAssertTrue(panel.frame.insetBy(dx: -1, dy: -1).contains(frame),
+                      "Trail Start is outside the panel: \(frame) in \(panel.frame)")
         let tabBar = app.tabBars.firstMatch.frame
         XCTAssertLessThanOrEqual(frame.maxY, tabBar.minY, "Trail Start is behind the tab bar: \(frame) vs \(tabBar)")
         XCTAssertTrue(start.isHittable, "Trail Start must be tappable without scrolling")
