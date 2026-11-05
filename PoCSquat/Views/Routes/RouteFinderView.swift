@@ -71,8 +71,8 @@ struct RouteFinderContentView: View {
     /// switching to Trails clears the selection, and the list can arrive
     /// only once a location does.
     @State private var pendingOpenTrailID: String?
-    @AppStorage("wkt_trails_groupSections_v1") private var groupTrailSections = true
-    @AppStorage("wkt_trails_showShortPaths_v1") private var showShortTrailPaths = false
+    @AppStorage("wkt_trails_groupSections_v1") private var groupTrailSections = TrailFilters.defaultGroupSections
+    @AppStorage("wkt_trails_showShortPaths_v1") private var showShortTrailPaths = TrailFilters.defaultShowShortPaths
     /// Measured, so the map frames a trail in the part the panel leaves visible.
     /// The height of whichever panel covers the bottom of the map (results,
     /// or Trails), so the map frames routes and trails above it.

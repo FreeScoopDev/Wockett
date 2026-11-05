@@ -112,29 +112,7 @@ struct TrailsPanel: View {
                         .font(.wktSection)
                         .foregroundColor(.earthCream)
                     Spacer()
-                    Menu {
-                        Picker("Trail sections", selection: $groupSections) {
-                            Text("Group sections").tag(true)
-                            Text("List sections separately").tag(false)
-                        }
-                        Toggle(isOn: $includeShortPaths) {
-                            Text(Locale.current.measurementSystem == .us
-                                 ? "Show short paths (under 0.25 mi)"
-                                 : "Show short paths (under 400 m)")
-                        }
-                    } label: {
-                        HStack(spacing: 4) {
-                            Text(groupSections ? "Grouped" : "Sections")
-                            Image(wkt: .chevronDown).wktIcon(.inline, tint: .earthGreen)
-                        }
-                        .font(.wktBodyText)
-                        .foregroundColor(.earthGreen)
-                        .frame(minHeight: 44)
-                    }
-                    .accessibilityLabel("List options")
-                    .accessibilityValue((groupSections ? "Grouped" : "Listed separately")
-                                        + (includeShortPaths ? ", short paths shown" : ""))
-                    .accessibilityIdentifier("routes.trailGrouping")
+                    filtersButton
                 }
                 .padding(.horizontal, 20)
 
@@ -153,7 +131,14 @@ struct TrailsPanel: View {
                         .foregroundColor(.earthMuted)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 28)
-                        .padding(.vertical, 24)
+                        .padding(.top, 24)
+                        .padding(.bottom, filtersEmptiedList ? 8 : 24)
+                    if filtersEmptiedList {
+                        WktSecondaryButton(title: "Reset filters", action: resetFilters)
+                            .accessibilityIdentifier("routes.trailFiltersResetEmpty")
+                            .padding(.horizontal, 28)
+                            .padding(.bottom, 16)
+                    }
                 } else {
                     ForEach(finder.items) { item in
                         TrailCard(item: item, activityMode: activityMode) {
@@ -237,15 +222,55 @@ struct TrailsPanel: View {
             return locationState.message ?? "Finding your location…"
         }
         guard finder.hasSearched, finder.items.isEmpty, finder.otherPaths.isEmpty else { return nil }
-        let active = finder.filters != TrailFilters()
-        return active
-            ? "No trails within 10 miles match these filters."
+        return activeFilterCount > 0
+            ? Self.noFilterMatch
             : "No trails within 10 miles. Download your state in Settings → Trail Regions to see its trails. More states are on the way."
+    }
+
+    // MARK: Filters button and sheet
+
+    @State private var showFilters = false
+
+    private var activeFilterCount: Int {
+        finder.filters.activeCount(groupSections: groupSections, showShortPaths: includeShortPaths)
+    }
+
+    private static let noFilterMatch = "No trails within 10 miles match these filters."
+
+    /// The empty message is the filters' doing, so it offers to undo them.
+    private var filtersEmptiedList: Bool { emptyMessage == Self.noFilterMatch }
+
+    private func resetFilters() {
+        finder.filters.reset()
+        groupSections = TrailFilters.defaultGroupSections
+        includeShortPaths = TrailFilters.defaultShowShortPaths
+    }
+
+    private var filtersButton: some View {
+        Button { showFilters = true } label: {
+            HStack(spacing: 4) {
+                Image(wkt: .filter).wktIcon(.inline, tint: .earthGreen)
+                Text(TrailText.filtersTitle(activeCount: activeFilterCount))
+            }
+            .font(.wktBodyText)
+            .foregroundColor(.earthGreen)
+            .frame(minHeight: 44)
+        }
+        .accessibilityLabel("Filters")
+        .accessibilityValue(TrailText.filtersValue(activeCount: activeFilterCount))
+        .accessibilityIdentifier("routes.trailFilters")
+        .sheet(isPresented: $showFilters) {
+            TrailFiltersSheet(filters: $finder.filters, groupSections: $groupSections,
+                              includeShortPaths: $includeShortPaths, onReset: resetFilters)
+        }
     }
 }
 
 // MARK: - Filters
 
+/// The quick toggles above the list. The dog filter and the list options
+/// live in the Filters sheet only: as the last chip in a sideways scroller,
+/// "Hide no-dog trails" sat cut off at the screen's edge ("Hid…").
 struct TrailFilterChips: View {
     @Binding var filters: TrailFilters
 
@@ -262,7 +287,6 @@ struct TrailFilterChips: View {
                     filters.surface = filters.surface == .unpaved ? nil : .unpaved
                 }
                 chip(usesMiles ? "Under 2 mi" : "Under 3 km", isOn: filters.shortOnly) { filters.shortOnly.toggle() }
-                chip("Hide no-dog trails", isOn: filters.hideNoDogs) { filters.hideNoDogs.toggle() }
             }
             .padding(.horizontal, 20)
         }
@@ -270,6 +294,103 @@ struct TrailFilterChips: View {
 
     private func chip(_ title: String, isOn: Bool, action: @escaping () -> Void) -> some View {
         WktChoiceChip(title: title, selected: isOn, action: action)
+    }
+}
+
+/// Every filter and list option in one place, applied as it changes (spec
+/// fix/trail-filters-regions, PR A). Reset puts the list back as it first
+/// appears: chips off, segments combined, short paths hidden.
+struct TrailFiltersSheet: View {
+    @Binding var filters: TrailFilters
+    @Binding var groupSections: Bool
+    @Binding var includeShortPaths: Bool
+    let onReset: () -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    private var usesMiles: Bool { Locale.current.measurementSystem == .us }
+    private var activeCount: Int {
+        filters.activeCount(groupSections: groupSections, showShortPaths: includeShortPaths)
+    }
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Color.earthBg.ignoresSafeArea()
+                form
+            }
+            .navigationTitle("Filters")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { toolbar }
+        }
+        .presentationDetents([.medium, .large])
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("routes.trailFiltersSheet")
+    }
+
+    @ToolbarContentBuilder private var toolbar: some ToolbarContent {
+        ToolbarItem(placement: .cancellationAction) {
+            Button("Reset", action: onReset)
+                .disabled(activeCount == 0)
+                .accessibilityIdentifier("routes.trailFiltersReset")
+        }
+        ToolbarItem(placement: .confirmationAction) {
+            Button("Done") { dismiss() }
+                .foregroundColor(.earthGreen)
+                .accessibilityIdentifier("routes.trailFiltersDone")
+        }
+    }
+
+    private var form: some View {
+        List {
+            Section {
+                toggle("Loops only", isOn: $filters.loopsOnly)
+                WktSegmentedPicker(selection: $filters.surface, options: [
+                    .init(value: nil, title: "Any"),
+                    .init(value: .paved, title: "Paved"),
+                    .init(value: .unpaved, title: "Unpaved")
+                ])
+                .listRowBackground(Color.earthCard)
+                toggle(usesMiles ? "Under 2 mi only" : "Under 3 km only", isOn: $filters.shortOnly)
+            } header: { WktListHeader(title: "Show") }
+            Section {
+                toggle("Exclude trails marked no dogs", isOn: $filters.hideNoDogs)
+            } header: { WktListHeader(title: "Dogs") } footer: {
+                footer("Trails that don't say anything about dogs stay in the list. Only a posted rule is shown on a trail.")
+            }
+            Section {
+                segmentsPicker
+            } header: { WktListHeader(title: "Trail segments") }
+            Section {
+                toggle(usesMiles ? "Show short paths (under 0.25 mi)" : "Show short paths (under 400 m)",
+                       isOn: $includeShortPaths)
+            } header: { WktListHeader(title: "Short paths") }
+        }
+        .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
+    }
+
+    /// Checkmark rows, not `WktSegmentedPicker`: its one-line options cut
+    /// "Combine segments of the same trail" to a few words at half the width.
+    private var segmentsPicker: some View {
+        Picker("Trail segments", selection: $groupSections) {
+            Text("Combine segments of the same trail").tag(true)
+            Text("Show individual trail segments").tag(false)
+        }
+        .pickerStyle(.inline)
+        .labelsHidden()
+        .foregroundColor(.earthCream)
+        .tint(.earthGreen)
+        .listRowBackground(Color.earthCard)
+    }
+
+    private func toggle(_ title: String, isOn: Binding<Bool>) -> some View {
+        Toggle(isOn: isOn) { Text(title).foregroundColor(.earthCream) }
+            .tint(.earthGreenFill)
+            .listRowBackground(Color.earthCard)
+    }
+
+    private func footer(_ text: String) -> some View {
+        Text(text).font(.wktLabel).foregroundColor(.earthMuted)
     }
 }
 
@@ -674,6 +795,16 @@ enum TrailText {
         return mins < 60 ? "\(mins) min" : "\(mins / 60)h \(mins % 60)m"
     }
 
+    /// "Filters", or "Filters (2)" with two on: the Trails list's button.
+    static func filtersTitle(activeCount: Int) -> String {
+        activeCount == 0 ? "Filters" : "Filters (\(activeCount))"
+    }
+
+    /// The Filters button's accessibility value: "None active", "2 active".
+    static func filtersValue(activeCount: Int) -> String {
+        activeCount == 0 ? "None active" : "\(activeCount) active"
+    }
+
     /// "3 paths with no name": what the closed "Other paths" card holds, so
     /// it is clear nothing named is hidden there.
     static func otherPathsSummary(count: Int) -> String {
@@ -683,7 +814,7 @@ enum TrailText {
     /// "6.5 mi · 1.5 mi away". One trail is one trail: how many pieces the
     /// map data stores it in is not shown (Joe, 2026-10-08: "I don't want
     /// there to be a bunch of trail segments for one trail"). The separate
-    /// view, in the list's menu, still lists the pieces.
+    /// view, in the Filters sheet, still lists the pieces.
     static func summary(for item: TrailListItem) -> String {
         "\(distance(item.lengthMeters)) · \(distance(item.distanceMeters)) away"
     }

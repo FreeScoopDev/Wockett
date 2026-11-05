@@ -1156,6 +1156,47 @@ final class SmokeTests: XCTestCase {
         XCTAssertTrue(firstCard.waitForExistence(timeout: 10))
     }
 
+    // MARK: - 7. Trails filters
+
+    /// The Filters button counts what is on and Reset clears it (spec
+    /// fix/trail-filters-regions, PR A). The count is read from the button's
+    /// accessibility value, which comes from the same number as its visible
+    /// "(1)"; `TrailListTests.filtersButtonText` covers that text.
+    func testTrailsFiltersCountAndReset() {
+        XCTAssertTrue(el("home.statCard").waitForExistence(timeout: 10))
+        selectTab("Routes")
+        let picker = el("routes.modePicker")
+        XCTAssertTrue(picker.waitForExistence(timeout: 30))
+        picker.buttons["Trails"].tap()
+
+        let button = app.buttons["routes.trailFilters"]
+        XCTAssertTrue(button.waitForExistence(timeout: 15), "Trails must show the Filters button")
+        XCTAssertEqual(button.label, "Filters")
+        XCTAssertEqual(button.value as? String, "None active")
+        XCTAssertFalse(app.buttons["Grouped"].exists, "The old Grouped menu must be gone")
+        button.tap()
+
+        let reset = app.buttons["routes.trailFiltersReset"]
+        XCTAssertTrue(reset.waitForExistence(timeout: 10), "The sheet must offer Reset")
+        XCTAssertFalse(reset.isEnabled, "Reset must be disabled with nothing on")
+        let loops = app.switches["Loops only"]
+        XCTAssertTrue(loops.waitForExistence(timeout: 5), "The sheet must offer Loops only")
+        loops.switches.firstMatch.tap()
+        XCTAssertTrue(wait(for: button, value: "1 active"), "One filter on must read 1 active: \(String(describing: button.value))")
+        XCTAssertTrue(reset.isEnabled, "Reset must be enabled with a filter on")
+
+        reset.tap()
+        XCTAssertTrue(wait(for: button, value: "None active"), "Reset must clear the count: \(String(describing: button.value))")
+        XCTAssertFalse(reset.isEnabled, "Reset must be disabled again after resetting")
+        app.buttons["routes.trailFiltersDone"].tap()
+        XCTAssertTrue(reset.waitForNonExistence(timeout: 10), "Done must close the sheet")
+    }
+
+    private func wait(for element: XCUIElement, value: String) -> Bool {
+        let expectation = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", value), object: element)
+        return XCTWaiter().wait(for: [expectation], timeout: 10) == .completed
+    }
+
     // MARK: - 7a. Location off
 
     /// With location denied, Routes explains it before any search and offers

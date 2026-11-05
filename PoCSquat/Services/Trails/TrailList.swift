@@ -96,6 +96,26 @@ struct TrailFilters: Hashable {
             loopsOnly: loopsOnly
         )
     }
+
+    /// The two list options kept in `@AppStorage` beside the filters. They
+    /// are not filters, but they change what the list shows, so the Filters
+    /// button counts them and Reset puts them back (spec
+    /// fix/trail-filters-regions, owner decision 3).
+    static let defaultGroupSections = true
+    static let defaultShowShortPaths = false
+
+    /// How many things differ from a fresh list: each filter that is on, plus
+    /// each list option moved off its default. The number on the Filters button.
+    func activeCount(groupSections: Bool, showShortPaths: Bool) -> Int {
+        [loopsOnly, surface != nil, shortOnly, hideNoDogs,
+         groupSections != Self.defaultGroupSections,
+         showShortPaths != Self.defaultShowShortPaths].filter { $0 }.count
+    }
+
+    /// Every filter off. The caller resets the two list options.
+    mutating func reset() {
+        self = TrailFilters()
+    }
 }
 
 /// One row of the list: a single section, or every nearby section of one trail.
