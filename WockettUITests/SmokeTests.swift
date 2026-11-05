@@ -1916,8 +1916,11 @@ final class SmokeTests: XCTestCase {
         let tabBar = app.tabBars.firstMatch.frame
         XCTAssertLessThanOrEqual(frame.maxY, tabBar.minY, "Trail Start is behind the tab bar: \(frame) vs \(tabBar)")
         XCTAssertTrue(start.isHittable, "Trail Start must be tappable without scrolling")
-        let details = panel.scrollViews.firstMatch
-        XCTAssertTrue(details.exists, "The trail detail must scroll its details")
+        // `routes.trailDetail` is the scrolling content's own container, so
+        // this does not depend on where SwiftUI puts the panel's identifier
+        // (on its scroll view, when that is its only child).
+        let details = el("routes.trailDetail")
+        XCTAssertTrue(details.exists, "The trail detail must show its details")
         XCTAssertFalse(details.descendants(matching: .any).matching(identifier: "routes.trailStart").firstMatch.exists,
                        "Trail Start must sit under the details, not in them")
     }
