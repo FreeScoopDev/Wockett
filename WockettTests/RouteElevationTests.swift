@@ -54,8 +54,8 @@ struct RouteElevationTests {
         #expect(WalkAudioCueService.usesMiles(in: Locale(identifier: "en_US")))
         #expect(!WalkAudioCueService.usesMiles(in: Locale(identifier: "en_GB")))
         #expect(!WalkAudioCueService.usesMiles(in: Locale(identifier: "en_CA")))
-        // Not a restatement: it fails if the default is ever hard-wired to
-        // one unit (or read some other way), on any simulator region.
+        // Not a restatement: on a US simulator it fails if the default is
+        // hard-wired to metres, on a metric one if hard-wired to feet.
         #expect(RouteElevation.defaultMetric == !WalkAudioCueService.usesMiles(in: .current))
     }
 
