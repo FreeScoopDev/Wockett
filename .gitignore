@@ -97,6 +97,16 @@ __pycache__/
 .venv/
 venv/
 
+# Apple signing and service keys. Never in git: a .p8 is an APNs or App
+# Store Connect key for the whole team, a .p12 or profile signs as the
+# team. Push protection is the backstop, not the rule.
+*.p8
+*.p12
+*.cer
+*.mobileprovision
+*.provisionprofile
+AuthKey_*
+
 # Claude Code: local settings and worktrees stay out of git; the shared
 # toolkit config (.claude/app.json) is the one tracked file.
 .claude/*

@@ -17,6 +17,11 @@ on:
   pull_request:
     branches: [main]
 
+# Read the code, nothing more: the job's token can't push, comment or
+# change the repo, whatever the repository's default says.
+permissions:
+  contents: read
+
 jobs:
   language-guard:
     name: Language-consistency guard
@@ -25,7 +30,7 @@ jobs:
 
     steps:
       - name: Check out repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       # Guard for the activity-aware language layer (Round C, 2026-08-30):
       # user-facing copy must read the session's activity, never a hardcoded
@@ -51,9 +56,9 @@ jobs:
     # (docs/c/link.js). Node's own test runner, no packages.
     steps:
       - name: Check out repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '22'
       - name: node --test
@@ -73,7 +78,7 @@ jobs:
 
     steps:
       - name: Check out repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       # .swiftlint.yml was added 2026-08-30 with force_unwrapping, force_cast
       # and force_try set to `error`. The step that ran it lived in tests.yml,
