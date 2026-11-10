@@ -606,7 +606,7 @@ struct PetEditorSheet: View {
                                         .keyboardType(.phonePad)
                                         .foregroundColor(.earthCream)
                                 }
-                                Text("Used to quickly message the owner after walks. Stored only on this device.")
+                                Text("Used to quickly message the owner after walks. Kept on your devices and in your private iCloud, never sent to us.")
                                     .font(.wktLabel)
                                     .foregroundColor(.earthMuted)
                                     .padding(.horizontal, 4)
