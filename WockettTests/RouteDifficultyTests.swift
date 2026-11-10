@@ -142,10 +142,11 @@ struct SteepestGradeTests {
         #expect(ElevationService.steepestGrade(elevations: [42], distances: [0]) == 0)
     }
 
-    /// The demo's case: a short, flat loop sampled every 8 m with whole-metre
-    /// noise. It read "Hard because one part is 17 % steep".
+    /// The demo's case: a short, flat route sampled every ~6 m with
+    /// whole-metre noise. The old adjacent-pair rule read 1 m over 6 m as
+    /// 16.7 %, so this was "Hard because one part is 17 % steep".
     @Test func aNoisyFlatShortRouteIsEasy() {
-        let step = 8 / 111_195.0
+        let step = 6 / 111_195.0
         let coordinates = (0..<100).map { CLLocationCoordinate2D(latitude: 35 + Double($0) * step, longitude: -78.6) }
         let profile = ElevationService.buildProfile(elevations: srtmNoise(), coordinates: coordinates)
         #expect(profile.steepestPercent < 5)

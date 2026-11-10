@@ -223,7 +223,8 @@ struct ElevationProfile {
     let totalLossMeters: Double
     let maxElevationMeters: Double
     let minElevationMeters: Double
-    /// The steepest grade over any stretch of at least 100 m, in percent
+    /// The steepest grade over any stretch of at least
+    /// `ElevationService.minSteepnessRunMeters`, in percent
     /// (`ElevationService.steepestGrade`): one of `classify`'s inputs.
     let steepestPercent: Double
     let difficulty: RouteDifficulty
@@ -306,7 +307,7 @@ actor ElevationService {
     /// SRTM 90 m: one whole-metre height per ~90 m cell, so two samples a few
     /// metres apart that land in neighbouring cells read a 1 m step as a
     /// 12-17 % slope. Over 100 m the same step is 1 %, and a real steep
-    /// stretch of that length or more still counts in full.
+    /// stretch well over that length still counts in full.
     nonisolated static let minSteepnessRunMeters = 100.0
 
     /// The steepest grade, in percent, between any sample and the first one at
@@ -315,8 +316,9 @@ actor ElevationService {
     nonisolated static func steepestGrade(elevations: [Double], distances: [Double],
                                           minRun: Double = minSteepnessRunMeters) -> Double {
         let n = min(elevations.count, distances.count)
-        // A metre's allowance: a 100 m stretch can measure 99.9 m on the
-        // ellipsoid, and should still count as 100 m.
+        // A metre's allowance, so a stretch measured just under 100 m still
+        // counts: nominal 100 m steps along a meridian measure 99.77 m with
+        // CLLocation at 35° N (RouteDifficultyTests' fixtures rely on this).
         let shortest = max(0, minRun - 1)
         var best = 0.0
         var j = 0
