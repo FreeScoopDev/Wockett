@@ -223,7 +223,8 @@ struct ElevationProfile {
     let totalLossMeters: Double
     let maxElevationMeters: Double
     let minElevationMeters: Double
-    /// The steepest sampled grade, in percent: one of `classify`'s inputs.
+    /// The steepest grade over any stretch of at least 100 m, in percent
+    /// (`ElevationService.steepestGrade`): one of `classify`'s inputs.
     let steepestPercent: Double
     let difficulty: RouteDifficulty
     let difficultyReason: RouteDifficulty.Reason
@@ -301,9 +302,38 @@ actor ElevationService {
         return (0..<count).map { i in coords[Int(round(Double(i) * step))] }
     }
 
+    /// The shortest stretch a grade is measured over. The heights come from
+    /// SRTM 90 m: one whole-metre height per ~90 m cell, so two samples a few
+    /// metres apart that land in neighbouring cells read a 1 m step as a
+    /// 12-17 % slope. Over 100 m the same step is 1 %, and a real steep
+    /// stretch of that length or more still counts in full.
+    nonisolated static let minSteepnessRunMeters = 100.0
+
+    /// The steepest grade, in percent, between any sample and the first one at
+    /// least `minRun` metres further along. `distances` are cumulative metres,
+    /// one per elevation. A route shorter than `minRun` has no grade to give (0).
+    nonisolated static func steepestGrade(elevations: [Double], distances: [Double],
+                                          minRun: Double = minSteepnessRunMeters) -> Double {
+        let n = min(elevations.count, distances.count)
+        // A metre's allowance: a 100 m stretch can measure 99.9 m on the
+        // ellipsoid, and should still count as 100 m.
+        let shortest = max(0, minRun - 1)
+        var best = 0.0
+        var j = 0
+        for i in 0..<n {
+            j = max(j, i + 1)
+            while j < n && distances[j] - distances[i] < shortest { j += 1 }
+            guard j < n else { break }
+            let run = distances[j] - distances[i]
+            if run > 0 { best = max(best, abs(elevations[j] - elevations[i]) / run * 100) }
+        }
+        return best
+    }
+
     nonisolated static func buildProfile(elevations: [Double], coordinates: [CLLocationCoordinate2D]) -> ElevationProfile {
         var points: [ElevationPoint] = []
-        var gain = 0.0, loss = 0.0, maxGrad = 0.0, cumKm = 0.0
+        var distances: [Double] = []
+        var gain = 0.0, loss = 0.0, cumKm = 0.0
 
         for i in 0..<elevations.count {
             if i > 0 {
@@ -313,10 +343,11 @@ actor ElevationService {
                 cumKm   += segM / 1_000
                 let d    = elevations[i] - elevations[i-1]
                 if d > 0 { gain += d } else { loss -= d }
-                if segM > 0 { maxGrad = max(maxGrad, abs(d) / segM * 100) }
             }
+            distances.append(cumKm * 1_000)
             points.append(ElevationPoint(distanceKm: cumKm, elevationMeters: elevations[i]))
         }
+        let maxGrad = steepestGrade(elevations: elevations, distances: distances)
 
         let (diff, reason) = RouteDifficulty.classify(lengthMeters: cumKm * 1_000, climbMeters: gain,
                                                       steepestPercent: maxGrad)

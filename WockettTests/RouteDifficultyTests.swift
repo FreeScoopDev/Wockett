@@ -89,3 +89,67 @@ struct RouteDifficultyTests {
         #expect(abs(profile.totalGainMeters - climb) < 0.001)
     }
 }
+
+/// Steepness over a stretch of at least 100 m (spec
+/// fix/route-difficulty-steepness). SRTM 90 m heights are whole metres per
+/// ~90 m cell, so adjacent samples a few metres apart read a 1 m step as a
+/// steep slope; measured over 100 m the same step is 1 %.
+struct SteepestGradeTests {
+    /// Cumulative distances for `count` samples `spacing` metres apart.
+    private func distances(_ count: Int, spacing: Double) -> [Double] {
+        (0..<count).map { Double($0) * spacing }
+    }
+
+    /// The SRTM pattern: flat ground read as 0 m and 1 m in turn, every
+    /// 8 m. Adjacent samples gave 12.5 % here.
+    private func srtmNoise(count: Int = 100) -> [Double] {
+        (0..<count).map { ($0 / 3) % 2 == 0 ? 100 : 101 }
+    }
+
+    @Test func wholeMetreNoiseOnFlatGroundIsNotSteep() {
+        let grade = ElevationService.steepestGrade(elevations: srtmNoise(), distances: distances(100, spacing: 8))
+        #expect(grade < 5)
+    }
+
+    @Test func aSustainedTwentyPercentStretchStillCounts() {
+        // Flat for 200 m, then 150 m rising 20 %, then flat; samples every 10 m.
+        let d = distances(60, spacing: 10)
+        let e = d.map { x -> Double in
+            if x <= 200 { return 0 }
+            if x <= 350 { return (x - 200) * 0.2 }
+            return 30
+        }
+        let grade = ElevationService.steepestGrade(elevations: e, distances: d)
+        #expect(abs(grade - 20) < 0.01)
+    }
+
+    @Test func aShortPitchCountsOverTheWholeWindow() {
+        // A 50 m pitch rising 15 m (30 %) inside flat ground: over 100 m it
+        // is 15 m of climb, so 15 %, not over the Hard threshold.
+        let d = distances(40, spacing: 10)
+        let e = d.map { x -> Double in x <= 150 ? 0 : (x <= 200 ? (x - 150) * 0.3 : 15) }
+        let grade = ElevationService.steepestGrade(elevations: e, distances: d)
+        #expect(abs(grade - 15) < 0.01)
+    }
+
+    @Test func aRouteShorterThanTheWindowHasNoGrade() {
+        let grade = ElevationService.steepestGrade(elevations: [0, 5, 10, 15, 20], distances: distances(5, spacing: 20))
+        #expect(grade == 0)
+    }
+
+    @Test func emptyAndSinglePointInputs() {
+        #expect(ElevationService.steepestGrade(elevations: [], distances: []) == 0)
+        #expect(ElevationService.steepestGrade(elevations: [42], distances: [0]) == 0)
+    }
+
+    /// The demo's case: a short, flat loop sampled every 8 m with whole-metre
+    /// noise. It read "Hard because one part is 17 % steep".
+    @Test func aNoisyFlatShortRouteIsEasy() {
+        let step = 8 / 111_195.0
+        let coordinates = (0..<100).map { CLLocationCoordinate2D(latitude: 35 + Double($0) * step, longitude: -78.6) }
+        let profile = ElevationService.buildProfile(elevations: srtmNoise(), coordinates: coordinates)
+        #expect(profile.steepestPercent < 5)
+        #expect(profile.difficulty == .easy)
+        #expect(profile.difficultyReason == .nothingMuch)
+    }
+}
