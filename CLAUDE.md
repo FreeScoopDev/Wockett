@@ -6,7 +6,11 @@ Written 2026-09-05. Correct it when it goes stale — a wrong note is worse than
 ## What this is
 
 **Wockett** — iOS walking/running/cycling app with pet step tracking. Live on the
-App Store (Apple ID 6794364736), US and Canada only. Solo project; Joe is not a
+App Store (Apple ID 6794364736), free, for iPhone and iPad (`iosUniversal`).
+Sold in the US, Canada, GB, IE, DE, FR, ES, IT, NL, AT, CH, BE, SE and DK as of
+2026-11-10; the public pages name no countries, so they don't go stale. Check a
+storefront with `curl -s 'https://itunes.apple.com/lookup?id=6794364736&country=gb'`
+(`resultCount` 1 means it is sold there). Solo project; Joe is not a
 developer by trade and asks for the reasoning, not just the command.
 
 **The repo is called `PoCSquat`, and so are the app target and the scheme.** The
