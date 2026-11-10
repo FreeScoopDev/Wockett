@@ -1,0 +1,2 @@
+### Fixed
+- The pet profile's owner name and phone now say where they are kept: on your devices and in your private iCloud, never sent to us. They said "Stored only on this device", but pet profiles have always synced through the private iCloud database with the rest of your data. The help page said the same, and the privacy policy did not mention pet profiles or an owner's details at all; both are corrected.
