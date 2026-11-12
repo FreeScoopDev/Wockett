@@ -5,6 +5,301 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [1.19] - 2026-11-12
+
+### Added
+- Once you have chosen a starting place (with location off or restricted),
+  from Routes or from Trails, Trails lists the trails around that place
+  instead of saying it has no location. The headings name it ("Trails near
+  Pullen Park", "Featured near Pullen Park") and a trail's detail says how far
+  it is "from Pullen Park", so that distance doesn't read as if it were from
+  where you are.
+  Directions to a trail, how much of it there is to walk to reach it, and the
+  walk plan still start from your own location only, since a route that
+  begins somewhere you aren't can't be walked from here; with location off
+  the trail's page keeps saying so.
+- The weather on a route search from a chosen starting place says "Near
+  <place>" instead of "Where you are", since it was fetched there.
+- With location off or restricted, Routes offers **Choose a starting place**:
+  search for an address, a park or a station, and Find Routes, Try nearby
+  loops, Search a place and Nearby places all plan from there. Until now the
+  only thing that worked without a location was tapping out a route by hand,
+  and the route builder opened on a view of the whole continent. The panel
+  says "Starting from <place>" in full, with Change, and Use my location once
+  location is back on. Weather and the map follow the chosen place, and the
+  map no longer frames routes together with a blue dot that may be far away.
+  Plan on the map now opens the builder around the chosen place, and is a
+  text link rather than a button in Routes and Trails: at the largest text
+  sizes a third button left no room for the new one's title. The place is
+  kept until the app quits, and never stands in for where you are: Community
+  "near you" and trail directions still use your own location only. Recording
+  a walk with location off is unchanged. Trails follows in a separate change.
+
+### Changed
+- Walking health only gives a gait status ("On track", "Watch", "Check in")
+  when the metric has data on at least 4 of the last 7 days, on its card, on
+  its detail page and as "Gait: …" on the Recovery card. Before, a single day
+  of data was enough, and one day says little about how someone walks. With
+  fewer days the card shows the average and "3 days of data" instead. People
+  whose Watch or iPhone records gait only now and then will see fewer
+  verdicts than before. The thresholds and their wording are unchanged.
+- The 7-day and 30-day averages say how many days they are based on ("based
+  on 5 of the last 7 days"), because an average of one day looked the same as
+  an average of seven.
+- The change against the week before shows only when both weeks have data on
+  at least 3 days, and it is no longer green or orange: a gait number going up
+  or down is not by itself good or bad news.
+- "Personal best" is now "Highest recorded" or "Lowest recorded" over the last
+  30 days, since a gait extreme is not an achievement, and the improvement
+  tips on a gait metric's page are collapsed under "Tips" until opened.
+- With fewer than 4 days of gait data in the last week, the chart's dots and
+  the day-of-week bars are grey, and the dashed "Good" line is hidden. They
+  were green, the same green as "On track", under a line labelled "Good", so
+  a page that withheld its verdict still looked like a good one.
+- The Health tab now starts with your own activity: Insights and Activity
+  History under "Your activity", then the week and 30-day trend, then "Sleep
+  and recovery", Walking health, the fun facts and the disclaimer. Recovery
+  used to come first, so the tab opened on an interpretation (readiness from
+  sleep and heart rate, which needs a Watch) before the steps and activities
+  it is meant to sit beside; someone without a Watch met a row of dashes
+  before anything of theirs. The fun facts now follow the real statistics.
+- With no step data for 30 days, the trend now offers a "Check Health access"
+  button that opens the Health app, and its hint says to check Wockett's
+  access there (it said "in Settings", while the app's own row opens Health).
+  iOS shows its Health access sheet only once, so the app cannot ask again:
+  the Health app is the one place a person can change it.
+- The privacy policy now says trail reports older than about 12 months are deleted by our moderators by hand, so one can stay a little longer. It said "we delete" with no mention of how, but nothing deletes them on its own: a moderator presses "Delete reports older than 12 months" in the staff dashboard. The policy should describe what actually happens.
+- The privacy policy said Wockett writes "completed walks and rides" to
+  Apple Health. It also writes runs (and, since 1.17, hikes as hiking
+  workouts), as its Health permission text already says, so the policy now
+  names all four.
+- The privacy policy's "What We Access and Why" now lists the add-only Photos
+  permission that Save Image on the walk card's share sheet uses (added in
+  1.17). It only adds the image you choose to save; the App cannot read the
+  photo library.
+- A saved route's page now answers "can I do this, and how do I start?" first.
+  Start sits in a bar at the foot of the screen with the activity picker, so
+  it is always in reach without scrolling; before, it came after a fixed
+  320 pt map, the weather and the elevation chart, at y 1030 on an iPhone 17e
+  at the default text size and y 1478 at Accessibility 2, both below the
+  fold. The map is now 240 pt and scrolls away with the page. Under the
+  route's name, one card gives the distance, the time (labelled "About N min
+  walking", because the estimate assumes walking whichever activity is
+  picked), the steps, the climb and the difficulty, with one line saying
+  what decided it ("Hard because of 320 m of climb"). The label never said
+  what it was based on. Saying it also shows a weakness the rule already
+  had: the demo's half-mile, nearly flat city loop reads "Hard because one
+  part is 17 % steep", which is probably elevation noise over a very short
+  stretch, not a real slope. The rule is unchanged here; fixing it is a
+  separate decision.
+- On the Routes results, Start now sits in a bar under the route list once a
+  route is picked, so it is always in view. Before, it was the last thing in
+  the scrolling list, after every route card and the elevation chart, so a
+  person who had picked a route had to scroll to find the button they came
+  for: on an iPhone 17e it was at y 1228 at the default text size and y 1828
+  at Accessibility 2 with real routes, on an 844 pt screen. The list gives
+  the bar its height (with a floor, so it stays usable at the largest text
+  sizes), so the panel covers no more of the map than before.
+  Open in Apple Maps stays in the list. The saved route's Start bar and this
+  one now share one style. A trail's Start, shown when you are at the trail,
+  moves into the same kind of bar: it was already on screen, but at
+  Accessibility 2 on an iPhone 17e it cleared the tab bar by 4.7 pt under a
+  two-line trail name, so a longer name hid it. The Distance | Time choice
+  and the line describing the walk stay in the scrolling details.
+- An empty Route History now says why and offers a way on. When finished
+  walks on the route are left out (excluded from route stats, or flagged as a
+  trip in a vehicle), it says how many, where before it looked as if none had
+  been walked. It says "activities", not the route's own word, because a
+  walking route can be started as a run or a ride. **Start this route** opens the same mode picker and Start as
+  the route's own page, in a sheet, so nothing records until Start is tapped
+  there; **Back to route** returns to the route. The route page and the sheet
+  share one start bar, so the two cannot drift.
+- A route's weather opens as its one-line summary on every screen, the saved
+  route included. The row already says whether conditions are good; the hours
+  are a tap away, so the route itself is what fills the first screen.
+- The hourly forecast now says where it is for, which hours it covers and
+  when it was updated ("Near the middle of this route" / "Today, 3 PM – 8 PM
+  · Updated 2:41 PM"). Six bare hours crossing midnight read as a
+  list of numbers, with no day, place or time to judge them by.
+- Sharing a route to the Community now opens one review screen, from a saved
+  route and from a suggested route alike, with everything that decides what
+  goes public above the Share button: who can see it ("Anyone using Wockett
+  can see this route"), the name it is posted under, the warning about routes
+  that start or end at home, a map of exactly the path that will be
+  published, Hide start and finish, and the length that will be shared.
+  Before, the warning and the Hide start and finish switch sat under the
+  button, so the choice came after the tap, and there was no map of what
+  would be published. The map draws the same prepared path the button sends,
+  so the preview and the post cannot differ.
+- Hide start and finish is now on for everyone who never chose. Most walks
+  start and end at home, and a public route that shows where someone lives
+  is hard to take back, so the safer choice is the default. Anyone who turned
+  it off keeps it off: the choice is stored only when the switch is changed,
+  so a stored "off" is a deliberate one and is left alone.
+- When hiding the start and finish makes the shared route shorter, the
+  screen says so in one sentence ("Start and end are left off, so the shared
+  route is 5.8 mi, not 6.0 mi") instead of showing two lengths and leaving
+  the difference to be guessed.
+- wockett.app said Wockett was "Free for iPhone, in the US and Canada", and
+  the Help FAQ said the same. It is also sold in the UK, Ireland and ten
+  European countries, and runs on iPad, so both now say it is free on the App
+  Store for iPhone and iPad, without a country list that would go stale.
+- The Help page described 1.15: Share a challenge still said "Coming in the
+  next update" (it shipped in 1.16), the FAQ sent people to Settings →
+  Troubleshooting for Data source (it is under Settings → Tracking), and What's
+  new stopped at 1.15. It now matches 1.18, with What's new for 1.16, 1.17 and
+  1.18.
+- Trails has one **Filters** button in place of the "Grouped" / "Sections"
+  menu, whose label never said what it did. It reads "Filters (2)" when two
+  things are on, so a short list explains itself, and opens a sheet with every
+  filter and list option in plain words: Loops only, surface, Under 2 mi,
+  "Exclude trails marked no dogs", combine or show trail segments, and short
+  paths. **Reset** puts the list back as it first appears, and an empty list
+  caused by filters offers "Reset filters" right there. The filters
+  themselves are unchanged: trails that say nothing about dogs still stay in
+  the list, and only a posted rule is ever shown on a trail.
+- Trail regions, where offline trail data lives, can now be opened from the
+  Trails list (a "Trail regions and offline data" link under the list, and a
+  button when no trails are nearby) and from a saved route's detail. Until now
+  it was only under Settings → About, and the empty Trails message sent people
+  there by a path they had to find themselves.
+- The Trail Regions screen lists the states on this phone first, under "On
+  this phone", then the rest under "Available", each alphabetical. Downloaded
+  and bundled states show the date of their data, read from the pack on the
+  phone, and a download shows its download size; nothing shows a number the
+  app does not know, and opening the screen fetches nothing new beyond the
+  catalogue refresh it already did. The footer now says what a download
+  actually keeps offline (trail lines and details) and what still needs a
+  connection (the map, directions and weather), so nobody heads out expecting
+  an offline map that Wockett does not provide.
+
+- The Help page and wockett.app describe 1.19: Start in the bar under the
+  route list and at the foot of a saved route, Trail regions reached from the
+  Trails list and what a download keeps offline, Filters, a "Routes says my
+  location is off" answer, and What's new for 1.19.
+- The privacy policy says that, from 1.19, weather can be fetched for a
+  starting place you chose, and that sharing a route opens one review screen
+  with Hide start and finish on unless you turned it off. Both are what 1.19
+  does; the policy described 1.18.
+
+### Fixed
+- The month calendar with no steps for the month now says so ("No step data
+  for this month.", with the same hint) instead of showing a bare grid. It
+  says nothing until that month's steps have loaded, so a month with steps
+  never flashes "no data", and a failed query reads "Step history is
+  unavailable right now.", as the 30-day trend does.
+- The pet profile's owner name and phone now say where they are kept: on your devices and in your private iCloud, never sent to us. They said "Stored only on this device", but pet profiles have always synced through the private iCloud database with the rest of your data. The help page said the same, and the privacy policy did not mention pet profiles or an owner's details at all; both are corrected.
+- Readiness now gives a level (Push, Active or Recover) only when it has all
+  three of: last night's sleep, an HRV reading from the last 48 hours, and HRV
+  on at least 7 of the last 30 days for the personal baseline. Before, one
+  signal alone could produce "Push", an HRV reading weeks old fed today's
+  answer, a missing baseline fell back to fixed HRV thresholds nobody had
+  justified, and a baseline built on a day or two of data counted as
+  "personal". Readiness should not claim more than the readings support. The
+  scoring itself is unchanged: with the same numbers it gives the same level.
+  As a result, people who wear their Watch only now and then, or who have a
+  new Watch, will see "–" (not enough data) more often than before. The
+  Recovery card and the Readiness detail now say what is missing ("No HRV in
+  the last 2 days", "Not enough HRV history yet: 3 of 7 days"); the card
+  stays quiet only when there is no sleep or HRV at all. Readiness treats
+  a night with only In Bed or Awake time as no sleep, not as 0 hours slept.
+- The readiness hints describe the readings ("HRV above your 30-day average;
+  slept 7h 20m") instead of telling people what to do ("push a little harder
+  today", "Light activity recommended"). The score breakdown no longer labels
+  HRV High, Normal or Low from fixed thresholds when there is no baseline; it
+  shows the number, and it compares against the baseline only once that
+  baseline has the 7 days readiness itself needs.
+- A route's difficulty no longer turns Hard or Expert because of a few metres
+  of map noise on a short, flat route. Steepness is now measured over at least
+  100 m, the scale the elevation data can actually resolve: it gives one
+  whole-metre height per ~90 m square, so two points a few metres apart with a
+  1 m difference read as a 12-17 % slope, and the demo's flat half-mile loop
+  said "Hard because one part is 17 % steep". Real steep stretches well over 100 m
+  still count as before; a steep part only about 100 m long can read a few
+  points lower than it did. The climb figure and the difficulty thresholds
+  are unchanged.
+- With location turned off for Wockett, Routes now says so before you search,
+  instead of letting you tap Find Routes and only then showing "Unable to get
+  your location". Find Routes is greyed out, and the panel offers what can
+  still work: Open Settings (left out when location is restricted on the
+  iPhone, which the person usually can't change) and Plan on the map, which
+  opens the route builder, where a route is made from points tapped on the
+  map rather than from where you are. "Search a place" and "Nearby places"
+  are hidden then, because each starts from where you are and failed the
+  same way. Trails gives the same explanation and actions, and shows no
+  trails around a location the app no longer has. While an allowed phone is
+  still waiting for its first fix, Trails says "Finding your location…"
+  rather than telling someone whose location is on to turn it on.
+- "Try nearby loops instead" no longer appears after a search failed for
+  want of a location (including a location error with permission allowed),
+  since it needs the same location and failed the same way.
+- The first route search on a fresh install waits for the answer to the
+  location prompt. It used to check the permission on the line after asking,
+  see "not decided yet", and fail behind the prompt (read from the source;
+  not reproduced on a simulator).
+- Start on a route planned from a chosen place now asks first when the route begins far from where you are. Before, planning a route in another town and tapping Start began recording a walk that started a long way from you, with nothing to say so. The question says how far away the start is and offers Start anyway, directions to the start in Apple Maps, or Cancel. Routes planned from your own location are unchanged, and with location off or no fix there is nothing to compare, so Start behaves as before. While it checks, the Start button says "Checking location…"; a location too vague to tell (Precise Location off, an old Wi-Fi fix) starts without asking rather than claim a route is far when it may not be, and leaving the route, switching Walk/Run or opening Trails during the check cancels it, so a late answer can never start the wrong activity or ask over another screen.
+- While Start checks your location for a route planned from a chosen place, the community routes below it wait, and leaving the app cancels the check. A community card's Report or Delete, its own Start, or Open in Apple Maps could otherwise be on screen when the check answered, and a guided walk could begin behind a sheet, or the "starts far from you" question could appear from under one or while you were in Maps. After leaving, tap Start again.
+- Routes and Trails no longer keep an old position when a fresh location fix genuinely fails. Two location requests at the same moment (Routes opening, Start's check) used to answer the earlier one "no location", so the screens learned to ignore a failed answer, and with that they also ignored real failures: after travelling with location off, Trails could still centre on where you had been. Every request waiting at once now gets the same answer, so a failure is a failure again.
+- Heights on the Routes screens now follow the app's unit rule, the one its
+  distances use: feet in the US, metres everywhere else. The elevation
+  chart's gain, loss and axis, a saved route's climb and the line saying why
+  it is rated as it is ("Moderate because of 395 ft of climb"), and the
+  route result cards all said metres, so a US walker read "2.1 mi" beside
+  "+98m".
+  The result cards used Apple's distance formatter, which follows the region
+  instead of the app's rule: in the UK it said "130 yd" for a 120 m climb,
+  and in the US it rounded to "400 ft". Every height now goes through the
+  summary's formatter, which rounds to the nearest whole metre or foot, so a
+  98.6 m climb reads "99 m" where the chart used to cut it to "98m". The
+  chart's shape is unchanged; only the numbers on its axis change. Heights are
+  still stored in metres. A route result card's distance moves onto the
+  same rule, so on a device set to UK units the card no longer reads miles
+  beside a climb in metres (a saved route's own page still uses the
+  region's distance unit there).
+- The "already active" alert on a saved route's Start says "session", not
+  "walk": the route can be started as a run or a ride.
+- Forecast hours follow the phone's 12/24-hour setting on Routes and Home.
+  They used a fixed "3PM" format, which a US phone with 24-Hour Time on
+  did not ask for.
+- The weather row's advisory ("Good conditions") takes a second line instead
+  of being cut to "Good conditi…" on a small phone at the default text size.
+- A route's hourly weather and the Home weather chip start at the current
+  hour. WeatherKit's hourly forecast can begin 10-11 hours before now, and
+  the strip showed its first six hours, so a morning forecast started the
+  previous evening ("Yesterday 10 PM – today 3 AM") and the rain status
+  described an hour that was already over. A walker deciding whether to go
+  out needs the next few hours, so past hours are now left out and the rain
+  chance is the current hour's.
+- The "Hide no-dog trails" chip was cut off at the right edge of the filter
+  row ("Hid…" on an iPhone 17 and 17e). It now lives in the Filters sheet as
+  "Exclude trails marked no dogs", where it has room and an explanation.
+
+### Internal
+- docs/ci.md: the SwiftLint violation count is current (140, all warnings).
+- docs/ci.md lists the UI tests that skip or relax a check on the CI runner, and why.
+- The challenge link page (wockett.app/c) now has a Content Security Policy, like the staff dashboard since #313. Anyone can open a challenge link, and the page shows a title someone else typed, so the browser should refuse any script, style, image or connection the page does not need: only its own files, Apple's CloudKit JS and the CloudKit API are allowed. The staff page's policy had to prove itself with CloudKit JS first; it has.
+- The condition for taking a fresh fix before Start (a chosen place and location already allowed) is now one tested function, so widening it to a state that would raise the location prompt fails a test.
+- The difficulty of a profiled route is decided by one function,
+  `RouteDifficulty.classify`, which `ElevationService.buildProfile` calls, so
+  the thresholds exist once and the why-line comes from the same rule that
+  picks the level. Thresholds and outcomes are unchanged
+  (`RouteDifficultyTests`). The saved route's Start has the identifier
+  `routes.detailStart`, and a smoke test checks its frame is on the first
+  screen at both sizes before any swipe.
+- `-WKTUITest -WKTLocationOff` (debug builds only) makes Routes behave as if
+  location were denied, so a UI test can reach that panel.
+- `-WKTUITest -WKTLocationOff -WKTChosenStart` (debug builds only) starts with
+  "Test Place" chosen, so a UI test can reach the chosen-place panel.
+- GitHub Actions workflows declare a read-only token and pin every action to
+  a commit (the version in a comment), as PlowR's already did: a moved tag
+  can't change what runs, and no job can push or comment. `.gitignore` keeps
+  Apple signing keys and profiles out of git. The staff dashboard page carries
+  a Content Security Policy, so a script that ever slipped into it could not
+  load code from, or send data to, anywhere but Apple's CloudKit.
+- The public repository has a README: what Wockett is, links to wockett.app,
+  the App Store and the privacy policy, and the support address. Someone
+  landing on the repo from the website or a search had nothing to read.
+
 ## [1.18] - 2026-10-30
 
 ### Added

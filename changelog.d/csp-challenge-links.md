@@ -1,2 +1,0 @@
-### Internal
-- The challenge link page (wockett.app/c) now has a Content Security Policy, like the staff dashboard since #313. Anyone can open a challenge link, and the page shows a title someone else typed, so the browser should refuse any script, style, image or connection the page does not need: only its own files, Apple's CloudKit JS and the CloudKit API are allowed. The staff page's policy had to prove itself with CloudKit JS first; it has.
