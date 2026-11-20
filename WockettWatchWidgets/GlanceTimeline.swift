@@ -42,11 +42,16 @@ struct GlanceProvider: TimelineProvider {
 
 extension WatchGlanceSnapshot {
     /// Clearly made-up numbers for placeholders, the gallery and previews.
-    static func sample(now: Date, steps: Int? = 6_240, pets: Bool = true) -> WatchGlanceSnapshot {
-        let samplePets = pets ? [
+    /// `threePets` adds a third sample pet (the rectangle still draws two).
+    static func sample(now: Date, steps: Int? = 6_240, pets: Bool = true,
+                       threePets: Bool = false) -> WatchGlanceSnapshot {
+        var samplePets = pets ? [
             WatchGlancePet(id: UUID(), name: "Sample dog", emoji: "🐕", steps: 4_100, goal: 8_000),
             WatchGlancePet(id: UUID(), name: "Sample cat", emoji: "🐈", steps: 1_250, goal: 5_000)
         ] : []
+        if pets, threePets {
+            samplePets.append(WatchGlancePet(id: UUID(), name: "Sample rabbit", emoji: "🐇", steps: 600, goal: 3_000))
+        }
         return .make(steps: steps, goal: 10_000, pets: samplePets, dayStart: Calendar.current.startOfDay(for: now), now: now)
     }
 }

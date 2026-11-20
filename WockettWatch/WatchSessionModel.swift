@@ -12,6 +12,8 @@ import WidgetKit
 @Observable @MainActor
 final class WatchSessionModel: NSObject {
     private(set) var display = WatchRemoteDisplay()
+    /// Skips a context whose walk state the watch already had from a context.
+    @ObservationIgnored private var contextWalkState = WatchContextWalkState()
     /// Nil until the session has activated and the link has been tried:
     /// a cold launch shows no "iPhone not reachable" before it knows.
     /// False only after a send failed or timed out, or the session said the
@@ -43,7 +45,7 @@ final class WatchSessionModel: NSObject {
         let session = WCSession.default
         // Before activation there is nothing to ask yet; activation asks.
         guard session.activationState == .activated else { return }
-        if let context = WatchWire.decode(WatchWalkState.self, from: session.receivedApplicationContext) {
+        if let context = contextWalkState.fresh(from: session.receivedApplicationContext) {
             apply(display.receive(context))
         }
         WatchGlanceStore.receive(WatchGlanceWire.decode(from: session.receivedApplicationContext))
@@ -252,7 +254,10 @@ final class WatchSessionModel: NSObject {
 
     private static let reachabilityGrace: Duration = .seconds(3)
 
-    fileprivate func contextArrived(_ state: WatchWalkState) {
+    /// A context from the phone. A glance-only change carries the same walk
+    /// state again, possibly older than a reply already shown: skipped.
+    fileprivate func contextArrived(_ state: WatchWalkState?) {
+        guard let state = contextWalkState.fresh(state) else { return }
         markReachable()
         apply(display.receive(state))
     }
@@ -276,7 +281,7 @@ extension WatchSessionModel: WCSessionDelegate {
     nonisolated func session(_ session: WCSession, didReceiveApplicationContext applicationContext: [String: Any]) {
         // One context carries both: the walk state and the glance.
         WatchGlanceStore.receive(WatchGlanceWire.decode(from: applicationContext))
-        guard let state = WatchWire.decode(WatchWalkState.self, from: applicationContext) else { return }
+        let state = WatchWire.decode(WatchWalkState.self, from: applicationContext)
         Task { @MainActor in self.contextArrived(state) }
     }
 

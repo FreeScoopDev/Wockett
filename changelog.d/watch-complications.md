@@ -2,7 +2,7 @@
 - Wockett complications for Apple Watch. Put today's steps on your watch
   face as a ring, a corner gauge, a line of text or a rectangle with your
   goal and percentage; show your pets' steps today (the top pet in the
-  small spots, up to three in the rectangle); or add a Start button that
+  small spots, the top two in the rectangle); or add a Start button that
   opens Wockett on the watch ready to pick a walk, run, ride or indoor walk.
   They are in the Smart Stack too. Your iPhone sends the numbers, so the
   watch reads nothing from Health and the complications keep up while the

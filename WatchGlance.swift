@@ -122,8 +122,16 @@ nonisolated struct WatchGlanceLinkStatus: Equatable, Sendable {
     var complicationEnabled: Bool
     /// `remainingComplicationUserInfoTransfers` (50 a day on the face).
     var remainingTransfers: Int
+    /// WatchConnectivity has not finished activating yet, so whether a
+    /// glance can go is not known: worth waiting a moment for. False once
+    /// activation completed (paired or not) and where there is no session.
+    var activationPending = false
 
+    /// Nothing can go: no paired watch, no Watch app, or no session at all.
     static let unavailable = WatchGlanceLinkStatus(canSend: false, complicationEnabled: false, remainingTransfers: 0)
+    /// The session is still activating.
+    static let activating = WatchGlanceLinkStatus(canSend: false, complicationEnabled: false, remainingTransfers: 0,
+                                                  activationPending: true)
 }
 
 /// The application context carries every change (it replaces the last and
@@ -166,6 +174,19 @@ nonisolated struct WatchGlanceSendPolicy: Codable, Equatable, Sendable {
     var complicationBehind: Bool {
         guard let lastContext, let lastComplication else { return false }
         return !lastContext.sameContent(as: lastComplication)
+    }
+
+    /// Whether the 1 s check could send a held-back transfer now: one is
+    /// owed, a complication is on the face, budget is left and the interval
+    /// is up. Cheap (no snapshot is built), so the check asks this first and
+    /// does nothing once the complication left the face or the budget is
+    /// spent. A new day, goal change or goal reached comes with a change
+    /// that sends through `decide` anyway.
+    func complicationCatchUpDue(now: Date, status: WatchGlanceLinkStatus) -> Bool {
+        guard status.canSend, status.complicationEnabled, status.remainingTransfers > 0,
+              complicationBehind else { return false }
+        guard let at = lastComplicationAt else { return true }
+        return now.timeIntervalSince(at) >= Self.complicationInterval
     }
 
     /// A newly activated session sends the context again whatever was sent
@@ -235,6 +256,15 @@ nonisolated enum WatchGlanceDisplay {
         /// The phone has no pets: "Add a pet in Wockett on your iPhone."
         case noPets
         case pets([WatchGlancePet])
+    }
+
+    /// The rectangle fits two pets with their gauges on the smallest watch
+    /// (42 mm); the snapshot may carry up to `WatchGlanceSnapshot.maxPets`.
+    static let rectangularPetLimit = 2
+
+    /// The pets the rectangular complication draws: the top two.
+    static func rectangularPets(_ pets: [WatchGlancePet]) -> [WatchGlancePet] {
+        Array(pets.prefix(rectangularPetLimit))
     }
 
     /// The steps to show at `now`. A snapshot from an earlier step day shows

@@ -168,6 +168,30 @@ nonisolated struct WatchApplicationContext {
     }
 }
 
+/// The watch's filter for the walk state in an application context. The
+/// phone sends a new context whenever the glance changes, and it carries the
+/// last walk state again, unchanged. That state can be older than a reply
+/// the watch already shows (a request for state answered in between), so
+/// showing it again would step the distance back and tap a km or mile marker
+/// twice. Only a walk state that differs from the last one read from a
+/// context is new. Pure, for the tests.
+nonisolated struct WatchContextWalkState: Sendable {
+    private var last: WatchWalkState?
+
+    /// The context's walk state if it is new, nil if it has none or the same
+    /// one as the last context.
+    mutating func fresh(from context: [String: Any]) -> WatchWalkState? {
+        fresh(WatchWire.decode(WatchWalkState.self, from: context))
+    }
+
+    /// The same, for a walk state already decoded from a context.
+    mutating func fresh(_ state: WatchWalkState?) -> WatchWalkState? {
+        guard let state, state != last else { return nil }
+        last = state
+        return state
+    }
+}
+
 // MARK: - How often the phone sends
 
 /// The phone sends its state on every phase change, and at most every

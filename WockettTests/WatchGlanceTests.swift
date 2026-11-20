@@ -202,6 +202,113 @@ struct WatchApplicationContextTests {
     }
 }
 
+// MARK: - The phone's context sender (WCSessionLink's merge)
+
+@MainActor
+struct WatchContextSenderTests {
+    final class Session {
+        var existing: [String: Any] = [:]
+        var sent: [[String: Any]] = []
+        var fails = false
+        struct Failure: Error {}
+        func update(_ context: [String: Any]) throws {
+            if fails { throw Failure() }
+            sent.append(context)
+        }
+    }
+
+    private func sender(_ session: Session) -> WatchContextSender {
+        WatchContextSender(seed: { session.existing }, update: { try session.update($0) })
+    }
+
+    @Test("State, then glance, then state: every update carries both keys, each the latest")
+    func stateGlanceState() throws {
+        let session = Session()
+        let link = sender(session)
+        var running = WatchWalkState.idle(usesMiles: false)
+        running.phase = .running
+        running.startDate = Fixture.now
+        let glance = Fixture.snapshot()
+        link.send(running)
+        link.send(glance)
+        var paused = running
+        paused.phase = .paused
+        link.send(paused)
+        #expect(session.sent.count == 3)
+        let last = try #require(session.sent.last)
+        #expect(Set(last.keys) == [WatchWire.key, WatchGlanceWire.key])
+        #expect(WatchWire.decode(WatchWalkState.self, from: last) == paused)
+        #expect(WatchGlanceWire.decode(from: last) == glance)
+        #expect(WatchWire.decode(WatchWalkState.self, from: session.sent[1]) == running)
+    }
+
+    @Test("The first send starts from the session's last context, so a relaunch keeps the glance")
+    func seededFromSession() throws {
+        let session = Session()
+        session.existing = WatchGlanceWire.payload(Fixture.snapshot(steps: 7_000))
+        sender(session).send(WatchWalkState.idle(usesMiles: true))
+        let sent = try #require(session.sent.first)
+        #expect(WatchGlanceWire.decode(from: sent)?.steps == 7_000)
+        #expect(WatchWire.decode(WatchWalkState.self, from: sent) == .idle(usesMiles: true))
+    }
+
+    @Test("A send that throws (no watch app yet) still keeps the change for the next send")
+    func throwingUpdateKeepsTheCache() throws {
+        let session = Session()
+        let link = sender(session)
+        session.fails = true
+        link.send(Fixture.snapshot(steps: 5_500))
+        session.existing = [:]
+        session.fails = false
+        link.send(WatchWalkState.idle(usesMiles: false))
+        let sent = try #require(session.sent.last)
+        #expect(WatchGlanceWire.decode(from: sent)?.steps == 5_500)
+        #expect(WatchWire.decode(WatchWalkState.self, from: sent) == .idle(usesMiles: false))
+    }
+}
+
+// MARK: - The watch reading a context
+
+struct WatchContextWalkStateTests {
+    private func running(_ distance: Double) -> WatchWalkState {
+        var state = WatchWalkState(mode: .walking, phase: .running, usesMiles: false)
+        state.startDate = Date(timeIntervalSince1970: 1_000)
+        state.distanceMeters = distance
+        return state
+    }
+
+    @Test("A glance context repeating an older walk state does not step back or tap the marker again")
+    func repeatedContextIsSkipped() throws {
+        var filter = WatchContextWalkState()
+        var display = WatchRemoteDisplay()
+        var context = WatchApplicationContext()
+        context.set(running(990))
+        context.set(Fixture.snapshot(steps: 6_000))
+
+        let fresh = filter.fresh(from: context.dictionary)
+        let first = try #require(fresh)
+        _ = display.receive(first)
+        // A reply to a request for state, newer than the context.
+        let taps = display.receive(reply: .state(running(1_010)), to: .requestState)
+        #expect(taps == [.marker(1)])
+
+        // The glance changes; the context carries the same, older walk state.
+        context.set(Fixture.snapshot(steps: 6_100))
+        let repeated = filter.fresh(from: context.dictionary)
+        #expect(repeated == nil)
+        #expect(display.state?.distanceMeters == 1_010)
+        let next = display.receive(reply: .state(running(1_020)), to: .requestState)
+        #expect(!next.contains(.marker(1)))
+
+        // A new walk state in a context is shown.
+        context.set(running(1_200))
+        let newer = filter.fresh(from: context.dictionary)
+        #expect(newer == running(1_200))
+        let none = filter.fresh(from: [:])
+        #expect(none == nil)
+    }
+}
+
 // MARK: - What the watch shows
 
 struct WatchGlanceDisplayTests {
@@ -224,6 +331,20 @@ struct WatchGlanceDisplayTests {
         #expect(WatchGlanceDisplay.steps(Fixture.snapshot(steps: nil), now: Fixture.now) == .placeholder)
         #expect(WatchGlanceDisplay.pets(nil, now: Fixture.now) == .placeholder)
         #expect(WatchGlanceDisplay.placeholderText == "Open Wockett on your iPhone")
+    }
+
+    @Test("The rectangle draws the top two pets even when the snapshot carries three")
+    func rectangleCapsAtTwo() {
+        let pets = [Fixture.pet("Sample dog", steps: 4_100), Fixture.pet("Sample cat", steps: 1_250),
+                    Fixture.pet("Sample rabbit", steps: 600)]
+        let snapshot = Fixture.snapshot(pets: pets)
+        #expect(snapshot.pets.count == 3)
+        guard case .pets(let shown) = WatchGlanceDisplay.pets(snapshot, now: Fixture.now) else {
+            Issue.record("expected pets")
+            return
+        }
+        #expect(WatchGlanceDisplay.rectangularPets(shown).map(\.name) == ["Sample dog", "Sample cat"])
+        #expect(WatchGlanceDisplay.rectangularPets(Array(pets.prefix(1))).count == 1)
     }
 
     @Test("Pets show their steps until midnight, then 0; no pets says how to add one")
@@ -384,6 +505,56 @@ struct WatchBridgeGlanceTests {
         bridge.glanceSource = nil
         bridge.refreshGlance()
         #expect(sink.glances.isEmpty)
+    }
+
+    @Test("The background refresh returns at once when nothing can go: no watch, no app, or no session")
+    func backgroundReturnsAtOnce() async throws {
+        let (bridge, sink, _) = try bridge()
+        sink.status = .unavailable
+        let clock = ContinuousClock()
+        let start = clock.now
+        await bridge.sendGlanceFromBackground(timeout: .seconds(3))
+        bridge.sink = nil
+        await bridge.sendGlanceFromBackground(timeout: .seconds(3))
+        #expect(clock.now - start < .seconds(1))
+        #expect(sink.glances.isEmpty)
+    }
+
+    @Test("The background refresh waits while the session is still activating, then sends")
+    func backgroundWaitsForActivation() async throws {
+        let (bridge, sink, _) = try bridge()
+        sink.status = .activating
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(300))
+            sink.status = Fixture.onFace
+        }
+        await bridge.sendGlanceFromBackground(timeout: .seconds(3))
+        #expect(sink.glances.count == 1)
+    }
+
+    @Test("Once the complication left the face or the budget is spent, the 1 s check builds nothing")
+    func checkBuildsNothingWhenNoTransferCanGo() throws {
+        let steps = Box(6_000)
+        let calls = Box(0)
+        let (bridge, sink, clock) = try bridge()
+        bridge.glanceSource = WatchGlanceSource(
+            steps: { calls.value += 1; return steps.value },
+            goal: { calls.value += 1; return 10_000 },
+            pets: { calls.value += 1; return [] })
+        bridge.refreshGlance()
+        #expect(sink.glances.last?.complication == true)
+        sink.status = Fixture.notOnFace
+        clock.now = clock.now.addingTimeInterval(60)
+        steps.value = 6_300
+        bridge.refreshGlance()
+        #expect(sink.glances.last?.context == true && sink.glances.last?.complication == false)
+        clock.now = clock.now.addingTimeInterval(30 * 60)
+        calls.value = 0
+        for _ in 0..<20 { bridge.refreshGlanceIfBehind() }
+        sink.status = WatchGlanceLinkStatus(canSend: true, complicationEnabled: true, remainingTransfers: 0)
+        for _ in 0..<20 { bridge.refreshGlanceIfBehind() }
+        #expect(calls.value == 0)
+        #expect(sink.glances.count == 2)
     }
 
     @Test("A held-back transfer goes on the check once 15 minutes are up")

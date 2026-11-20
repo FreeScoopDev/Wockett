@@ -1,8 +1,8 @@
 import SwiftUI
 import WidgetKit
 
-/// The pets' steps today: the top pet in the small families, up to three in
-/// the rectangle. With no pets it says how to add one, never an empty gauge.
+/// The pets' steps today: the top pet in the small families, up to two in
+/// the rectangle (`WatchGlanceDisplay.rectangularPetLimit`). With no pets it says how to add one, never an empty gauge.
 /// Tapping it opens the Watch app.
 struct PetsComplication: Widget {
     var body: some WidgetConfiguration {
@@ -65,8 +65,9 @@ struct PetsComplicationView: View {
         if let top = pets.first {
             switch family {
             case .accessoryRectangular:
+                let shown = WatchGlanceDisplay.rectangularPets(pets)
                 VStack(alignment: .leading, spacing: 2) {
-                    ForEach(pets) { pet in
+                    ForEach(shown) { pet in
                         HStack(spacing: 4) {
                             Text(pet.emoji)
                             Text(pet.name)
@@ -85,7 +86,7 @@ struct PetsComplicationView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .accessibilityElement(children: .ignore)
-                .accessibilityLabel(pets.map(spoken).joined(separator: ". "))
+                .accessibilityLabel(shown.map(spoken).joined(separator: ". "))
             case .accessoryInline:
                 Text("\(top.emoji) \(top.name) \(WatchGlanceDisplay.count(top.steps)) steps")
             case .accessoryCorner:
@@ -123,5 +124,6 @@ struct PetsComplicationView: View {
     PetsComplication()
 } timeline: {
     GlanceEntry(date: .now, snapshot: .sample(now: .now))
+    GlanceEntry(date: .now, snapshot: .sample(now: .now, threePets: true))
     GlanceEntry(date: .now, snapshot: .sample(now: .now, pets: false))
 }

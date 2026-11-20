@@ -252,17 +252,22 @@ final class WatchBridge {
     }
 
     /// The 1 s check: a complication transfer held back by the interval goes
-    /// once the interval is up, without waiting for the next change.
+    /// once the interval is up, without waiting for the next change. Builds
+    /// nothing (no pet steps over the history) unless one could go now: a
+    /// complication on the face, budget left, the interval up.
     func refreshGlanceIfBehind() {
-        if glancePolicy.complicationBehind { refreshGlance() }
+        guard let sink, glancePolicy.complicationCatchUpDue(now: now(), status: sink.glanceStatus) else { return }
+        refreshGlance()
     }
 
     /// The background refresh: the session may still be activating after a
-    /// background launch, so wait for it (a few seconds at most) and send.
+    /// background launch, so wait for that (a few seconds at most) and send.
+    /// Returns at once when nothing can go: no session (iPad), or one that
+    /// activated without a paired watch or the Watch app.
     func sendGlanceFromBackground(timeout: Duration = .seconds(3)) async {
         let clock = ContinuousClock()
         let deadline = clock.now.advanced(by: timeout)
-        while sink?.glanceStatus.canSend != true, clock.now < deadline {
+        while let sink, sink.glanceStatus.activationPending, clock.now < deadline {
             try? await Task.sleep(for: .milliseconds(250))
         }
         refreshGlance()
@@ -447,10 +452,10 @@ final class WatchBridge {
 /// are answered at once; nothing is queued (no `transferUserInfo`).
 final class WCSessionLink: NSObject, WCSessionDelegate, WatchStateSink {
     private weak var bridge: WatchBridge?
-    /// The walk state and the glance share the one application context;
-    /// each send keeps the other's latest (`WatchApplicationContext`).
-    /// Seeded from what the session last sent, so a relaunch keeps both.
-    private var context: WatchApplicationContext?
+    /// The walk state and the glance share the one application context.
+    private let context = WatchContextSender(
+        seed: { WCSession.default.applicationContext },
+        update: { try WCSession.default.updateApplicationContext($0) })
 
     init(bridge: WatchBridge) {
         self.bridge = bridge
@@ -466,23 +471,14 @@ final class WCSessionLink: NSObject, WCSessionDelegate, WatchStateSink {
         // No isPaired / isWatchAppInstalled check: the call throws when
         // there is no watch app, and those flags lag (paired simulators
         // report the app uninstalled after it is merely relaunched).
-        let session = WCSession.default
-        guard session.activationState == .activated else { return }
-        var merged = context ?? WatchApplicationContext(session.applicationContext)
-        merged.set(state)
-        context = merged
-        try? session.updateApplicationContext(merged.dictionary)
+        guard WCSession.default.activationState == .activated else { return }
+        context.send(state)
     }
 
     func send(_ glance: WatchGlanceSnapshot, context sendContext: Bool, complication: Bool) {
         let session = WCSession.default
         guard glanceStatus.canSend else { return }
-        if sendContext {
-            var merged = context ?? WatchApplicationContext(session.applicationContext)
-            merged.set(glance)
-            context = merged
-            try? session.updateApplicationContext(merged.dictionary)
-        }
+        if sendContext { context.send(glance) }
         // Only with a complication on the face and budget left (the policy
         // checked); otherwise the system would send it as plain user info.
         if complication, session.isComplicationEnabled, session.remainingComplicationUserInfoTransfers > 0 {
@@ -493,9 +489,10 @@ final class WCSessionLink: NSObject, WCSessionDelegate, WatchStateSink {
     /// A glance goes only to an installed Watch app on a paired watch.
     var glanceStatus: WatchGlanceLinkStatus {
         let session = WCSession.default
-        guard session.activationState == .activated, session.isPaired, session.isWatchAppInstalled else {
-            return .unavailable
-        }
+        // Not activated yet (just launched in the background): worth a
+        // short wait. Activated without a watch or the app: nothing to wait for.
+        guard session.activationState == .activated else { return .activating }
+        guard session.isPaired, session.isWatchAppInstalled else { return .unavailable }
         return WatchGlanceLinkStatus(canSend: true, complicationEnabled: session.isComplicationEnabled,
                                      remainingTransfers: session.remainingComplicationUserInfoTransfers)
     }
@@ -534,6 +531,40 @@ final class WCSessionLink: NSObject, WCSessionDelegate, WatchStateSink {
     /// allows calling it from any thread.
     private struct UncheckedReply: @unchecked Sendable {
         let handler: ([String: Any]) -> Void
+    }
+}
+
+// MARK: - WatchContextSender
+
+/// Sends the one application context the walk state and the glance share:
+/// each send keeps the other's latest (`WatchApplicationContext`). The first
+/// send starts from what the session last sent (`seed`), so a relaunch keeps
+/// both. The cache keeps each change even when `update` throws (no watch app
+/// yet), so the next send still carries both. `WCSessionLink` uses it with
+/// the real session; tests inject `update`.
+final class WatchContextSender {
+    private let seed: () -> [String: Any]
+    private let update: ([String: Any]) throws -> Void
+    private var context: WatchApplicationContext?
+
+    init(seed: @escaping () -> [String: Any], update: @escaping ([String: Any]) throws -> Void) {
+        self.seed = seed
+        self.update = update
+    }
+
+    func send(_ state: WatchWalkState) {
+        send { $0.set(state) }
+    }
+
+    func send(_ glance: WatchGlanceSnapshot) {
+        send { $0.set(glance) }
+    }
+
+    private func send(_ change: (inout WatchApplicationContext) -> Void) {
+        var merged = context ?? WatchApplicationContext(seed())
+        change(&merged)
+        context = merged
+        try? update(merged.dictionary)
     }
 }
 
