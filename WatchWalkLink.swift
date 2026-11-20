@@ -146,6 +146,28 @@ nonisolated enum WatchWire {
     }
 }
 
+/// The one application context the phone sends. Each update replaces the
+/// last whole dictionary, so it carries both the walk state (`WatchWire.key`)
+/// and the glance snapshot (`WatchGlanceWire.key`), and setting one keeps the
+/// other. Anything else in a context it starts from is dropped.
+nonisolated struct WatchApplicationContext {
+    private(set) var dictionary: [String: Any] = [:]
+
+    init(_ existing: [String: Any] = [:]) {
+        for key in [WatchWire.key, WatchGlanceWire.key] {
+            if let value = existing[key] { dictionary[key] = value }
+        }
+    }
+
+    mutating func set(_ state: WatchWalkState) {
+        dictionary.merge(WatchWire.encode(state)) { _, new in new }
+    }
+
+    mutating func set(_ glance: WatchGlanceSnapshot) {
+        dictionary.merge(WatchGlanceWire.payload(glance)) { _, new in new }
+    }
+}
+
 // MARK: - How often the phone sends
 
 /// The phone sends its state on every phase change, and at most every
