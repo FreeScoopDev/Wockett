@@ -83,7 +83,11 @@ way unless there's a strong reason; adding the first one is a real decision.
   both keys**: `WatchWire.key` (walk state) and `WatchGlanceWire.key`
   (glance), merged by `WatchApplicationContext` on every send, because each
   `updateApplicationContext` replaces the whole dictionary; neither may
-  overwrite the other (`WatchApplicationContextTests`). The context goes on
+  overwrite the other (`WatchApplicationContextTests`; `WCSessionLink`
+  sends through `WatchContextSender`, `WatchContextSenderTests`). The watch
+  shows a context's walk state only when it differs from the last
+  context's (`WatchContextWalkState`): a glance-only context repeats it,
+  possibly older than a reply already shown. The context goes on
   every change; `transferCurrentComplicationUserInfo` only while a
   complication is on the face with budget left (50 a day) and at most every
   15 min, except at once for a new day, a goal change or the goal first
