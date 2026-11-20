@@ -17,6 +17,8 @@
 		60A1B2C3D4E5F60000000302 /* AppGroup.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60A1B2C3D4E5F60000000301 /* AppGroup.swift */; };
 		60A1B2C3D4E5F60000000303 /* AppGroup.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60A1B2C3D4E5F60000000301 /* AppGroup.swift */; };
 		60CA7C40000000000000A00A /* DesignSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 603BC82D30466FCA00A6174E /* DesignSystem.swift */; };
+		60A1B2C3D4E5F60000000402 /* WatchWalkLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60A1B2C3D4E5F60000000401 /* WatchWalkLink.swift */; };
+		60A1B2C3D4E5F60000000403 /* WatchWalkLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60A1B2C3D4E5F60000000401 /* WatchWalkLink.swift */; };
 		60CA7C40000000000000A00E /* WockettWatch.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = 60CA7C40000000000000A002 /* WockettWatch.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
@@ -87,6 +89,7 @@
 		6093BCDE3011AB1C00AD5E15 /* PoCSquat.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PoCSquat.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		60A1B2C3D4E5F60000000101 /* ProEntitlement.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProEntitlement.swift; sourceTree = "<group>"; };
 		60A1B2C3D4E5F60000000301 /* AppGroup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppGroup.swift; sourceTree = "<group>"; };
+		60A1B2C3D4E5F60000000401 /* WatchWalkLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchWalkLink.swift; sourceTree = "<group>"; };
 		60EB4F953043B2500003AD6B /* Versions.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Versions.xcconfig; sourceTree = "<group>"; };
 		60F70CC63059EB7000F28D44 /* Wockett.storekit */ = {isa = PBXFileReference; lastKnownFileType = text; path = Wockett.storekit; sourceTree = "<group>"; };
 		60CA7C40000000000000A002 /* WockettWatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = WockettWatch.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -208,6 +211,7 @@
 				603BC82D30466FCA00A6174E /* DesignSystem.swift */,
 				60A1B2C3D4E5F60000000101 /* ProEntitlement.swift */,
 				60A1B2C3D4E5F60000000301 /* AppGroup.swift */,
+				60A1B2C3D4E5F60000000401 /* WatchWalkLink.swift */,
 				60EB4F953043B2500003AD6B /* Versions.xcconfig */,
 				60062A9F303AAAA3002D5E94 /* WocketWidgetExtension.entitlements */,
 				6093BCE03011AB1C00AD5E15 /* PoCSquat */,
@@ -485,6 +489,7 @@
 				603BC82E30466FCA00A6174E /* DesignSystem.swift in Sources */,
 				60A1B2C3D4E5F60000000102 /* ProEntitlement.swift in Sources */,
 				60A1B2C3D4E5F60000000302 /* AppGroup.swift in Sources */,
+				60A1B2C3D4E5F60000000402 /* WatchWalkLink.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -493,6 +498,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				60CA7C40000000000000A00A /* DesignSystem.swift in Sources */,
+				60A1B2C3D4E5F60000000403 /* WatchWalkLink.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

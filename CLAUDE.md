@@ -33,12 +33,28 @@ way unless there's a strong reason; adding the first one is a real decision.
 
 ## Non-obvious things that have already cost time
 
-- **main has a placeholder Watch app until `feat/watch-walk-remote` merges;
-  do not cut a release from main before then.** `chore/watch-target`
-  (2026-11-20) embedded `WockettWatch` in the iPhone app with only a "Start a
-  walk on your iPhone." screen, and a placeholder Watch app must never reach
-  the App Store. The W2 branch removes this entry. If a release cannot wait
-  for W2, revert #325 in its own PR first, then release.
+- **The Apple Watch app is a remote; the phone owns every session**
+  (`feat/watch-walk-remote`, 2026-11-20). `WatchBridge`
+  (`PoCSquat/Services/`) owns the iPhone's `WCSession` and
+  `WatchSessionModel` (`WockettWatch/`) the watch's; both speak the Codable
+  types in the root file `WatchWalkLink.swift` (one JSON blob under one key),
+  which also holds the watch's display and haptic rules so `WockettTests`
+  covers them. The watch tracks nothing (no location, HealthKit or workout
+  there yet). Watch commands go through the existing paths only: Start posts
+  to `WalkIntentInbox` like Siri, Pause/Resume as the Live Activity toggle,
+  Finish is `ActiveWalkStore.end(.save)`. **Start from the watch works only
+  while Wockett is in front on the iPhone**: a When In Use app cannot begin
+  location from the background, and a watch message wakes the phone in the
+  background (Apple's docs, checked 2026-11-20; finding and links in
+  `specs/Wockett/feat/watch-walk-remote.md`), so otherwise the phone replies
+  `needsPhone` and nothing half-starts. Commands are `sendMessage` with a
+  reply, never queued (`transferUserInfo` is out: a stale Finish would end a
+  walk nobody meant to end). State goes by `updateApplicationContext` on each
+  phase change and at most every 5 s for distance; the watch runs its own
+  timer. Indoor walks live in `StationaryWalkView`, not `ActiveWalkStore`,
+  so the screen reports them to `WatchBridge.indoorWalk` and the watch shows
+  them without Pause or Finish. `WatchBridge.activate()` does nothing under
+  tests or `-WKTUITest`.
 - **The Watch app's icon is a copy** of
   `PoCSquat/Assets.xcassets/AppIcon.appiconset/icon.png` in
   `WockettWatch/Assets.xcassets/AppIcon.appiconset/`. Change both together.
