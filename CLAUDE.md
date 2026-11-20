@@ -25,6 +25,7 @@ user benefit — scored and deliberately declined. Don't "fix" it.
 | App target / scheme | `PoCSquat` |
 | Widget + Live Activity | `WocketWidgetExtension` (one `t`) |
 | Apple Watch app | `WockettWatch` (bundle ID `Scoops.PoCSquat.watchkitapp`, scheme `WockettWatch`) |
+| Watch complications | `WockettWatchWidgets` (bundle ID `Scoops.PoCSquat.watchkitapp.widgets`, built by the `WockettWatch` scheme) |
 | Unit tests | `WockettTests` |
 | UI tests | `WockettUITests` |
 
@@ -70,6 +71,39 @@ way unless there's a strong reason; adding the first one is a real decision.
   iPhone app on the phone, or `WCSession` on the phone reports the watch app
   not installed; `simctl terminate` of the watch app can flip that too.
   Shutting the phone simulator down is how to see "iPhone not reachable".
+- **The watch complications are drawn by `WockettWatchWidgets`**, a watchOS
+  WidgetKit extension embedded in `WockettWatch.app/PlugIns`
+  (`feat/watch-complications`, 2026-11-20; bundle ID
+  `Scoops.PoCSquat.watchkitapp.widgets`): Steps, Pets and a Start launcher
+  that only opens the app's idle picker (`WatchWidgetLink.start`). The phone
+  builds a `WatchGlanceSnapshot` (root file `WatchGlance.swift`: steps from
+  `WidgetSnapshot`, the goal from `StepManager`, up to 3 pets from
+  `PetStore.todaySteps`; id, name, emoji, steps and goal only, never owner
+  details) and `WatchBridge` sends it. **One application context carries
+  both keys**: `WatchWire.key` (walk state) and `WatchGlanceWire.key`
+  (glance), merged by `WatchApplicationContext` on every send, because each
+  `updateApplicationContext` replaces the whole dictionary; neither may
+  overwrite the other (`WatchApplicationContextTests`). The context goes on
+  every change; `transferCurrentComplicationUserInfo` only while a
+  complication is on the face with budget left (50 a day) and at most every
+  15 min, except at once for a new day, a goal change or the goal first
+  reached (`WatchGlanceSendPolicy`, kept across launches in standard
+  defaults). The simulator does not support complication transfers, so on
+  paired simulators the complications update from the context only. The
+  Watch app (`WatchGlanceStore`) keeps the newest snapshot in **the watch's
+  App Group** (`AppGroup.identifier` again: a group container is per device,
+  so it is the watch's own; `WockettWatch.entitlements`,
+  `WockettWatchWidgets.entitlements`, proved only once Release Flow signs it)
+  and reloads the timelines; `.backgroundTask(.watchConnectivity)` lets that
+  happen with the app closed. The extension reads only the group (no
+  WatchConnectivity, no Health). The step day ends at the phone's 3 AM
+  (`StepManager.trackingDayStart`) and pet steps at midnight, so the snapshot
+  carries both ends and the timeline adds an entry at each. `AppGroup.swift`,
+  `WatchGlance.swift`, `WatchWalkLink.swift`, `DesignSystem.swift` and
+  `WockettWatch/WatchSymbols.swift` are compiled into the extension by
+  membership. **Seeding on simulators:** Debug iPhone builds push made-up
+  numbers on `xcrun simctl spawn <phone> notifyutil -p wkt.phone.glance.seed`
+  (also `goal`, `nopets`, `more`, `real`).
 - **The Watch app's icon is a copy** of
   `PoCSquat/Assets.xcassets/AppIcon.appiconset/icon.png` in
   `WockettWatch/Assets.xcassets/AppIcon.appiconset/`. Change both together.
