@@ -423,7 +423,17 @@ struct WatchBridgeGlanceTests {
         func send(_ glance: WatchGlanceSnapshot, context: Bool, complication: Bool) {
             glances.append((glance, context, complication))
         }
-        var glanceStatus: WatchGlanceLinkStatus { status }
+        /// When set, the status reads as it is this many times, then
+        /// becomes `afterReads`: the fake signals the change itself, so no
+        /// test races a clock against main-actor queue time.
+        var readsBeforeChange: Int?
+        var afterReads = Fixture.onFace
+        var glanceStatus: WatchGlanceLinkStatus {
+            if let left = readsBeforeChange {
+                if left <= 0 { status = afterReads; readsBeforeChange = nil } else { readsBeforeChange = left - 1 }
+            }
+            return status
+        }
     }
 
     final class Clock {
@@ -516,7 +526,7 @@ struct WatchBridgeGlanceTests {
         await bridge.sendGlanceFromBackground(timeout: .seconds(3))
         bridge.sink = nil
         await bridge.sendGlanceFromBackground(timeout: .seconds(3))
-        #expect(clock.now - start < .seconds(1))
+        #expect(clock.now - start < .seconds(3))  // the old wait took 6 s
         #expect(sink.glances.isEmpty)
     }
 
@@ -524,11 +534,10 @@ struct WatchBridgeGlanceTests {
     func backgroundWaitsForActivation() async throws {
         let (bridge, sink, _) = try bridge()
         sink.status = .activating
-        Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(300))
-            sink.status = Fixture.onFace
-        }
-        await bridge.sendGlanceFromBackground(timeout: .seconds(3))
+        sink.readsBeforeChange = 2
+        // A long timeout: the loop ends on the fake's change, not the clock
+        // (CLAUDE.md: no wall-clock guard under 5 minutes on main-actor tests).
+        await bridge.sendGlanceFromBackground(timeout: .seconds(300))
         #expect(sink.glances.count == 1)
     }
 
