@@ -12,4 +12,9 @@
   tracking, saving and Health work, so nothing about how a walk is recorded
   changes. If the watch loses touch with your iPhone it says so, keeps the
   last numbers it had and greys out the buttons until the link comes back;
-  a button pressed while out of reach is never saved up to run later.
+  a button pressed while out of reach is never saved up to run later. The
+  watch uses your iPhone's words for the session, so a hike says hike, and
+  if your iPhone takes a start from the watch but can't begin it (a question
+  waiting on its screen, say) the watch tells you instead of quietly giving
+  up. A walk you end on your iPhone, from the Lock Screen or the mini tile,
+  leaves the watch at once with a tap on the wrist.
