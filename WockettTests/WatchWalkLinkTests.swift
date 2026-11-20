@@ -153,6 +153,33 @@ struct WatchWalkLinkTests {
         #expect(display.summary?.summary?.distanceMeters == 800)
     }
 
+    /// A watch Finish arrives twice: the idle context and Finish's own reply,
+    /// in either order. One tap, not two.
+    @Test func watchFinish_tapsOnce_whicheverMessageArrivesFirst() {
+        var contextFirst = WatchRemoteDisplay()
+        _ = contextFirst.receive(state(.running))
+        let a = contextFirst.receive(state(.idle))
+        let b = contextFirst.receive(reply: .state(state(.ended, distance: 800)), to: .finish)
+        #expect((a + b).filter { $0 == .finished }.count == 1)
+        #expect(contextFirst.screen == .summary)
+
+        var replyFirst = WatchRemoteDisplay()
+        _ = replyFirst.receive(state(.running))
+        let c = replyFirst.receive(reply: .state(state(.ended, distance: 800)), to: .finish)
+        let d = replyFirst.receive(state(.idle))
+        #expect((c + d).filter { $0 == .finished }.count == 1)
+    }
+
+    /// The next walk still gets its own finish tap.
+    @Test func aLaterWalk_tapsFinishedAgain() {
+        var display = WatchRemoteDisplay()
+        _ = display.receive(state(.running))
+        _ = display.receive(state(.idle))
+        _ = display.receive(state(.running, start: Date(timeIntervalSince1970: 9_000)))
+        let taps = display.receive(state(.idle))
+        #expect(taps == [.finished])
+    }
+
     @Test func start_showsProgress_thenTheLiveScreen_orTheOpenYourPhoneNote() {
         var display = WatchRemoteDisplay()
         display.beginStart()

@@ -272,6 +272,12 @@ nonisolated struct WatchRemoteDisplay: Equatable, Sendable {
     private(set) var needsPhone = false
     /// The phone took Start but did not begin a session in time.
     private(set) var notStarted = false
+    /// The start date of the session the watch last tapped "finished" for.
+    /// A watch Finish reaches the watch twice (the idle context and Finish's
+    /// own reply), in either order; this keeps it to one tap.
+    private var finishTappedFor: Date?
+    /// The start date of the last live session this watch saw.
+    private var lastLiveStart: Date?
 
     var screen: Screen {
         if summary != nil { return .summary }
@@ -281,7 +287,8 @@ nonisolated struct WatchRemoteDisplay: Equatable, Sendable {
 
     /// A new state from the phone. Returns the wrist taps it calls for.
     mutating func receive(_ new: WatchWalkState) -> [WatchHapticEvent] {
-        let taps = WatchHaptics.events(from: state, to: new)
+        let taps = finishOnce(WatchHaptics.events(from: state, to: new), session: state?.startDate)
+        if new.isLive { lastLiveStart = new.startDate }
         // An ended walk is shown only if this watch saw it running: an old
         // application context read at launch is not a walk just finished.
         if new.phase == .ended, new.summary != nil, state?.isLive == true {
@@ -294,6 +301,16 @@ nonisolated struct WatchRemoteDisplay: Equatable, Sendable {
             summary = nil
         }
         state = new
+        return taps
+    }
+
+    /// Drops a second "finished" tap for a session that already had one.
+    private mutating func finishOnce(_ taps: [WatchHapticEvent], session: Date?) -> [WatchHapticEvent] {
+        guard taps.contains(.finished) else { return taps }
+        if let session, session == finishTappedFor {
+            return taps.filter { $0 != .finished }
+        }
+        finishTappedFor = session
         return taps
     }
 
@@ -312,7 +329,9 @@ nonisolated struct WatchRemoteDisplay: Equatable, Sendable {
             // Finish's own reply shows the summary even if the watch never
             // got the running state (it opened after the last update).
             if command == .finish, new.phase == .ended, new.summary != nil {
-                let taps = state?.isLive == true ? receive(new) : [.finished]
+                let taps = state?.isLive == true
+                    ? receive(new)
+                    : finishOnce([.finished], session: new.startDate ?? lastLiveStart)
                 summary = new
                 return taps
             }

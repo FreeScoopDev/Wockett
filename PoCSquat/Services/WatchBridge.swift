@@ -117,8 +117,8 @@ final class WatchBridge {
         observing = true
         withObservationTracking {
             _ = currentState()
-        } onChange: {
-            Task { @MainActor [weak self] in
+        } onChange: { [weak self] in
+            Task { @MainActor in
                 guard let self, self.observing else { return }
                 self.refresh()
                 self.observeStore()
