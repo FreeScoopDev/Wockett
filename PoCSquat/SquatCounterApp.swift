@@ -63,6 +63,9 @@ struct SquatCounterApp: App {
         // Trail region packs. The home region ships in the bundle so trails
         // work on a first launch with no network; opening is milliseconds.
         TrailPackLibrary.shared.loadBundled()
+        // The Apple Watch walk remote. Skips itself under tests and where
+        // there is no watch support (iPad).
+        WatchBridge.shared.activate()
         if !AppModelContainer.isRunningUnderTests {
             TipJarStore.shared.start()
             // Pro entitlement. Reads StoreKit and the supporter ledger, records

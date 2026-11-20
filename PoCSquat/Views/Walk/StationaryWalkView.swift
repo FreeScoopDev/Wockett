@@ -248,11 +248,22 @@ struct StationaryWalkView: View {
             guard !didStart else { return }
             didStart = true
             manager.start()
+            // The Watch shows an indoor walk's time and distance (WatchBridge).
+            if manager.isTracking {
+                WatchBridge.shared.indoorWalk = IndoorWalkReading(startDate: manager.startDate, distanceMeters: 0)
+            }
             for pet in petStore.activePets {
                 petActiveSinceSteps[pet.id] = 0
             }
         }
-        .onDisappear { manager.stop() }
+        .onDisappear {
+            manager.stop()
+            WatchBridge.shared.indoorWalk = nil
+        }
+        .onChange(of: manager.steps) { _, _ in
+            guard manager.isTracking else { return }
+            WatchBridge.shared.indoorWalk?.distanceMeters = manager.estimatedDistanceMeters
+        }
         // The summary every activity ends on, full screen (until 2026-10-13
         // indoor had a half sheet of its own). Done closes it and this screen.
         .fullScreenCover(item: $finished, onDismiss: {
@@ -279,6 +290,7 @@ struct StationaryWalkView: View {
         // unsaved walk of 100 steps or fewer leaves nothing in history.
         pendingPetCredit += petCreditEntries()
         manager.stop()
+        WatchBridge.shared.indoorWalk = nil
         let session = manager.completedSession()
         if manager.steps > 100, let records = save(session) {
             finished = FinishedIndoorWalk(session: session, records: records, saved: true, petIds: crew)

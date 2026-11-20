@@ -33,12 +33,43 @@ way unless there's a strong reason; adding the first one is a real decision.
 
 ## Non-obvious things that have already cost time
 
-- **main has a placeholder Watch app until `feat/watch-walk-remote` merges;
-  do not cut a release from main before then.** `chore/watch-target`
-  (2026-11-20) embedded `WockettWatch` in the iPhone app with only a "Start a
-  walk on your iPhone." screen, and a placeholder Watch app must never reach
-  the App Store. The W2 branch removes this entry. If a release cannot wait
-  for W2, revert #325 in its own PR first, then release.
+- **The Apple Watch app is a remote; the phone owns every session**
+  (`feat/watch-walk-remote`, 2026-11-20). `WatchBridge`
+  (`PoCSquat/Services/`) owns the iPhone's `WCSession` and
+  `WatchSessionModel` (`WockettWatch/`) the watch's; both speak the Codable
+  types in the root file `WatchWalkLink.swift` (one JSON blob under one key),
+  which also holds the watch's display and haptic rules so `WockettTests`
+  covers them. The watch tracks nothing (no location, HealthKit or workout
+  there yet). Watch commands go through the existing paths only: Start posts
+  to `WalkIntentInbox` like Siri, Pause/Resume as the Live Activity toggle,
+  Finish is `ActiveWalkStore.end(.save)`. **Start from the watch works only
+  while Wockett is in front on the iPhone**: a When In Use app cannot begin
+  location from the background, and a watch message wakes the phone in the
+  background (checked 2026-11-20:
+  https://developer.apple.com/documentation/corelocation/handling-location-updates-in-the-background ,
+  https://developer.apple.com/documentation/watchconnectivity/wcsession/sendmessage(_:replyhandler:errorhandler:)),
+  so otherwise the phone replies `needsPhone` and nothing half-starts; a
+  Start the phone took but did not begin within 5 s replies `notStarted`.
+  `WatchBridge` observes `ActiveWalkStore` (`withObservationTracking`), so
+  every end path reaches the watch at once, not only on the 1 s check. The
+  watch says the phone's own words (`SessionWording`, sent in
+  `WatchWalkState.noun`/`title`: a hike says "hike"); `WatchActivity` is for
+  icons and the picker only. Commands are `sendMessage` with a
+  reply, never queued (`transferUserInfo` is out: a stale Finish would end a
+  walk nobody meant to end). State goes by `updateApplicationContext` on each
+  phase change and at most every 5 s for distance; the watch runs its own
+  timer. Indoor walks live in `StationaryWalkView`, not `ActiveWalkStore`,
+  so the screen reports them to `WatchBridge.indoorWalk` and the watch shows
+  them without Pause or Finish. `WatchBridge.activate()` does nothing under
+  tests or `-WKTUITest`. **Driving it on paired simulators:** the watch
+  simulator takes no scripted taps, so Debug watch builds press a button on
+  a Darwin notification: `xcrun simctl spawn <watch> notifyutil -p
+  wkt.watch.pause` (also `resume`, `finish`, `done`, `start-walking`,
+  `start-running`, `start-cycling`, `start-stationary`). Install the watch
+  app (`…/PoCSquat.app/Watch/WockettWatch.app`) on the watch *before* the
+  iPhone app on the phone, or `WCSession` on the phone reports the watch app
+  not installed; `simctl terminate` of the watch app can flip that too.
+  Shutting the phone simulator down is how to see "iPhone not reachable".
 - **The Watch app's icon is a copy** of
   `PoCSquat/Assets.xcassets/AppIcon.appiconset/icon.png` in
   `WockettWatch/Assets.xcassets/AppIcon.appiconset/`. Change both together.
