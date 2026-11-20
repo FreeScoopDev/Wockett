@@ -16,6 +16,8 @@
 		60A1B2C3D4E5F60000000103 /* ProEntitlement.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60A1B2C3D4E5F60000000101 /* ProEntitlement.swift */; };
 		60A1B2C3D4E5F60000000302 /* AppGroup.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60A1B2C3D4E5F60000000301 /* AppGroup.swift */; };
 		60A1B2C3D4E5F60000000303 /* AppGroup.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60A1B2C3D4E5F60000000301 /* AppGroup.swift */; };
+		60CA7C40000000000000A00A /* DesignSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 603BC82D30466FCA00A6174E /* DesignSystem.swift */; };
+		60CA7C40000000000000A00E /* WockettWatch.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = 60CA7C40000000000000A002 /* WockettWatch.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -40,6 +42,13 @@
 			remoteGlobalIDString = 6093BCDD3011AB1C00AD5E15;
 			remoteInfo = PoCSquat;
 		};
+		60CA7C40000000000000A00B /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 6093BCD63011AB1B00AD5E15 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 60CA7C40000000000000A001;
+			remoteInfo = WockettWatch;
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -52,6 +61,17 @@
 				60062A92303AA71B002D5E94 /* WocketWidgetExtension.appex in Embed Foundation Extensions */,
 			);
 			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		60CA7C40000000000000A00D /* Embed Watch Content */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "$(CONTENTS_FOLDER_PATH)/Watch";
+			dstSubfolderSpec = 16;
+			files = (
+				60CA7C40000000000000A00E /* WockettWatch.app in Embed Watch Content */,
+			);
+			name = "Embed Watch Content";
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXCopyFilesBuildPhase section */
@@ -69,6 +89,7 @@
 		60A1B2C3D4E5F60000000301 /* AppGroup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppGroup.swift; sourceTree = "<group>"; };
 		60EB4F953043B2500003AD6B /* Versions.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Versions.xcconfig; sourceTree = "<group>"; };
 		60F70CC63059EB7000F28D44 /* Wockett.storekit */ = {isa = PBXFileReference; lastKnownFileType = text; path = Wockett.storekit; sourceTree = "<group>"; };
+		60CA7C40000000000000A002 /* WockettWatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = WockettWatch.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -93,6 +114,13 @@
 				Intents/WalkLiveActivityIntents.swift,
 			);
 			target = 60062A7C303AA71A002D5E94 /* WocketWidgetExtension */;
+		};
+		60CA7C40000000000000A00F /* Exceptions for "PoCSquat" folder in "WockettWatch" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Design/WockettMark.swift,
+			);
+			target = 60CA7C40000000000000A001 /* WockettWatch */;
 		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
@@ -120,8 +148,14 @@
 			exceptions = (
 				6093BD043011D61A00AD5E15 /* Exceptions for "PoCSquat" folder in "PoCSquat" target */,
 				609DC7C83041346200FAF783 /* Exceptions for "PoCSquat" folder in "WocketWidgetExtension" target */,
+				60CA7C40000000000000A00F /* Exceptions for "PoCSquat" folder in "WockettWatch" target */,
 			);
 			path = PoCSquat;
+			sourceTree = "<group>";
+		};
+		60CA7C40000000000000A003 /* WockettWatch */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = WockettWatch;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -157,6 +191,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		60CA7C40000000000000A005 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -171,6 +212,7 @@
 				60062A9F303AAAA3002D5E94 /* WocketWidgetExtension.entitlements */,
 				6093BCE03011AB1C00AD5E15 /* PoCSquat */,
 				60062A82303AA71A002D5E94 /* WocketWidget */,
+				60CA7C40000000000000A003 /* WockettWatch */,
 				6064430D303FCB7B004C8A82 /* WockettTests */,
 				60831CE83049136F00851D94 /* WockettUITests */,
 				6093BCDF3011AB1C00AD5E15 /* Products */,
@@ -185,6 +227,7 @@
 				60062A7D303AA71A002D5E94 /* WocketWidgetExtension.appex */,
 				6064430C303FCB7B004C8A82 /* WockettTests.xctest */,
 				60831CE73049136F00851D94 /* WockettUITests.xctest */,
+				60CA7C40000000000000A002 /* WockettWatch.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -277,11 +320,13 @@
 				6093BCDB3011AB1C00AD5E15 /* Frameworks */,
 				6093BCDC3011AB1C00AD5E15 /* Resources */,
 				60062A97303AA71B002D5E94 /* Embed Foundation Extensions */,
+				60CA7C40000000000000A00D /* Embed Watch Content */,
 			);
 			buildRules = (
 			);
 			dependencies = (
 				60062A91303AA71B002D5E94 /* PBXTargetDependency */,
+				60CA7C40000000000000A00C /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				6093BCE03011AB1C00AD5E15 /* PoCSquat */,
@@ -291,6 +336,28 @@
 			);
 			productName = PoCSquat;
 			productReference = 6093BCDE3011AB1C00AD5E15 /* PoCSquat.app */;
+			productType = "com.apple.product-type.application";
+		};
+		60CA7C40000000000000A001 /* WockettWatch */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 60CA7C40000000000000A007 /* Build configuration list for PBXNativeTarget "WockettWatch" */;
+			buildPhases = (
+				60CA7C40000000000000A004 /* Sources */,
+				60CA7C40000000000000A005 /* Frameworks */,
+				60CA7C40000000000000A006 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				60CA7C40000000000000A003 /* WockettWatch */,
+			);
+			name = WockettWatch;
+			packageProductDependencies = (
+			);
+			productName = WockettWatch;
+			productReference = 60CA7C40000000000000A002 /* WockettWatch.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -318,6 +385,9 @@
 						CreatedOnToolsVersion = 26.6;
 						LastSwiftMigration = 2660;
 					};
+					60CA7C40000000000000A001 = {
+						CreatedOnToolsVersion = 26.6;
+					};
 				};
 			};
 			buildConfigurationList = 6093BCD93011AB1C00AD5E15 /* Build configuration list for PBXProject "PoCSquat" */;
@@ -340,6 +410,7 @@
 				60062A7C303AA71A002D5E94 /* WocketWidgetExtension */,
 				6064430B303FCB7B004C8A82 /* WockettTests */,
 				60831CE63049136F00851D94 /* WockettUITests */,
+				60CA7C40000000000000A001 /* WockettWatch */,
 			);
 		};
 /* End PBXProject section */
@@ -367,6 +438,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		6093BCDC3011AB1C00AD5E15 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		60CA7C40000000000000A006 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -410,6 +488,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		60CA7C40000000000000A004 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				60CA7C40000000000000A00A /* DesignSystem.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -427,6 +513,11 @@
 			isa = PBXTargetDependency;
 			target = 6093BCDD3011AB1C00AD5E15 /* PoCSquat */;
 			targetProxy = 60831CED3049136F00851D94 /* PBXContainerItemProxy */;
+		};
+		60CA7C40000000000000A00C /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 60CA7C40000000000000A001 /* WockettWatch */;
+			targetProxy = 60CA7C40000000000000A00B /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -780,6 +871,70 @@
 			};
 			name = Release;
 		};
+		60CA7C40000000000000A008 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 7U83DJ2F97;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = Wockett;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
+				INFOPLIST_KEY_WKApplication = YES;
+				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = Scoops.PoCSquat;
+				INFOPLIST_KEY_WKRunsIndependentlyOfCompanionApp = NO;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = Scoops.PoCSquat.watchkitapp;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				VERSIONING_SYSTEM = "apple-generic";
+				WATCHOS_DEPLOYMENT_TARGET = 26.0;
+			};
+			name = Debug;
+		};
+		60CA7C40000000000000A009 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 7U83DJ2F97;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = Wockett;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
+				INFOPLIST_KEY_WKApplication = YES;
+				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = Scoops.PoCSquat;
+				INFOPLIST_KEY_WKRunsIndependentlyOfCompanionApp = NO;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = Scoops.PoCSquat.watchkitapp;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				VERSIONING_SYSTEM = "apple-generic";
+				WATCHOS_DEPLOYMENT_TARGET = 26.0;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -824,6 +979,15 @@
 			buildConfigurations = (
 				6093BCEA3011AB1D00AD5E15 /* Debug */,
 				6093BCEB3011AB1D00AD5E15 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		60CA7C40000000000000A007 /* Build configuration list for PBXNativeTarget "WockettWatch" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				60CA7C40000000000000A008 /* Debug */,
+				60CA7C40000000000000A009 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

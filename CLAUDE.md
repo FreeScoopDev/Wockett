@@ -24,6 +24,7 @@ user benefit — scored and deliberately declined. Don't "fix" it.
 | Local folder | `~/Desktop/Apps/PoCSquat` (was `~/Desktop/PoCSquat` until 2026-09-26) |
 | App target / scheme | `PoCSquat` |
 | Widget + Live Activity | `WocketWidgetExtension` (one `t`) |
+| Apple Watch app | `WockettWatch` (bundle ID `Scoops.PoCSquat.watchkitapp`, scheme `WockettWatch`) |
 | Unit tests | `WockettTests` |
 | UI tests | `WockettUITests` |
 
@@ -32,6 +33,11 @@ way unless there's a strong reason; adding the first one is a real decision.
 
 ## Non-obvious things that have already cost time
 
+- **main has a placeholder Watch app until `feat/watch-walk-remote` merges;
+  do not cut a release from main before then.** `chore/watch-target`
+  (2026-11-20) embedded `WockettWatch` in the iPhone app with only a "Start a
+  walk on your iPhone." screen, and a placeholder Watch app must never reach
+  the App Store. The W2 branch removes this entry.
 - **`Versions.xcconfig` owns the version numbers.** Never edit them in
   per-target build settings. `MARKETING_VERSION` is bumped in the release PR.
   `CURRENT_PROJECT_VERSION` is read only by a manual Xcode archive (emergency

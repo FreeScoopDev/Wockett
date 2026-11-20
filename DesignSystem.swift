@@ -6,12 +6,30 @@
 //
 
 // Shared design tokens (colors + typography) for the v1.10 unified design
-// system. Lives in both the PoCSquat app target and WocketWidgetExtension so
-// the widget/Live Activity can reference the exact same tokens instead of a
-// separately maintained copy that can drift out of sync.
+// system. Lives in the PoCSquat app target, WocketWidgetExtension and
+// WockettWatch so the widget/Live Activity and the Watch app can reference the
+// exact same tokens instead of a separately maintained copy that can drift out
+// of sync.
 
 import SwiftUI
 import UIKit
+
+#if os(watchOS)
+// watchOS has no trait collections, so UIKit's `UIColor { traitCollection in … }`
+// dynamic provider does not exist there, and watchOS is always dark. This
+// stand-in hands each provider below a dark style, so the Watch app gets every
+// colour's dark value from this one palette. iOS never compiles it.
+struct WktWatchTraits {
+    enum Style { case light, dark }
+    let userInterfaceStyle = Style.dark
+}
+
+extension UIColor {
+    convenience init(dynamicProvider: (WktWatchTraits) -> UIColor) {
+        self.init(cgColor: dynamicProvider(WktWatchTraits()).cgColor)
+    }
+}
+#endif
 
 // MARK: - Brand (the app icon's palette, the same in light and dark)
 
@@ -202,16 +220,24 @@ extension Font {
     /// `.dynamicTypeSize(...DynamicTypeSize.accessibility2)`. SwiftUI's
     /// `.accessibility2` is UIKit's `.accessibilityLarge` (AX1 is
     /// `.accessibilityMedium`); `TypeScaleCapTests` checks that mapping.
+    #if !os(watchOS)
     static let wktTextSizeCap: UIContentSizeCategory = .accessibilityLarge
+    #endif
 
     /// `scaled` (the size at the current text size), held to the size the same
     /// text has at `wktTextSizeCap`. `wktHeading`, `wktBody` and `wktLabel`
     /// resolve a fixed point size here, so `.dynamicTypeSize(...)` cannot cap
     /// them; this does. A no-op at and below the cap. Until 2026-10-28 they
     /// grew to Accessibility 5 and cut off buttons and values (F5 audit).
+    /// On watchOS, which cannot measure another text size (no trait
+    /// collections), `scaled` is used as is.
     static func wktScaledSize(_ size: CGFloat, scaled: CGFloat) -> CGFloat {
+        #if os(watchOS)
+        return scaled
+        #else
         let cap = UITraitCollection(preferredContentSizeCategory: wktTextSizeCap)
         return min(scaled, UIFontMetrics(forTextStyle: .body).scaledValue(for: size, compatibleWith: cap))
+        #endif
     }
 
     /// For a dense, fixed-geometry layout (a seven-column calendar, a ring's
@@ -230,8 +256,12 @@ extension Font {
     /// text would have at `extraExtraExtraLarge`. A function of its own so a
     /// test can check the cap.
     static func wktDenseSize(_ size: CGFloat, scaled: CGFloat) -> CGFloat {
+        #if os(watchOS)
+        return scaled
+        #else
         let cap = UITraitCollection(preferredContentSizeCategory: .extraExtraExtraLarge)
         return min(scaled, UIFontMetrics(forTextStyle: .body).scaledValue(for: size, compatibleWith: cap))
+        #endif
     }
 
     // The type scale (2026-09-30 Home redesign). Six named roles instead of
