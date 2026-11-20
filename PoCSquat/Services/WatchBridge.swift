@@ -14,12 +14,17 @@ import WatchConnectivity
 //   has: Start posts to `WalkIntentInbox` like Siri and Control Center,
 //   Pause and Resume do what the Live Activity's toggle does, and Finish is
 //   `ActiveWalkStore.end(.save)` like the Live Activity's End;
-// - starts only a session that can track. A When In Use app cannot begin
-//   location updates from the background (Apple's docs, checked 2026-11-20;
-//   specs/Wockett/feat/watch-walk-remote.md, "Background start finding"), and
-//   a watch message wakes the phone in the background. So Start works while
-//   Wockett is in front, and otherwise replies `needsPhone`: nothing
-//   half-starts.
+// - starts only a session that can track. A When In Use app cannot start
+//   location updates from the background, and a watch message wakes the
+//   phone in the background (checked 2026-11-20):
+//   https://developer.apple.com/documentation/corelocation/handling-location-updates-in-the-background
+//   https://developer.apple.com/documentation/watchconnectivity/wcsession/sendmessage(_:replyhandler:errorhandler:)
+//   So Start works while Wockett is in front, and otherwise replies
+//   `needsPhone`: nothing half-starts;
+// - sends as soon as the walk changes, whichever path changed it (the Live
+//   Activity's End, the mini tile, a salvage, the walk screen): it watches
+//   `ActiveWalkStore` rather than waiting for the 1 s check, which iOS may
+//   not run once the app is suspended.
 //
 // `WCSessionLink` below owns the `WCSession`; the bridge itself never touches
 // WatchConnectivity, so a test drives it with a fake sink and its own store.
@@ -59,8 +64,13 @@ final class WatchBridge {
     private var link: WCSessionLink?
     private var timer: Timer?
 
-    /// Set by the indoor walk screen while one runs.
-    var indoorWalk: IndoorWalkReading?
+    /// Set by the indoor walk screen while one runs. Each change is
+    /// offered to the watch (throttled like the rest).
+    var indoorWalk: IndoorWalkReading? {
+        didSet { if observing { refresh() } }
+    }
+    /// Whether the bridge is watching the store (`observeStore`).
+    private(set) var observing = false
 
     init(store: ActiveWalkStore? = nil,
          inbox: WalkIntentInbox? = nil,
@@ -89,6 +99,7 @@ final class WatchBridge {
         self.link = link
         sink = link
         link.activate()
+        observeStore()
         // A local check once a second; what it sends is throttled.
         let timer = Timer(timeInterval: 1, repeats: true) { _ in
             Task { @MainActor in WatchBridge.shared.refresh() }
@@ -98,16 +109,35 @@ final class WatchBridge {
         self.timer = timer
     }
 
+    /// Sends whenever anything `currentState()` reads changes, so a walk
+    /// ended on any path reaches the watch at once. Each change re-arms the
+    /// observation; what it sends is throttled. Called by `activate()`, and
+    /// by tests with their own store.
+    func observeStore() {
+        observing = true
+        withObservationTracking {
+            _ = currentState()
+        } onChange: {
+            Task { @MainActor [weak self] in
+                guard let self, self.observing else { return }
+                self.refresh()
+                self.observeStore()
+            }
+        }
+    }
+
     // MARK: - State
 
     /// The walk as the watch should show it now.
     func currentState() -> WatchWalkState {
         let miles = usesMiles()
         if let session = store.session {
-            let mode = Self.watchActivity(for: store.activeRoute?.activityMode ?? session.route.activityMode)
+            let route = store.activeRoute ?? session.route
+            let mode = Self.watchActivity(for: route.activityMode)
             let distance = session.totalDistanceCovered
             let elapsed = session.elapsedTime
             var state = WatchWalkState(mode: mode, phase: .running, usesMiles: miles)
+            state.setWording(route.wording)
             state.startDate = session.startTime
             state.distanceMeters = distance
             guard store.isWalkInProgress else {
@@ -129,6 +159,7 @@ final class WatchBridge {
         }
         if let indoor = indoorWalk {
             var state = WatchWalkState(mode: .stationary, phase: .running, usesMiles: miles)
+            state.setWording(SessionWording(.stationary))
             state.startDate = indoor.startDate
             state.distanceMeters = indoor.distanceMeters > 0 ? indoor.distanceMeters : nil
             state.controllable = false
@@ -161,6 +192,10 @@ final class WatchBridge {
             guard canStart(activity) else { return .needsPhone }
             inbox.post(WalkIntentRequest(mode: Self.mode(for: activity)))
             await waitForStart()
+            // Not begun in time (a question on the phone's screen, say): say
+            // so rather than leave the watch on "Starting…". If it begins
+            // later, the next state shows it.
+            guard store.isWalkInProgress || indoorWalk != nil else { return .notStarted }
             return .state(currentState())
 
         case .pause, .resume:
@@ -188,6 +223,7 @@ final class WatchBridge {
             }
             var state = WatchWalkState(mode: Self.watchActivity(for: ActivityMode(rawValue: saved.activityType) ?? .walking),
                                        phase: .ended, usesMiles: usesMiles())
+            state.setWording(saved.wording)
             state.startDate = saved.date
             state.distanceMeters = saved.totalDistance
             state.summary = WatchWalkSummary(distanceMeters: saved.totalDistance, movingSeconds: saved.elapsedTime)
@@ -294,6 +330,14 @@ final class WCSessionLink: NSObject, WCSessionDelegate, WatchStateSink {
     /// allows calling it from any thread.
     private struct UncheckedReply: @unchecked Sendable {
         let handler: ([String: Any]) -> Void
+    }
+}
+
+extension WatchWalkState {
+    /// The phone's own words for the session, so a hike says "hike".
+    mutating func setWording(_ wording: SessionWording) {
+        noun = wording.noun
+        title = wording.displayName
     }
 }
 

@@ -11,7 +11,11 @@ import WatchKit
 @Observable @MainActor
 final class WatchSessionModel: NSObject {
     private(set) var display = WatchRemoteDisplay()
-    private(set) var isReachable = false
+    /// Nil until the session has activated and the link has been tried:
+    /// a cold launch shows no "iPhone not reachable" before it knows.
+    /// False only after a send failed or timed out, or the session said the
+    /// phone is out of reach.
+    private(set) var isReachable: Bool?
     /// A command is on its way; the buttons wait for its reply.
     private(set) var isSending = false
     var selectedActivity: WatchActivity = .walking
@@ -33,7 +37,8 @@ final class WatchSessionModel: NSObject {
     /// Ask the phone for its state; called when the app becomes active.
     func requestState() {
         let session = WCSession.default
-        if !session.isReachable { markUnreachable() }
+        // Before activation there is nothing to ask yet; activation asks.
+        guard session.activationState == .activated else { return }
         if let context = WatchWire.decode(WatchWalkState.self, from: session.receivedApplicationContext) {
             apply(display.receive(context))
         }
@@ -41,7 +46,7 @@ final class WatchSessionModel: NSObject {
     }
 
     var controlsEnabled: Bool {
-        WatchRemoteDisplay.controlsEnabled(state: display.state, isReachable: isReachable) && !isSending
+        WatchRemoteDisplay.controlsEnabled(state: display.state, isReachable: isReachable != false) && !isSending
     }
 
     func start() {
@@ -84,6 +89,9 @@ final class WatchSessionModel: NSObject {
     private func send(_ command: WatchCommand) {
         let session = WCSession.default
         guard session.activationState == .activated, session.isReachable else {
+            // A request for state is only asked when the link may be up; a
+            // command the person pressed says why nothing happened.
+            if command == .requestState, isReachable == nil { return }
             markUnreachable()
             if command != .requestState { display.commandFailed() }
             return
@@ -103,10 +111,10 @@ final class WatchSessionModel: NSObject {
                 self.markUnreachable()
             }
         }
-        session.sendMessage(WatchWire.encode(command), replyHandler: { message in
+        session.sendMessage(WatchWire.encode(command), replyHandler: { @Sendable message in
             let reply = WatchWire.decode(WatchReply.self, from: message)
             Task { @MainActor in self.received(reply, to: command, id: id) }
-        }, errorHandler: { _ in
+        }, errorHandler: { @Sendable _ in
             Task { @MainActor in self.received(nil, to: command, id: id) }
         })
     }
@@ -118,7 +126,7 @@ final class WatchSessionModel: NSObject {
             isSending = pendingCommand != nil
         }
         guard let reply else {
-            if !WCSession.default.isReachable { markUnreachable() }
+            markUnreachable()
             display.commandFailed()
             return
         }
@@ -141,7 +149,7 @@ final class WatchSessionModel: NSObject {
         recoveryTask = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(for: Self.recoveryInterval)
-                guard let self, !self.isReachable else { return }
+                guard let self, self.isReachable == false else { return }
                 if WCSession.default.isReachable { self.send(.requestState) }
             }
         }
@@ -197,6 +205,23 @@ final class WatchSessionModel: NSObject {
     }
     #endif
 
+    /// Seeds reachability from the session: reachable now, or unknown for
+    /// a moment (the link to the phone can come up just after activation;
+    /// `sessionReachabilityDidChange` says so). Still unknown after that,
+    /// the phone is out of reach.
+    fileprivate func activated(reachable: Bool) {
+        if reachable { isReachable = true }
+        requestState()
+        guard !reachable else { return }
+        Task { [weak self] in
+            try? await Task.sleep(for: Self.reachabilityGrace)
+            guard let self, self.isReachable == nil, !WCSession.default.isReachable else { return }
+            self.markUnreachable()
+        }
+    }
+
+    private static let reachabilityGrace: Duration = .seconds(3)
+
     fileprivate func contextArrived(_ state: WatchWalkState) {
         markReachable()
         apply(display.receive(state))
@@ -204,7 +229,7 @@ final class WatchSessionModel: NSObject {
 
     fileprivate func reachabilityChanged(_ reachable: Bool) {
         if reachable {
-            if !isReachable { send(.requestState) }
+            if isReachable != true { send(.requestState) }
         } else {
             markUnreachable()
         }
@@ -214,9 +239,8 @@ final class WatchSessionModel: NSObject {
 extension WatchSessionModel: WCSessionDelegate {
     nonisolated func session(_ session: WCSession, activationDidCompleteWith activationState: WCSessionActivationState,
                              error: Error?) {
-        Task { @MainActor in
-            self.requestState()
-        }
+        let reachable = session.isReachable
+        Task { @MainActor in self.activated(reachable: reachable) }
     }
 
     nonisolated func session(_ session: WCSession, didReceiveApplicationContext applicationContext: [String: Any]) {

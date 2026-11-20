@@ -50,9 +50,11 @@ struct WatchBridgeTests {
 
     /// A free session as the walk screen begins one, without its sensors.
     @discardableResult
-    private func beginFree(_ rig: Rig, mode: ActivityMode = .walking) throws -> NavigationSessionManager {
-        let stub = NavigableRoute(name: "Free", waypoints: [], lapCount: 1, isLoop: false, totalDistance: 0,
+    private func beginFree(_ rig: Rig, mode: ActivityMode = .walking,
+                           isHike: Bool = false) throws -> NavigationSessionManager {
+        var stub = NavigableRoute(name: "Free", waypoints: [], lapCount: 1, isLoop: false, totalDistance: 0,
                                   isCustomRoute: true, isCommunityRoute: false, activityMode: mode, customRouteId: nil)
+        stub.isHike = isHike
         let session = try #require(rig.store.beginSession(route: stub))
         session.writesSnapshots = false
         rig.store.markStarted()
@@ -122,6 +124,12 @@ struct WatchBridgeTests {
         _ = await rig.bridge.handle(.start(activity))
         #expect(rig.inbox.pending == WalkIntentRequest(mode: WatchBridge.mode(for: activity)))
         #expect(rig.inbox.pending?.mode.rawValue == activity.rawValue)
+    }
+
+    @Test func start_thatThePhoneDidNotBeginInTime_saysSo() async throws {
+        let rig = try rig(canStart: true)
+        // Nothing begins a session here: the walk screen never opened.
+        #expect(await rig.bridge.handle(.start(.walking)) == .notStarted)
     }
 
     @Test func start_thatCannotTrack_isRefused_andStartsNothing() async throws {
@@ -248,6 +256,69 @@ struct WatchBridgeTests {
             #expect(WatchBridge.watchActivity(for: mode) == activity)
             #expect(activity.noun == mode.noun || mode == .stationary)
         }
+    }
+
+    // MARK: - Wording
+
+    @Test func hike_carriesThePhonesWords_liveAndInTheFinishSummary() async throws {
+        let rig = try rig()
+        try beginFree(rig, isHike: true)
+        let live = rig.bridge.currentState()
+        #expect(live.mode == .walking)
+        #expect(live.noun == "hike")
+        #expect(live.shownTitle == "Hike")
+
+        let reply = await rig.bridge.handle(.finish)
+        guard case .state(let ended) = reply else { Issue.record("expected a state"); return }
+        #expect(ended.phase == .ended)
+        #expect(ended.shownNoun == "hike")
+        #expect(ended.title == "Hike")
+    }
+
+    @Test func plainWalk_andIndoor_sayTheirOwnWords() throws {
+        let rig = try rig()
+        rig.bridge.indoorWalk = IndoorWalkReading(startDate: rig.clock.now, distanceMeters: 0)
+        // The phone's words for an indoor walk: "Indoor walk", "your walk".
+        #expect(rig.bridge.currentState().shownTitle == "Indoor walk")
+        #expect(rig.bridge.currentState().noun == "walk")
+        rig.bridge.indoorWalk = nil
+        try beginFree(rig)
+        #expect(rig.bridge.currentState().noun == "walk")
+    }
+
+    // MARK: - Push on change
+
+    /// Lets the observation's main-actor task run.
+    private func settle(until done: () -> Bool) async {
+        for _ in 0..<100 where !done() { await Task.yield() }
+    }
+
+    @Test func aWalkEndedElsewhere_isSentAtOnce_withoutTheTimer() async throws {
+        let rig = try rig()
+        try beginFree(rig)
+        rig.bridge.observeStore()
+        rig.bridge.refresh()
+        #expect(rig.sink.sent.last?.phase == .running)
+        let before = rig.sink.sent.count
+
+        // As the Live Activity's End or the mini tile: released at once.
+        rig.store.end(.save, releaseSession: true)
+        await settle { rig.sink.sent.count > before }
+        #expect(rig.sink.sent.count == before + 1)
+        #expect(rig.sink.sent.last?.phase == .idle)
+    }
+
+    @Test func aWalkEndedOnTheWalkScreen_isSentAtOnce_asEnded() async throws {
+        let rig = try rig()
+        try beginFree(rig)
+        rig.bridge.observeStore()
+        rig.bridge.refresh()
+        let before = rig.sink.sent.count
+
+        // The walk screen keeps the stopped session for its summary.
+        rig.store.end(.save, releaseSession: false)
+        await settle { rig.sink.sent.count > before }
+        #expect(rig.sink.sent.last?.phase == .ended)
     }
 
     @Test func activate_underTests_leavesWatchConnectivityAlone() throws {

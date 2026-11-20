@@ -45,9 +45,16 @@ way unless there's a strong reason; adding the first one is a real decision.
   Finish is `ActiveWalkStore.end(.save)`. **Start from the watch works only
   while Wockett is in front on the iPhone**: a When In Use app cannot begin
   location from the background, and a watch message wakes the phone in the
-  background (Apple's docs, checked 2026-11-20; finding and links in
-  `specs/Wockett/feat/watch-walk-remote.md`), so otherwise the phone replies
-  `needsPhone` and nothing half-starts. Commands are `sendMessage` with a
+  background (checked 2026-11-20:
+  https://developer.apple.com/documentation/corelocation/handling-location-updates-in-the-background ,
+  https://developer.apple.com/documentation/watchconnectivity/wcsession/sendmessage(_:replyhandler:errorhandler:)),
+  so otherwise the phone replies `needsPhone` and nothing half-starts; a
+  Start the phone took but did not begin within 5 s replies `notStarted`.
+  `WatchBridge` observes `ActiveWalkStore` (`withObservationTracking`), so
+  every end path reaches the watch at once, not only on the 1 s check. The
+  watch says the phone's own words (`SessionWording`, sent in
+  `WatchWalkState.noun`/`title`: a hike says "hike"); `WatchActivity` is for
+  icons and the picker only. Commands are `sendMessage` with a
   reply, never queued (`transferUserInfo` is out: a stale Finish would end a
   walk nobody meant to end). State goes by `updateApplicationContext` on each
   phase change and at most every 5 s for distance; the watch runs its own

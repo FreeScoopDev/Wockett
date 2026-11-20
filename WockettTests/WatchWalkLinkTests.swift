@@ -43,11 +43,13 @@ struct WatchWalkLinkTests {
         full.averagePaceSecsPerKm = 410
         full.averageSpeedMetersPerSecond = 4.2
         full.controllable = false
+        full.noun = "hike"
+        full.title = "Hike"
         #expect(roundTrip(full) == full)
     }
 
     @Test func everyReply_roundTrips() {
-        for reply in [WatchReply.state(state(.running, distance: 10)), .needsPhone, .noActiveSession] {
+        for reply in [WatchReply.state(state(.running, distance: 10)), .needsPhone, .noActiveSession, .notStarted] {
             #expect(roundTrip(reply) == reply)
         }
     }
@@ -92,6 +94,9 @@ struct WatchWalkLinkTests {
         #expect(WatchHaptics.events(from: state(.running), to: state(.paused)) == [.paused])
         #expect(WatchHaptics.events(from: state(.paused), to: state(.running)) == [.resumed])
         #expect(WatchHaptics.events(from: state(.running), to: state(.ended)) == [.finished])
+        // Ended on the phone with no summary (Live Activity End, mini tile).
+        #expect(WatchHaptics.events(from: state(.running), to: state(.idle)) == [.finished])
+        #expect(WatchHaptics.events(from: state(.paused), to: state(.idle)) == [.finished])
         #expect(WatchHaptics.events(from: nil, to: state(.paused)).isEmpty, "opening the app mid-walk taps nothing")
         #expect(WatchHaptics.events(from: state(.idle), to: state(.running)).isEmpty)
     }
@@ -167,6 +172,18 @@ struct WatchWalkLinkTests {
         dropped.beginStart()
         dropped.commandFailed()
         #expect(dropped.screen == .idle)
+    }
+
+    @Test func notStarted_leavesStarting_withANote_clearedByTheNextStart() {
+        var display = WatchRemoteDisplay()
+        display.beginStart()
+        _ = display.receive(reply: .notStarted, to: .start(.walking))
+        #expect(display.screen == .idle)
+        #expect(display.notStarted)
+        display.beginStart()
+        #expect(!display.notStarted)
+        _ = display.receive(state(.running))
+        #expect(display.screen == .live)
     }
 
     @Test func noActiveSession_goesBackToIdle() {

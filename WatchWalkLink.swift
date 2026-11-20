@@ -92,12 +92,23 @@ nonisolated struct WatchWalkState: Codable, Equatable, Sendable {
     var controllable: Bool = true
     /// Set when `phase` is `.ended`.
     var summary: WatchWalkSummary?
+    /// What the phone calls this session (`SessionWording`): "hike",
+    /// "run", "walk" (an indoor walk too). The watch says these words; `mode` is only
+    /// for its icon. Nil from a sender that did not set them.
+    var noun: String?
+    /// The sentence-case name: "Hike", "Walk", "Indoor walk".
+    var title: String?
 
     static func idle(usesMiles: Bool) -> WatchWalkState {
         WatchWalkState(mode: .walking, phase: .idle, usesMiles: usesMiles)
     }
 
     var isLive: Bool { phase == .running || phase == .paused }
+
+    /// The phone's noun, or the activity's when it sent none.
+    var shownNoun: String { noun ?? mode.noun }
+    /// The phone's title, or the activity's when it sent none.
+    var shownTitle: String { title ?? mode.title }
 
     /// The start the elapsed-time text counts from: pauses moved out of it.
     var timerStart: Date? { startDate.map { $0.addingTimeInterval(pausedDuration) } }
@@ -112,6 +123,9 @@ nonisolated enum WatchReply: Codable, Equatable, Sendable {
     case needsPhone
     /// Pause, resume or finish with nothing running.
     case noActiveSession
+    /// Start was accepted, but the phone did not begin the session in time
+    /// (a question on its screen, say): "Your iPhone didn't start it."
+    case notStarted
 }
 
 // MARK: - Wire format
@@ -154,7 +168,7 @@ nonisolated struct WatchSendThrottle: Equatable {
         guard let last = lastSent, let at = lastSentAt else { return .sendNow }
         if last.phase != state.phase || last.mode != state.mode
             || last.controllable != state.controllable || last.usesMiles != state.usesMiles
-            || last.startDate != state.startDate {
+            || last.startDate != state.startDate || last.noun != state.noun {
             return .sendNow
         }
         guard Self.metres(last.distanceMeters) != Self.metres(state.distanceMeters) else { return .skip }
@@ -223,7 +237,10 @@ nonisolated enum WatchHaptics {
         switch (old.phase, new.phase) {
         case (.running, .paused): events.append(.paused)
         case (.paused, .running): events.append(.resumed)
-        case (.running, .ended), (.paused, .ended): events.append(.finished)
+        // Ended on the phone with no summary (the Live Activity's End, the
+        // mini tile) arrives as idle: still a finish.
+        case (.running, .ended), (.paused, .ended), (.running, .idle), (.paused, .idle):
+            events.append(.finished)
         default: break
         }
         // Markers only within one session, never from an old walk's distance.
@@ -253,6 +270,8 @@ nonisolated struct WatchRemoteDisplay: Equatable, Sendable {
     private(set) var summary: WatchWalkState?
     /// The phone could not start: "Open Wockett on your iPhone to start."
     private(set) var needsPhone = false
+    /// The phone took Start but did not begin a session in time.
+    private(set) var notStarted = false
 
     var screen: Screen {
         if summary != nil { return .summary }
@@ -271,6 +290,7 @@ nonisolated struct WatchRemoteDisplay: Equatable, Sendable {
         if new.isLive {
             isStarting = false
             needsPhone = false
+            notStarted = false
             summary = nil
         }
         state = new
@@ -281,6 +301,7 @@ nonisolated struct WatchRemoteDisplay: Equatable, Sendable {
     mutating func beginStart() {
         isStarting = true
         needsPhone = false
+        notStarted = false
         summary = nil
     }
 
@@ -300,6 +321,12 @@ nonisolated struct WatchRemoteDisplay: Equatable, Sendable {
             if case .start = command {
                 isStarting = false
                 needsPhone = true
+            }
+            return []
+        case .notStarted:
+            if case .start = command, state?.isLive != true {
+                isStarting = false
+                notStarted = true
             }
             return []
         case .noActiveSession:

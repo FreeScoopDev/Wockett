@@ -36,7 +36,10 @@ struct WatchIdleView: View {
                         if model.display.needsPhone {
                             WatchNote(symbol: WS.iPhone, text: "Open Wockett on your iPhone to start.")
                         }
-                        if !model.isReachable {
+                        if model.display.notStarted {
+                            WatchNote(symbol: WS.iPhone, text: "Your iPhone didn't start it. Try again there.")
+                        }
+                        if model.isReachable == false {
                             WatchNote(symbol: WS.notReachable, text: "iPhone not reachable")
                         }
                     }
@@ -55,14 +58,16 @@ struct WatchIdleView: View {
                         }
                         .frame(maxWidth: .infinity)
                     }
-                    .tint(.earthGreen)
+                    .buttonStyle(.borderedProminent)
+                    .foregroundStyle(Color.white)
+                    .tint(.earthGreenFill)
                     .disabled(starting || !model.controlsEnabled)
                     .accessibilityIdentifier("watch.start")
                 }
             }
             // Start is at the bottom; a refusal scrolls up to say why.
-            .onChange(of: model.display.needsPhone) { _, needsPhone in
-                if needsPhone { withAnimation { proxy.scrollTo(Self.noticeID, anchor: .top) } }
+            .onChange(of: model.display.needsPhone || model.display.notStarted) { _, refused in
+                if refused { withAnimation { proxy.scrollTo(Self.noticeID, anchor: .top) } }
             }
         }
         .navigationTitle("Wockett")
@@ -77,10 +82,13 @@ struct WatchIdleView: View {
         } label: {
             Label(activity.displayName, systemImage: WS.icon(for: activity))
                 .font(.wktBodyText)
-                .foregroundStyle(selected ? Color.earthBg : Color.earthCream)
+                // White on earthGreenFill is 5.00:1 (DesignSystem.swift);
+                // cream on earthRaised is the app's own row pairing.
+                .foregroundStyle(selected ? Color.white : Color.earthCream)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .tint(selected ? .earthGreen : .earthRaised)
+        .buttonStyle(.borderedProminent)
+        .tint(selected ? .earthGreenFill : .earthRaised)
         .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }
@@ -100,12 +108,12 @@ struct WatchLiveView: View {
                 HStack(spacing: 6) {
                     Image(systemName: WS.icon(for: state.mode))
                         .foregroundStyle(Color.earthGreen)
-                    Text(paused ? "Paused" : state.mode.title)
+                    Text(paused ? "Paused" : state.shownTitle)
                         .font(.wktRowTitle)
                         .foregroundStyle(paused ? Color.earthOrange : Color.earthCream)
                 }
                 .accessibilityElement(children: .combine)
-                .accessibilityLabel(paused ? "\(state.mode.title) paused" : "\(state.mode.title) in progress")
+                .accessibilityLabel(paused ? "\(state.shownTitle) paused" : "\(state.shownTitle) in progress")
 
                 if let start = state.timerStart {
                     Text(timerInterval: start...start.addingTimeInterval(7 * 86400),
@@ -126,18 +134,18 @@ struct WatchLiveView: View {
                                                  usesMiles: state.usesMiles), label: "speed")
                 }
 
-                if !model.isReachable {
+                if model.isReachable == false {
                     WatchNote(symbol: WS.notReachable, text: "iPhone not reachable")
                 }
                 if state.controllable {
                     controls
                 } else {
-                    WatchNote(symbol: WS.iPhone, text: "Finish your \(state.mode.noun) on your iPhone.")
+                    WatchNote(symbol: WS.iPhone, text: "Finish your \(state.shownNoun) on your iPhone.")
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .confirmationDialog("Finish your \(state.mode.noun)?", isPresented: $confirmFinish) {
+        .confirmationDialog("Finish your \(state.shownNoun)?", isPresented: $confirmFinish) {
             Button("Finish and save") { model.finish() }
             Button("Keep going", role: .cancel) {}
         }
@@ -152,10 +160,13 @@ struct WatchLiveView: View {
                     .font(.wktRowTitle)
                     .frame(maxWidth: .infinity)
             }
-            .tint(paused ? .earthGreen : .earthOrange)
+            .buttonStyle(.borderedProminent)
+            .foregroundStyle(Color.white)
+            // White on these fills: 5.00:1 and 4.54:1 (DesignSystem.swift).
+            .tint(paused ? .earthGreenFill : .earthOrangeFill)
             .accessibilityIdentifier("watch.pauseResume")
 
-            WatchHoldToFinishButton(noun: state.mode.noun) { confirmFinish = true }
+            WatchHoldToFinishButton(noun: state.shownNoun) { confirmFinish = true }
                 .accessibilityIdentifier("watch.finish")
         }
         .disabled(!model.controlsEnabled)
@@ -220,7 +231,7 @@ struct WatchSummaryView: View {
                 Image(systemName: WS.icon(for: ended.mode))
                     .font(.wktSection)
                     .foregroundStyle(Color.earthGreen)
-                Text("\(ended.mode.title) saved")
+                Text("\(ended.shownTitle) saved")
                     .font(.wktRowTitle)
                     .foregroundStyle(Color.earthCream)
                 if let summary = ended.summary {
@@ -242,7 +253,9 @@ struct WatchSummaryView: View {
                         .font(.wktRowTitle)
                         .frame(maxWidth: .infinity)
                 }
-                .tint(.earthGreen)
+                .buttonStyle(.borderedProminent)
+                .foregroundStyle(Color.white)
+                .tint(.earthGreenFill)
                 .accessibilityIdentifier("watch.summaryDone")
             }
             .frame(maxWidth: .infinity)

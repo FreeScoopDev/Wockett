@@ -32,8 +32,9 @@ final class ActiveWalkStore {
     /// can await it; nothing in the app waits on it.
     @ObservationIgnored private(set) var endTask: Task<Void, Never>?
     /// Set by `end`: a walk ends once, however many paths try. Cleared when
-    /// the session is released.
-    @ObservationIgnored private var sessionEnded = false
+    /// the session is released. Observed, so `isWalkInProgress` readers (the
+    /// Watch bridge) hear a walk end that keeps its session for the summary.
+    private var sessionEnded = false
     /// Whether the app is in front. Read when a guided walk completes with
     /// its screen minimised; a test passes its own answer.
     @ObservationIgnored private let isAppActive: @MainActor () -> Bool
