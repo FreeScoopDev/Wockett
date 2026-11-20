@@ -24,6 +24,7 @@ user benefit — scored and deliberately declined. Don't "fix" it.
 | Local folder | `~/Desktop/Apps/PoCSquat` (was `~/Desktop/PoCSquat` until 2026-09-26) |
 | App target / scheme | `PoCSquat` |
 | Widget + Live Activity | `WocketWidgetExtension` (one `t`) |
+| Apple Watch app | `WockettWatch` (bundle ID `Scoops.PoCSquat.watchkitapp`, scheme `WockettWatch`) |
 | Unit tests | `WockettTests` |
 | UI tests | `WockettUITests` |
 
@@ -32,6 +33,19 @@ way unless there's a strong reason; adding the first one is a real decision.
 
 ## Non-obvious things that have already cost time
 
+- **main has a placeholder Watch app until `feat/watch-walk-remote` merges;
+  do not cut a release from main before then.** `chore/watch-target`
+  (2026-11-20) embedded `WockettWatch` in the iPhone app with only a "Start a
+  walk on your iPhone." screen, and a placeholder Watch app must never reach
+  the App Store. The W2 branch removes this entry. If a release cannot wait
+  for W2, revert #325 in its own PR first, then release.
+- **The Watch app's icon is a copy** of
+  `PoCSquat/Assets.xcassets/AppIcon.appiconset/icon.png` in
+  `WockettWatch/Assets.xcassets/AppIcon.appiconset/`. Change both together.
+- **`PoCSquat/Design/WockettMark.swift` is also compiled into `WockettWatch`**
+  (a membership exception in `project.pbxproj`). Keep it to SwiftUI and
+  `DesignSystem.swift`: an iOS-only API or `WktSymbol` there breaks the watch
+  build.
 - **`Versions.xcconfig` owns the version numbers.** Never edit them in
   per-target build settings. `MARKETING_VERSION` is bumped in the release PR.
   `CURRENT_PROJECT_VERSION` is read only by a manual Xcode archive (emergency
@@ -205,7 +219,9 @@ way unless there's a strong reason; adding the first one is a real decision.
   and the old all-caps `wktTechnical` / Rounded Black `wktDisplay` fonts are
   deleted. The widget target shares only `DesignSystem.swift`: it uses the
   type scale and colours but not `PoCSquat/Design/` or `WktSymbol`, so it
-  keeps its own short `WS` symbol list. The share card
+  keeps its own short `WS` symbol list. The Watch target (`WockettWatch`)
+  shares `DesignSystem.swift` (dark values only; watchOS has no trait
+  collections) and `Design/WockettMark.swift`, and keeps its own `WS` list. The share card
   (`ActivitySummaryCard`) keeps fixed point sizes on purpose: it is drawn into
   a fixed-size image. New screens build from these pieces from the start.
 - **The changelog entry ships with the change**, in the same commit, explaining

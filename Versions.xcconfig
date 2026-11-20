@@ -1,5 +1,6 @@
-// Version numbers for the app + widget targets. Both targets read this file, so
-// bump values here — never in per-target build settings.
+// Version numbers for the app, widget and Watch app targets. All three read
+// this file (through the project-level configurations), so bump values here —
+// never in per-target build settings.
 //
 // MARKETING_VERSION is the user-facing version ("1.10" in the App Store).
 //
