@@ -2,6 +2,7 @@ import Foundation
 import Observation
 import WatchConnectivity
 import WatchKit
+import WidgetKit
 
 /// Owns the Watch's `WCSession`. Holds the latest walk state from the phone
 /// (its application context, or a reply) in a `WatchRemoteDisplay`, whose
@@ -24,8 +25,11 @@ final class WatchSessionModel: NSObject {
     private static let startTimeout: Duration = .seconds(12)
     @ObservationIgnored private var startTimeoutTask: Task<Void, Never>?
 
+    @ObservationIgnored private var activated = false
+
     func activate() {
-        guard WCSession.isSupported() else { return }
+        guard WCSession.isSupported(), !activated else { return }
+        activated = true
         let session = WCSession.default
         session.delegate = self
         session.activate()
@@ -42,6 +46,7 @@ final class WatchSessionModel: NSObject {
         if let context = WatchWire.decode(WatchWalkState.self, from: session.receivedApplicationContext) {
             apply(display.receive(context))
         }
+        WatchGlanceStore.receive(WatchGlanceWire.decode(from: session.receivedApplicationContext))
         send(.requestState)
     }
 
@@ -70,6 +75,29 @@ final class WatchSessionModel: NSObject {
 
     func dismissSummary() {
         display.dismissSummary()
+    }
+
+    /// The Start launcher on the watch face opened the app: show the idle
+    /// picker (a finished walk's summary steps aside; a live session stays
+    /// on screen). It starts nothing.
+    func openedFromStartLauncher() {
+        if display.screen == .summary { display.dismissSummary() }
+    }
+
+    // MARK: - Background delivery
+
+    /// `.backgroundTask(.watchConnectivity)`: the phone sent a context or a
+    /// complication update while the app was not running. The data arrives
+    /// through the delegate; per Apple's docs the task ends only once the
+    /// session is activated and `hasContentPending` is false (bounded here).
+    func finishBackgroundDelivery() async {
+        activate()
+        let deadline = ContinuousClock.now.advanced(by: .seconds(10))
+        let session = WCSession.default
+        while ContinuousClock.now < deadline,
+              session.activationState != .activated || session.hasContentPending {
+            try? await Task.sleep(for: .milliseconds(200))
+        }
     }
 
     // MARK: - Sending
@@ -113,6 +141,8 @@ final class WatchSessionModel: NSObject {
         }
         session.sendMessage(WatchWire.encode(command), replyHandler: { @Sendable message in
             let reply = WatchWire.decode(WatchReply.self, from: message)
+            // The reply to a request for state carries the glance too.
+            WatchGlanceStore.receive(WatchGlanceWire.decode(from: message))
             Task { @MainActor in self.received(reply, to: command, id: id) }
         }, errorHandler: { @Sendable _ in
             Task { @MainActor in self.received(nil, to: command, id: id) }
@@ -244,12 +274,32 @@ extension WatchSessionModel: WCSessionDelegate {
     }
 
     nonisolated func session(_ session: WCSession, didReceiveApplicationContext applicationContext: [String: Any]) {
+        // One context carries both: the walk state and the glance.
+        WatchGlanceStore.receive(WatchGlanceWire.decode(from: applicationContext))
         guard let state = WatchWire.decode(WatchWalkState.self, from: applicationContext) else { return }
         Task { @MainActor in self.contextArrived(state) }
+    }
+
+    /// A complication update (`transferCurrentComplicationUserInfo`).
+    nonisolated func session(_ session: WCSession, didReceiveUserInfo userInfo: [String: Any]) {
+        WatchGlanceStore.receive(WatchGlanceWire.decode(from: userInfo))
     }
 
     nonisolated func sessionReachabilityDidChange(_ session: WCSession) {
         let reachable = session.isReachable
         Task { @MainActor in self.reachabilityChanged(reachable) }
+    }
+}
+
+// MARK: - The complications' copy (feat/watch-complications)
+
+/// Keeps the newest glance from the phone in the watch's App Group, where
+/// the widget extension reads it, and asks the complications to redraw.
+/// The rules (newest by `madeAt`) are `WatchGlanceStorage`'s, in the shared
+/// WatchGlance.swift.
+nonisolated enum WatchGlanceStore {
+    static func receive(_ snapshot: WatchGlanceSnapshot?) {
+        guard let snapshot, WatchGlanceStorage.save(snapshot, to: AppGroup.defaults) else { return }
+        WidgetCenter.shared.reloadAllTimelines()
     }
 }
