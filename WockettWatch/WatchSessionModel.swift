@@ -25,12 +25,15 @@ final class WatchSessionModel: NSObject {
         let session = WCSession.default
         session.delegate = self
         session.activate()
+        #if DEBUG
+        listenForDebugCommands()
+        #endif
     }
 
     /// Ask the phone for its state; called when the app becomes active.
     func requestState() {
         let session = WCSession.default
-        isReachable = session.isReachable
+        if !session.isReachable { markUnreachable() }
         if let context = WatchWire.decode(WatchWalkState.self, from: session.receivedApplicationContext) {
             apply(display.receive(context))
         }
@@ -66,33 +69,82 @@ final class WatchSessionModel: NSObject {
 
     // MARK: - Sending
 
+    /// How long a command waits for the phone's reply before the watch says
+    /// the iPhone is out of reach. Longer than the phone's 5 s wait for a
+    /// walk to start.
+    private static let replyTimeout: Duration = .seconds(10)
+    /// How often the watch asks for the phone's state while it is marked
+    /// out of reach (a request for state changes nothing on the phone).
+    private static let recoveryInterval: Duration = .seconds(10)
+    @ObservationIgnored private var pendingCommand: UUID?
+    @ObservationIgnored private var recoveryTask: Task<Void, Never>?
+
     /// `sendMessage` with a reply, or nothing: a command the phone cannot
     /// get now is dropped, never queued to run later.
     private func send(_ command: WatchCommand) {
         let session = WCSession.default
         guard session.activationState == .activated, session.isReachable else {
-            isReachable = false
+            markUnreachable()
             if command != .requestState { display.commandFailed() }
             return
         }
-        if command != .requestState { isSending = true }
+        let id = UUID()
+        if command != .requestState {
+            isSending = true
+            pendingCommand = id
+            // A phone that went away without the system noticing yet: stop
+            // waiting, say so, and let the person try again later.
+            Task { [weak self] in
+                try? await Task.sleep(for: Self.replyTimeout)
+                guard let self, self.pendingCommand == id else { return }
+                self.pendingCommand = nil
+                self.isSending = false
+                self.display.commandFailed()
+                self.markUnreachable()
+            }
+        }
         session.sendMessage(WatchWire.encode(command), replyHandler: { message in
             let reply = WatchWire.decode(WatchReply.self, from: message)
-            Task { @MainActor in self.received(reply, to: command) }
+            Task { @MainActor in self.received(reply, to: command, id: id) }
         }, errorHandler: { _ in
-            Task { @MainActor in self.received(nil, to: command) }
+            Task { @MainActor in self.received(nil, to: command, id: id) }
         })
     }
 
-    private func received(_ reply: WatchReply?, to command: WatchCommand) {
-        if command != .requestState { isSending = false }
+    private func received(_ reply: WatchReply?, to command: WatchCommand, id: UUID) {
+        if command != .requestState {
+            // A reply after the timeout still shows the phone's state.
+            if pendingCommand == id { pendingCommand = nil }
+            isSending = pendingCommand != nil
+        }
         guard let reply else {
-            isReachable = WCSession.default.isReachable
+            if !WCSession.default.isReachable { markUnreachable() }
             display.commandFailed()
             return
         }
-        isReachable = true
+        markReachable()
         apply(display.receive(reply: reply, to: command))
+    }
+
+    private func markReachable() {
+        isReachable = true
+        recoveryTask?.cancel()
+        recoveryTask = nil
+    }
+
+    /// Keeps the last state on screen, disables the buttons and asks for the
+    /// state now and then until the phone answers (on a watch the system
+    /// also reports the link coming back: `sessionReachabilityDidChange`).
+    private func markUnreachable() {
+        isReachable = false
+        guard recoveryTask == nil else { return }
+        recoveryTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: Self.recoveryInterval)
+                guard let self, !self.isReachable else { return }
+                if WCSession.default.isReachable { self.send(.requestState) }
+            }
+        }
     }
 
     // MARK: - Wrist taps
@@ -108,21 +160,63 @@ final class WatchSessionModel: NSObject {
         }
     }
 
+    #if DEBUG
+    /// Debug builds press a button when a Darwin notification
+    /// `wkt.watch.<start-walking|start-running|start-cycling|start-stationary|
+    /// pause|resume|finish|done>` arrives, so paired simulators can be driven from
+    /// the command line (`xcrun simctl spawn <watch> notifyutil -p
+    /// wkt.watch.pause`); the watch simulator takes no scripted taps.
+    /// Compiled out of release.
+    static let debugCommands = ["start-walking", "start-running", "start-cycling", "start-stationary",
+                                "pause", "resume", "finish", "done"]
+
+    private func listenForDebugCommands() {
+        let center = CFNotificationCenterGetDarwinNotifyCenter()
+        let observer = Unmanaged.passUnretained(self).toOpaque()
+        for word in Self.debugCommands {
+            CFNotificationCenterAddObserver(center, observer, { _, observer, name, _, _ in
+                guard let observer, let name = name?.rawValue as String? else { return }
+                let model = Unmanaged<WatchSessionModel>.fromOpaque(observer).takeUnretainedValue()
+                let word = String(name.dropFirst("wkt.watch.".count))
+                Task { @MainActor in model.pressForDebugCommand(word) }
+            }, "wkt.watch.\(word)" as CFString, nil, .deliverImmediately)
+        }
+    }
+
+    private func pressForDebugCommand(_ word: String) {
+        switch word {
+        case "pause", "resume": togglePause()
+        case "finish": finish()
+        case "done": dismissSummary()
+        default:
+            guard word.hasPrefix("start-"),
+                  let activity = WatchActivity(rawValue: String(word.dropFirst("start-".count))) else { return }
+            selectedActivity = activity
+            start()
+        }
+    }
+    #endif
+
     fileprivate func contextArrived(_ state: WatchWalkState) {
+        markReachable()
         apply(display.receive(state))
     }
 
     fileprivate func reachabilityChanged(_ reachable: Bool) {
-        let cameBack = reachable && !isReachable
-        isReachable = reachable
-        if cameBack { send(.requestState) }
+        if reachable {
+            if !isReachable { send(.requestState) }
+        } else {
+            markUnreachable()
+        }
     }
 }
 
 extension WatchSessionModel: WCSessionDelegate {
     nonisolated func session(_ session: WCSession, activationDidCompleteWith activationState: WCSessionActivationState,
                              error: Error?) {
-        Task { @MainActor in self.requestState() }
+        Task { @MainActor in
+            self.requestState()
+        }
     }
 
     nonisolated func session(_ session: WCSession, didReceiveApplicationContext applicationContext: [String: Any]) {

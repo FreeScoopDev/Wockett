@@ -28,35 +28,47 @@ struct WatchIdleView: View {
 
     var body: some View {
         let starting = model.display.screen == .starting
-        ScrollView {
-            VStack(spacing: WktSpacing.betweenCards / 2) {
-                ForEach(WatchActivity.allCases, id: \.self) { activity in
-                    activityRow(activity)
-                }
-                Button {
-                    model.start()
-                } label: {
-                    HStack(spacing: 6) {
-                        if starting { ProgressView().frame(width: 18, height: 18) }
-                        Text(starting ? "Starting…" : "Start")
-                            .font(.wktRowTitle)
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(spacing: WktSpacing.betweenCards / 2) {
+                    // Notices first, so the screen can show them at once.
+                    Group {
+                        if model.display.needsPhone {
+                            WatchNote(symbol: WS.iPhone, text: "Open Wockett on your iPhone to start.")
+                        }
+                        if !model.isReachable {
+                            WatchNote(symbol: WS.notReachable, text: "iPhone not reachable")
+                        }
                     }
-                    .frame(maxWidth: .infinity)
-                }
-                .tint(.earthGreen)
-                .disabled(starting || !model.controlsEnabled)
-                .accessibilityIdentifier("watch.start")
+                    .id(Self.noticeID)
 
-                if model.display.needsPhone {
-                    WatchNote(symbol: WS.iPhone, text: "Open Wockett on your iPhone to start.")
+                    ForEach(WatchActivity.allCases, id: \.self) { activity in
+                        activityRow(activity)
+                    }
+                    Button {
+                        model.start()
+                    } label: {
+                        HStack(spacing: 6) {
+                            if starting { ProgressView().frame(width: 18, height: 18) }
+                            Text(starting ? "Starting…" : "Start")
+                                .font(.wktRowTitle)
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                    .tint(.earthGreen)
+                    .disabled(starting || !model.controlsEnabled)
+                    .accessibilityIdentifier("watch.start")
                 }
-                if !model.isReachable {
-                    WatchNote(symbol: WS.notReachable, text: "iPhone not reachable")
-                }
+            }
+            // Start is at the bottom; a refusal scrolls up to say why.
+            .onChange(of: model.display.needsPhone) { _, needsPhone in
+                if needsPhone { withAnimation { proxy.scrollTo(Self.noticeID, anchor: .top) } }
             }
         }
         .navigationTitle("Wockett")
     }
+
+    private static let noticeID = "watch.idle.notice"
 
     private func activityRow(_ activity: WatchActivity) -> some View {
         let selected = model.selectedActivity == activity

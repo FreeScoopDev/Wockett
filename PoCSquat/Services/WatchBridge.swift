@@ -257,8 +257,11 @@ final class WCSessionLink: NSObject, WCSessionDelegate, WatchStateSink {
     }
 
     func send(_ state: WatchWalkState) {
+        // No isPaired / isWatchAppInstalled check: the call throws when
+        // there is no watch app, and those flags lag (paired simulators
+        // report the app uninstalled after it is merely relaunched).
         let session = WCSession.default
-        guard session.activationState == .activated, session.isPaired, session.isWatchAppInstalled else { return }
+        guard session.activationState == .activated else { return }
         try? session.updateApplicationContext(WatchWire.encode(state))
     }
 

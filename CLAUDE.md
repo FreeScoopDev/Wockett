@@ -54,7 +54,15 @@ way unless there's a strong reason; adding the first one is a real decision.
   timer. Indoor walks live in `StationaryWalkView`, not `ActiveWalkStore`,
   so the screen reports them to `WatchBridge.indoorWalk` and the watch shows
   them without Pause or Finish. `WatchBridge.activate()` does nothing under
-  tests or `-WKTUITest`.
+  tests or `-WKTUITest`. **Driving it on paired simulators:** the watch
+  simulator takes no scripted taps, so Debug watch builds press a button on
+  a Darwin notification: `xcrun simctl spawn <watch> notifyutil -p
+  wkt.watch.pause` (also `resume`, `finish`, `done`, `start-walking`,
+  `start-running`, `start-cycling`, `start-stationary`). Install the watch
+  app (`…/PoCSquat.app/Watch/WockettWatch.app`) on the watch *before* the
+  iPhone app on the phone, or `WCSession` on the phone reports the watch app
+  not installed; `simctl terminate` of the watch app can flip that too.
+  Shutting the phone simulator down is how to see "iPhone not reachable".
 - **The Watch app's icon is a copy** of
   `PoCSquat/Assets.xcassets/AppIcon.appiconset/icon.png` in
   `WockettWatch/Assets.xcassets/AppIcon.appiconset/`. Change both together.
