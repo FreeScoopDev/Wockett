@@ -2,6 +2,7 @@ import Foundation
 import UIKit
 import CoreLocation
 import WatchConnectivity
+import Combine
 
 // MARK: - WatchBridge (feat/watch-walk-remote)
 //
@@ -33,6 +34,27 @@ import WatchConnectivity
 @MainActor
 protocol WatchStateSink: AnyObject {
     func send(_ state: WatchWalkState)
+    /// Sends the glance in the application context (merged with the walk
+    /// state) and/or as a complication transfer.
+    func send(_ glance: WatchGlanceSnapshot, context: Bool, complication: Bool)
+    /// Whether a glance can go now, and the complication budget.
+    var glanceStatus: WatchGlanceLinkStatus { get }
+}
+
+extension WatchStateSink {
+    /// A sink for the walk state only (the walk remote's tests) sends no glance.
+    func send(_ glance: WatchGlanceSnapshot, context: Bool, complication: Bool) {}
+    var glanceStatus: WatchGlanceLinkStatus { .unavailable }
+}
+
+/// Where the glance's numbers come from: the app's own stores, set at launch
+/// (`SquatCounterApp`). Steps are what `WidgetSnapshot` wrote, the goal is
+/// `StepManager`'s, and pets are `PetStore.todaySteps(for:in:)`, in the
+/// pets list's order.
+struct WatchGlanceSource {
+    var steps: @MainActor () -> Int?
+    var goal: @MainActor () -> Int
+    var pets: @MainActor () -> [WatchGlancePet]
 }
 
 /// An indoor walk's numbers. Indoor walks run in `StationaryWalkView`, not
@@ -45,7 +67,7 @@ struct IndoorWalkReading: Equatable {
 
 @MainActor
 final class WatchBridge {
-    static let shared = WatchBridge()
+    static let shared = WatchBridge(glancePolicyDefaults: .standard)
 
     private let store: ActiveWalkStore
     private let inbox: WalkIntentInbox
@@ -72,13 +94,25 @@ final class WatchBridge {
     /// Whether the bridge is watching the store (`observeStore`).
     private(set) var observing = false
 
+    /// The glance's inputs; nil until the app sets them (and in tests that
+    /// do not inject them), so nothing is sent.
+    var glanceSource: WatchGlanceSource?
+    private(set) var glancePolicy = WatchGlanceSendPolicy() {
+        didSet { saveGlancePolicy() }
+    }
+    /// Where the policy is kept across launches; nil in tests.
+    private let glancePolicyDefaults: UserDefaults?
+    static let glancePolicyKey = "watch.glanceSendPolicy"
+    private var glanceObservers: [AnyCancellable] = []
+
     init(store: ActiveWalkStore? = nil,
          inbox: WalkIntentInbox? = nil,
          canStart: (@MainActor (WatchActivity) -> Bool)? = nil,
          isAppActive: (@MainActor () -> Bool)? = nil,
          usesMiles: @escaping () -> Bool = { WalkAudioCueService.usesMiles },
          now: @escaping () -> Date = Date.init,
-         startWait: TimeInterval = 5) {
+         startWait: TimeInterval = 5,
+         glancePolicyDefaults: UserDefaults? = nil) {
         self.store = store ?? .shared
         self.inbox = inbox ?? .shared
         let isActive = isAppActive ?? { UIApplication.shared.applicationState == .active }
@@ -87,6 +121,16 @@ final class WatchBridge {
         self.usesMiles = usesMiles
         self.now = now
         self.startWait = startWait
+        self.glancePolicyDefaults = glancePolicyDefaults
+        if let data = glancePolicyDefaults?.data(forKey: Self.glancePolicyKey),
+           let saved = try? JSONDecoder().decode(WatchGlanceSendPolicy.self, from: data) {
+            glancePolicy = saved
+        }
+    }
+
+    private func saveGlancePolicy() {
+        guard let glancePolicyDefaults, let data = try? JSONEncoder().encode(glancePolicy) else { return }
+        glancePolicyDefaults.set(data, forKey: Self.glancePolicyKey)
     }
 
     // MARK: - Launch
@@ -100,9 +144,15 @@ final class WatchBridge {
         sink = link
         link.activate()
         observeStore()
+        #if DEBUG
+        listenForDebugGlance()
+        #endif
         // A local check once a second; what it sends is throttled.
         let timer = Timer(timeInterval: 1, repeats: true) { _ in
-            Task { @MainActor in WatchBridge.shared.refresh() }
+            Task { @MainActor in
+                WatchBridge.shared.refresh()
+                WatchBridge.shared.refreshGlanceIfBehind()
+            }
         }
         timer.tolerance = 0.5
         RunLoop.main.add(timer, forMode: .common)
@@ -177,6 +227,122 @@ final class WatchBridge {
         sink?.send(state)
         throttle.didSend(state, at: time)
     }
+
+    // MARK: - Glance (feat/watch-complications)
+
+    /// The glance as the watch should have it now; nil without a source.
+    func currentGlance() -> WatchGlanceSnapshot? {
+        guard let glanceSource else { return nil }
+        let time = now()
+        return .make(steps: glanceSource.steps(), goal: glanceSource.goal(), pets: glanceSource.pets(),
+                     dayStart: StepManager.trackingDayStart(now: time), now: time)
+    }
+
+    /// Sends the glance as `WatchGlanceSendPolicy` allows: the context on
+    /// every change, a complication transfer within its budget and interval.
+    /// Called when the step snapshot is written (foreground and background
+    /// refresh), when pets, walks or the goal change, and on activation.
+    func refreshGlance() {
+        guard let sink, let glance = currentGlance() else { return }
+        let time = now()
+        let decision = glancePolicy.decide(glance, now: time, status: sink.glanceStatus)
+        guard decision != .none else { return }
+        sink.send(glance, context: decision.context, complication: decision.complication)
+        glancePolicy.didSend(glance, decision, at: time)
+    }
+
+    /// The 1 s check: a complication transfer held back by the interval goes
+    /// once the interval is up, without waiting for the next change.
+    func refreshGlanceIfBehind() {
+        if glancePolicy.complicationBehind { refreshGlance() }
+    }
+
+    /// The background refresh: the session may still be activating after a
+    /// background launch, so wait for it (a few seconds at most) and send.
+    func sendGlanceFromBackground(timeout: Duration = .seconds(3)) async {
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: timeout)
+        while sink?.glanceStatus.canSend != true, clock.now < deadline {
+            try? await Task.sleep(for: .milliseconds(250))
+        }
+        refreshGlance()
+    }
+
+    /// Re-sends the glance (debounced) whenever one of the app's stores
+    /// changes: pets added, renamed or removed, a walk saved, the goal or
+    /// the step count changed. Called once at launch with the app's stores.
+    func observeGlanceInputs(_ publishers: [AnyPublisher<Void, Never>]) {
+        guard !AppModelContainer.isRunningUnderTests else { return }
+        glanceObservers = [
+            Publishers.MergeMany(publishers)
+                .debounce(for: .seconds(1), scheduler: RunLoop.main)
+                .sink { _ in WatchBridge.shared.refreshGlance() }
+        ]
+    }
+
+    /// The step count for the glance: what `WidgetSnapshot` last wrote, 0
+    /// when that was before today's step day began, nil when nothing was
+    /// ever written (no Health read yet).
+    static func glanceSteps(_ values: WidgetSnapshot.Values?, dayStart: Date) -> Int? {
+        guard let values else { return nil }
+        guard let at = values.lastRefresh, at >= dayStart else { return 0 }
+        return values.steps
+    }
+
+    /// The pets as the watch gets them: id, name, emoji, steps today and
+    /// goal only (never the owner's contact details), in list order.
+    static func glancePets(_ pets: [PetProfile], steps: (PetProfile) -> Int) -> [WatchGlancePet] {
+        pets.map { pet in
+            WatchGlancePet(id: pet.id, name: pet.name, emoji: pet.displayEmoji,
+                           steps: steps(pet), goal: pet.goalSteps)
+        }
+    }
+
+    #if DEBUG
+    /// The simulators have no Health data, so Debug builds can push made-up
+    /// numbers to the watch on a Darwin notification on the iPhone simulator:
+    /// `xcrun simctl spawn <phone> notifyutil -p wkt.phone.glance.<word>`,
+    /// where the word is `seed` (6,240 of 10,000 steps, two sample pets),
+    /// `goal` (10,400 steps, goal reached), `nopets`, `more` (adds 500 steps)
+    /// or `real` (back to the app's own numbers). Compiled out of release.
+    static let debugGlanceWords = ["seed", "goal", "nopets", "more", "real"]
+    private var realGlanceSource: WatchGlanceSource?
+    private var debugSteps = 6_240
+
+    private func listenForDebugGlance() {
+        let center = CFNotificationCenterGetDarwinNotifyCenter()
+        for word in Self.debugGlanceWords {
+            CFNotificationCenterAddObserver(center, nil, { _, _, name, _, _ in
+                guard let name = name?.rawValue as String? else { return }
+                let word = String(name.dropFirst("wkt.phone.glance.".count))
+                Task { @MainActor in WatchBridge.shared.applyDebugGlance(word) }
+            }, "wkt.phone.glance.\(word)" as CFString, nil, .deliverImmediately)
+        }
+    }
+
+    private func applyDebugGlance(_ word: String) {
+        if realGlanceSource == nil { realGlanceSource = glanceSource }
+        let dog = WatchGlancePet(id: UUID(uuidString: "00000000-0000-0000-0000-00000000D0C0") ?? UUID(),
+                                 name: "Sample dog", emoji: "🐕", steps: 4_100, goal: 8_000)
+        let cat = WatchGlancePet(id: UUID(uuidString: "00000000-0000-0000-0000-00000000CA70") ?? UUID(),
+                                 name: "Sample cat", emoji: "🐈", steps: 1_250, goal: 5_000)
+        var pets = [cat, dog]
+        switch word {
+        case "real":
+            glanceSource = realGlanceSource
+            realGlanceSource = nil
+            refreshGlance()
+            return
+        case "goal": debugSteps = 10_400
+        case "more": debugSteps += 500
+        case "nopets": pets = []
+        default: debugSteps = 6_240
+        }
+        let steps = debugSteps
+        glanceSource = WatchGlanceSource(steps: { steps }, goal: { 10_000 }, pets: { pets })
+        refreshGlance()
+    }
+    #endif
 
     // MARK: - Commands
 
@@ -281,6 +447,10 @@ final class WatchBridge {
 /// are answered at once; nothing is queued (no `transferUserInfo`).
 final class WCSessionLink: NSObject, WCSessionDelegate, WatchStateSink {
     private weak var bridge: WatchBridge?
+    /// The walk state and the glance share the one application context;
+    /// each send keeps the other's latest (`WatchApplicationContext`).
+    /// Seeded from what the session last sent, so a relaunch keeps both.
+    private var context: WatchApplicationContext?
 
     init(bridge: WatchBridge) {
         self.bridge = bridge
@@ -298,7 +468,36 @@ final class WCSessionLink: NSObject, WCSessionDelegate, WatchStateSink {
         // report the app uninstalled after it is merely relaunched).
         let session = WCSession.default
         guard session.activationState == .activated else { return }
-        try? session.updateApplicationContext(WatchWire.encode(state))
+        var merged = context ?? WatchApplicationContext(session.applicationContext)
+        merged.set(state)
+        context = merged
+        try? session.updateApplicationContext(merged.dictionary)
+    }
+
+    func send(_ glance: WatchGlanceSnapshot, context sendContext: Bool, complication: Bool) {
+        let session = WCSession.default
+        guard glanceStatus.canSend else { return }
+        if sendContext {
+            var merged = context ?? WatchApplicationContext(session.applicationContext)
+            merged.set(glance)
+            context = merged
+            try? session.updateApplicationContext(merged.dictionary)
+        }
+        // Only with a complication on the face and budget left (the policy
+        // checked); otherwise the system would send it as plain user info.
+        if complication, session.isComplicationEnabled, session.remainingComplicationUserInfoTransfers > 0 {
+            session.transferCurrentComplicationUserInfo(WatchGlanceWire.payload(glance))
+        }
+    }
+
+    /// A glance goes only to an installed Watch app on a paired watch.
+    var glanceStatus: WatchGlanceLinkStatus {
+        let session = WCSession.default
+        guard session.activationState == .activated, session.isPaired, session.isWatchAppInstalled else {
+            return .unavailable
+        }
+        return WatchGlanceLinkStatus(canSend: true, complicationEnabled: session.isComplicationEnabled,
+                                     remainingTransfers: session.remainingComplicationUserInfoTransfers)
     }
 
     nonisolated func session(_ session: WCSession, activationDidCompleteWith activationState: WCSessionActivationState,
@@ -322,7 +521,12 @@ final class WCSessionLink: NSObject, WCSessionDelegate, WatchStateSink {
         let reply = UncheckedReply(handler: replyHandler)
         Task { @MainActor in
             let answer = await self.bridge?.handle(command) ?? .noActiveSession
-            reply.handler(WatchWire.encode(answer))
+            var message = WatchWire.encode(answer)
+            // Opening the Watch app asks for state; it gets the glance too.
+            if command == .requestState, let glance = self.bridge?.currentGlance() {
+                message.merge(WatchGlanceWire.payload(glance)) { _, new in new }
+            }
+            reply.handler(message)
         }
     }
 
@@ -347,5 +551,7 @@ extension WatchBridge {
     fileprivate func refreshAfterActivation() {
         throttle = WatchSendThrottle()
         refresh()
+        glancePolicy.forgetContext()
+        refreshGlance()
     }
 }

@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import Combine
 import BackgroundTasks
 import UserNotifications
 import CoreLocation
@@ -36,7 +37,8 @@ struct SquatCounterApp: App {
         BackgroundTaskManager.shared.registerTasks()
         UNUserNotificationCenter.current().delegate = AppNotificationDelegate.shared
         // Construct all shared stores before @StateObject wraps them — same pattern as PetStore.
-        _petStore     = StateObject(wrappedValue: PetStore(context: AppModelContainer.shared.mainContext))
+        let petStore     = PetStore(context: AppModelContainer.shared.mainContext)
+        _petStore     = StateObject(wrappedValue: petStore)
         let routeStore   = CustomRouteStore()
         let historyStore = WalkHistoryStore()
         #if DEBUG
@@ -49,7 +51,8 @@ struct SquatCounterApp: App {
         #else
         let fixedLocation: CLLocation? = nil
         #endif
-        _stepManager  = StateObject(wrappedValue: StepManager())
+        let stepManager = StepManager()
+        _stepManager  = StateObject(wrappedValue: stepManager)
         _routeManager = StateObject(wrappedValue: RouteManager(fixedLocation: fixedLocation))
         _routeStore   = StateObject(wrappedValue: routeStore)
         _historyStore = StateObject(wrappedValue: historyStore)
@@ -65,7 +68,16 @@ struct SquatCounterApp: App {
         TrailPackLibrary.shared.loadBundled()
         // The Apple Watch walk remote. Skips itself under tests and where
         // there is no watch support (iPad).
+        WatchBridge.shared.glanceSource = WatchGlanceSource(
+            steps: { WatchBridge.glanceSteps(WidgetSnapshot.read(), dayStart: StepManager.trackingDayStart()) },
+            goal: { stepManager.currentGoal },
+            pets: { WatchBridge.glancePets(petStore.pets) { petStore.todaySteps(for: $0, in: historyStore.sessions) } })
         WatchBridge.shared.activate()
+        // The complications follow pets, saved walks and the goal as well as
+        // the step count (sent only when what the watch shows changed).
+        WatchBridge.shared.observeGlanceInputs([petStore.objectWillChange.map { _ in () }.eraseToAnyPublisher(),
+                                                historyStore.objectWillChange.map { _ in () }.eraseToAnyPublisher(),
+                                                stepManager.objectWillChange.map { _ in () }.eraseToAnyPublisher()])
         if !AppModelContainer.isRunningUnderTests {
             TipJarStore.shared.start()
             // Pro entitlement. Reads StoreKit and the supporter ledger, records
