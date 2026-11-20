@@ -287,6 +287,9 @@ nonisolated struct WatchRemoteDisplay: Equatable, Sendable {
 
     /// A new state from the phone. Returns the wrist taps it calls for.
     mutating func receive(_ new: WatchWalkState) -> [WatchHapticEvent] {
+        // A walk that goes live again (resumed after the phone relaunched)
+        // gets its own finish tap later.
+        if new.isLive, state?.isLive != true { finishTappedFor = nil }
         let taps = finishOnce(WatchHaptics.events(from: state, to: new), session: state?.startDate)
         if new.isLive { lastLiveStart = new.startDate }
         // An ended walk is shown only if this watch saw it running: an old

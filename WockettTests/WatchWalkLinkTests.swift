@@ -170,6 +170,17 @@ struct WatchWalkLinkTests {
         #expect((c + d).filter { $0 == .finished }.count == 1)
     }
 
+    /// The phone relaunched mid-walk (idle), then the same walk was resumed
+    /// (same start date): its real finish still taps.
+    @Test func aResumedWalk_tapsFinishedAtItsRealFinish() {
+        var display = WatchRemoteDisplay()
+        _ = display.receive(state(.running))
+        _ = display.receive(state(.idle))
+        _ = display.receive(state(.running))
+        let taps = display.receive(state(.idle))
+        #expect(taps == [.finished])
+    }
+
     /// The next walk still gets its own finish tap.
     @Test func aLaterWalk_tapsFinishedAgain() {
         var display = WatchRemoteDisplay()
