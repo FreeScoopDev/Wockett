@@ -4,7 +4,9 @@ import Foundation
 //
 // Compiled into BOTH the app and WocketWidgetExtension, like
 // `DesignSystem.swift` and `ProEntitlement.swift`, so the two processes
-// cannot disagree about a key. Until 1.14 each side kept its own string
+// cannot disagree about a key. Also compiled into the Watch app and its
+// widget extension (WockettWatchWidgets): on the watch the same identifier
+// names the watch's own container, shared by those two. Foundation only. Until 1.14 each side kept its own string
 // literals: the background refresh wrote `bg_todaySteps`, the widget read
 // `wkt_widget_steps`, and the Siri steps intent read a third place. One
 // enum, no drift.
@@ -31,6 +33,12 @@ enum AppGroup {
         static let startWalkPending = "intent_startWalkPending"
         static let activityMode     = "intent_activityMode"
         static let postedAt         = "intent_postedAt"
+    }
+
+    /// What the Watch app stores for its complications (watch side only).
+    nonisolated enum WatchKey {
+        /// The newest `WatchGlanceSnapshot`, JSON (`WatchGlanceStorage`).
+        static let glance = "wkt_watch_glance"
     }
 
     /// The step widget's kind, for `WidgetCenter.reloadTimelines(ofKind:)`.

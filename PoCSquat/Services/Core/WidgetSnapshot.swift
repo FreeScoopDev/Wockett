@@ -29,7 +29,12 @@ enum WidgetSnapshot {
         defaults.set(distanceMeters, forKey: AppGroup.WidgetKey.distanceMeters)
         if let goal { defaults.set(goal, forKey: AppGroup.WidgetKey.goal) }
         defaults.set(now,            forKey: AppGroup.WidgetKey.lastRefresh)
-        if reloadWidget { WidgetCenter.shared.reloadTimelines(ofKind: AppGroup.stepWidgetKind) }
+        if reloadWidget {
+            WidgetCenter.shared.reloadTimelines(ofKind: AppGroup.stepWidgetKind)
+            // The watch complications show the same steps. The bridge sends
+            // only when they changed, and only to an installed Watch app.
+            WatchBridge.shared.refreshGlance()
+        }
         return true
     }
 

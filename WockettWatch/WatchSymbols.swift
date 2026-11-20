@@ -1,6 +1,7 @@
 // Watch-local SF Symbol names. WktSymbol lives in the iPhone app target, so
 // the Watch keeps its own short list, like the widget's `WS`. Views use these
-// names; no `systemName:` literals.
+// names; no `systemName:` literals. Also compiled into the watch widget
+// extension (WockettWatchWidgets) for the complications.
 enum WS {
     static let iPhone = "iphone"
     static let notReachable = "iphone.slash"
@@ -12,6 +13,10 @@ enum WS {
     static let resume = "play.fill"
     static let finish = "stop.fill"
     static let done = "checkmark"
+    /// Complications: steps, pets, and the Start launcher (activity-neutral).
+    static let steps = "shoeprints.fill"
+    static let pets = "pawprint.fill"
+    static let start = "play.fill"
 
     /// The activity's icon, as the iPhone app's `ActivityMode.icon`.
     static func icon(for activity: WatchActivity) -> String {

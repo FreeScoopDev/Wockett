@@ -146,6 +146,52 @@ nonisolated enum WatchWire {
     }
 }
 
+/// The one application context the phone sends. Each update replaces the
+/// last whole dictionary, so it carries both the walk state (`WatchWire.key`)
+/// and the glance snapshot (`WatchGlanceWire.key`), and setting one keeps the
+/// other. Anything else in a context it starts from is dropped.
+nonisolated struct WatchApplicationContext {
+    private(set) var dictionary: [String: Any] = [:]
+
+    init(_ existing: [String: Any] = [:]) {
+        for key in [WatchWire.key, WatchGlanceWire.key] {
+            if let value = existing[key] { dictionary[key] = value }
+        }
+    }
+
+    mutating func set(_ state: WatchWalkState) {
+        dictionary.merge(WatchWire.encode(state)) { _, new in new }
+    }
+
+    mutating func set(_ glance: WatchGlanceSnapshot) {
+        dictionary.merge(WatchGlanceWire.payload(glance)) { _, new in new }
+    }
+}
+
+/// The watch's filter for the walk state in an application context. The
+/// phone sends a new context whenever the glance changes, and it carries the
+/// last walk state again, unchanged. That state can be older than a reply
+/// the watch already shows (a request for state answered in between), so
+/// showing it again would step the distance back and tap a km or mile marker
+/// twice. Only a walk state that differs from the last one read from a
+/// context is new. Pure, for the tests.
+nonisolated struct WatchContextWalkState: Sendable {
+    private var last: WatchWalkState?
+
+    /// The context's walk state if it is new, nil if it has none or the same
+    /// one as the last context.
+    mutating func fresh(from context: [String: Any]) -> WatchWalkState? {
+        fresh(WatchWire.decode(WatchWalkState.self, from: context))
+    }
+
+    /// The same, for a walk state already decoded from a context.
+    mutating func fresh(_ state: WatchWalkState?) -> WatchWalkState? {
+        guard let state, state != last else { return nil }
+        last = state
+        return state
+    }
+}
+
 // MARK: - How often the phone sends
 
 /// The phone sends its state on every phase change, and at most every

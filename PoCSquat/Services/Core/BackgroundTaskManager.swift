@@ -110,6 +110,9 @@ final class BackgroundTaskManager {
         async let distance = todaySum(HKQuantityType(.distanceWalkingRunning), unit: .meter(), predicate: predicate)
         let (s, d) = await (steps, distance)
         WidgetSnapshot.write(steps: Int(s), distanceMeters: d)
+        // The watch complications too, without the app being opened. After
+        // a background launch the watch session may still be activating.
+        await WatchBridge.shared.sendGlanceFromBackground()
     }
 
     private func todaySum(_ type: HKQuantityType, unit: HKUnit, predicate: NSPredicate) async -> Double {
