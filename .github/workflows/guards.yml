@@ -37,10 +37,11 @@ jobs:
       # "walk". Fails the build if any of these literals reappear. "Run History"
       # is the same mistake the other way: a route's history said "Run" for
       # walking routes (2026-09-25), and a route's sessions can mix activities.
+      # WockettWatch since 2026-11-20: the Watch remote drives runs and rides too.
       - name: Language-consistency guard
         run: |
           if grep -rn '"Still walking\|"Walk Paused"\|"End Walk"\|"Walk Complete\|"Walk History"\|"Finish Walk"\|"Resume Your Walk\|"View Run History"\|"Run History"' \
-               PoCSquat/Views PoCSquat/Intents WocketWidget --include="*.swift"; then
+               PoCSquat/Views PoCSquat/Intents WocketWidget WockettWatch --include="*.swift"; then
             echo "::error::Hardcoded activity-specific copy found — use ActivityMode.noun/gerund/sessionLabel instead."
             exit 1
           fi
