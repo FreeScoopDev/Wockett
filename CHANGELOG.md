@@ -5,6 +5,60 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [1.20] - 2026-11-24
+
+### Added
+- Wockett on Apple Watch. The watch shows the walk, run or ride your iPhone
+  is recording: the time ticking, the distance in your units, and pace (or
+  speed on a ride). Pause, resume and finish it from your wrist, with a tap
+  on pause, resume, finish and each mile or kilometre. Finish is a press and
+  hold followed by a question, so a brush of the wrist can't end a walk, and
+  the watch then shows the distance and time your iPhone saved. You can
+  start a walk, run, ride or indoor walk from the watch while Wockett is open
+  on your iPhone; with the phone locked the watch asks you to open Wockett
+  there first, because iOS only lets an app that uses your location "while
+  using" begin tracking when it is in front. Your iPhone still does all the
+  tracking, saving and Health work, so nothing about how a walk is recorded
+  changes. If the watch loses touch with your iPhone it says so, keeps the
+  last numbers it had and greys out the buttons until the link comes back;
+  a button pressed while out of reach is never saved up to run later. The
+  watch uses your iPhone's words for the session, so a hike says hike, and
+  if your iPhone takes a start from the watch but can't begin it (a question
+  waiting on its screen, say) the watch tells you instead of quietly giving
+  up. A walk you end on your iPhone, from the Lock Screen or the mini tile,
+  leaves the watch at once with a tap on the wrist.
+- Wockett complications for Apple Watch. Put today's steps on your watch
+  face as a ring, a corner gauge, a line of text or a rectangle with your
+  goal and percentage; show your pets' steps today (the top pet in the
+  small spots, the top two in the rectangle); or add a Start button that
+  opens Wockett on the watch ready to pick a walk, run, ride or indoor walk.
+  They are in the Smart Stack too. Your iPhone sends the numbers, so the
+  watch reads nothing from Health and the complications keep up while the
+  Watch app is closed. To save the watch's battery the iPhone wakes it at
+  most every 15 minutes for small changes, but at once when you reach your
+  goal, change it, or a new day starts. A new day shows 0 steps at the time
+  your iPhone starts counting a new day, even if the iPhone has not sent
+  anything yet, so the watch never shows yesterday's count as today's. Until
+  your iPhone has sent anything, the watch says to open Wockett there rather
+  than showing a 0 that isn't real. With no pets yet, the pets complication
+  says how to add one. Tapping Start only opens the app: nothing starts
+  until you press Start in it.
+
+### Internal
+- The project has an Apple Watch app target, `WockettWatch`, embedded in the
+  iPhone app. It is only a placeholder screen (the Wockett mark and "Start a
+  walk on your iPhone.") so the walk remote and the complications can each
+  be built on a real watch target in their own branch. It shares
+  `DesignSystem.swift` with the app and widget (watchOS is always dark, so it
+  gets each colour's dark value from the same palette) and takes its version
+  and build number from `Versions.xcconfig`, so the watch app can never ship
+  with numbers that differ from the iPhone app's. Nothing user-visible yet: a
+  release must not be cut from `main` until `feat/watch-walk-remote` merges.
+- The language-consistency guard now scans the Apple Watch app (`WockettWatch/`)
+  as well as the phone's views, intents and the widget. The Watch remote drives
+  runs and rides too, so a hardcoded "End Walk" there would be the same bug the
+  guard already catches everywhere else.
+
 ## [1.19] - 2026-11-12
 
 ### Added
