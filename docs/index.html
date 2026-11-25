@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Wockett — Walk more, every day</title>
-    <meta name="description" content="Wockett plans a walking loop from your door, sized to finish today's step goal or fit the time you have. Bring the dog: every pet gets their own daily goal.">
+    <title>Wockett — Walking routes, dog walks and step goals</title>
+    <meta name="description" content="Find a walking loop from your door that fits the time you have, and track walks with your pets.">
     <link rel="icon" href="assets/favicon-64.png" type="image/png">
     <link rel="apple-touch-icon" href="apple-touch-icon.png">
     <meta name="theme-color" content="#22372F">
@@ -12,86 +12,99 @@
     <meta property="og:type" content="website">
     <meta property="og:site_name" content="Wockett">
     <meta property="og:url" content="https://wockett.app/">
-    <meta property="og:title" content="Wockett: walk more, every day">
-    <meta property="og:description" content="Wockett plans a walking loop from your door, sized to finish today's step goal or fit the time you have. Bring the dog: every pet gets their own daily goal.">
+    <meta property="og:title" content="Wockett: walking routes, dog walks and step goals">
+    <meta property="og:description" content="Find a walking loop from your door that fits the time you have, and track walks with your pets.">
     <meta property="og:image" content="https://wockett.app/assets/share-card.png">
     <meta property="og:image:width" content="1200">
     <meta property="og:image:height" content="630">
     <meta property="og:image:alt" content="The Wockett app icon: a W drawn as a winding trail on a map.">
     <meta name="twitter:card" content="summary_large_image">
     <link rel="stylesheet" href="assets/site.css">
+    <link rel="stylesheet" href="assets/home.css">
 </head>
-<body>
-
-<main>
-<header class="hero">
-    <img class="app-icon" src="assets/icon-256.png" alt="" width="112" height="112">
-    <h1>Wockett</h1>
-    <p>Walk more, every day.</p>
-    <p class="lead">Need a walk that fits the time you have? Wockett plans a loop from your door, sized to finish today's step goal or fit a spare 20 minutes, then guides you around it. Bring the dog: every pet gets their own daily goal.</p>
-    <a class="button" href="https://apps.apple.com/app/id6794364736"><small>Download on the</small>App Store</a>
-    <p class="availability">Free on the App Store for iPhone and iPad.</p>
+<body class="wockett-home">
+<a class="skip-link" href="#main">Skip to content</a>
+<header class="site-header">
+    <div class="home-shell header-inner">
+        <a class="wordmark" href="./"><img src="assets/icon-256.png" alt="" width="34" height="34">Wockett</a>
+        <nav aria-label="Main navigation">
+            <a href="#routes">Routes</a>
+            <a href="help.html">Help</a>
+        </nav>
+    </div>
 </header>
 
-<section class="home-shots" aria-labelledby="see-it">
-    <h2 id="see-it">See it in action</h2>
-    <div class="shots">
-        <figure>
-            <img class="shot" src="help/routes-results-panel.jpg" alt="Wockett's route suggestions: loops from your location with distance, time and estimated steps" width="598" height="1300" loading="lazy">
-            <figcaption>Pick a loop</figcaption>
-        </figure>
-        <figure>
-            <img class="shot" src="help/start-walk-in-progress.jpg" alt="A walk in progress, with distance, time and steps" width="598" height="1300" loading="lazy">
-            <figcaption>Walk it, tracked</figcaption>
-        </figure>
-        <figure>
-            <img class="shot" src="help/pets-home-crew-rings.jpg" alt="Home screen with a daily goal ring for each pet" width="598" height="1300" loading="lazy">
-            <figcaption>Every pet's progress</figcaption>
-        </figure>
-    </div>
-</section>
+<main id="main" tabindex="-1">
+    <section class="home-hero home-shell" aria-labelledby="page-title">
+        <div class="hero-copy">
+            <h1 id="page-title">A good walk<br>starts here.</h1>
+            <p>Find a loop from your front door that fits the time you have. Bring your dog, track your steps, and see how far you went together.</p>
+            <div class="home-actions">
+                <a class="button" href="https://apps.apple.com/app/id6794364736">Download on the App Store</a>
+                <a href="#routes">Explore routes</a>
+            </div>
+            <p class="availability">Free to download for iPhone and iPad.</p>
+        </div>
+        <div class="hero-screens">
+            <img class="route-screen" src="help/routes-results-panel.jpg" alt="Wockett suggests nearby loops with distance, time and estimated steps" width="598" height="1300" fetchpriority="high" decoding="async">
+            <img class="walk-screen" src="help/start-walk-in-progress.jpg" alt="An active walk shows your route, distance, time and steps" width="598" height="1300" decoding="async">
+        </div>
+    </section>
 
-<h2 class="visually-hidden">What Wockett does</h2>
-<div class="features">
-    <div class="feature card">
-        <div class="icon">🚶</div>
-        <h3>Loops From Your Door</h3>
-        <p>Choose Finish Goal or 20, 30 or 45 minutes and Wockett suggests loops from where you stand, each with distance, time, estimated steps, weather and an elevation chart. Or pick a nearby park, beach or café and walk there and back.</p>
+    <div class="home-paper">
+        <div class="home-shell home-content">
+            <section id="routes" aria-labelledby="routes-title">
+                <div class="section-intro">
+                    <h2 id="routes-title">Make the walk yours</h2>
+                    <p>Take a quick loop, find a new trail, or give your dog time to sniff.</p>
+                </div>
+                <div class="walk-options">
+                    <article>
+                        <h3>Find your loop</h3>
+                        <p>Choose 20, 30 or 45 minutes, or a loop that finishes your step goal. Compare distance, estimated steps and elevation before you head out.</p>
+                        <a href="help.html#routes">See how routes work</a>
+                    </article>
+                    <article>
+                        <h3>Bring your walking crew</h3>
+                        <p>Give each pet a profile and a daily goal. Choose who’s coming and see their progress after the walk.</p>
+                        <a href="help.html#pets">Add a pet</a>
+                    </article>
+                    <article>
+                        <h3>Try a nearby trail</h3>
+                        <p>Find trails near you and filter by length, surface, loops and dog access. Download available regions to keep trail lines and details on your phone.</p>
+                        <a href="help.html#routes">Find routes and trails</a>
+                    </article>
+                </div>
+            </section>
+
+            <section class="activity-section" aria-labelledby="activity-title">
+                <figure>
+                    <img src="help/pets-home-crew-rings.jpg" alt="The Wockett Home screen shows the daily progress of pets in the Crew section" width="598" height="1300" loading="lazy" decoding="async">
+                </figure>
+                <div>
+                    <h2 id="activity-title">See what adds up</h2>
+                    <p>Track walks, runs, rides and indoor sessions. See your steps, streaks and personal records, use Apple Health for workouts, or join a challenge with other walkers.</p>
+                    <p>Wockett has no account to set up. Your walks and pet profiles stay on your device and sync through your private iCloud. You choose what to share with the community.</p>
+                    <div class="home-actions">
+                        <a class="button" href="https://apps.apple.com/app/id6794364736">Download Wockett</a>
+                        <a href="help.html#start">Get started</a>
+                    </div>
+                </div>
+            </section>
+        </div>
     </div>
-    <div class="feature card">
-        <div class="icon">🐕</div>
-        <h3>A Goal for Every Pet</h3>
-        <p>Add your dogs (or a cat that walks) and choose who's coming. Each pet gets credit for the walk and a ring toward their own daily goal.</p>
-    </div>
-    <div class="feature card">
-        <div class="icon">🌲</div>
-        <h3>Trails</h3>
-        <p>Named trails within 10 miles, nearest first, even with no signal. Get directions to the trail, and a nudge back if you wander off it. North Carolina is built in, and you can download trails for more states from the Trails list.</p>
-    </div>
-    <div class="feature card">
-        <div class="icon">🚴</div>
-        <h3>Walk, Run, Ride or Indoor</h3>
-        <p>One tracker for all four, with spoken updates, auto-pause, Lock Screen controls, and every walk, run and ride saved to Apple Health.</p>
-    </div>
-    <div class="feature card">
-        <div class="icon">👟</div>
-        <h3>Your Day at a Glance</h3>
-        <p>Today's steps from Apple Health, your pets' progress, your streak and the weather on one card, plus a home screen widget.</p>
-    </div>
-    <div class="feature card">
-        <div class="icon">🏅</div>
-        <h3>Streaks, Badges & Challenges</h3>
-        <p>Keep a daily streak, collect badges, and join or create step challenges. No account to make: your walks stay on your iPhone and in your own iCloud.</p>
-    </div>
-</div>
 </main>
 
-<footer>
-    <p>
-        <a href="index.html">Wockett</a> · <a href="https://apps.apple.com/app/id6794364736">App Store</a> · <a href="help.html">Help &amp; Tips</a> · <a href="mailto:support@wockett.app">Support</a> · <a href="privacy-policy.html">Privacy Policy</a> · <a href="terms-of-service.html">Terms of Service</a>
-    </p>
-    <p>© 2026 Scoops Dev LLC</p>
+<footer class="home-footer">
+    <div class="home-shell footer-inner">
+        <p>© 2026 Scoops Dev LLC</p>
+        <nav aria-label="Footer navigation">
+            <a href="help.html">Help &amp; Tips</a>
+            <a href="mailto:support@wockett.app">Email support</a>
+            <a href="privacy-policy.html">Privacy Policy</a>
+            <a href="terms-of-service.html">Terms of Service</a>
+        </nav>
+    </div>
 </footer>
-
 </body>
 </html>
