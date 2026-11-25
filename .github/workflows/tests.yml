@@ -4,8 +4,9 @@
 # of the 25 included hours used this period, 150 CI Tests builds at 7 min
 # each, and when the hours run out the required check never reports and
 # every PR blocks until the period resets. The repository is public, so GitHub-hosted runners are free, macOS
-# included, and the macos-26 image ships the same Xcode 26.6 (17F113) that
-# Xcode Cloud pins. The 2026-09-04 reason for leaving GitHub Actions (10x
+# included, and GitHub's xcode-27 image ships the same Xcode 27.2 (27B52) that
+# Xcode Cloud pins (since 2026-11-25; macos-26 and Xcode 26.6 before: Apple
+# requires the iOS 27 SDK for uploads from April 2027, ITMS-90725). The 2026-09-04 reason for leaving GitHub Actions (10x
 # billing on a private repo) no longer applies. Xcode Cloud keeps Release
 # Flow only; see docs/ci.md.
 #
@@ -87,7 +88,7 @@ jobs:
     if: >-
       needs.changes.outputs.app == 'true' &&
       (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
-    runs-on: macos-26
+    runs-on: xcode-27
     timeout-minutes: 45
     steps:
       - name: Check out repo
@@ -103,9 +104,9 @@ jobs:
           ref: 391616fbead6f540c02684f36fa8fef8e63f2d8a
           path: toolkit
 
-      - name: Select Xcode 26.6
+      - name: Select Xcode 27.2
         run: |
-          sudo xcode-select -s /Applications/Xcode_26.6.app
+          sudo xcode-select -s /Applications/Xcode_27.2.app
           xcodebuild -version
 
       # No signing setup, and signing is not disabled: a simulator build is
@@ -141,7 +142,7 @@ jobs:
     if: >-
       needs.changes.outputs.app == 'true' &&
       (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
-    runs-on: macos-26
+    runs-on: xcode-27
     timeout-minutes: 75
     steps:
       - name: Check out repo
@@ -154,9 +155,9 @@ jobs:
           ref: 391616fbead6f540c02684f36fa8fef8e63f2d8a
           path: toolkit
 
-      - name: Select Xcode 26.6
+      - name: Select Xcode 27.2
         run: |
-          sudo xcode-select -s /Applications/Xcode_26.6.app
+          sudo xcode-select -s /Applications/Xcode_27.2.app
           xcodebuild -version
 
       # The runner timed out "while preparing to run tests" once when the UI
