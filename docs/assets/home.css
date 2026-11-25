@@ -108,18 +108,6 @@
 }
 .walk-options h3 { font-size: 1.25rem; line-height: 1.2; }
 .walk-options a { margin-top: auto; font-weight: 650; text-decoration: underline; }
-.watch-section {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, .8fr);
-    align-items: center;
-    gap: 1rem 2.5rem;
-    padding: clamp(1.3rem, 4vw, 2.8rem);
-    border: 1px solid var(--paper-line);
-    border-radius: 1rem;
-    background: #e3ebdf;
-}
-.watch-section .watch-label { margin-bottom: .5rem; color: var(--paper-link); font-size: .875rem; font-weight: 700; }
-.watch-section a { display: inline-block; margin-top: .6rem; text-decoration: underline; font-weight: 650; }
 
 .activity-section {
     display: grid;
@@ -151,7 +139,7 @@
 
 @media (max-width: 46rem) {
     .walk-options { grid-template-columns: 1fr; }
-    .home-hero, .watch-section, .activity-section { grid-template-columns: 1fr; }
+    .home-hero, .activity-section { grid-template-columns: 1fr; }
     .hero-screens { width: 100%; max-width: 30rem; }
     .activity-section figure { order: 1; }
 }
