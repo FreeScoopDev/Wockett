@@ -410,8 +410,8 @@ Wockett's specifics:
 - **An emergency manual archive** builds whatever is on disk in
   `~/Desktop/Apps/PoCSquat`, which is how build 84 went out without #53.
 - **CI** is GitHub Actions since 2026-09-28: `tests.yml` runs `WockettTests`
-  and `WockettUITests` as two parallel jobs on `macos-26` (the same Xcode
-  26.6 Xcode Cloud pins) through the toolkit's `bin/test.sh`, free because the
+  and `WockettUITests` as two parallel jobs on GitHub's `xcode-27` image (the
+  same Xcode 27.2 Xcode Cloud pins, since 2026-11-25) through the toolkit's `bin/test.sh`, free because the
   repository is public; docs-only changes skip both. The runner is slow: a
   full-scheme run took 32 minutes against Xcode Cloud's 7, and the UI target
   was flaky on it, which is why only the unit job is required. Xcode Cloud

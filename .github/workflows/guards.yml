@@ -5,7 +5,7 @@
 # minutes a GitHub Free private repo gets each month. Anything that does not
 # genuinely need Xcode belongs here instead.
 #
-# Building and testing the app runs in tests.yml (macos-26, free because the
+# Building and testing the app runs in tests.yml (xcode-27, free because the
 # repository is public); its `Unit tests (iOS)` job is a required check. Xcode
 # Cloud only runs a daily full-scheme test on main and Release Flow archives.
 

@@ -24,7 +24,7 @@ was read as "protection was removed" on 2026-09-08. Use this instead:
 
 | Required check | Provider | Runner | Bills at |
 | --- | --- | --- | --- |
-| `Unit tests (iOS)` | GitHub Actions | `macos-26` (Xcode 26.6) | Free: public repository |
+| `Unit tests (iOS)` | GitHub Actions | `xcode-27` (Xcode 27.2) | Free: public repository |
 | `Language-consistency guard` | GitHub Actions | `ubuntu-latest` | 1× |
 | `SwiftLint` | GitHub Actions | `ubuntu-latest`, `ghcr.io/realm/swiftlint` container | 1× |
 | `Critic verdict` | GitHub Actions | `ubuntu-latest` | 1× |
@@ -135,11 +135,14 @@ verdict went red).
 ## GitHub Actions — `.github/workflows/tests.yml`
 
 Added 2026-09-28. Runs the two test targets as **two parallel jobs** on
-GitHub's `macos-26` runner for every pull request and every push to `main`,
+GitHub's `xcode-27` runner (`macos-26` until 2026-11-25) for every pull request and every push to `main`,
 each through the shared toolkit's `bin/test.sh` (checked out at a pinned
 commit), so CI and a local `scripts/test.sh` judge a run by the same three
-signals. The runner image ships Xcode 26.6 (17F113), the build Xcode Cloud
-pins, and each job selects it explicitly.
+signals. The runner image ships Xcode 27.2 (27B52), the build Xcode Cloud
+pins, and each job selects it explicitly. GitHub calls the `xcode-27` image a
+preview; if it misbehaves, `macos-26` with Xcode 26.6 is the way back until
+April 2027, when Apple stops accepting uploads built without the iOS 27 SDK
+(ITMS-90725, first seen on another upload 2026-11-25).
 
 Why it exists: on 2026-09-28 the Xcode Cloud usage page showed 18 h 19 m of
 the 25 included hours used this period, 150 `CI Tests` builds at 7 minutes
@@ -241,7 +244,7 @@ here as it was.
 | Start condition | **On a Schedule for a Branch** — branch `main`, daily at 2:00 AM Eastern Time (since 2026-09-28; was *Pull Request Changes*, source `Any Branches`, target `main`) |
 | Auto-cancel | On. A newer push to the same source branch cancels the running build. |
 | Action | **Test - iOS** — platform iOS, scheme `PoCSquat`, **Required to Pass**, Test Option `Test (Use Scheme Setting)`, 1 destination |
-| Environment | Xcode **26.6 (17F113)**, macOS **Tahoe 26.5.1** — pinned explicitly, not `Latest Release`. macOS moved from 26.6.2 (25G83) on 2026-09-15, see below. |
+| Environment | Xcode **27.2 (27B52)** with the newest macOS offered for it — pinned explicitly, not `Latest Release` (since 2026-11-25, for the iOS 27 SDK rule; was Xcode 26.6 / Tahoe 26.5.1, and macOS 26.6.2 before 2026-09-15, see below). |
 | Clean | **Off** — restores derived data and caches, so runs stay fast |
 | Notifies | Slack `#ci_tests`, all successes and failures. No email recipients. |
 
@@ -258,7 +261,7 @@ run?"
 | --- | --- |
 | Start condition | **Manual Start** only, restricted to **`main`**; Pull Request and Tag both **Not Enabled** |
 | Action | **Archive - iOS** — platform iOS, scheme `PoCSquat`, Distribution Preparation **TestFlight and App Store** (changed by Joe 2026-09-23; was TestFlight (Internal Testing Only)) |
-| Environment | Xcode **26.6 (17F113)**, macOS **Tahoe 26.5.1** — pinned explicitly, not `Latest Release`. macOS moved from 26.6.2 (25G83) on 2026-09-15, see below. |
+| Environment | Xcode **27.2 (27B52)** with the newest macOS offered for it — pinned explicitly, not `Latest Release` (since 2026-11-25, for the iOS 27 SDK rule; was Xcode 26.6 / Tahoe 26.5.1, and macOS 26.6.2 before 2026-09-15, see below). |
 | Clean | **On** — no cache restore, slower but reproducible. Correct for a release build. |
 | Post-action | **TestFlight Internal Testing** to the internal tester group. Added by Joe 2026-09-23; before that there was none, so a finished build sat in App Store Connect without reaching the TestFlight app. Step 4 of the ship path (test on a phone) depends on it. |
 | Notifies | Slack `#wockett_release_updates`, all successes and failures. No email recipients. |
